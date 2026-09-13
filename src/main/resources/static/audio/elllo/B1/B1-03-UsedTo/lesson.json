@@ -1,0 +1,75 @@
+{
+  "id": "B1-03-UsedTo",
+  "level": "B1",
+  "title": "Used To for Past Tense",
+  "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+  "sourcePage": "https://elllo.org/book/B1/B1-03-UsedTo.html",
+  "usageTerms": "https://www.elllo.org/about/faq.htm",
+  "downloadedAtUtc": "2026-09-11T17:27:11.0314065Z",
+  "conversations": [
+    {
+      "number": 1,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-03-1-Used-To-Sports.mp3",
+      "localAudioPath": "/audio/elllo/B1/B1-03-UsedTo/conversation-1-B1-03-1-Used-To-Sports.mp3",
+      "transcript": "Man: Do you play sports?\nWoman: I used to play sports in high school.\nMan: Yeah, I used to play, too.\nWoman: Why did you stop?\nMan: No time, I guess.\nWoman: Yeah, I used to have so much free time.\nMan: Me too! I miss those days.\nWoman: What sports did you play?\nMan: Baseball and basketball. I used to be pretty good, not anymore, though.\nWoman: Yeah, we all get older.",
+      "utterances": [
+        "Man: Do you play sports?",
+        "Woman: I used to play sports in high school.",
+        "Man: Yeah, I used to play, too.",
+        "Woman: Why did you stop?",
+        "Man: No time, I guess.",
+        "Woman: Yeah, I used to have so much free time.",
+        "Man: Me too! I miss those days.",
+        "Woman: What sports did you play?",
+        "Man: Baseball and basketball. I used to be pretty good, not anymore, though.",
+        "Woman: Yeah, we all get older."
+      ]
+    },
+    {
+      "number": 2,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-03-2-Used-To-Language.mp3",
+      "localAudioPath": "/audio/elllo/B1/B1-03-UsedTo/conversation-2-B1-03-2-Used-To-Language.mp3",
+      "transcript": "Man: Do you speak any foreign languages?\nWoman: I speak French a little. I used to use it all the time, but not anymore.\nMan: Really? Why is that?\nWoman: Well, I used to work for a French company, and then I changed jobs.\nMan: Oh, really? I didn’t know that.\nWoman: Yeah, it was a lot of fun. I used to go to France once a year for work.\nMan: Lucky you! I love France.\nWoman: Yeah, France is a lot of fun.",
+      "utterances": [
+        "Man: Do you speak any foreign languages?",
+        "Woman: I speak French a little. I used to use it all the time, but not anymore.",
+        "Man: Really? Why is that?",
+        "Woman: Well, I used to work for a French company, and then I changed jobs.",
+        "Man: Oh, really? I didn’t know that.",
+        "Woman: Yeah, it was a lot of fun. I used to go to France once a year for work.",
+        "Man: Lucky you! I love France.",
+        "Woman: Yeah, France is a lot of fun."
+      ]
+    },
+    {
+      "number": 3,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-03-3-Used-To-Party.mp3",
+      "localAudioPath": "/audio/elllo/B1/B1-03-UsedTo/conversation-3-B1-03-3-Used-To-Party.mp3",
+      "transcript": "Man: Are you coming to the party?\nWoman: No, I have to work.\nMan: Work! What happened? You used to never miss a party!\nWoman: True, but I also didn’t use to have a stressful job.\nMan: True, you used to be poor, but you were fun!\nWoman: Yep! I used to be fun!",
+      "utterances": [
+        "Man: Are you coming to the party?",
+        "Woman: No, I have to work.",
+        "Man: Work! What happened? You used to never miss a party!",
+        "Woman: True, but I also didn’t use to have a stressful job.",
+        "Man: True, you used to be poor, but you were fun!",
+        "Woman: Yep! I used to be fun!"
+      ]
+    },
+    {
+      "number": 4,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-03-4-Used-To-CoWorker.mp3",
+      "localAudioPath": "/audio/elllo/B1/B1-03-UsedTo/conversation-4-B1-03-4-Used-To-CoWorker.mp3",
+      "transcript": "Man: Hey, you used to have a Spanish co-worker, right?\nWoman: Yeah, Maria, but she moved.\nMan: Really? That’s too bad. I liked her. She used to always make me laugh.\nWoman: I know. We used to have such fun together.\nMan: She was so nice. She used to give me sweets when I visited your office.\nWoman: Yeah, she loved baking. She used to bring cookies and cupcakes to the office every Friday.\nMan: Sounds like you miss her.\nWoman: I do! We all do.",
+      "utterances": [
+        "Man: Hey, you used to have a Spanish co-worker, right?",
+        "Woman: Yeah, Maria, but she moved.",
+        "Man: Really? That’s too bad. I liked her. She used to always make me laugh.",
+        "Woman: I know. We used to have such fun together.",
+        "Man: She was so nice. She used to give me sweets when I visited your office.",
+        "Woman: Yeah, she loved baking. She used to bring cookies and cupcakes to the office every Friday.",
+        "Man: Sounds like you miss her.",
+        "Woman: I do! We all do."
+      ]
+    }
+  ]
+}

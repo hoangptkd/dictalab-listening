@@ -1,0 +1,73 @@
+{
+  "id": "A1-04-Verbs",
+  "level": "A1",
+  "title": "Verbs - Present Simple",
+  "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+  "sourcePage": "https://elllo.org/book/A1/A1-04-Verbs.html",
+  "usageTerms": "https://www.elllo.org/about/faq.htm",
+  "downloadedAtUtc": "2026-09-11T17:27:05.1208755Z",
+  "conversations": [
+    {
+      "number": 1,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-04-1-Verbs-Morning.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-04-Verbs/conversation-1-A1-04-1-Verbs-Morning.mp3",
+      "transcript": "Man: What do you do in the morning?\nWoman: I wake up. I take a shower. I get dressed, and I eat breakfast.\nMan: Oh! When do you get up?\nWoman: I get up at 6.\nMan: Wow! That’s early.\nWoman: I know! I like mornings, though.",
+      "utterances": [
+        "Man: What do you do in the morning?",
+        "Woman: I wake up. I take a shower. I get dressed, and I eat breakfast.",
+        "Man: Oh! When do you get up?",
+        "Woman: I get up at 6.",
+        "Man: Wow! That’s early.",
+        "Woman: I know! I like mornings, though."
+      ]
+    },
+    {
+      "number": 2,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-04-2-Verbs-Day.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-04-Verbs/conversation-2-A1-04-2-Verbs-Day.mp3",
+      "transcript": "Man: What do you do during the day?\nWoman: Well, I go to school. I teach students.\nMan: Ooh! What do you teach?\nWoman: I teach math. What do you do?\nMan: I work at a bike shop.\nWoman: Really? What do you do at the shop?\nMan: I fix and sell bikes.\nWoman: Sounds fun.",
+      "utterances": [
+        "Man: What do you do during the day?",
+        "Woman: Well, I go to school. I teach students.",
+        "Man: Ooh! What do you teach?",
+        "Woman: I teach math. What do you do?",
+        "Man: I work at a bike shop.",
+        "Woman: Really? What do you do at the shop?",
+        "Man: I fix and sell bikes.",
+        "Woman: Sounds fun."
+      ]
+    },
+    {
+      "number": 3,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-04-3-Verbs-Lunch.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-04-Verbs/conversation-3-A1-04-3-Verbs-Lunch.mp3",
+      "transcript": "Man: What do you do at lunch?\nWoman: I eat with my friends. And you?\nMan: I eat in the park.\nWoman: That’s nice.\nMan: Yeah, I like to read on my lunch break.\nWoman: Ooh, what do you read?\nMan: I read about history.\nWoman: Interesting.",
+      "utterances": [
+        "Man: What do you do at lunch?",
+        "Woman: I eat with my friends. And you?",
+        "Man: I eat in the park.",
+        "Woman: That’s nice.",
+        "Man: Yeah, I like to read on my lunch break.",
+        "Woman: Ooh, what do you read?",
+        "Man: I read about history.",
+        "Woman: Interesting."
+      ]
+    },
+    {
+      "number": 4,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-04-4-Verbs-Weekend.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-04-Verbs/conversation-4-A1-04-4-Verbs-Weekend.mp3",
+      "transcript": "Man: What do you do on the weekend?\nWoman: I play sports at the park. How about you?\nMan: I study at the library.\nWoman: Oh, right! You love books.\nMan: Yeah. So, what sports do you play?\nWoman: I play soccer with my friends.\nMan: Sounds fun.\nWoman: It is!",
+      "utterances": [
+        "Man: What do you do on the weekend?",
+        "Woman: I play sports at the park. How about you?",
+        "Man: I study at the library.",
+        "Woman: Oh, right! You love books.",
+        "Man: Yeah. So, what sports do you play?",
+        "Woman: I play soccer with my friends.",
+        "Man: Sounds fun.",
+        "Woman: It is!"
+      ]
+    }
+  ]
+}

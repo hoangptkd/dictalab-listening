@@ -1,0 +1,43 @@
+Conversation 1
+Man: You don’t look so good. Are you sick?
+Woman: Yes, I think I’m coming down with a cold.
+Man: Well, maybe you should go home then.
+Woman: But I really need to work.
+Man: No, no, no! You should go home and get some rest.
+Woman: OK. I guess I can work from home anyway.
+Man: No, you shouldn’t work. You should stay in bed.
+Woman: OK. I will do that. Thanks for your advice.
+Man: No problem. I hope you feel better soon.
+
+Conversation 2
+Man: So, how long have you been feeling ill?
+Woman: For about three days.
+Man: Well, it looks like there’s a flu bug going around.
+Woman: OK. Is that serious?
+Man: No, it is a minor illness, but you should not be around people as it can spread.
+Woman: OK. What should I do to get better?
+Man: Just get lots of rest and drink lots of water. I will give you some medicine to make you feel better.
+Woman: OK. Thank you doctor.
+Man: If you start to feel worse after a few days, you should call me immediately.
+Woman: OK. I’ll do that. Thank you.
+Man: You’re welcome. You should feel better in a few days.
+
+Conversation 3
+Man: What’s the best way to learn Spanish?
+Woman: Well, first you should learn new words every day.
+Man: OK. That’s easy. What do you recommend?
+Woman: I would download a vocab app. I would try to learn ten words a day.
+Man: Only ten words? I think I can learn 50 words a day.
+Woman: No, you shouldn’t do that because you won’t remember them. You shouldn’t try to do too much at one time.
+Man: OK. I will follow your advice. Thank you.
+
+Conversation 4
+Man: Hello, Mrs. Wilson. Thanks for your advice on learning Spanish vocabulary. Your tips worked. Do you have any more ways to learn Spanish?
+Woman: Well, you should try to use the words you learn by keeping a journal and trying to use them.
+Man: That sounds too difficult. I can’t write anything yet.
+Woman: Well, at first you can just draw pictures of new words, like verbs and nouns.
+Man: Oh, I like that idea. I’ll give that a try.
+Woman: Oh, and you should use spanishlistening.org. It’s a great way to learn Spanish.
+Man: Sounds cool! Is it free?
+Woman: Yes, it’s free! There are 100s of listening lessons to choose from.
+Man: Cool. I’ll check it out. Thanks.

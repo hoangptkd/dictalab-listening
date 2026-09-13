@@ -1,0 +1,60 @@
+{
+  "id": "B1-04-Would-PastTense",
+  "level": "B1",
+  "title": "Would for Past Tense",
+  "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+  "sourcePage": "https://elllo.org/book/B1/B1-04-Would-PastTense.html",
+  "usageTerms": "https://www.elllo.org/about/faq.htm",
+  "downloadedAtUtc": "2026-09-11T17:27:18.5803201Z",
+  "conversations": [
+    {
+      "number": 1,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-04-1-Would-PastTense-Farm.mp3",
+      "localAudioPath": "/audio/elllo/B1/B1-04-Would-PastTense/conversation-1-B1-04-1-Would-PastTense-Farm.mp3",
+      "transcript": "Man: What was it like growing up on a farm?\nWoman: It was the best. I used to have so much fun.\nMan : Really? What would you do?\nWoman: I would ride horses, play with my dog, tend to animals and just have fun!\nMan: Sounds fun!\nWoman: It was. Every day I would get up early and I would be outside all day. I wouldn’t go inside until dark.\nMan: Sounds like you had a great childhood.\nWoman: It was.",
+      "utterances": [
+        "Man: What was it like growing up on a farm?",
+        "Woman: It was the best. I used to have so much fun.",
+        "Man : Really? What would you do?",
+        "Woman: I would ride horses, play with my dog, tend to animals and just have fun!",
+        "Man: Sounds fun!",
+        "Woman: It was. Every day I would get up early and I would be outside all day. I wouldn’t go inside until dark.",
+        "Man: Sounds like you had a great childhood.",
+        "Woman: It was."
+      ]
+    },
+    {
+      "number": 2,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-04-2-Would-PastTense-City.mp3",
+      "localAudioPath": "/audio/elllo/B1/B1-04-Would-PastTense/conversation-2-B1-04-2-Would-PastTense-City.mp3",
+      "transcript": "Woman: What was it like growing up in the city?\nMan: It was fun. I have many good memories.\nWoman: Yeah, such as?\nMan: Well, my friends and I used to hang out downtown. We would sit on the sidewalk and watch the world go by. It was so fun. Sometimes, we’d get in trouble, though.\nWoman: Really, what would you do?\nMan: Well, we would be loud or naughty. Kids’ stuff. Nothing serious, though.\nWoman: Yeah, sounds familiar.",
+      "utterances": [
+        "Woman: What was it like growing up in the city?",
+        "Man: It was fun. I have many good memories.",
+        "Woman: Yeah, such as?",
+        "Man: Well, my friends and I used to hang out downtown. We would sit on the sidewalk and watch the world go by. It was so fun. Sometimes, we’d get in trouble, though.",
+        "Woman: Really, what would you do?",
+        "Man: Well, we would be loud or naughty. Kids’ stuff. Nothing serious, though.",
+        "Woman: Yeah, sounds familiar."
+      ]
+    },
+    {
+      "number": 3,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-04-3-Would-PastTense-Army.mp3",
+      "localAudioPath": "/audio/elllo/B1/B1-04-Would-PastTense/conversation-3-B1-04-3-Would-PastTense-Army.mp3",
+      "transcript": "Man: What was life like in the army?\nWoman: It was good, but it was very hard.\nMan: Really? How so?\nWoman: Well, we were always busy. Every day we would get up really early. Then, we would march for ten miles. After that, we would do more training.\nMan: What would you do in the afternoon?\nWoman: More training. Usually, we wouldn’t stop training until late.\nMan: That is so tough. How much sleep did you get?\nWoman: Not much. We would usually get about six hours a night. It wasn’t enough, though.\nMan: Do you miss it?\nWoman: Yes, sometimes.",
+      "utterances": [
+        "Man: What was life like in the army?",
+        "Woman: It was good, but it was very hard.",
+        "Man: Really? How so?",
+        "Woman: Well, we were always busy. Every day we would get up really early. Then, we would march for ten miles. After that, we would do more training.",
+        "Man: What would you do in the afternoon?",
+        "Woman: More training. Usually, we wouldn’t stop training until late.",
+        "Man: That is so tough. How much sleep did you get?",
+        "Woman: Not much. We would usually get about six hours a night. It wasn’t enough, though.",
+        "Man: Do you miss it?",
+        "Woman: Yes, sometimes."
+      ]
+    }
+  ]
+}

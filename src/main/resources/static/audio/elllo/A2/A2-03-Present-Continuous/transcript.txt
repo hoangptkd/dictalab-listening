@@ -1,0 +1,44 @@
+Conversation 1
+Man: What are you doing?
+Woman: I’m writing a report.
+Man: What are you writing about?
+Woman: I’m writing about Bitcoin.
+Man: Oh, that sounds interesting.
+Woman: It is! I’m learning a lot.
+Man: Where are you getting your information?
+Woman: Wikipedia and Chat GPT.
+Man: That works, I guess.
+
+Conversation 2
+Man: Where is mom?
+Woman: She’s in the kitchen. She’s cooking dinner.
+Man: Where’s dad?
+Woman: He’s outside. He’s sitting on the porch. He’s waiting for dinner.
+Man: What’s he doing outside?
+Woman: He’s listening to news on the radio.
+Man: Why doesn’t he watch the news on TV?
+Woman: The TV isn’t working.
+Man: Oh, that’s too bad. Well, it is a nice day to be outside.
+
+Conversation 3
+Man: Hey, what a surprise! What are you doing here?
+Woman: I’m waiting for my friend. I’m meeting him for lunch.
+Man: Nice! Where are you going?
+Woman: We’re going to the new Italian restaurant.
+Man: Oh, I hear it’s really good.
+Woman: What about you? What are you doing? Are you shopping?
+Man: Yeah. I’m picking up a few things, and then I’m going to the gym.
+Woman: Well, have a good workout.
+Man: Thanks! Enjoy your meal.
+Woman: Thanks!
+
+Conversation 4
+Man: What’s happening outside?
+Woman: I think a car hit a man on a bike.
+Man: Oh no! Is he hurt?
+Woman: I’m not sure. He’s lying on the ground.
+Man: Oh no. Is it serious?
+Woman: No, he is getting up now.
+Man: Well, that’s good.
+Woman: He looks OK. He’s smiling and talking now.
+Man: Oh, good! That’s good news.

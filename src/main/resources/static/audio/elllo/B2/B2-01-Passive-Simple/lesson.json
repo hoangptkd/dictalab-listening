@@ -1,0 +1,81 @@
+{
+  "id": "B2-01-Passive-Simple",
+  "level": "B2",
+  "title": "Simple Passive",
+  "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+  "sourcePage": "https://elllo.org/book/B2/B2-01-Passive-Simple.html",
+  "usageTerms": "https://www.elllo.org/about/faq.htm",
+  "downloadedAtUtc": "2026-09-11T17:27:34.2882082Z",
+  "conversations": [
+    {
+      "number": 1,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-01-1-Passive-Present-Restaurant.mp3",
+      "localAudioPath": "/audio/elllo/B2/B2-01-Passive-Simple/conversation-1-B2-01-1-Passive-Present-Restaurant.mp3",
+      "transcript": "Man: How is the new Thai\nrestaurant?\nWoman: It’s great. All the food is cooked with organic ingredients.\nMan: That sounds great. How\nlate is it open?\nWoman: Well, food is served until 11, but the bar is open until midnight.\nMan: I will have to check it\nout.\nWoman: You should. It’s worth\nthe visit.",
+      "utterances": [
+        "Man: How is the new Thai",
+        "restaurant?",
+        "Woman: It’s great. All the food is cooked with organic ingredients.",
+        "Man: That sounds great. How",
+        "late is it open?",
+        "Woman: Well, food is served until 11, but the bar is open until midnight.",
+        "Man: I will have to check it",
+        "out.",
+        "Woman: You should. It’s worth",
+        "the visit."
+      ]
+    },
+    {
+      "number": 2,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-01-2-Passive-Present-Basketball.mp3",
+      "localAudioPath": "/audio/elllo/B2/B2-01-Passive-Simple/conversation-2-B2-01-2-Passive-Present-Basketball.mp3",
+      "transcript": "Man: Are you still playing\nbasketball tonight?\nWoman: No, the game is\ncanceled.\nMan: Oh, no, why is that?\nWoman: The rec hall is reserved for something.\nMan: That’s too bad.\nWoman: Yeah, some band is\nscheduled to play there tonight.",
+      "utterances": [
+        "Man: Are you still playing",
+        "basketball tonight?",
+        "Woman: No, the game is",
+        "canceled.",
+        "Man: Oh, no, why is that?",
+        "Woman: The rec hall is reserved for something.",
+        "Man: That’s too bad.",
+        "Woman: Yeah, some band is",
+        "scheduled to play there tonight."
+      ]
+    },
+    {
+      "number": 3,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-01-3-Passive-Present-Report.mp3",
+      "localAudioPath": "/audio/elllo/B2/B2-01-Passive-Simple/conversation-3-B2-01-3-Passive-Present-Report.mp3",
+      "transcript": "Man: Is the report done yet?\nWoman: It is almost done.\nMan: When will it be finished?\nWoman: It should be done very\nsoon.\nMan: Well, as soon as it is\nfinished, please get it to me.\nWoman: I will. The minute it’s\nfinished, you’ll get it.",
+      "utterances": [
+        "Man: Is the report done yet?",
+        "Woman: It is almost done.",
+        "Man: When will it be finished?",
+        "Woman: It should be done very",
+        "soon.",
+        "Man: Well, as soon as it is",
+        "finished, please get it to me.",
+        "Woman: I will. The minute it’s",
+        "finished, you’ll get it."
+      ]
+    },
+    {
+      "number": 4,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-01-4-Passive-Present-Chair.mp3",
+      "localAudioPath": "/audio/elllo/B2/B2-01-Passive-Simple/conversation-4-B2-01-4-Passive-Present-Chair.mp3",
+      "transcript": "Man: This chair is broken.\nWoman: Who broke it?\nMan: I don’t know. It was\nbroken when I got here.\nWoman: Should I throw it out?\nMan: No, I’ll see if\nmaintenance can fix it.\nWoman: Don’t bother. It is more\ntrouble than it’s worth.\nMan: You may be right.",
+      "utterances": [
+        "Man: This chair is broken.",
+        "Woman: Who broke it?",
+        "Man: I don’t know. It was",
+        "broken when I got here.",
+        "Woman: Should I throw it out?",
+        "Man: No, I’ll see if",
+        "maintenance can fix it.",
+        "Woman: Don’t bother. It is more",
+        "trouble than it’s worth.",
+        "Man: You may be right."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+target/
+.idea/
+.vscode/
+*.iml
+data/
+*.log
+.env
+.env.local
+qa-output/
+__pycache__/
+*.pyc

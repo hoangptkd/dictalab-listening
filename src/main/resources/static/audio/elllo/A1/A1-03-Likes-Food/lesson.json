@@ -1,0 +1,72 @@
+{
+  "id": "A1-03-Likes-Food",
+  "level": "A1",
+  "title": "Likes and Dislikes",
+  "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+  "sourcePage": "https://elllo.org/book/A1/A1-03-Likes-Food.html",
+  "usageTerms": "https://www.elllo.org/about/faq.htm",
+  "downloadedAtUtc": "2026-09-11T17:27:04.4795222Z",
+  "conversations": [
+    {
+      "number": 1,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-03-1-Likes-Food.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-03-Likes-Food/conversation-1-A1-03-1-Likes-Food.mp3",
+      "transcript": "Man: So, what foods do you like?\nWoman: I like ice cream, and pizza, and apples.\nMan: Ooh, I like those foods, too.\nWoman: What foods do you like?\nMan: I like fish, vegetables, and bananas.\nWoman: Together?\nMan: No, not together!",
+      "utterances": [
+        "Man: So, what foods do you like?",
+        "Woman: I like ice cream, and pizza, and apples.",
+        "Man: Ooh, I like those foods, too.",
+        "Woman: What foods do you like?",
+        "Man: I like fish, vegetables, and bananas.",
+        "Woman: Together?",
+        "Man: No, not together!"
+      ]
+    },
+    {
+      "number": 2,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-03-2-Likes-Drinks.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-03-Likes-Food/conversation-2-A1-03-2-Likes-Drinks.mp3",
+      "transcript": "Man: What drinks do you like?\nWoman: I like tea, and I like juice.\nMan: Ooh, hot tea or cold tea?\nWoman: Both. What about you?\nMan: I like coffee and hot chocolate.\nWoman: Ooh, I like both, too!",
+      "utterances": [
+        "Man: What drinks do you like?",
+        "Woman: I like tea, and I like juice.",
+        "Man: Ooh, hot tea or cold tea?",
+        "Woman: Both. What about you?",
+        "Man: I like coffee and hot chocolate.",
+        "Woman: Ooh, I like both, too!"
+      ]
+    },
+    {
+      "number": 3,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-03-3-Likes-Desserts.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-03-Likes-Food/conversation-3-A1-03-3-Likes-Desserts.mp3",
+      "transcript": "Man: What desserts do you like?\nWoman: I really like ice cream.\nMan: Oh! What flavor do you like?\nWoman: Hmm, I like strawberry. I like vanilla, too.\nMan: Nice! I like cake, and I like pie.\nWoman: What kind of pie?\nMan: I really like apple pie with ice cream.\nWoman: Yum!",
+      "utterances": [
+        "Man: What desserts do you like?",
+        "Woman: I really like ice cream.",
+        "Man: Oh! What flavor do you like?",
+        "Woman: Hmm, I like strawberry. I like vanilla, too.",
+        "Man: Nice! I like cake, and I like pie.",
+        "Woman: What kind of pie?",
+        "Man: I really like apple pie with ice cream.",
+        "Woman: Yum!"
+      ]
+    },
+    {
+      "number": 4,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-03-4-Likes-Snacks.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-03-Likes-Food/conversation-4-A1-03-4-Likes-Snacks.mp3",
+      "transcript": "Man: What snacks do you like?\nWoman: I like to eat fruit.\nMan: Oh yeah? And what fruits do you like?\nWoman: I like apples and oranges. And you?\nMan: I like strawberries and watermelon.\nWoman: Do you like to eat cookies?\nMan: Of course! I love chocolate chip cookies.\nWoman: Me, too!",
+      "utterances": [
+        "Man: What snacks do you like?",
+        "Woman: I like to eat fruit.",
+        "Man: Oh yeah? And what fruits do you like?",
+        "Woman: I like apples and oranges. And you?",
+        "Man: I like strawberries and watermelon.",
+        "Woman: Do you like to eat cookies?",
+        "Man: Of course! I love chocolate chip cookies.",
+        "Woman: Me, too!"
+      ]
+    }
+  ]
+}

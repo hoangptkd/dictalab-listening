@@ -1,0 +1,72 @@
+{
+  "id": "A1-05-Verb-Yes-No-Questions",
+  "level": "A1",
+  "title": "Yes / No Questions with Verbs",
+  "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+  "sourcePage": "https://elllo.org/book/A1/A1-05-Verb-Yes-No-Questions.html",
+  "usageTerms": "https://www.elllo.org/about/faq.htm",
+  "downloadedAtUtc": "2026-09-11T17:27:05.7902655Z",
+  "conversations": [
+    {
+      "number": 1,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-05-1-Verb-Yes-No-Questions-Sports.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-05-Verb-Yes-No-Questions/conversation-1-A1-05-1-Verb-Yes-No-Questions-Sports.mp3",
+      "transcript": "Man: Do you play sports?\nWoman: Yes, I do. I really love basketball.\nMan: Do you play on a team?\nWoman: Yes, but we do not play in winter.\nMan: Oh, do you play in summer?\nWoman: Yes, we play in spring and summer.\nMan: Do you play at the gym in town?\nWoman: No, we play at a high school.",
+      "utterances": [
+        "Man: Do you play sports?",
+        "Woman: Yes, I do. I really love basketball.",
+        "Man: Do you play on a team?",
+        "Woman: Yes, but we do not play in winter.",
+        "Man: Oh, do you play in summer?",
+        "Woman: Yes, we play in spring and summer.",
+        "Man: Do you play at the gym in town?",
+        "Woman: No, we play at a high school."
+      ]
+    },
+    {
+      "number": 2,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-05-2-Verb-Yes-No-Questions-Pets.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-05-Verb-Yes-No-Questions/conversation-2-A1-05-2-Verb-Yes-No-Questions-Pets.mp3",
+      "transcript": "Man: Do you have any pets?\nWoman: Yes, I have a cat. What about you? Do you?\nMan: I don't have a cat, but I have a dog.\nWoman: Nice! Do you have a big yard?\nMan: Yes, I have a big yard, so it is perfect for my dog.\nWoman: Yeah, I don't have a yard, so I can only have a cat.",
+      "utterances": [
+        "Man: Do you have any pets?",
+        "Woman: Yes, I have a cat. What about you? Do you?",
+        "Man: I don't have a cat, but I have a dog.",
+        "Woman: Nice! Do you have a big yard?",
+        "Man: Yes, I have a big yard, so it is perfect for my dog.",
+        "Woman: Yeah, I don't have a yard, so I can only have a cat."
+      ]
+    },
+    {
+      "number": 3,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-05-3-Verb-Yes-No-Questions-Cooking.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-05-Verb-Yes-No-Questions/conversation-3-A1-05-3-Verb-Yes-No-Questions-Cooking.mp3",
+      "transcript": "Man: Do you cook much?\nWoman: Yes, I cook all the time. Do you cook?\nMan: No, I don't like to cook very much.\nWoman: Oh, so do you buy your dinner?\nMan: Yes, I buy it at the supermarket.\nWoman: Do you buy dinner every night?\nMan: Yes, I never cook.\nWoman: Wow! That is expensive.",
+      "utterances": [
+        "Man: Do you cook much?",
+        "Woman: Yes, I cook all the time. Do you cook?",
+        "Man: No, I don't like to cook very much.",
+        "Woman: Oh, so do you buy your dinner?",
+        "Man: Yes, I buy it at the supermarket.",
+        "Woman: Do you buy dinner every night?",
+        "Man: Yes, I never cook.",
+        "Woman: Wow! That is expensive."
+      ]
+    },
+    {
+      "number": 4,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-05-4-Verb-Yes-No-Questions-Housing.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-05-Verb-Yes-No-Questions/conversation-4-A1-05-4-Verb-Yes-No-Questions-Housing.mp3",
+      "transcript": "Man: Do you live downtown?\nWoman: Yes, I live near the train station.\nMan: Do you take the train to work?\nWoman: Yes, most days. What about you?\nMan: I live far away, so I drive to work.\nWoman: Do you have a nice car?\nMan: No, my car is old, but I like it.",
+      "utterances": [
+        "Man: Do you live downtown?",
+        "Woman: Yes, I live near the train station.",
+        "Man: Do you take the train to work?",
+        "Woman: Yes, most days. What about you?",
+        "Man: I live far away, so I drive to work.",
+        "Woman: Do you have a nice car?",
+        "Man: No, my car is old, but I like it."
+      ]
+    }
+  ]
+}

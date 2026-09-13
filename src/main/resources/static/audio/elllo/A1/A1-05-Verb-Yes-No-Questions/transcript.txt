@@ -1,0 +1,36 @@
+Conversation 1
+Man: Do you play sports?
+Woman: Yes, I do. I really love basketball.
+Man: Do you play on a team?
+Woman: Yes, but we do not play in winter.
+Man: Oh, do you play in summer?
+Woman: Yes, we play in spring and summer.
+Man: Do you play at the gym in town?
+Woman: No, we play at a high school.
+
+Conversation 2
+Man: Do you have any pets?
+Woman: Yes, I have a cat. What about you? Do you?
+Man: I don't have a cat, but I have a dog.
+Woman: Nice! Do you have a big yard?
+Man: Yes, I have a big yard, so it is perfect for my dog.
+Woman: Yeah, I don't have a yard, so I can only have a cat.
+
+Conversation 3
+Man: Do you cook much?
+Woman: Yes, I cook all the time. Do you cook?
+Man: No, I don't like to cook very much.
+Woman: Oh, so do you buy your dinner?
+Man: Yes, I buy it at the supermarket.
+Woman: Do you buy dinner every night?
+Man: Yes, I never cook.
+Woman: Wow! That is expensive.
+
+Conversation 4
+Man: Do you live downtown?
+Woman: Yes, I live near the train station.
+Man: Do you take the train to work?
+Woman: Yes, most days. What about you?
+Man: I live far away, so I drive to work.
+Woman: Do you have a nice car?
+Man: No, my car is old, but I like it.

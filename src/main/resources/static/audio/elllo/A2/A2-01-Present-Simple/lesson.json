@@ -1,0 +1,85 @@
+{
+  "id": "A2-01-Present-Simple",
+  "level": "A2",
+  "title": "Present Simple",
+  "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+  "sourcePage": "https://elllo.org/book/A2/A2-01-Present-Simple.html",
+  "usageTerms": "https://www.elllo.org/about/faq.htm",
+  "downloadedAtUtc": "2026-09-11T17:27:06.4455258Z",
+  "conversations": [
+    {
+      "number": 1,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-01-1-Present-Simple-Job.mp3",
+      "localAudioPath": "/audio/elllo/A2/A2-01-Present-Simple/conversation-1-A2-01-1-Present-Simple-Job.mp3",
+      "transcript": "Man: What do you do?\nWoman: I work at a tech company.\nMan: Oh, what do you do there?\nWoman: I design software.\nMan: Do you like your job?\nWoman: Yeah, I enjoy it.\nMan: Where is your office?\nWoman: I work at the new office downtown.\nMan: Nice. How do you get to work?\nWoman: I take the bus. I don’t have a car.\nMan: Same here!",
+      "utterances": [
+        "Man: What do you do?",
+        "Woman: I work at a tech company.",
+        "Man: Oh, what do you do there?",
+        "Woman: I design software.",
+        "Man: Do you like your job?",
+        "Woman: Yeah, I enjoy it.",
+        "Man: Where is your office?",
+        "Woman: I work at the new office downtown.",
+        "Man: Nice. How do you get to work?",
+        "Woman: I take the bus. I don’t have a car.",
+        "Man: Same here!"
+      ]
+    },
+    {
+      "number": 2,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-01-2-Present-Simple-Gym.mp3",
+      "localAudioPath": "/audio/elllo/A2/A2-01-Present-Simple/conversation-2-A2-01-2-Present-Simple-Gym.mp3",
+      "transcript": "Man: Do you belong to a gym?\nWoman: Yes, I go to the gym near my house.\nMan: What do you do at the gym? How do you exercise?\nWoman: On Monday and Tuesday I do yoga. The gym has a pool, so I sometimes swim.\nMan: Oh, I do yoga too! I do it at home though. I watch videos online.\nWoman: Oh, you don’t belong to a gym?\nMan: No, I don’t like gyms. For exercise, I jog in the park, or play soccer with friends.\nWoman: Oh, that works. I love running in the park.\nMan: Cool! Let’s jog together sometime.\nWoman: I’d like that!",
+      "utterances": [
+        "Man: Do you belong to a gym?",
+        "Woman: Yes, I go to the gym near my house.",
+        "Man: What do you do at the gym? How do you exercise?",
+        "Woman: On Monday and Tuesday I do yoga. The gym has a pool, so I sometimes swim.",
+        "Man: Oh, I do yoga too! I do it at home though. I watch videos online.",
+        "Woman: Oh, you don’t belong to a gym?",
+        "Man: No, I don’t like gyms. For exercise, I jog in the park, or play soccer with friends.",
+        "Woman: Oh, that works. I love running in the park.",
+        "Man: Cool! Let’s jog together sometime.",
+        "Woman: I’d like that!"
+      ]
+    },
+    {
+      "number": 3,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-01-3-Present-Simple-Parents.mp3",
+      "localAudioPath": "/audio/elllo/A2/A2-01-Present-Simple/conversation-3-A2-01-3-Present-Simple-Parents.mp3",
+      "transcript": "Man: What do your parents do?\nWoman: They both work in sales.\nMan: Oh, what do they sell?\nWoman: They sell houses. They have a real estate company.\nMan: That’s a difficult job.\nWoman: It is. They work long hours, but they like it. What about your parents?\nMan: They’re professors. They teach at the university.\nWoman: Oh, what do they teach?\nMan: They both teach business.",
+      "utterances": [
+        "Man: What do your parents do?",
+        "Woman: They both work in sales.",
+        "Man: Oh, what do they sell?",
+        "Woman: They sell houses. They have a real estate company.",
+        "Man: That’s a difficult job.",
+        "Woman: It is. They work long hours, but they like it. What about your parents?",
+        "Man: They’re professors. They teach at the university.",
+        "Woman: Oh, what do they teach?",
+        "Man: They both teach business."
+      ]
+    },
+    {
+      "number": 4,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-01-4-Present-Simple-House.mp3",
+      "localAudioPath": "/audio/elllo/A2/A2-01-Present-Simple/conversation-4-A2-01-4-Present-Simple-House.mp3",
+      "transcript": "Man: Where do you live?\nWoman: I live near the river.\nMan: Oh, I love that area. Do you live in a house or an apartment?\nWoman: I live in a house.\nMan: Nice. Do you live alone, or with family?\nWoman: I live with my parents. I don’t pay rent, so I save money.\nMan: Do you like it there?\nWoman: Yes, I do, but my house is old. What about you?\nMan: I live in a small apartment downtown near the station.\nWoman: Do you live alone?\nMan: Yes, I do, but I want a roommate.\nWoman: Really? How much is the rent?",
+      "utterances": [
+        "Man: Where do you live?",
+        "Woman: I live near the river.",
+        "Man: Oh, I love that area. Do you live in a house or an apartment?",
+        "Woman: I live in a house.",
+        "Man: Nice. Do you live alone, or with family?",
+        "Woman: I live with my parents. I don’t pay rent, so I save money.",
+        "Man: Do you like it there?",
+        "Woman: Yes, I do, but my house is old. What about you?",
+        "Man: I live in a small apartment downtown near the station.",
+        "Woman: Do you live alone?",
+        "Man: Yes, I do, but I want a roommate.",
+        "Woman: Really? How much is the rent?"
+      ]
+    }
+  ]
+}

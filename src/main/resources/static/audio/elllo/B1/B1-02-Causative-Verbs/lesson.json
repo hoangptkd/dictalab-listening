@@ -1,0 +1,68 @@
+{
+  "id": "B1-02-Causative-Verbs",
+  "level": "B1",
+  "title": "Causative Verbs",
+  "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+  "sourcePage": "https://elllo.org/book/B1/B1-02-Causative-Verbs.html",
+  "usageTerms": "https://www.elllo.org/about/faq.htm",
+  "downloadedAtUtc": "2026-09-11T17:27:10.3975046Z",
+  "conversations": [
+    {
+      "number": 1,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-02-1-Causative-Verbs-Tent.mp3",
+      "localAudioPath": "/audio/elllo/B1/B1-02-Causative-Verbs/conversation-1-B1-02-1-Causative-Verbs-Tent.mp3",
+      "transcript": "Man: Can you help me do this?\nWoman: Sure, what are trying to do?\nMan: I’m trying to put up this tent.\nWoman: Oh, it’s easy. Let me show you what to do.\nMan: Wow! That was so easy for you.\nWoman: Yeah, I was in the army. We do this all the time.",
+      "utterances": [
+        "Man: Can you help me do this?",
+        "Woman: Sure, what are trying to do?",
+        "Man: I’m trying to put up this tent.",
+        "Woman: Oh, it’s easy. Let me show you what to do.",
+        "Man: Wow! That was so easy for you.",
+        "Woman: Yeah, I was in the army. We do this all the time."
+      ]
+    },
+    {
+      "number": 2,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-02-2-Causative-Verbs-Late.mp3",
+      "localAudioPath": "/audio/elllo/B1/B1-02-Causative-Verbs/conversation-2-B1-02-2-Causative-Verbs-Late.mp3",
+      "transcript": "Man: Why are you home so late?\nWoman: My boss made me stay late today.\nMan: Why did she do that?\nWoman: I had to help her write a letter in French.\nMan: Huh! That was nice of you.\nWoman: Well, she made me do it. She’s the boss.",
+      "utterances": [
+        "Man: Why are you home so late?",
+        "Woman: My boss made me stay late today.",
+        "Man: Why did she do that?",
+        "Woman: I had to help her write a letter in French.",
+        "Man: Huh! That was nice of you.",
+        "Woman: Well, she made me do it. She’s the boss."
+      ]
+    },
+    {
+      "number": 3,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-02-3-Causative-Verbs-Car.mp3",
+      "localAudioPath": "/audio/elllo/B1/B1-02-Causative-Verbs/conversation-3-B1-02-3-Causative-Verbs-Car.mp3",
+      "transcript": "Man: Did you get a new car?\nWoman: No, my friend is letting me use his.\nMan: What happened to your car?\nWoman: It is getting repairs.\nMan: Lucky you! This is a nice car.\nWoman: Well, he made me promise I’d be careful with it.",
+      "utterances": [
+        "Man: Did you get a new car?",
+        "Woman: No, my friend is letting me use his.",
+        "Man: What happened to your car?",
+        "Woman: It is getting repairs.",
+        "Man: Lucky you! This is a nice car.",
+        "Woman: Well, he made me promise I’d be careful with it."
+      ]
+    },
+    {
+      "number": 4,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-02-4-Causative-Verbs-Mom.mp3",
+      "localAudioPath": "/audio/elllo/B1/B1-02-Causative-Verbs/conversation-4-B1-02-4-Causative-Verbs-Mom.mp3",
+      "transcript": "Man: Your mom is so nice!\nWoman: Yeah, she is now, but she was really strict when I was younger.\nMan: Really? How so?\nWoman: Well, for one, she never let me watch TV or eat sugar.\nMan: Wow! That is strict!\nWoman: And she made me study at least four hours a day, even if I did not have homework.\nMan: Wow! That sounds like tough love.",
+      "utterances": [
+        "Man: Your mom is so nice!",
+        "Woman: Yeah, she is now, but she was really strict when I was younger.",
+        "Man: Really? How so?",
+        "Woman: Well, for one, she never let me watch TV or eat sugar.",
+        "Man: Wow! That is strict!",
+        "Woman: And she made me study at least four hours a day, even if I did not have homework.",
+        "Man: Wow! That sounds like tough love."
+      ]
+    }
+  ]
+}

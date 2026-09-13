@@ -1,0 +1,81 @@
+{
+  "id": "B2-02-Past-Passive",
+  "level": "B2",
+  "title": "Past Passive",
+  "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+  "sourcePage": "https://elllo.org/book/B2/B2-02-Past-Passive.html",
+  "usageTerms": "https://www.elllo.org/about/faq.htm",
+  "downloadedAtUtc": "2026-09-11T17:27:41.8866610Z",
+  "conversations": [
+    {
+      "number": 1,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-02-1-Past-Passive-Subway.mp3",
+      "localAudioPath": "/audio/elllo/B2/B2-02-Past-Passive/conversation-1-B2-02-1-Past-Passive-Subway.mp3",
+      "transcript": "Man: When was this subway built?\nWoman: It was built about 30\nyears ago.\nMan: It still looks pretty new.\nWoman: Yes, it was remodeled last year.\nMan: Well, they did a nice job.\nWoman: I’ll say.",
+      "utterances": [
+        "Man: When was this subway built?",
+        "Woman: It was built about 30",
+        "years ago.",
+        "Man: It still looks pretty new.",
+        "Woman: Yes, it was remodeled last year.",
+        "Man: Well, they did a nice job.",
+        "Woman: I’ll say."
+      ]
+    },
+    {
+      "number": 2,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-02-2-Past-Passive-Stadium.mp3",
+      "localAudioPath": "/audio/elllo/B2/B2-02-Past-Passive/conversation-2-B2-02-2-Past-Passive-Stadium.mp3",
+      "transcript": "Man: What happened to the old\nstadium?\nWoman: It was torn down last\nyear.\nMan: Why did they tear it down?\nWoman: It was damaged by the\nhurricane three years ago.\nMan: Oh, I remember that.\nWoman: Yeah, a lot of damage\nwas done that night.",
+      "utterances": [
+        "Man: What happened to the old",
+        "stadium?",
+        "Woman: It was torn down last",
+        "year.",
+        "Man: Why did they tear it down?",
+        "Woman: It was damaged by the",
+        "hurricane three years ago.",
+        "Man: Oh, I remember that.",
+        "Woman: Yeah, a lot of damage",
+        "was done that night."
+      ]
+    },
+    {
+      "number": 3,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-02-3-Past-Passive-Hotel.mp3",
+      "localAudioPath": "/audio/elllo/B2/B2-02-Past-Passive/conversation-3-B2-02-3-Past-Passive-Hotel.mp3",
+      "transcript": "Man: Do you still go to that\nhotel by the lake?\nWoman: No, it was sold last\nyear.\nMan: Oh, was it replaced?\nWoman: No, it was closed and\nhasn’t been reopened.\nMan: Oh, that’s too bad.\nWoman: Yeah, summer at the lake\nhasn’t been the same since.",
+      "utterances": [
+        "Man: Do you still go to that",
+        "hotel by the lake?",
+        "Woman: No, it was sold last",
+        "year.",
+        "Man: Oh, was it replaced?",
+        "Woman: No, it was closed and",
+        "hasn’t been reopened.",
+        "Man: Oh, that’s too bad.",
+        "Woman: Yeah, summer at the lake",
+        "hasn’t been the same since."
+      ]
+    },
+    {
+      "number": 4,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-02-4-Past-Passive-Golf.mp3",
+      "localAudioPath": "/audio/elllo/B2/B2-02-Past-Passive/conversation-4-B2-02-4-Past-Passive-Golf.mp3",
+      "transcript": "Man: Do you still play golf?\nWoman: No, the course was shut\ndown last year.\nMan: Oh, that was such a\nbeautiful course. What happened to it?\nWoman: It was converted to a\npark.\nMan: Well, at least it was put\nto good use.\nWoman: Yeah, my kids love to go\nthere now.",
+      "utterances": [
+        "Man: Do you still play golf?",
+        "Woman: No, the course was shut",
+        "down last year.",
+        "Man: Oh, that was such a",
+        "beautiful course. What happened to it?",
+        "Woman: It was converted to a",
+        "park.",
+        "Man: Well, at least it was put",
+        "to good use.",
+        "Woman: Yeah, my kids love to go",
+        "there now."
+      ]
+    }
+  ]
+}

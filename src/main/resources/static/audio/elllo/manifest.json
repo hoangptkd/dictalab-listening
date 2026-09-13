@@ -1,0 +1,1618 @@
+{
+  "collection": "ELLLO Grammar Conversations starter pack",
+  "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+  "sourceHome": "https://elllo.org/",
+  "usageTerms": "https://www.elllo.org/about/faq.htm",
+  "intendedUse": "Personal study and local educational development. Confirm redistribution rights with ELLLO before public deployment.",
+  "levels": [
+    "A1",
+    "A2",
+    "B1",
+    "B2"
+  ],
+  "lessonCount": 20,
+  "conversationClipCount": 79.0,
+  "lessons": [
+    {
+      "id": "A1-01-Be-Verbs-Introductions",
+      "level": "A1",
+      "title": "Be Verbs - Present Simple",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/A1/A1-01-Be-Verbs-Introductions.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:03.1342768Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-01-1-Be-Verbs-First-Day.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-01-Be-Verbs-Introductions/conversation-1-A1-01-1-Be-Verbs-First-Day.mp3",
+          "transcript": "Man: Hello! Are you a new student?\nWoman: Yes, I am. Today is my first day.\nMan: Well, welcome. My name is Tony.\nWoman: Hi, Tony. I’m Beth.\nMan: Are you new in town?\nWoman: Yes, I’m from New York.\nMan: Wow! The Big City!\nWoman: Are you from around here?\nMan: Yes, I am.\nWoman: That is so cool. Well, it is nice to meet you.\nMan: Nice to meet you, too.",
+          "utterances": [
+            "Man: Hello! Are you a new student?",
+            "Woman: Yes, I am. Today is my first day.",
+            "Man: Well, welcome. My name is Tony.",
+            "Woman: Hi, Tony. I’m Beth.",
+            "Man: Are you new in town?",
+            "Woman: Yes, I’m from New York.",
+            "Man: Wow! The Big City!",
+            "Woman: Are you from around here?",
+            "Man: Yes, I am.",
+            "Woman: That is so cool. Well, it is nice to meet you.",
+            "Man: Nice to meet you, too."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-01-2-Be-Verbs-Teachers.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-01-Be-Verbs-Introductions/conversation-2-A1-01-2-Be-Verbs-Teachers.mp3",
+          "transcript": "Man: Hey Beth, how is your first day?\nWoman: It is really good. This school is great!\nMan: How are your classes?\nWoman: They are fun! My teachers are so nice.\nMan: Who are your teachers?\nWoman: My English teacher is Mr. Wong.\nMan: Oh, he is really nice.\nWoman: Yes, he is. My Spanish teacher is Mrs. Garcia.\nMan: Oh, she is really nice, too.\nWoman: Yes, her class is a lot of fun!",
+          "utterances": [
+            "Man: Hey Beth, how is your first day?",
+            "Woman: It is really good. This school is great!",
+            "Man: How are your classes?",
+            "Woman: They are fun! My teachers are so nice.",
+            "Man: Who are your teachers?",
+            "Woman: My English teacher is Mr. Wong.",
+            "Man: Oh, he is really nice.",
+            "Woman: Yes, he is. My Spanish teacher is Mrs. Garcia.",
+            "Man: Oh, she is really nice, too.",
+            "Woman: Yes, her class is a lot of fun!"
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-01-3-Be-Verbs-Classes.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-01-Be-Verbs-Introductions/conversation-3-A1-01-3-Be-Verbs-Classes.mp3",
+          "transcript": "Man: What is your favorite class?\nWoman: Spanish. I love it. My Spanish is not very good, though. I am just a beginner.\nMan: Well, Spanish is my first language. My name is Tony, short for Antonio.\nWoman: Really! That is so cool.\nMan: Yeah, my dad is from Mexico, and my mom is from Costa Rica.\nWoman: Wow! You are so lucky.\nMan: Yeah, Spanish is easy for me, so I can help you if you like.\nWoman: I’d like that. Thank you!",
+          "utterances": [
+            "Man: What is your favorite class?",
+            "Woman: Spanish. I love it. My Spanish is not very good, though. I am just a beginner.",
+            "Man: Well, Spanish is my first language. My name is Tony, short for Antonio.",
+            "Woman: Really! That is so cool.",
+            "Man: Yeah, my dad is from Mexico, and my mom is from Costa Rica.",
+            "Woman: Wow! You are so lucky.",
+            "Man: Yeah, Spanish is easy for me, so I can help you if you like.",
+            "Woman: I’d like that. Thank you!"
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-01-4-Be-Verbs-Lab.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-01-Be-Verbs-Introductions/conversation-4-A1-01-4-Be-Verbs-Lab.mp3",
+          "transcript": "Woman: Tony, where is the computer lab?\nMan: It’s just down the hall.\nWoman: My Spanish class is there tomorrow.\nMan: Oh, when is the class?\nWoman: It’s at 6, after school.\nMan: Why isn’t the class online?\nWoman: It is, but I’m still new in town, so I don’t have internet at home yet.\nMan: Oh, I see. Well, good luck with the class.\nWoman: Thanks. I’m excited for it. I think online classes are fun!\nMan: I think so, too.",
+          "utterances": [
+            "Woman: Tony, where is the computer lab?",
+            "Man: It’s just down the hall.",
+            "Woman: My Spanish class is there tomorrow.",
+            "Man: Oh, when is the class?",
+            "Woman: It’s at 6, after school.",
+            "Man: Why isn’t the class online?",
+            "Woman: It is, but I’m still new in town, so I don’t have internet at home yet.",
+            "Man: Oh, I see. Well, good luck with the class.",
+            "Woman: Thanks. I’m excited for it. I think online classes are fun!",
+            "Man: I think so, too."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A1-02-Be-Yes-No-Questions",
+      "level": "A1",
+      "title": "Yes / No Questions - Be Verbs",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/A1/A1-02-Be-Yes-No-Questions.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:03.8289453Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-02-1-Be-Yes-No-Questions-Hot.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-02-Be-Yes-No-Questions/conversation-1-A1-02-1-Be-Yes-No-Questions-Hot.mp3",
+          "transcript": "Man: Are you hot?\nWoman: Yes, I am very hot.\nMan: Is the air-conditioning on?\nWoman: No, it is off.\nMan: Can I turn it on?\nWoman: Yes, please do. And can you turn on the radio, too?\nMan: Of course. Is jazz music alright?\nWoman: Yes, I love jazz music.",
+          "utterances": [
+            "Man: Are you hot?",
+            "Woman: Yes, I am very hot.",
+            "Man: Is the air-conditioning on?",
+            "Woman: No, it is off.",
+            "Man: Can I turn it on?",
+            "Woman: Yes, please do. And can you turn on the radio, too?",
+            "Man: Of course. Is jazz music alright?",
+            "Woman: Yes, I love jazz music."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-02-2-Be-Yes-No-Questions-House.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-02-Be-Yes-No-Questions/conversation-2-A1-02-2-Be-Yes-No-Questions-House.mp3",
+          "transcript": "Man: Is your house big?\nWoman: Yes, it is pretty big.\nMan: Is it new?\nWoman: No, it is very old.\nMan: Is it nice?\nWoman: Not really. It is cold in winter.\nMan: Oh, no! That’s not good.",
+          "utterances": [
+            "Man: Is your house big?",
+            "Woman: Yes, it is pretty big.",
+            "Man: Is it new?",
+            "Woman: No, it is very old.",
+            "Man: Is it nice?",
+            "Woman: Not really. It is cold in winter.",
+            "Man: Oh, no! That’s not good."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-02-3-Be-Yes-No-Questions-Clothes.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-02-Be-Yes-No-Questions/conversation-3-A1-02-3-Be-Yes-No-Questions-Clothes.mp3",
+          "transcript": "Man: I like your shoes. Are they new?\nWoman: Yes, they are.\nMan: Are they expensive?\nWoman: No, they are very cheap.\nMan: Are they comfortable?\nWoman: Yes, they are very comfortable.\nMan: Are they from the discount shoe shop?\nWoman: Yes! How did you guess?",
+          "utterances": [
+            "Man: I like your shoes. Are they new?",
+            "Woman: Yes, they are.",
+            "Man: Are they expensive?",
+            "Woman: No, they are very cheap.",
+            "Man: Are they comfortable?",
+            "Woman: Yes, they are very comfortable.",
+            "Man: Are they from the discount shoe shop?",
+            "Woman: Yes! How did you guess?"
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-02-4-Be-Yes-No-Questions-Hungry.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-02-Be-Yes-No-Questions/conversation-4-A1-02-4-Be-Yes-No-Questions-Hungry.mp3",
+          "transcript": "Man: Are you hungry?\nWoman: Yes, I am very hungry.\nMan: Do you want pizza?\nWoman: Yes, let's get some.\nMan: Is the pizza shop still open?\nWoman: Yes, it is open until 10.\nMan: What time is it now?\nWoman: Eight. It’s open for two more hours.\nMan: Great! I’m starving.",
+          "utterances": [
+            "Man: Are you hungry?",
+            "Woman: Yes, I am very hungry.",
+            "Man: Do you want pizza?",
+            "Woman: Yes, let's get some.",
+            "Man: Is the pizza shop still open?",
+            "Woman: Yes, it is open until 10.",
+            "Man: What time is it now?",
+            "Woman: Eight. It’s open for two more hours.",
+            "Man: Great! I’m starving."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A1-03-Likes-Food",
+      "level": "A1",
+      "title": "Likes and Dislikes",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/A1/A1-03-Likes-Food.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:04.4795222Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-03-1-Likes-Food.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-03-Likes-Food/conversation-1-A1-03-1-Likes-Food.mp3",
+          "transcript": "Man: So, what foods do you like?\nWoman: I like ice cream, and pizza, and apples.\nMan: Ooh, I like those foods, too.\nWoman: What foods do you like?\nMan: I like fish, vegetables, and bananas.\nWoman: Together?\nMan: No, not together!",
+          "utterances": [
+            "Man: So, what foods do you like?",
+            "Woman: I like ice cream, and pizza, and apples.",
+            "Man: Ooh, I like those foods, too.",
+            "Woman: What foods do you like?",
+            "Man: I like fish, vegetables, and bananas.",
+            "Woman: Together?",
+            "Man: No, not together!"
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-03-2-Likes-Drinks.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-03-Likes-Food/conversation-2-A1-03-2-Likes-Drinks.mp3",
+          "transcript": "Man: What drinks do you like?\nWoman: I like tea, and I like juice.\nMan: Ooh, hot tea or cold tea?\nWoman: Both. What about you?\nMan: I like coffee and hot chocolate.\nWoman: Ooh, I like both, too!",
+          "utterances": [
+            "Man: What drinks do you like?",
+            "Woman: I like tea, and I like juice.",
+            "Man: Ooh, hot tea or cold tea?",
+            "Woman: Both. What about you?",
+            "Man: I like coffee and hot chocolate.",
+            "Woman: Ooh, I like both, too!"
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-03-3-Likes-Desserts.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-03-Likes-Food/conversation-3-A1-03-3-Likes-Desserts.mp3",
+          "transcript": "Man: What desserts do you like?\nWoman: I really like ice cream.\nMan: Oh! What flavor do you like?\nWoman: Hmm, I like strawberry. I like vanilla, too.\nMan: Nice! I like cake, and I like pie.\nWoman: What kind of pie?\nMan: I really like apple pie with ice cream.\nWoman: Yum!",
+          "utterances": [
+            "Man: What desserts do you like?",
+            "Woman: I really like ice cream.",
+            "Man: Oh! What flavor do you like?",
+            "Woman: Hmm, I like strawberry. I like vanilla, too.",
+            "Man: Nice! I like cake, and I like pie.",
+            "Woman: What kind of pie?",
+            "Man: I really like apple pie with ice cream.",
+            "Woman: Yum!"
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-03-4-Likes-Snacks.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-03-Likes-Food/conversation-4-A1-03-4-Likes-Snacks.mp3",
+          "transcript": "Man: What snacks do you like?\nWoman: I like to eat fruit.\nMan: Oh yeah? And what fruits do you like?\nWoman: I like apples and oranges. And you?\nMan: I like strawberries and watermelon.\nWoman: Do you like to eat cookies?\nMan: Of course! I love chocolate chip cookies.\nWoman: Me, too!",
+          "utterances": [
+            "Man: What snacks do you like?",
+            "Woman: I like to eat fruit.",
+            "Man: Oh yeah? And what fruits do you like?",
+            "Woman: I like apples and oranges. And you?",
+            "Man: I like strawberries and watermelon.",
+            "Woman: Do you like to eat cookies?",
+            "Man: Of course! I love chocolate chip cookies.",
+            "Woman: Me, too!"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A1-04-Verbs",
+      "level": "A1",
+      "title": "Verbs - Present Simple",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/A1/A1-04-Verbs.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:05.1208755Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-04-1-Verbs-Morning.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-04-Verbs/conversation-1-A1-04-1-Verbs-Morning.mp3",
+          "transcript": "Man: What do you do in the morning?\nWoman: I wake up. I take a shower. I get dressed, and I eat breakfast.\nMan: Oh! When do you get up?\nWoman: I get up at 6.\nMan: Wow! That’s early.\nWoman: I know! I like mornings, though.",
+          "utterances": [
+            "Man: What do you do in the morning?",
+            "Woman: I wake up. I take a shower. I get dressed, and I eat breakfast.",
+            "Man: Oh! When do you get up?",
+            "Woman: I get up at 6.",
+            "Man: Wow! That’s early.",
+            "Woman: I know! I like mornings, though."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-04-2-Verbs-Day.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-04-Verbs/conversation-2-A1-04-2-Verbs-Day.mp3",
+          "transcript": "Man: What do you do during the day?\nWoman: Well, I go to school. I teach students.\nMan: Ooh! What do you teach?\nWoman: I teach math. What do you do?\nMan: I work at a bike shop.\nWoman: Really? What do you do at the shop?\nMan: I fix and sell bikes.\nWoman: Sounds fun.",
+          "utterances": [
+            "Man: What do you do during the day?",
+            "Woman: Well, I go to school. I teach students.",
+            "Man: Ooh! What do you teach?",
+            "Woman: I teach math. What do you do?",
+            "Man: I work at a bike shop.",
+            "Woman: Really? What do you do at the shop?",
+            "Man: I fix and sell bikes.",
+            "Woman: Sounds fun."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-04-3-Verbs-Lunch.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-04-Verbs/conversation-3-A1-04-3-Verbs-Lunch.mp3",
+          "transcript": "Man: What do you do at lunch?\nWoman: I eat with my friends. And you?\nMan: I eat in the park.\nWoman: That’s nice.\nMan: Yeah, I like to read on my lunch break.\nWoman: Ooh, what do you read?\nMan: I read about history.\nWoman: Interesting.",
+          "utterances": [
+            "Man: What do you do at lunch?",
+            "Woman: I eat with my friends. And you?",
+            "Man: I eat in the park.",
+            "Woman: That’s nice.",
+            "Man: Yeah, I like to read on my lunch break.",
+            "Woman: Ooh, what do you read?",
+            "Man: I read about history.",
+            "Woman: Interesting."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-04-4-Verbs-Weekend.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-04-Verbs/conversation-4-A1-04-4-Verbs-Weekend.mp3",
+          "transcript": "Man: What do you do on the weekend?\nWoman: I play sports at the park. How about you?\nMan: I study at the library.\nWoman: Oh, right! You love books.\nMan: Yeah. So, what sports do you play?\nWoman: I play soccer with my friends.\nMan: Sounds fun.\nWoman: It is!",
+          "utterances": [
+            "Man: What do you do on the weekend?",
+            "Woman: I play sports at the park. How about you?",
+            "Man: I study at the library.",
+            "Woman: Oh, right! You love books.",
+            "Man: Yeah. So, what sports do you play?",
+            "Woman: I play soccer with my friends.",
+            "Man: Sounds fun.",
+            "Woman: It is!"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A1-05-Verb-Yes-No-Questions",
+      "level": "A1",
+      "title": "Yes / No Questions with Verbs",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/A1/A1-05-Verb-Yes-No-Questions.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:05.7902655Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-05-1-Verb-Yes-No-Questions-Sports.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-05-Verb-Yes-No-Questions/conversation-1-A1-05-1-Verb-Yes-No-Questions-Sports.mp3",
+          "transcript": "Man: Do you play sports?\nWoman: Yes, I do. I really love basketball.\nMan: Do you play on a team?\nWoman: Yes, but we do not play in winter.\nMan: Oh, do you play in summer?\nWoman: Yes, we play in spring and summer.\nMan: Do you play at the gym in town?\nWoman: No, we play at a high school.",
+          "utterances": [
+            "Man: Do you play sports?",
+            "Woman: Yes, I do. I really love basketball.",
+            "Man: Do you play on a team?",
+            "Woman: Yes, but we do not play in winter.",
+            "Man: Oh, do you play in summer?",
+            "Woman: Yes, we play in spring and summer.",
+            "Man: Do you play at the gym in town?",
+            "Woman: No, we play at a high school."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-05-2-Verb-Yes-No-Questions-Pets.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-05-Verb-Yes-No-Questions/conversation-2-A1-05-2-Verb-Yes-No-Questions-Pets.mp3",
+          "transcript": "Man: Do you have any pets?\nWoman: Yes, I have a cat. What about you? Do you?\nMan: I don't have a cat, but I have a dog.\nWoman: Nice! Do you have a big yard?\nMan: Yes, I have a big yard, so it is perfect for my dog.\nWoman: Yeah, I don't have a yard, so I can only have a cat.",
+          "utterances": [
+            "Man: Do you have any pets?",
+            "Woman: Yes, I have a cat. What about you? Do you?",
+            "Man: I don't have a cat, but I have a dog.",
+            "Woman: Nice! Do you have a big yard?",
+            "Man: Yes, I have a big yard, so it is perfect for my dog.",
+            "Woman: Yeah, I don't have a yard, so I can only have a cat."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-05-3-Verb-Yes-No-Questions-Cooking.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-05-Verb-Yes-No-Questions/conversation-3-A1-05-3-Verb-Yes-No-Questions-Cooking.mp3",
+          "transcript": "Man: Do you cook much?\nWoman: Yes, I cook all the time. Do you cook?\nMan: No, I don't like to cook very much.\nWoman: Oh, so do you buy your dinner?\nMan: Yes, I buy it at the supermarket.\nWoman: Do you buy dinner every night?\nMan: Yes, I never cook.\nWoman: Wow! That is expensive.",
+          "utterances": [
+            "Man: Do you cook much?",
+            "Woman: Yes, I cook all the time. Do you cook?",
+            "Man: No, I don't like to cook very much.",
+            "Woman: Oh, so do you buy your dinner?",
+            "Man: Yes, I buy it at the supermarket.",
+            "Woman: Do you buy dinner every night?",
+            "Man: Yes, I never cook.",
+            "Woman: Wow! That is expensive."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-05-4-Verb-Yes-No-Questions-Housing.mp3",
+          "localAudioPath": "/audio/elllo/A1/A1-05-Verb-Yes-No-Questions/conversation-4-A1-05-4-Verb-Yes-No-Questions-Housing.mp3",
+          "transcript": "Man: Do you live downtown?\nWoman: Yes, I live near the train station.\nMan: Do you take the train to work?\nWoman: Yes, most days. What about you?\nMan: I live far away, so I drive to work.\nWoman: Do you have a nice car?\nMan: No, my car is old, but I like it.",
+          "utterances": [
+            "Man: Do you live downtown?",
+            "Woman: Yes, I live near the train station.",
+            "Man: Do you take the train to work?",
+            "Woman: Yes, most days. What about you?",
+            "Man: I live far away, so I drive to work.",
+            "Woman: Do you have a nice car?",
+            "Man: No, my car is old, but I like it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A2-01-Present-Simple",
+      "level": "A2",
+      "title": "Present Simple",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/A2/A2-01-Present-Simple.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:06.4455258Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-01-1-Present-Simple-Job.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-01-Present-Simple/conversation-1-A2-01-1-Present-Simple-Job.mp3",
+          "transcript": "Man: What do you do?\nWoman: I work at a tech company.\nMan: Oh, what do you do there?\nWoman: I design software.\nMan: Do you like your job?\nWoman: Yeah, I enjoy it.\nMan: Where is your office?\nWoman: I work at the new office downtown.\nMan: Nice. How do you get to work?\nWoman: I take the bus. I don’t have a car.\nMan: Same here!",
+          "utterances": [
+            "Man: What do you do?",
+            "Woman: I work at a tech company.",
+            "Man: Oh, what do you do there?",
+            "Woman: I design software.",
+            "Man: Do you like your job?",
+            "Woman: Yeah, I enjoy it.",
+            "Man: Where is your office?",
+            "Woman: I work at the new office downtown.",
+            "Man: Nice. How do you get to work?",
+            "Woman: I take the bus. I don’t have a car.",
+            "Man: Same here!"
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-01-2-Present-Simple-Gym.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-01-Present-Simple/conversation-2-A2-01-2-Present-Simple-Gym.mp3",
+          "transcript": "Man: Do you belong to a gym?\nWoman: Yes, I go to the gym near my house.\nMan: What do you do at the gym? How do you exercise?\nWoman: On Monday and Tuesday I do yoga. The gym has a pool, so I sometimes swim.\nMan: Oh, I do yoga too! I do it at home though. I watch videos online.\nWoman: Oh, you don’t belong to a gym?\nMan: No, I don’t like gyms. For exercise, I jog in the park, or play soccer with friends.\nWoman: Oh, that works. I love running in the park.\nMan: Cool! Let’s jog together sometime.\nWoman: I’d like that!",
+          "utterances": [
+            "Man: Do you belong to a gym?",
+            "Woman: Yes, I go to the gym near my house.",
+            "Man: What do you do at the gym? How do you exercise?",
+            "Woman: On Monday and Tuesday I do yoga. The gym has a pool, so I sometimes swim.",
+            "Man: Oh, I do yoga too! I do it at home though. I watch videos online.",
+            "Woman: Oh, you don’t belong to a gym?",
+            "Man: No, I don’t like gyms. For exercise, I jog in the park, or play soccer with friends.",
+            "Woman: Oh, that works. I love running in the park.",
+            "Man: Cool! Let’s jog together sometime.",
+            "Woman: I’d like that!"
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-01-3-Present-Simple-Parents.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-01-Present-Simple/conversation-3-A2-01-3-Present-Simple-Parents.mp3",
+          "transcript": "Man: What do your parents do?\nWoman: They both work in sales.\nMan: Oh, what do they sell?\nWoman: They sell houses. They have a real estate company.\nMan: That’s a difficult job.\nWoman: It is. They work long hours, but they like it. What about your parents?\nMan: They’re professors. They teach at the university.\nWoman: Oh, what do they teach?\nMan: They both teach business.",
+          "utterances": [
+            "Man: What do your parents do?",
+            "Woman: They both work in sales.",
+            "Man: Oh, what do they sell?",
+            "Woman: They sell houses. They have a real estate company.",
+            "Man: That’s a difficult job.",
+            "Woman: It is. They work long hours, but they like it. What about your parents?",
+            "Man: They’re professors. They teach at the university.",
+            "Woman: Oh, what do they teach?",
+            "Man: They both teach business."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-01-4-Present-Simple-House.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-01-Present-Simple/conversation-4-A2-01-4-Present-Simple-House.mp3",
+          "transcript": "Man: Where do you live?\nWoman: I live near the river.\nMan: Oh, I love that area. Do you live in a house or an apartment?\nWoman: I live in a house.\nMan: Nice. Do you live alone, or with family?\nWoman: I live with my parents. I don’t pay rent, so I save money.\nMan: Do you like it there?\nWoman: Yes, I do, but my house is old. What about you?\nMan: I live in a small apartment downtown near the station.\nWoman: Do you live alone?\nMan: Yes, I do, but I want a roommate.\nWoman: Really? How much is the rent?",
+          "utterances": [
+            "Man: Where do you live?",
+            "Woman: I live near the river.",
+            "Man: Oh, I love that area. Do you live in a house or an apartment?",
+            "Woman: I live in a house.",
+            "Man: Nice. Do you live alone, or with family?",
+            "Woman: I live with my parents. I don’t pay rent, so I save money.",
+            "Man: Do you like it there?",
+            "Woman: Yes, I do, but my house is old. What about you?",
+            "Man: I live in a small apartment downtown near the station.",
+            "Woman: Do you live alone?",
+            "Man: Yes, I do, but I want a roommate.",
+            "Woman: Really? How much is the rent?"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A2-02-Present-Simple-3rd-Person",
+      "level": "A2",
+      "title": "Third Person Singular - Present Simple",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/A2/A2-02-Present-Simple-3rd-Person.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:07.0949681Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-02-1-Present-Simple-3rd-Person-Dad.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-02-Present-Simple-3rd-Person/conversation-1-A2-02-1-Present-Simple-3rd-Person-Dad.mp3",
+          "transcript": "Man: What does your dad do?\nWoman: He works in construction.\nMan: Oh, what does he do?\nWoman: He builds houses.\nMan: Nice, what about your mother?\nWoman: She works for the city.\nMan: What does she do?\nWoman: She is a clerk. She helps people at City Hall.",
+          "utterances": [
+            "Man: What does your dad do?",
+            "Woman: He works in construction.",
+            "Man: Oh, what does he do?",
+            "Woman: He builds houses.",
+            "Man: Nice, what about your mother?",
+            "Woman: She works for the city.",
+            "Man: What does she do?",
+            "Woman: She is a clerk. She helps people at City Hall."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-02-2-Present-Simple-3rd-Person-Sister.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-02-Present-Simple-3rd-Person/conversation-2-A2-02-2-Present-Simple-3rd-Person-Sister.mp3",
+          "transcript": "Man: Where does your sister live?\nWoman: She lives in the countryside.\nMan: Oh? What does she do?\nWoman: She has a farm and she raises animals.\nMan: What animals does she have on her farm?\nWoman: She has horses, cows and sheep.\nMan: Wow, that’s so cool!\nWoman: Yeah, she also grows her own food.\nMan: What food does she grow?\nWoman: She grows corn, beans, tomatoes and potatoes.",
+          "utterances": [
+            "Man: Where does your sister live?",
+            "Woman: She lives in the countryside.",
+            "Man: Oh? What does she do?",
+            "Woman: She has a farm and she raises animals.",
+            "Man: What animals does she have on her farm?",
+            "Woman: She has horses, cows and sheep.",
+            "Man: Wow, that’s so cool!",
+            "Woman: Yeah, she also grows her own food.",
+            "Man: What food does she grow?",
+            "Woman: She grows corn, beans, tomatoes and potatoes."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-02-3-Present-Simple-3rd-Person-Mother.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-02-Present-Simple-3rd-Person/conversation-3-A2-02-3-Present-Simple-3rd-Person-Mother.mp3",
+          "transcript": "Man: How does your mother stay so fit?\nWoman: She works out alot.\nMan: It shows. She looks great!\nWoman: She also watches what she eats.\nMan: Does she follow a special diet?\nWoman: Yes. She doesn’t eat sweets and she doesn’t drink soda.\nMan: What about your dad?\nWoman: Oh, he never works out. He also does yoga.\nMan: Does he follow a healthy diet too?\nWoman: Not really. He eats sweets, and he loves ice cream.",
+          "utterances": [
+            "Man: How does your mother stay so fit?",
+            "Woman: She works out alot.",
+            "Man: It shows. She looks great!",
+            "Woman: She also watches what she eats.",
+            "Man: Does she follow a special diet?",
+            "Woman: Yes. She doesn’t eat sweets and she doesn’t drink soda.",
+            "Man: What about your dad?",
+            "Woman: Oh, he never works out. He also does yoga.",
+            "Man: Does he follow a healthy diet too?",
+            "Woman: Not really. He eats sweets, and he loves ice cream."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-02-4-Present-Simple-3rd-Person-Language.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-02-Present-Simple-3rd-Person/conversation-4-A2-02-4-Present-Simple-3rd-Person-Language.mp3",
+          "transcript": "Man: How do you study language?\nWoman: I use an app on my phone.\nMan: What does the app do?\nWoman: It teaches vocabulary. It has over 20 languages.\nMan: Really? What languages does it teach?\nWoman: It teaches many languages. French, Spanish, Japanese, and lots more.\nMan: How does it work?\nWoman: Just type in a word in English, and it shows the translation.\nMan: That sounds pretty cool.\nWoman: It is. It also pronounces the words, and gives example sentences.\nMan: Nice! I want to try it.",
+          "utterances": [
+            "Man: How do you study language?",
+            "Woman: I use an app on my phone.",
+            "Man: What does the app do?",
+            "Woman: It teaches vocabulary. It has over 20 languages.",
+            "Man: Really? What languages does it teach?",
+            "Woman: It teaches many languages. French, Spanish, Japanese, and lots more.",
+            "Man: How does it work?",
+            "Woman: Just type in a word in English, and it shows the translation.",
+            "Man: That sounds pretty cool.",
+            "Woman: It is. It also pronounces the words, and gives example sentences.",
+            "Man: Nice! I want to try it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A2-03-Present-Continuous",
+      "level": "A2",
+      "title": "Present Continuous",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/A2/A2-03-Present-Continuous.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:07.7777554Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-03-1-Present-Continuous-Report.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-03-Present-Continuous/conversation-1-A2-03-1-Present-Continuous-Report.mp3",
+          "transcript": "Man: What are you doing?\nWoman: I’m writing a report.\nMan: What are you writing about?\nWoman: I’m writing about Bitcoin.\nMan: Oh, that sounds interesting.\nWoman: It is! I’m learning a lot.\nMan: Where are you getting your information?\nWoman: Wikipedia and Chat GPT.\nMan: That works, I guess.",
+          "utterances": [
+            "Man: What are you doing?",
+            "Woman: I’m writing a report.",
+            "Man: What are you writing about?",
+            "Woman: I’m writing about Bitcoin.",
+            "Man: Oh, that sounds interesting.",
+            "Woman: It is! I’m learning a lot.",
+            "Man: Where are you getting your information?",
+            "Woman: Wikipedia and Chat GPT.",
+            "Man: That works, I guess."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-03-2-Present-Continuous-Family.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-03-Present-Continuous/conversation-2-A2-03-2-Present-Continuous-Family.mp3",
+          "transcript": "Man: Where is mom?\nWoman: She’s in the kitchen. She’s cooking dinner.\nMan: Where’s dad?\nWoman: He’s outside. He’s sitting on the porch. He’s waiting for dinner.\nMan: What’s he doing outside?\nWoman: He’s listening to news on the radio.\nMan: Why doesn’t he watch the news on TV?\nWoman: The TV isn’t working.\nMan: Oh, that’s too bad. Well, it is a nice day to be outside.",
+          "utterances": [
+            "Man: Where is mom?",
+            "Woman: She’s in the kitchen. She’s cooking dinner.",
+            "Man: Where’s dad?",
+            "Woman: He’s outside. He’s sitting on the porch. He’s waiting for dinner.",
+            "Man: What’s he doing outside?",
+            "Woman: He’s listening to news on the radio.",
+            "Man: Why doesn’t he watch the news on TV?",
+            "Woman: The TV isn’t working.",
+            "Man: Oh, that’s too bad. Well, it is a nice day to be outside."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-03-3-Present-Continuous-Encounter.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-03-Present-Continuous/conversation-3-A2-03-3-Present-Continuous-Encounter.mp3",
+          "transcript": "Man: Hey, what a surprise! What are you doing here?\nWoman: I’m waiting for my friend. I’m meeting him for lunch.\nMan: Nice! Where are you going?\nWoman: We’re going to the new Italian restaurant.\nMan: Oh, I hear it’s really good.\nWoman: What about you? What are you doing? Are you shopping?\nMan: Yeah. I’m picking up a few things, and then I’m going to the gym.\nWoman: Well, have a good workout.\nMan: Thanks! Enjoy your meal.\nWoman: Thanks!",
+          "utterances": [
+            "Man: Hey, what a surprise! What are you doing here?",
+            "Woman: I’m waiting for my friend. I’m meeting him for lunch.",
+            "Man: Nice! Where are you going?",
+            "Woman: We’re going to the new Italian restaurant.",
+            "Man: Oh, I hear it’s really good.",
+            "Woman: What about you? What are you doing? Are you shopping?",
+            "Man: Yeah. I’m picking up a few things, and then I’m going to the gym.",
+            "Woman: Well, have a good workout.",
+            "Man: Thanks! Enjoy your meal.",
+            "Woman: Thanks!"
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-03-4-Present-Continuous-Accident.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-03-Present-Continuous/conversation-4-A2-03-4-Present-Continuous-Accident.mp3",
+          "transcript": "Man: What’s happening outside?\nWoman: I think a car hit a man on a bike.\nMan: Oh no! Is he hurt?\nWoman: I’m not sure. He’s lying on the ground.\nMan: Oh no. Is it serious?\nWoman: No, he is getting up now.\nMan: Well, that’s good.\nWoman: He looks OK. He’s smiling and talking now.\nMan: Oh, good! That’s good news.",
+          "utterances": [
+            "Man: What’s happening outside?",
+            "Woman: I think a car hit a man on a bike.",
+            "Man: Oh no! Is he hurt?",
+            "Woman: I’m not sure. He’s lying on the ground.",
+            "Man: Oh no. Is it serious?",
+            "Woman: No, he is getting up now.",
+            "Man: Well, that’s good.",
+            "Woman: He looks OK. He’s smiling and talking now.",
+            "Man: Oh, good! That’s good news."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A2-04-Will",
+      "level": "A2",
+      "title": "Will / Future Tense",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/A2/A2-04-Will.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:08.4146990Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-04-1-Will-Class.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-04-Will/conversation-1-A2-04-1-Will-Class.mp3",
+          "transcript": "Man: How is your French class?\nWoman: Good, but it will finish next week.\nMan: Oh, will you take the next course?\nWoman: No, I can’t. I won’t have time.\nMan: I’m surprised to hear that. You love that class.\nWoman: I do, but I will start a new job next week. The class and my job will be at the same time.\nMan: That's too bad!\nWoman: It’s OK. I will still study on my own.\nMan: That’s the spirit!",
+          "utterances": [
+            "Man: How is your French class?",
+            "Woman: Good, but it will finish next week.",
+            "Man: Oh, will you take the next course?",
+            "Woman: No, I can’t. I won’t have time.",
+            "Man: I’m surprised to hear that. You love that class.",
+            "Woman: I do, but I will start a new job next week. The class and my job will be at the same time.",
+            "Man: That's too bad!",
+            "Woman: It’s OK. I will still study on my own.",
+            "Man: That’s the spirit!"
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-04-2-Will-Picnic.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-04-Will/conversation-2-A2-04-2-Will-Picnic.mp3",
+          "transcript": "Man: The company picnic is the 18th. Will you be there?\nWoman: Yes, I think I’ll go. What time does it start?\nMan: It will begin at 12 and will go until 5.\nWoman: OK, I’ll try to make it. Will your wife be there?\nMan: No, she won’t be there this year. She has to work.\nWoman: Oh, that’s too bad. My husband won’t come, either. He's out of town.\nMan: So, will you come alone?\nWoman: No, I will bring my kids. They love the free food.\nMan: My kids too. I am sure they will eat a lot!\nWoman: Mine, too.",
+          "utterances": [
+            "Man: The company picnic is the 18th. Will you be there?",
+            "Woman: Yes, I think I’ll go. What time does it start?",
+            "Man: It will begin at 12 and will go until 5.",
+            "Woman: OK, I’ll try to make it. Will your wife be there?",
+            "Man: No, she won’t be there this year. She has to work.",
+            "Woman: Oh, that’s too bad. My husband won’t come, either. He's out of town.",
+            "Man: So, will you come alone?",
+            "Woman: No, I will bring my kids. They love the free food.",
+            "Man: My kids too. I am sure they will eat a lot!",
+            "Woman: Mine, too."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-04-3-Will-Summer.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-04-Will/conversation-3-A2-04-3-Will-Summer.mp3",
+          "transcript": "Man: Where will you go for the summer break?\nWoman: I will go to the beach with my family.\nMan: That sounds fun. How long will you be there?\nWoman: We won't stay long, maybe two or three days.\nMan: Nice. Where will you stay?\nWoman: We will stay at the new hotel. It just opened!\nMan: Nice choice. I hear it’s really beautiful.",
+          "utterances": [
+            "Man: Where will you go for the summer break?",
+            "Woman: I will go to the beach with my family.",
+            "Man: That sounds fun. How long will you be there?",
+            "Woman: We won't stay long, maybe two or three days.",
+            "Man: Nice. Where will you stay?",
+            "Woman: We will stay at the new hotel. It just opened!",
+            "Man: Nice choice. I hear it’s really beautiful."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-04-4-Will-Game.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-04-Will/conversation-4-A2-04-4-Will-Game.mp3",
+          "transcript": "Man: When’s our next soccer game?\nWoman: It’s next Tuesday.\nMan: Who will we play?\nWoman: We will play Mary’s team, the Lions.\nMan: Great. Will everyone be there?\nWoman: Matt won’t be there, but everyone else will.\nMan: Oh,that’s too bad.Well, we’ll miss him. Where will we play?\nWoman: We’ll play at the new soccer field by City Café.\nMan: Oh, I love that field. We always win there.\nWoman: We’ll see! Don’t get too confident!\nMan: Don’t worry! I won’t!\nWoman: We’ll also go out for pizza after the game.\nMan: That sounds fun.\nWoman: It should be! Especially if we win!",
+          "utterances": [
+            "Man: When’s our next soccer game?",
+            "Woman: It’s next Tuesday.",
+            "Man: Who will we play?",
+            "Woman: We will play Mary’s team, the Lions.",
+            "Man: Great. Will everyone be there?",
+            "Woman: Matt won’t be there, but everyone else will.",
+            "Man: Oh,that’s too bad.Well, we’ll miss him. Where will we play?",
+            "Woman: We’ll play at the new soccer field by City Café.",
+            "Man: Oh, I love that field. We always win there.",
+            "Woman: We’ll see! Don’t get too confident!",
+            "Man: Don’t worry! I won’t!",
+            "Woman: We’ll also go out for pizza after the game.",
+            "Man: That sounds fun.",
+            "Woman: It should be! Especially if we win!"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A2-05-Going-To",
+      "level": "A2",
+      "title": "Going to / Future Tense",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/A2/A2-05-Going-To.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:09.0806556Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-05-1-Going-To-Tonight.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-05-Going-To/conversation-1-A2-05-1-Going-To-Tonight.mp3",
+          "transcript": "Woman: What are you going to do tonight?\nMan: I’m just going to stay home. What about you?\nWoman: I’m going to the movies with Karen.\nMan: Oh? What are you going to see?\nWoman: We’re going to see the new Marvel movie. Do you want to come?\nMan: No, I’ll pass. But thanks for asking.\nWoman: Are you sure? It’s going to be fun.\nMan: No thanks. I’m just going to take it easy tonight.\nWoman: OK, maybe next time.",
+          "utterances": [
+            "Woman: What are you going to do tonight?",
+            "Man: I’m just going to stay home. What about you?",
+            "Woman: I’m going to the movies with Karen.",
+            "Man: Oh? What are you going to see?",
+            "Woman: We’re going to see the new Marvel movie. Do you want to come?",
+            "Man: No, I’ll pass. But thanks for asking.",
+            "Woman: Are you sure? It’s going to be fun.",
+            "Man: No thanks. I’m just going to take it easy tonight.",
+            "Woman: OK, maybe next time."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-05-2-Going-To-Camping.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-05-Going-To/conversation-2-A2-05-2-Going-To-Camping.mp3",
+          "transcript": "Man: So, what are you going to do this summer?\nWoman: Nothing. I’m going to visit my grandparents. We’re going to go camping.\nMan: That sounds fun. Where are you going?\nWoman: We’re going to stay at a campground near their house.\nMan: Oh, are you going to stay in a cabin?\nWoman: No, we’re going to camp by the lake. It’s really beautiful there.\nMan: Well, I hope you have a nice trip.\nWoman: Thanks. It’s going to be a lot of fun.",
+          "utterances": [
+            "Man: So, what are you going to do this summer?",
+            "Woman: Nothing. I’m going to visit my grandparents. We’re going to go camping.",
+            "Man: That sounds fun. Where are you going?",
+            "Woman: We’re going to stay at a campground near their house.",
+            "Man: Oh, are you going to stay in a cabin?",
+            "Woman: No, we’re going to camp by the lake. It’s really beautiful there.",
+            "Man: Well, I hope you have a nice trip.",
+            "Woman: Thanks. It’s going to be a lot of fun."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-05-3-Going-To-BBQ.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-05-Going-To/conversation-3-A2-05-3-Going-To-BBQ.mp3",
+          "transcript": "Woman: We’re going to a barbecue tonight. Care to join us?\nMan: Oh, I love barbecue! What are you going to cook?\nWoman: We are going to grill either chicken or steak.\nMan: That sounds delicious, I’d love to go. When should I come over?\nWoman: We’re not going to start until 7, so around then.\nMan: Great. Should I bring anything?\nWoman: David is going to bring salad, so maybe you can bring dessert.\nMan: Great! How many people are coming?\nWoman: There’s going to be about 10 people.\nMan: OK, I’ll bring some ice cream.\nWoman: Perfect. Everyone will love that.",
+          "utterances": [
+            "Woman: We’re going to a barbecue tonight. Care to join us?",
+            "Man: Oh, I love barbecue! What are you going to cook?",
+            "Woman: We are going to grill either chicken or steak.",
+            "Man: That sounds delicious, I’d love to go. When should I come over?",
+            "Woman: We’re not going to start until 7, so around then.",
+            "Man: Great. Should I bring anything?",
+            "Woman: David is going to bring salad, so maybe you can bring dessert.",
+            "Man: Great! How many people are coming?",
+            "Woman: There’s going to be about 10 people.",
+            "Man: OK, I’ll bring some ice cream.",
+            "Woman: Perfect. Everyone will love that."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-05-4-Going-To-Vacation.mp3",
+          "localAudioPath": "/audio/elllo/A2/A2-05-Going-To/conversation-4-A2-05-4-Going-To-Vacation.mp3",
+          "transcript": "Man: Where are you going for vacation?\nWoman: I’m going to Hawaii.\nMan: Lucky you! When are you going?\nWoman: Next week, on the 5th.\nMan: How long are you going to be there?\nWoman: About a week. 8 days.\nMan: Where are you going to stay?\nWoman: We’re going to stay at a resort, on the beach.\nMan: Are you going to take your kids?\nWoman: No, I’m just going with my husband. My kids are going to stay with their grandparents.\nMan: Well, have a nice trip!\nWoman: Thanks, I’m excited about it!",
+          "utterances": [
+            "Man: Where are you going for vacation?",
+            "Woman: I’m going to Hawaii.",
+            "Man: Lucky you! When are you going?",
+            "Woman: Next week, on the 5th.",
+            "Man: How long are you going to be there?",
+            "Woman: About a week. 8 days.",
+            "Man: Where are you going to stay?",
+            "Woman: We’re going to stay at a resort, on the beach.",
+            "Man: Are you going to take your kids?",
+            "Woman: No, I’m just going with my husband. My kids are going to stay with their grandparents.",
+            "Man: Well, have a nice trip!",
+            "Woman: Thanks, I’m excited about it!"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B1-01-Do-Emphasis",
+      "level": "B1",
+      "title": "Do for Emphasis",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/B1/B1-01-Do-Emphasis.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:09.7440009Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-01-1-Do-Emphasis-Sports.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-01-Do-Emphasis/conversation-1-B1-01-1-Do-Emphasis-Sports.mp3",
+          "transcript": "Man: Do you like sports?\nWoman: No, but I do like golf.\nMan: Golf?\nWoman: You don’t like golf?\nMan: I did like it when I was younger, but not now.\nWoman: Oh, I love it. Why don't you like it anymore?\nMan: It's just too expensive.\nWoman: True. It does cost a lot to play.",
+          "utterances": [
+            "Man: Do you like sports?",
+            "Woman: No, but I do like golf.",
+            "Man: Golf?",
+            "Woman: You don’t like golf?",
+            "Man: I did like it when I was younger, but not now.",
+            "Woman: Oh, I love it. Why don't you like it anymore?",
+            "Man: It's just too expensive.",
+            "Woman: True. It does cost a lot to play."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-01-2-Do-Emphasis-Cooking.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-01-Do-Emphasis/conversation-2-B1-01-2-Do-Emphasis-Cooking.mp3",
+          "transcript": "Man: Do you cook much?\nWoman: I do cook a lot.\nMan: What do you cook?\nWoman: Just easy stuff like pasta dishes. And you?\nMan: I don’t cook much. I do cook breakfast, though.\nWoman: Really, I never cook breakfast. My husband does make me pancakes sometimes, though.",
+          "utterances": [
+            "Man: Do you cook much?",
+            "Woman: I do cook a lot.",
+            "Man: What do you cook?",
+            "Woman: Just easy stuff like pasta dishes. And you?",
+            "Man: I don’t cook much. I do cook breakfast, though.",
+            "Woman: Really, I never cook breakfast. My husband does make me pancakes sometimes, though."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-01-3-Do-Emphasis-TV.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-01-Do-Emphasis/conversation-3-B1-01-3-Do-Emphasis-TV.mp3",
+          "transcript": "Man: Do you watch much TV?\nWoman: I do watch a lot of TV.\nMan: What do you watch?\nWoman: I watch dramas. And you?\nMan: I rarely watch TV. I do watch the news sometimes, though.\nWoman: How depressing! The news always makes me feel sad.\nMan: Yeah, it does get depressing sometimes.",
+          "utterances": [
+            "Man: Do you watch much TV?",
+            "Woman: I do watch a lot of TV.",
+            "Man: What do you watch?",
+            "Woman: I watch dramas. And you?",
+            "Man: I rarely watch TV. I do watch the news sometimes, though.",
+            "Woman: How depressing! The news always makes me feel sad.",
+            "Man: Yeah, it does get depressing sometimes."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-01-4-Do-Emphasis-Kids.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-01-Do-Emphasis/conversation-4-B1-01-4-Do-Emphasis-Kids.mp3",
+          "transcript": "Man: Do you have any kids?\nWoman: I don’t. And you?\nMan: I do have kids, but they are all grown now.\nWoman: Do they live near you?\nMan: They did live near me, but they moved.\nWoman: Oh, I’m sorry to hear that.\nMan: Yeah, me too. They do still visit a lot, though.\nWoman: Did you see them over the holidays?\nMan: I did see them. We had a really nice time together.",
+          "utterances": [
+            "Man: Do you have any kids?",
+            "Woman: I don’t. And you?",
+            "Man: I do have kids, but they are all grown now.",
+            "Woman: Do they live near you?",
+            "Man: They did live near me, but they moved.",
+            "Woman: Oh, I’m sorry to hear that.",
+            "Man: Yeah, me too. They do still visit a lot, though.",
+            "Woman: Did you see them over the holidays?",
+            "Man: I did see them. We had a really nice time together."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B1-02-Causative-Verbs",
+      "level": "B1",
+      "title": "Causative Verbs",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/B1/B1-02-Causative-Verbs.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:10.3975046Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-02-1-Causative-Verbs-Tent.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-02-Causative-Verbs/conversation-1-B1-02-1-Causative-Verbs-Tent.mp3",
+          "transcript": "Man: Can you help me do this?\nWoman: Sure, what are trying to do?\nMan: I’m trying to put up this tent.\nWoman: Oh, it’s easy. Let me show you what to do.\nMan: Wow! That was so easy for you.\nWoman: Yeah, I was in the army. We do this all the time.",
+          "utterances": [
+            "Man: Can you help me do this?",
+            "Woman: Sure, what are trying to do?",
+            "Man: I’m trying to put up this tent.",
+            "Woman: Oh, it’s easy. Let me show you what to do.",
+            "Man: Wow! That was so easy for you.",
+            "Woman: Yeah, I was in the army. We do this all the time."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-02-2-Causative-Verbs-Late.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-02-Causative-Verbs/conversation-2-B1-02-2-Causative-Verbs-Late.mp3",
+          "transcript": "Man: Why are you home so late?\nWoman: My boss made me stay late today.\nMan: Why did she do that?\nWoman: I had to help her write a letter in French.\nMan: Huh! That was nice of you.\nWoman: Well, she made me do it. She’s the boss.",
+          "utterances": [
+            "Man: Why are you home so late?",
+            "Woman: My boss made me stay late today.",
+            "Man: Why did she do that?",
+            "Woman: I had to help her write a letter in French.",
+            "Man: Huh! That was nice of you.",
+            "Woman: Well, she made me do it. She’s the boss."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-02-3-Causative-Verbs-Car.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-02-Causative-Verbs/conversation-3-B1-02-3-Causative-Verbs-Car.mp3",
+          "transcript": "Man: Did you get a new car?\nWoman: No, my friend is letting me use his.\nMan: What happened to your car?\nWoman: It is getting repairs.\nMan: Lucky you! This is a nice car.\nWoman: Well, he made me promise I’d be careful with it.",
+          "utterances": [
+            "Man: Did you get a new car?",
+            "Woman: No, my friend is letting me use his.",
+            "Man: What happened to your car?",
+            "Woman: It is getting repairs.",
+            "Man: Lucky you! This is a nice car.",
+            "Woman: Well, he made me promise I’d be careful with it."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-02-4-Causative-Verbs-Mom.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-02-Causative-Verbs/conversation-4-B1-02-4-Causative-Verbs-Mom.mp3",
+          "transcript": "Man: Your mom is so nice!\nWoman: Yeah, she is now, but she was really strict when I was younger.\nMan: Really? How so?\nWoman: Well, for one, she never let me watch TV or eat sugar.\nMan: Wow! That is strict!\nWoman: And she made me study at least four hours a day, even if I did not have homework.\nMan: Wow! That sounds like tough love.",
+          "utterances": [
+            "Man: Your mom is so nice!",
+            "Woman: Yeah, she is now, but she was really strict when I was younger.",
+            "Man: Really? How so?",
+            "Woman: Well, for one, she never let me watch TV or eat sugar.",
+            "Man: Wow! That is strict!",
+            "Woman: And she made me study at least four hours a day, even if I did not have homework.",
+            "Man: Wow! That sounds like tough love."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B1-03-UsedTo",
+      "level": "B1",
+      "title": "Used To for Past Tense",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/B1/B1-03-UsedTo.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:11.0314065Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-03-1-Used-To-Sports.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-03-UsedTo/conversation-1-B1-03-1-Used-To-Sports.mp3",
+          "transcript": "Man: Do you play sports?\nWoman: I used to play sports in high school.\nMan: Yeah, I used to play, too.\nWoman: Why did you stop?\nMan: No time, I guess.\nWoman: Yeah, I used to have so much free time.\nMan: Me too! I miss those days.\nWoman: What sports did you play?\nMan: Baseball and basketball. I used to be pretty good, not anymore, though.\nWoman: Yeah, we all get older.",
+          "utterances": [
+            "Man: Do you play sports?",
+            "Woman: I used to play sports in high school.",
+            "Man: Yeah, I used to play, too.",
+            "Woman: Why did you stop?",
+            "Man: No time, I guess.",
+            "Woman: Yeah, I used to have so much free time.",
+            "Man: Me too! I miss those days.",
+            "Woman: What sports did you play?",
+            "Man: Baseball and basketball. I used to be pretty good, not anymore, though.",
+            "Woman: Yeah, we all get older."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-03-2-Used-To-Language.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-03-UsedTo/conversation-2-B1-03-2-Used-To-Language.mp3",
+          "transcript": "Man: Do you speak any foreign languages?\nWoman: I speak French a little. I used to use it all the time, but not anymore.\nMan: Really? Why is that?\nWoman: Well, I used to work for a French company, and then I changed jobs.\nMan: Oh, really? I didn’t know that.\nWoman: Yeah, it was a lot of fun. I used to go to France once a year for work.\nMan: Lucky you! I love France.\nWoman: Yeah, France is a lot of fun.",
+          "utterances": [
+            "Man: Do you speak any foreign languages?",
+            "Woman: I speak French a little. I used to use it all the time, but not anymore.",
+            "Man: Really? Why is that?",
+            "Woman: Well, I used to work for a French company, and then I changed jobs.",
+            "Man: Oh, really? I didn’t know that.",
+            "Woman: Yeah, it was a lot of fun. I used to go to France once a year for work.",
+            "Man: Lucky you! I love France.",
+            "Woman: Yeah, France is a lot of fun."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-03-3-Used-To-Party.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-03-UsedTo/conversation-3-B1-03-3-Used-To-Party.mp3",
+          "transcript": "Man: Are you coming to the party?\nWoman: No, I have to work.\nMan: Work! What happened? You used to never miss a party!\nWoman: True, but I also didn’t use to have a stressful job.\nMan: True, you used to be poor, but you were fun!\nWoman: Yep! I used to be fun!",
+          "utterances": [
+            "Man: Are you coming to the party?",
+            "Woman: No, I have to work.",
+            "Man: Work! What happened? You used to never miss a party!",
+            "Woman: True, but I also didn’t use to have a stressful job.",
+            "Man: True, you used to be poor, but you were fun!",
+            "Woman: Yep! I used to be fun!"
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-03-4-Used-To-CoWorker.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-03-UsedTo/conversation-4-B1-03-4-Used-To-CoWorker.mp3",
+          "transcript": "Man: Hey, you used to have a Spanish co-worker, right?\nWoman: Yeah, Maria, but she moved.\nMan: Really? That’s too bad. I liked her. She used to always make me laugh.\nWoman: I know. We used to have such fun together.\nMan: She was so nice. She used to give me sweets when I visited your office.\nWoman: Yeah, she loved baking. She used to bring cookies and cupcakes to the office every Friday.\nMan: Sounds like you miss her.\nWoman: I do! We all do.",
+          "utterances": [
+            "Man: Hey, you used to have a Spanish co-worker, right?",
+            "Woman: Yeah, Maria, but she moved.",
+            "Man: Really? That’s too bad. I liked her. She used to always make me laugh.",
+            "Woman: I know. We used to have such fun together.",
+            "Man: She was so nice. She used to give me sweets when I visited your office.",
+            "Woman: Yeah, she loved baking. She used to bring cookies and cupcakes to the office every Friday.",
+            "Man: Sounds like you miss her.",
+            "Woman: I do! We all do."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B1-04-Would-PastTense",
+      "level": "B1",
+      "title": "Would for Past Tense",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/B1/B1-04-Would-PastTense.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:18.5803201Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-04-1-Would-PastTense-Farm.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-04-Would-PastTense/conversation-1-B1-04-1-Would-PastTense-Farm.mp3",
+          "transcript": "Man: What was it like growing up on a farm?\nWoman: It was the best. I used to have so much fun.\nMan : Really? What would you do?\nWoman: I would ride horses, play with my dog, tend to animals and just have fun!\nMan: Sounds fun!\nWoman: It was. Every day I would get up early and I would be outside all day. I wouldn’t go inside until dark.\nMan: Sounds like you had a great childhood.\nWoman: It was.",
+          "utterances": [
+            "Man: What was it like growing up on a farm?",
+            "Woman: It was the best. I used to have so much fun.",
+            "Man : Really? What would you do?",
+            "Woman: I would ride horses, play with my dog, tend to animals and just have fun!",
+            "Man: Sounds fun!",
+            "Woman: It was. Every day I would get up early and I would be outside all day. I wouldn’t go inside until dark.",
+            "Man: Sounds like you had a great childhood.",
+            "Woman: It was."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-04-2-Would-PastTense-City.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-04-Would-PastTense/conversation-2-B1-04-2-Would-PastTense-City.mp3",
+          "transcript": "Woman: What was it like growing up in the city?\nMan: It was fun. I have many good memories.\nWoman: Yeah, such as?\nMan: Well, my friends and I used to hang out downtown. We would sit on the sidewalk and watch the world go by. It was so fun. Sometimes, we’d get in trouble, though.\nWoman: Really, what would you do?\nMan: Well, we would be loud or naughty. Kids’ stuff. Nothing serious, though.\nWoman: Yeah, sounds familiar.",
+          "utterances": [
+            "Woman: What was it like growing up in the city?",
+            "Man: It was fun. I have many good memories.",
+            "Woman: Yeah, such as?",
+            "Man: Well, my friends and I used to hang out downtown. We would sit on the sidewalk and watch the world go by. It was so fun. Sometimes, we’d get in trouble, though.",
+            "Woman: Really, what would you do?",
+            "Man: Well, we would be loud or naughty. Kids’ stuff. Nothing serious, though.",
+            "Woman: Yeah, sounds familiar."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-04-3-Would-PastTense-Army.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-04-Would-PastTense/conversation-3-B1-04-3-Would-PastTense-Army.mp3",
+          "transcript": "Man: What was life like in the army?\nWoman: It was good, but it was very hard.\nMan: Really? How so?\nWoman: Well, we were always busy. Every day we would get up really early. Then, we would march for ten miles. After that, we would do more training.\nMan: What would you do in the afternoon?\nWoman: More training. Usually, we wouldn’t stop training until late.\nMan: That is so tough. How much sleep did you get?\nWoman: Not much. We would usually get about six hours a night. It wasn’t enough, though.\nMan: Do you miss it?\nWoman: Yes, sometimes.",
+          "utterances": [
+            "Man: What was life like in the army?",
+            "Woman: It was good, but it was very hard.",
+            "Man: Really? How so?",
+            "Woman: Well, we were always busy. Every day we would get up really early. Then, we would march for ten miles. After that, we would do more training.",
+            "Man: What would you do in the afternoon?",
+            "Woman: More training. Usually, we wouldn’t stop training until late.",
+            "Man: That is so tough. How much sleep did you get?",
+            "Woman: Not much. We would usually get about six hours a night. It wasn’t enough, though.",
+            "Man: Do you miss it?",
+            "Woman: Yes, sometimes."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B1-05-Should",
+      "level": "B1",
+      "title": "Should for Suggestions",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/B1/B1-05-Should.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:26.9692029Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-05-1-Should-Sick.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-05-Should/conversation-1-B1-05-1-Should-Sick.mp3",
+          "transcript": "Man: You don’t look so good. Are you sick?\nWoman: Yes, I think I’m coming down with a cold.\nMan: Well, maybe you should go home then.\nWoman: But I really need to work.\nMan: No, no, no! You should go home and get some rest.\nWoman: OK. I guess I can work from home anyway.\nMan: No, you shouldn’t work. You should stay in bed.\nWoman: OK. I will do that. Thanks for your advice.\nMan: No problem. I hope you feel better soon.",
+          "utterances": [
+            "Man: You don’t look so good. Are you sick?",
+            "Woman: Yes, I think I’m coming down with a cold.",
+            "Man: Well, maybe you should go home then.",
+            "Woman: But I really need to work.",
+            "Man: No, no, no! You should go home and get some rest.",
+            "Woman: OK. I guess I can work from home anyway.",
+            "Man: No, you shouldn’t work. You should stay in bed.",
+            "Woman: OK. I will do that. Thanks for your advice.",
+            "Man: No problem. I hope you feel better soon."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-05-2-Should-Doctor.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-05-Should/conversation-2-B1-05-2-Should-Doctor.mp3",
+          "transcript": "Man: So, how long have you been feeling ill?\nWoman: For about three days.\nMan: Well, it looks like there’s a flu bug going around.\nWoman: OK. Is that serious?\nMan: No, it is a minor illness, but you should not be around people as it can spread.\nWoman: OK. What should I do to get better?\nMan: Just get lots of rest and drink lots of water. I will give you some medicine to make you feel better.\nWoman: OK. Thank you doctor.\nMan: If you start to feel worse after a few days, you should call me immediately.\nWoman: OK. I’ll do that. Thank you.\nMan: You’re welcome. You should feel better in a few days.",
+          "utterances": [
+            "Man: So, how long have you been feeling ill?",
+            "Woman: For about three days.",
+            "Man: Well, it looks like there’s a flu bug going around.",
+            "Woman: OK. Is that serious?",
+            "Man: No, it is a minor illness, but you should not be around people as it can spread.",
+            "Woman: OK. What should I do to get better?",
+            "Man: Just get lots of rest and drink lots of water. I will give you some medicine to make you feel better.",
+            "Woman: OK. Thank you doctor.",
+            "Man: If you start to feel worse after a few days, you should call me immediately.",
+            "Woman: OK. I’ll do that. Thank you.",
+            "Man: You’re welcome. You should feel better in a few days."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-05-3-Should-Spanish.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-05-Should/conversation-3-B1-05-3-Should-Spanish.mp3",
+          "transcript": "Man: What’s the best way to learn Spanish?\nWoman: Well, first you should learn new words every day.\nMan: OK. That’s easy. What do you recommend?\nWoman: I would download a vocab app. I would try to learn ten words a day.\nMan: Only ten words? I think I can learn 50 words a day.\nWoman: No, you shouldn’t do that because you won’t remember them. You shouldn’t try to do too much at one time.\nMan: OK. I will follow your advice. Thank you.",
+          "utterances": [
+            "Man: What’s the best way to learn Spanish?",
+            "Woman: Well, first you should learn new words every day.",
+            "Man: OK. That’s easy. What do you recommend?",
+            "Woman: I would download a vocab app. I would try to learn ten words a day.",
+            "Man: Only ten words? I think I can learn 50 words a day.",
+            "Woman: No, you shouldn’t do that because you won’t remember them. You shouldn’t try to do too much at one time.",
+            "Man: OK. I will follow your advice. Thank you."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B1-Audio4x/B1-05-4-Should-Spanish.mp3",
+          "localAudioPath": "/audio/elllo/B1/B1-05-Should/conversation-4-B1-05-4-Should-Spanish.mp3",
+          "transcript": "Man: Hello, Mrs. Wilson. Thanks for your advice on learning Spanish vocabulary. Your tips worked. Do you have any more ways to learn Spanish?\nWoman: Well, you should try to use the words you learn by keeping a journal and trying to use them.\nMan: That sounds too difficult. I can’t write anything yet.\nWoman: Well, at first you can just draw pictures of new words, like verbs and nouns.\nMan: Oh, I like that idea. I’ll give that a try.\nWoman: Oh, and you should use spanishlistening.org. It’s a great way to learn Spanish.\nMan: Sounds cool! Is it free?\nWoman: Yes, it’s free! There are 100s of listening lessons to choose from.\nMan: Cool. I’ll check it out. Thanks.",
+          "utterances": [
+            "Man: Hello, Mrs. Wilson. Thanks for your advice on learning Spanish vocabulary. Your tips worked. Do you have any more ways to learn Spanish?",
+            "Woman: Well, you should try to use the words you learn by keeping a journal and trying to use them.",
+            "Man: That sounds too difficult. I can’t write anything yet.",
+            "Woman: Well, at first you can just draw pictures of new words, like verbs and nouns.",
+            "Man: Oh, I like that idea. I’ll give that a try.",
+            "Woman: Oh, and you should use spanishlistening.org. It’s a great way to learn Spanish.",
+            "Man: Sounds cool! Is it free?",
+            "Woman: Yes, it’s free! There are 100s of listening lessons to choose from.",
+            "Man: Cool. I’ll check it out. Thanks."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B2-01-Passive-Simple",
+      "level": "B2",
+      "title": "Simple Passive",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/B2/B2-01-Passive-Simple.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:34.2882082Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-01-1-Passive-Present-Restaurant.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-01-Passive-Simple/conversation-1-B2-01-1-Passive-Present-Restaurant.mp3",
+          "transcript": "Man: How is the new Thai\nrestaurant?\nWoman: It’s great. All the food is cooked with organic ingredients.\nMan: That sounds great. How\nlate is it open?\nWoman: Well, food is served until 11, but the bar is open until midnight.\nMan: I will have to check it\nout.\nWoman: You should. It’s worth\nthe visit.",
+          "utterances": [
+            "Man: How is the new Thai",
+            "restaurant?",
+            "Woman: It’s great. All the food is cooked with organic ingredients.",
+            "Man: That sounds great. How",
+            "late is it open?",
+            "Woman: Well, food is served until 11, but the bar is open until midnight.",
+            "Man: I will have to check it",
+            "out.",
+            "Woman: You should. It’s worth",
+            "the visit."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-01-2-Passive-Present-Basketball.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-01-Passive-Simple/conversation-2-B2-01-2-Passive-Present-Basketball.mp3",
+          "transcript": "Man: Are you still playing\nbasketball tonight?\nWoman: No, the game is\ncanceled.\nMan: Oh, no, why is that?\nWoman: The rec hall is reserved for something.\nMan: That’s too bad.\nWoman: Yeah, some band is\nscheduled to play there tonight.",
+          "utterances": [
+            "Man: Are you still playing",
+            "basketball tonight?",
+            "Woman: No, the game is",
+            "canceled.",
+            "Man: Oh, no, why is that?",
+            "Woman: The rec hall is reserved for something.",
+            "Man: That’s too bad.",
+            "Woman: Yeah, some band is",
+            "scheduled to play there tonight."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-01-3-Passive-Present-Report.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-01-Passive-Simple/conversation-3-B2-01-3-Passive-Present-Report.mp3",
+          "transcript": "Man: Is the report done yet?\nWoman: It is almost done.\nMan: When will it be finished?\nWoman: It should be done very\nsoon.\nMan: Well, as soon as it is\nfinished, please get it to me.\nWoman: I will. The minute it’s\nfinished, you’ll get it.",
+          "utterances": [
+            "Man: Is the report done yet?",
+            "Woman: It is almost done.",
+            "Man: When will it be finished?",
+            "Woman: It should be done very",
+            "soon.",
+            "Man: Well, as soon as it is",
+            "finished, please get it to me.",
+            "Woman: I will. The minute it’s",
+            "finished, you’ll get it."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-01-4-Passive-Present-Chair.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-01-Passive-Simple/conversation-4-B2-01-4-Passive-Present-Chair.mp3",
+          "transcript": "Man: This chair is broken.\nWoman: Who broke it?\nMan: I don’t know. It was\nbroken when I got here.\nWoman: Should I throw it out?\nMan: No, I’ll see if\nmaintenance can fix it.\nWoman: Don’t bother. It is more\ntrouble than it’s worth.\nMan: You may be right.",
+          "utterances": [
+            "Man: This chair is broken.",
+            "Woman: Who broke it?",
+            "Man: I don’t know. It was",
+            "broken when I got here.",
+            "Woman: Should I throw it out?",
+            "Man: No, I’ll see if",
+            "maintenance can fix it.",
+            "Woman: Don’t bother. It is more",
+            "trouble than it’s worth.",
+            "Man: You may be right."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B2-02-Past-Passive",
+      "level": "B2",
+      "title": "Past Passive",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/B2/B2-02-Past-Passive.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:41.8866610Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-02-1-Past-Passive-Subway.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-02-Past-Passive/conversation-1-B2-02-1-Past-Passive-Subway.mp3",
+          "transcript": "Man: When was this subway built?\nWoman: It was built about 30\nyears ago.\nMan: It still looks pretty new.\nWoman: Yes, it was remodeled last year.\nMan: Well, they did a nice job.\nWoman: I’ll say.",
+          "utterances": [
+            "Man: When was this subway built?",
+            "Woman: It was built about 30",
+            "years ago.",
+            "Man: It still looks pretty new.",
+            "Woman: Yes, it was remodeled last year.",
+            "Man: Well, they did a nice job.",
+            "Woman: I’ll say."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-02-2-Past-Passive-Stadium.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-02-Past-Passive/conversation-2-B2-02-2-Past-Passive-Stadium.mp3",
+          "transcript": "Man: What happened to the old\nstadium?\nWoman: It was torn down last\nyear.\nMan: Why did they tear it down?\nWoman: It was damaged by the\nhurricane three years ago.\nMan: Oh, I remember that.\nWoman: Yeah, a lot of damage\nwas done that night.",
+          "utterances": [
+            "Man: What happened to the old",
+            "stadium?",
+            "Woman: It was torn down last",
+            "year.",
+            "Man: Why did they tear it down?",
+            "Woman: It was damaged by the",
+            "hurricane three years ago.",
+            "Man: Oh, I remember that.",
+            "Woman: Yeah, a lot of damage",
+            "was done that night."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-02-3-Past-Passive-Hotel.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-02-Past-Passive/conversation-3-B2-02-3-Past-Passive-Hotel.mp3",
+          "transcript": "Man: Do you still go to that\nhotel by the lake?\nWoman: No, it was sold last\nyear.\nMan: Oh, was it replaced?\nWoman: No, it was closed and\nhasn’t been reopened.\nMan: Oh, that’s too bad.\nWoman: Yeah, summer at the lake\nhasn’t been the same since.",
+          "utterances": [
+            "Man: Do you still go to that",
+            "hotel by the lake?",
+            "Woman: No, it was sold last",
+            "year.",
+            "Man: Oh, was it replaced?",
+            "Woman: No, it was closed and",
+            "hasn’t been reopened.",
+            "Man: Oh, that’s too bad.",
+            "Woman: Yeah, summer at the lake",
+            "hasn’t been the same since."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-02-4-Past-Passive-Golf.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-02-Past-Passive/conversation-4-B2-02-4-Past-Passive-Golf.mp3",
+          "transcript": "Man: Do you still play golf?\nWoman: No, the course was shut\ndown last year.\nMan: Oh, that was such a\nbeautiful course. What happened to it?\nWoman: It was converted to a\npark.\nMan: Well, at least it was put\nto good use.\nWoman: Yeah, my kids love to go\nthere now.",
+          "utterances": [
+            "Man: Do you still play golf?",
+            "Woman: No, the course was shut",
+            "down last year.",
+            "Man: Oh, that was such a",
+            "beautiful course. What happened to it?",
+            "Woman: It was converted to a",
+            "park.",
+            "Man: Well, at least it was put",
+            "to good use.",
+            "Woman: Yeah, my kids love to go",
+            "there now."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B2-03-Was-Able-To",
+      "level": "B2",
+      "title": "Was able to",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/B2/B2-03-Was-Able-To.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:51.6591477Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-03-1-Was-Able-To-Test.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-03-Was-Able-To/conversation-1-B2-03-1-Was-Able-To-Test.mp3",
+          "transcript": "Woman: How did you do on the\ntest?\nMan: Not great. I wasn’t able\nto answer all the questions. I ran out of time.\nWoman: Same here. Some of the\nquestions were really hard.\nMan: Were you able to finish\nthe essay section?\nWoman: Yeah, I was able to do\nthat, at least.\nMan: Me too, although I wasn’t\nable to write 300 words.\nWoman: Me neither! How many\nwords did you write?\nMan: I was only able to write\nabout 200 words.\nWoman: Same! Well, fingers\ncrossed we get a good grade.\nMan: Yes, fingers crossed!",
+          "utterances": [
+            "Woman: How did you do on the",
+            "test?",
+            "Man: Not great. I wasn’t able",
+            "to answer all the questions. I ran out of time.",
+            "Woman: Same here. Some of the",
+            "questions were really hard.",
+            "Man: Were you able to finish",
+            "the essay section?",
+            "Woman: Yeah, I was able to do",
+            "that, at least.",
+            "Man: Me too, although I wasn’t",
+            "able to write 300 words.",
+            "Woman: Me neither! How many",
+            "words did you write?",
+            "Man: I was only able to write",
+            "about 200 words.",
+            "Woman: Same! Well, fingers",
+            "crossed we get a good grade.",
+            "Man: Yes, fingers crossed!"
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-03-2-Was-Able-To-Wedding.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-03-Was-Able-To/conversation-2-B2-03-2-Was-Able-To-Wedding.mp3",
+          "transcript": "Man: So, how is the wedding\nplanning coming along?\nWoman: Good, we have finalized\nmost of the arrangements.\nMan: Are you still having the\nwedding at the lake?\nWoman: No, we weren’t able to get the place we wanted.\nMan: Oh, then where are you\nhaving it then?\nWoman: We are having it at a\nhotel in the countryside.\nMan: Well, it sounds nice.\nWoman: Yeah, in the end, it\nworked out well. We were able to get a really\ngood deal on the caterer, too.\nMan: Oh, that’s great! I am\nglad to hear it.",
+          "utterances": [
+            "Man: So, how is the wedding",
+            "planning coming along?",
+            "Woman: Good, we have finalized",
+            "most of the arrangements.",
+            "Man: Are you still having the",
+            "wedding at the lake?",
+            "Woman: No, we weren’t able to get the place we wanted.",
+            "Man: Oh, then where are you",
+            "having it then?",
+            "Woman: We are having it at a",
+            "hotel in the countryside.",
+            "Man: Well, it sounds nice.",
+            "Woman: Yeah, in the end, it",
+            "worked out well. We were able to get a really",
+            "good deal on the caterer, too.",
+            "Man: Oh, that’s great! I am",
+            "glad to hear it."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-03-3-Was-Able-To-Party.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-03-Was-Able-To/conversation-3-B2-03-3-Was-Able-To-Party.mp3",
+          "transcript": "Man: I am sorry I wasn’t able\nto attend your birthday party on Saturday.\nWoman: Yeah, what happened? We\nwere expecting you.\nMan: Well, my babysitter\ncanceled and I wasn’t able to find a\nreplacement.\nWoman: Oh, that’s too bad.\nMaybe next time.\nMan: Well, I really wanted to\ngo. I’m sorry I couldn’t make it.\nWoman: No worries. Some other\npeople couldn’t make it also.\nMan: Oh, good. I am glad I was\nnot the only one.",
+          "utterances": [
+            "Man: I am sorry I wasn’t able",
+            "to attend your birthday party on Saturday.",
+            "Woman: Yeah, what happened? We",
+            "were expecting you.",
+            "Man: Well, my babysitter",
+            "canceled and I wasn’t able to find a",
+            "replacement.",
+            "Woman: Oh, that’s too bad.",
+            "Maybe next time.",
+            "Man: Well, I really wanted to",
+            "go. I’m sorry I couldn’t make it.",
+            "Woman: No worries. Some other",
+            "people couldn’t make it also.",
+            "Man: Oh, good. I am glad I was",
+            "not the only one."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-03-4-Was-Able-To-Trip.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-03-Was-Able-To/conversation-4-B2-03-4-Was-Able-To-Trip.mp3",
+          "transcript": "Woman: Before I forget, how\nwas your trip to New York?\nMan: It was fun. We saw a lot.\nWoman: Did you see the Statue\nof Liberty?\nMan: No, we weren’t able to get\ntickets for the ferry.\nWoman: What about the Empire\nState Building? I hope you were able to see\nthat.\nMan: We were able to go there,\nbut we weren’t able to go to the top.\nWoman: Oh no, why not?\nMan: It was closed for\nmaintenance or something.\nWoman: Oh that’s too bad.\nMan: Well, I am sure I’ll be\nable to go back someday!",
+          "utterances": [
+            "Woman: Before I forget, how",
+            "was your trip to New York?",
+            "Man: It was fun. We saw a lot.",
+            "Woman: Did you see the Statue",
+            "of Liberty?",
+            "Man: No, we weren’t able to get",
+            "tickets for the ferry.",
+            "Woman: What about the Empire",
+            "State Building? I hope you were able to see",
+            "that.",
+            "Man: We were able to go there,",
+            "but we weren’t able to go to the top.",
+            "Woman: Oh no, why not?",
+            "Man: It was closed for",
+            "maintenance or something.",
+            "Woman: Oh that’s too bad.",
+            "Man: Well, I am sure I’ll be",
+            "able to go back someday!"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B2-04-Was-Going-To",
+      "level": "B2",
+      "title": "Was going to",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/B2/B2-04-Was-Going-To.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:27:59.5362966Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-04-1-Was-Going-To-Lunch.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-04-Was-Going-To/conversation-1-B2-04-1-Was-Going-To-Lunch.mp3",
+          "transcript": "Man: How was your lunch?\nWoman: Good. I ate at the new\ntaco truck.\nMan: Really? I was going to go\nthere, but I got busy. How is it?\nWoman: Good, but it is a bit\npricey.\nMan: Oh, really?\nWoman: Yeah, I was going to have\ntwo tacos, but at seven bucks apiece, I just had\none.\nMan: Wow, that is pricey!",
+          "utterances": [
+            "Man: How was your lunch?",
+            "Woman: Good. I ate at the new",
+            "taco truck.",
+            "Man: Really? I was going to go",
+            "there, but I got busy. How is it?",
+            "Woman: Good, but it is a bit",
+            "pricey.",
+            "Man: Oh, really?",
+            "Woman: Yeah, I was going to have",
+            "two tacos, but at seven bucks apiece, I just had",
+            "one.",
+            "Man: Wow, that is pricey!"
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-04-2-Was-Going-To-Car.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-04-Was-Going-To/conversation-2-B2-04-2-Was-Going-To-Car.mp3",
+          "transcript": "Man: Hey, check out my new\ncar!\nWoman: Oh, this is the one that\nwas for sale.\nMan: Yeah, the guy sold it to\nus cheap.\nWoman: Really? Is there\nsomething wrong with it?\nMan: No, it is just old. I\nwasn’t going to buy it at first, but after\ndriving it, I love it.\nWoman: Well, as long as it\nruns. So, can I get a ride home?\nMan: I was just going to offer\nyou one.",
+          "utterances": [
+            "Man: Hey, check out my new",
+            "car!",
+            "Woman: Oh, this is the one that",
+            "was for sale.",
+            "Man: Yeah, the guy sold it to",
+            "us cheap.",
+            "Woman: Really? Is there",
+            "something wrong with it?",
+            "Man: No, it is just old. I",
+            "wasn’t going to buy it at first, but after",
+            "driving it, I love it.",
+            "Woman: Well, as long as it",
+            "runs. So, can I get a ride home?",
+            "Man: I was just going to offer",
+            "you one."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-04-3-Was-Going-To-Call.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-04-Was-Going-To/conversation-3-B2-04-3-Was-Going-To-Call.mp3",
+          "transcript": "Woman: Hey, what a surprise! I\nwas just going to call you.\nMan: Oh, yeah? What’s up?\nWoman: I was going to ask if\nyou are still coming to the party.\nMan: Yes, of course. I am\nreally looking forward to it.\nWoman: That’s great. I am so\nglad you can make it.\nMan: Are you still planning on\nhaving it outside?\nWoman: We were going to, but it\nlooks like it is going to rain.\nMan: No worries. I prefer\nindoor parties anyway.",
+          "utterances": [
+            "Woman: Hey, what a surprise! I",
+            "was just going to call you.",
+            "Man: Oh, yeah? What’s up?",
+            "Woman: I was going to ask if",
+            "you are still coming to the party.",
+            "Man: Yes, of course. I am",
+            "really looking forward to it.",
+            "Woman: That’s great. I am so",
+            "glad you can make it.",
+            "Man: Are you still planning on",
+            "having it outside?",
+            "Woman: We were going to, but it",
+            "looks like it is going to rain.",
+            "Man: No worries. I prefer",
+            "indoor parties anyway."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-04-4-Was-Going-To-Game.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-04-Was-Going-To/conversation-4-B2-04-4-Was-Going-To-Game.mp3",
+          "transcript": "Woman: Hey, why are you here?\nI thought you were going to play futsal.\nMan: I was, but we had to\ncancel.\nWoman: Oh, yeah? What happened?\nMan: Bob was going to drive us,\nbut he got called in to work.\nWoman: Oh, he was your only\nride?\nMan: Sadly, yes.\nWoman: Well, now you get to\nhang out with me!\nMan: I was just going to say\nthat!",
+          "utterances": [
+            "Woman: Hey, why are you here?",
+            "I thought you were going to play futsal.",
+            "Man: I was, but we had to",
+            "cancel.",
+            "Woman: Oh, yeah? What happened?",
+            "Man: Bob was going to drive us,",
+            "but he got called in to work.",
+            "Woman: Oh, he was your only",
+            "ride?",
+            "Man: Sadly, yes.",
+            "Woman: Well, now you get to",
+            "hang out with me!",
+            "Man: I was just going to say",
+            "that!"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B2-05-Adverb-Placement",
+      "level": "B2",
+      "title": "Adverb Placement",
+      "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+      "sourcePage": "https://elllo.org/book/B2/B2-05-Adverb-Placement.html",
+      "usageTerms": "https://www.elllo.org/about/faq.htm",
+      "downloadedAtUtc": "2026-09-11T17:28:07.5504382Z",
+      "conversations": [
+        {
+          "number": 1,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-05-1-Adverb-Placement-Europe.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-05-Adverb-Placement/conversation-1-B2-05-1-Adverb-Placement-Europe.mp3",
+          "transcript": "Man: Have you ever been to\nEurope?\nWoman: I haven’t technically been there, but I had a layover in Paris.\nMan: That doesn’t really count,\ndoes it?\nWoman: No, but I'm hopefully going next year.\nMan: Oh, yeah? Where are you\nplanning on going?\nWoman: I’m tentatively planning\non going to Spain.\nMan: Oh, Spain is definitely worth the visit.",
+          "utterances": [
+            "Man: Have you ever been to",
+            "Europe?",
+            "Woman: I haven’t technically been there, but I had a layover in Paris.",
+            "Man: That doesn’t really count,",
+            "does it?",
+            "Woman: No, but I'm hopefully going next year.",
+            "Man: Oh, yeah? Where are you",
+            "planning on going?",
+            "Woman: I’m tentatively planning",
+            "on going to Spain.",
+            "Man: Oh, Spain is definitely worth the visit."
+          ]
+        },
+        {
+          "number": 2,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-05-2-Adverb-Placement-Weekend.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-05-Adverb-Placement/conversation-2-B2-05-2-Adverb-Placement-Weekend.mp3",
+          "transcript": "Man: What are you doing this\nweekend?\nWoman: I will probably stay\nhome. What about you?\nMan: I’m most likely going to\nstay home too.\nWoman: Oh, yeah? Do you want to\ndo something?\nMan: No, I'm really looking\nforward to just relaxing at home.\nWoman: Suit yourself.",
+          "utterances": [
+            "Man: What are you doing this",
+            "weekend?",
+            "Woman: I will probably stay",
+            "home. What about you?",
+            "Man: I’m most likely going to",
+            "stay home too.",
+            "Woman: Oh, yeah? Do you want to",
+            "do something?",
+            "Man: No, I'm really looking",
+            "forward to just relaxing at home.",
+            "Woman: Suit yourself."
+          ]
+        },
+        {
+          "number": 3,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-05-3-Adverb-Placement-Restaurant.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-05-Adverb-Placement/conversation-3-B2-05-3-Adverb-Placement-Restaurant.mp3",
+          "transcript": "Man: Have you tried the new\nItalian restaurant?\nWoman: No, is it any good?\nMan: Yes, you should definitely check it out.\nWoman: What do you recommend?\nMan: Well, I especially recommend the ravioli. It is mouth-watering\ngood.\nWoman: Thanks, I'll surely give\nit a look.",
+          "utterances": [
+            "Man: Have you tried the new",
+            "Italian restaurant?",
+            "Woman: No, is it any good?",
+            "Man: Yes, you should definitely check it out.",
+            "Woman: What do you recommend?",
+            "Man: Well, I especially recommend the ravioli. It is mouth-watering",
+            "good.",
+            "Woman: Thanks, I'll surely give",
+            "it a look."
+          ]
+        },
+        {
+          "number": 4,
+          "audioUrl": "https://elllo.org/Audio/SoundGrammar/B2-Audio4x/B2-05-4-Adverb-Placement-Test.mp3",
+          "localAudioPath": "/audio/elllo/B2/B2-05-Adverb-Placement/conversation-4-B2-05-4-Adverb-Placement-Test.mp3",
+          "transcript": "Man: So, did you get the\nresults of your test score?\nWoman: No, but I've been\nanxiously awaiting the results.\nMan: I'm sure you did fine.\nWoman: I’m not so sure. This\ntest was definitely harder than the last one.\nMan: I wouldn’t worry about it.\nI hear all the students eventually pass the\nclass anyway.\nWoman: That’s not true. You’re\nsadly mistaken.",
+          "utterances": [
+            "Man: So, did you get the",
+            "results of your test score?",
+            "Woman: No, but I've been",
+            "anxiously awaiting the results.",
+            "Man: I'm sure you did fine.",
+            "Woman: I’m not so sure. This",
+            "test was definitely harder than the last one.",
+            "Man: I wouldn’t worry about it.",
+            "I hear all the students eventually pass the",
+            "class anyway.",
+            "Woman: That’s not true. You’re",
+            "sadly mistaken."
+          ]
+        }
+      ]
+    }
+  ]
+}

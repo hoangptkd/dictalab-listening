@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:dictalabtest;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+dictalab:
+  scoring:
+    first-attempt-weight: 0.65
+    final-accuracy-weight: 0.25
+    independence-weight: 0.10
+    first-letter-penalty: 2.0
+    word-reveal-penalty: 8.0
+    sentence-reveal-penalty: 20.0
+    extra-replay-penalty: 1.5

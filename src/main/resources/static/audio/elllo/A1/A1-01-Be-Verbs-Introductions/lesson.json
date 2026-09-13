@@ -1,0 +1,82 @@
+{
+  "id": "A1-01-Be-Verbs-Introductions",
+  "level": "A1",
+  "title": "Be Verbs - Present Simple",
+  "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+  "sourcePage": "https://elllo.org/book/A1/A1-01-Be-Verbs-Introductions.html",
+  "usageTerms": "https://www.elllo.org/about/faq.htm",
+  "downloadedAtUtc": "2026-09-11T17:27:03.1342768Z",
+  "conversations": [
+    {
+      "number": 1,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-01-1-Be-Verbs-First-Day.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-01-Be-Verbs-Introductions/conversation-1-A1-01-1-Be-Verbs-First-Day.mp3",
+      "transcript": "Man: Hello! Are you a new student?\nWoman: Yes, I am. Today is my first day.\nMan: Well, welcome. My name is Tony.\nWoman: Hi, Tony. I’m Beth.\nMan: Are you new in town?\nWoman: Yes, I’m from New York.\nMan: Wow! The Big City!\nWoman: Are you from around here?\nMan: Yes, I am.\nWoman: That is so cool. Well, it is nice to meet you.\nMan: Nice to meet you, too.",
+      "utterances": [
+        "Man: Hello! Are you a new student?",
+        "Woman: Yes, I am. Today is my first day.",
+        "Man: Well, welcome. My name is Tony.",
+        "Woman: Hi, Tony. I’m Beth.",
+        "Man: Are you new in town?",
+        "Woman: Yes, I’m from New York.",
+        "Man: Wow! The Big City!",
+        "Woman: Are you from around here?",
+        "Man: Yes, I am.",
+        "Woman: That is so cool. Well, it is nice to meet you.",
+        "Man: Nice to meet you, too."
+      ]
+    },
+    {
+      "number": 2,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-01-2-Be-Verbs-Teachers.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-01-Be-Verbs-Introductions/conversation-2-A1-01-2-Be-Verbs-Teachers.mp3",
+      "transcript": "Man: Hey Beth, how is your first day?\nWoman: It is really good. This school is great!\nMan: How are your classes?\nWoman: They are fun! My teachers are so nice.\nMan: Who are your teachers?\nWoman: My English teacher is Mr. Wong.\nMan: Oh, he is really nice.\nWoman: Yes, he is. My Spanish teacher is Mrs. Garcia.\nMan: Oh, she is really nice, too.\nWoman: Yes, her class is a lot of fun!",
+      "utterances": [
+        "Man: Hey Beth, how is your first day?",
+        "Woman: It is really good. This school is great!",
+        "Man: How are your classes?",
+        "Woman: They are fun! My teachers are so nice.",
+        "Man: Who are your teachers?",
+        "Woman: My English teacher is Mr. Wong.",
+        "Man: Oh, he is really nice.",
+        "Woman: Yes, he is. My Spanish teacher is Mrs. Garcia.",
+        "Man: Oh, she is really nice, too.",
+        "Woman: Yes, her class is a lot of fun!"
+      ]
+    },
+    {
+      "number": 3,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-01-3-Be-Verbs-Classes.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-01-Be-Verbs-Introductions/conversation-3-A1-01-3-Be-Verbs-Classes.mp3",
+      "transcript": "Man: What is your favorite class?\nWoman: Spanish. I love it. My Spanish is not very good, though. I am just a beginner.\nMan: Well, Spanish is my first language. My name is Tony, short for Antonio.\nWoman: Really! That is so cool.\nMan: Yeah, my dad is from Mexico, and my mom is from Costa Rica.\nWoman: Wow! You are so lucky.\nMan: Yeah, Spanish is easy for me, so I can help you if you like.\nWoman: I’d like that. Thank you!",
+      "utterances": [
+        "Man: What is your favorite class?",
+        "Woman: Spanish. I love it. My Spanish is not very good, though. I am just a beginner.",
+        "Man: Well, Spanish is my first language. My name is Tony, short for Antonio.",
+        "Woman: Really! That is so cool.",
+        "Man: Yeah, my dad is from Mexico, and my mom is from Costa Rica.",
+        "Woman: Wow! You are so lucky.",
+        "Man: Yeah, Spanish is easy for me, so I can help you if you like.",
+        "Woman: I’d like that. Thank you!"
+      ]
+    },
+    {
+      "number": 4,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A1-Audio4x/A1-01-4-Be-Verbs-Lab.mp3",
+      "localAudioPath": "/audio/elllo/A1/A1-01-Be-Verbs-Introductions/conversation-4-A1-01-4-Be-Verbs-Lab.mp3",
+      "transcript": "Woman: Tony, where is the computer lab?\nMan: It’s just down the hall.\nWoman: My Spanish class is there tomorrow.\nMan: Oh, when is the class?\nWoman: It’s at 6, after school.\nMan: Why isn’t the class online?\nWoman: It is, but I’m still new in town, so I don’t have internet at home yet.\nMan: Oh, I see. Well, good luck with the class.\nWoman: Thanks. I’m excited for it. I think online classes are fun!\nMan: I think so, too.",
+      "utterances": [
+        "Woman: Tony, where is the computer lab?",
+        "Man: It’s just down the hall.",
+        "Woman: My Spanish class is there tomorrow.",
+        "Man: Oh, when is the class?",
+        "Woman: It’s at 6, after school.",
+        "Man: Why isn’t the class online?",
+        "Woman: It is, but I’m still new in town, so I don’t have internet at home yet.",
+        "Man: Oh, I see. Well, good luck with the class.",
+        "Woman: Thanks. I’m excited for it. I think online classes are fun!",
+        "Man: I think so, too."
+      ]
+    }
+  ]
+}

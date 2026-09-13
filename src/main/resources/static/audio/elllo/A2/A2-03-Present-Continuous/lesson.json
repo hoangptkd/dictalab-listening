@@ -1,0 +1,80 @@
+{
+  "id": "A2-03-Present-Continuous",
+  "level": "A2",
+  "title": "Present Continuous",
+  "source": "ELLLO (English Listening Lesson Library Online) - https://elllo.org/",
+  "sourcePage": "https://elllo.org/book/A2/A2-03-Present-Continuous.html",
+  "usageTerms": "https://www.elllo.org/about/faq.htm",
+  "downloadedAtUtc": "2026-09-11T17:27:07.7777554Z",
+  "conversations": [
+    {
+      "number": 1,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-03-1-Present-Continuous-Report.mp3",
+      "localAudioPath": "/audio/elllo/A2/A2-03-Present-Continuous/conversation-1-A2-03-1-Present-Continuous-Report.mp3",
+      "transcript": "Man: What are you doing?\nWoman: I’m writing a report.\nMan: What are you writing about?\nWoman: I’m writing about Bitcoin.\nMan: Oh, that sounds interesting.\nWoman: It is! I’m learning a lot.\nMan: Where are you getting your information?\nWoman: Wikipedia and Chat GPT.\nMan: That works, I guess.",
+      "utterances": [
+        "Man: What are you doing?",
+        "Woman: I’m writing a report.",
+        "Man: What are you writing about?",
+        "Woman: I’m writing about Bitcoin.",
+        "Man: Oh, that sounds interesting.",
+        "Woman: It is! I’m learning a lot.",
+        "Man: Where are you getting your information?",
+        "Woman: Wikipedia and Chat GPT.",
+        "Man: That works, I guess."
+      ]
+    },
+    {
+      "number": 2,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-03-2-Present-Continuous-Family.mp3",
+      "localAudioPath": "/audio/elllo/A2/A2-03-Present-Continuous/conversation-2-A2-03-2-Present-Continuous-Family.mp3",
+      "transcript": "Man: Where is mom?\nWoman: She’s in the kitchen. She’s cooking dinner.\nMan: Where’s dad?\nWoman: He’s outside. He’s sitting on the porch. He’s waiting for dinner.\nMan: What’s he doing outside?\nWoman: He’s listening to news on the radio.\nMan: Why doesn’t he watch the news on TV?\nWoman: The TV isn’t working.\nMan: Oh, that’s too bad. Well, it is a nice day to be outside.",
+      "utterances": [
+        "Man: Where is mom?",
+        "Woman: She’s in the kitchen. She’s cooking dinner.",
+        "Man: Where’s dad?",
+        "Woman: He’s outside. He’s sitting on the porch. He’s waiting for dinner.",
+        "Man: What’s he doing outside?",
+        "Woman: He’s listening to news on the radio.",
+        "Man: Why doesn’t he watch the news on TV?",
+        "Woman: The TV isn’t working.",
+        "Man: Oh, that’s too bad. Well, it is a nice day to be outside."
+      ]
+    },
+    {
+      "number": 3,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-03-3-Present-Continuous-Encounter.mp3",
+      "localAudioPath": "/audio/elllo/A2/A2-03-Present-Continuous/conversation-3-A2-03-3-Present-Continuous-Encounter.mp3",
+      "transcript": "Man: Hey, what a surprise! What are you doing here?\nWoman: I’m waiting for my friend. I’m meeting him for lunch.\nMan: Nice! Where are you going?\nWoman: We’re going to the new Italian restaurant.\nMan: Oh, I hear it’s really good.\nWoman: What about you? What are you doing? Are you shopping?\nMan: Yeah. I’m picking up a few things, and then I’m going to the gym.\nWoman: Well, have a good workout.\nMan: Thanks! Enjoy your meal.\nWoman: Thanks!",
+      "utterances": [
+        "Man: Hey, what a surprise! What are you doing here?",
+        "Woman: I’m waiting for my friend. I’m meeting him for lunch.",
+        "Man: Nice! Where are you going?",
+        "Woman: We’re going to the new Italian restaurant.",
+        "Man: Oh, I hear it’s really good.",
+        "Woman: What about you? What are you doing? Are you shopping?",
+        "Man: Yeah. I’m picking up a few things, and then I’m going to the gym.",
+        "Woman: Well, have a good workout.",
+        "Man: Thanks! Enjoy your meal.",
+        "Woman: Thanks!"
+      ]
+    },
+    {
+      "number": 4,
+      "audioUrl": "https://elllo.org/Audio/SoundGrammar/A2-Audio4x/A2-03-4-Present-Continuous-Accident.mp3",
+      "localAudioPath": "/audio/elllo/A2/A2-03-Present-Continuous/conversation-4-A2-03-4-Present-Continuous-Accident.mp3",
+      "transcript": "Man: What’s happening outside?\nWoman: I think a car hit a man on a bike.\nMan: Oh no! Is he hurt?\nWoman: I’m not sure. He’s lying on the ground.\nMan: Oh no. Is it serious?\nWoman: No, he is getting up now.\nMan: Well, that’s good.\nWoman: He looks OK. He’s smiling and talking now.\nMan: Oh, good! That’s good news.",
+      "utterances": [
+        "Man: What’s happening outside?",
+        "Woman: I think a car hit a man on a bike.",
+        "Man: Oh no! Is he hurt?",
+        "Woman: I’m not sure. He’s lying on the ground.",
+        "Man: Oh no. Is it serious?",
+        "Woman: No, he is getting up now.",
+        "Man: Well, that’s good.",
+        "Woman: He looks OK. He’s smiling and talking now.",
+        "Man: Oh, good! That’s good news."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: dictalab
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:15433/dictalab}
+    username: ${DB_USERNAME:dictalab_app}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: ${PORT:18081}
+  servlet:
+    session:
+      timeout: 12h
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${SESSION_COOKIE_SECURE:false}
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+dictalab:
+  scoring:
+    first-attempt-weight: 0.65
+    final-accuracy-weight: 0.25
+    independence-weight: 0.10
+    first-letter-penalty: 2.0
+    word-reveal-penalty: 8.0
+    sentence-reveal-penalty: 20.0
+    extra-replay-penalty: 1.5
