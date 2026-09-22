@@ -37,6 +37,64 @@ public class TranscriptTokenizer {
         return result;
     }
 
+    public List<TranscriptToken> tokens(String transcript) {
+        Matcher matcher = WORD_PATTERN.matcher(transcript);
+        List<WordMatch> matches = new ArrayList<>();
+        while (matcher.find()) {
+            matches.add(new WordMatch(matcher.group(), matcher.start(), matcher.end()));
+        }
+        if (matches.isEmpty()) {
+            return List.of();
+        }
+
+        String[] before = new String[matches.size()];
+        String[] after = new String[matches.size()];
+        java.util.Arrays.fill(before, "");
+        java.util.Arrays.fill(after, "");
+        before[0] = withoutWhitespace(transcript.substring(0, matches.get(0).start()));
+        for (int index = 0; index < matches.size() - 1; index++) {
+            PunctuationGap gap = splitGap(transcript.substring(
+                    matches.get(index).end(), matches.get(index + 1).start()
+            ));
+            after[index] = gap.afterPrevious();
+            before[index + 1] = gap.beforeNext();
+        }
+        after[matches.size() - 1] = withoutWhitespace(
+                transcript.substring(matches.get(matches.size() - 1).end())
+        );
+
+        List<TranscriptToken> result = new ArrayList<>();
+        for (int index = 0; index < matches.size(); index++) {
+            result.add(new TranscriptToken(matches.get(index).word(), before[index], after[index]));
+        }
+        return result;
+    }
+
+    private PunctuationGap splitGap(String gap) {
+        StringBuilder afterPrevious = new StringBuilder();
+        StringBuilder beforeNext = new StringBuilder();
+        boolean passedWhitespace = false;
+        for (int offset = 0; offset < gap.length();) {
+            int codePoint = gap.codePointAt(offset);
+            offset += Character.charCount(codePoint);
+            if (Character.isWhitespace(codePoint)) {
+                passedWhitespace = true;
+            } else if (passedWhitespace) {
+                beforeNext.appendCodePoint(codePoint);
+            } else {
+                afterPrevious.appendCodePoint(codePoint);
+            }
+        }
+        return new PunctuationGap(afterPrevious.toString(), beforeNext.toString());
+    }
+
+    private String withoutWhitespace(String value) {
+        StringBuilder result = new StringBuilder();
+        value.codePoints().filter(codePoint -> !Character.isWhitespace(codePoint))
+                .forEach(result::appendCodePoint);
+        return result.toString();
+    }
+
     public String normalize(String value) {
         if (value == null) {
             return "";
@@ -72,5 +130,14 @@ public class TranscriptTokenizer {
 
     public boolean isFunctionWord(String word) {
         return FUNCTION_WORDS.contains(normalize(word));
+    }
+
+    public record TranscriptToken(String word, String punctuationBefore, String punctuationAfter) {
+    }
+
+    private record WordMatch(String word, int start, int end) {
+    }
+
+    private record PunctuationGap(String afterPrevious, String beforeNext) {
     }
 }

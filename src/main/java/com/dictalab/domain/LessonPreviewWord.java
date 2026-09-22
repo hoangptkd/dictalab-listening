@@ -34,16 +34,25 @@ public class LessonPreviewWord {
     @Column(name = "audio_end_seconds")
     private Double audioEndSeconds;
 
+    @Column(name = "proper_name", nullable = false)
+    private boolean properName;
+
     protected LessonPreviewWord() {
     }
 
     public LessonPreviewWord(Lesson lesson, int position, String word,
                              Double audioStartSeconds, Double audioEndSeconds) {
+        this(lesson, position, word, audioStartSeconds, audioEndSeconds, false);
+    }
+
+    public LessonPreviewWord(Lesson lesson, int position, String word,
+                             Double audioStartSeconds, Double audioEndSeconds, boolean properName) {
         this.lesson = lesson;
         this.position = position;
         this.word = word;
         this.audioStartSeconds = audioStartSeconds;
         this.audioEndSeconds = audioEndSeconds;
+        this.properName = properName;
     }
 
     public String getWord() {
@@ -56,5 +65,9 @@ public class LessonPreviewWord {
 
     public Double getAudioEndSeconds() {
         return audioEndSeconds;
+    }
+
+    public boolean isProperName() {
+        return properName;
     }
 }

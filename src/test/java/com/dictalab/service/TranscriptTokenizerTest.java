@@ -19,4 +19,18 @@ class TranscriptTokenizerTest {
         assertThat(tokenizer.normalize("  MARKET  ")).isEqualTo("market");
         assertThat(tokenizer.mask("don't")).isEqualTo("___'_");
     }
+
+    @Test
+    void keepsTranscriptPunctuationAttachedToTheCorrectWord() {
+        var tokens = tokenizer.tokens(
+                "So, today's expert teacher is Gabriella, a university English teacher from Leeds."
+        );
+
+        assertThat(tokens.get(0))
+                .isEqualTo(new TranscriptTokenizer.TranscriptToken("So", "", ","));
+        assertThat(tokens.get(5))
+                .isEqualTo(new TranscriptTokenizer.TranscriptToken("Gabriella", "", ","));
+        assertThat(tokens.get(11))
+                .isEqualTo(new TranscriptTokenizer.TranscriptToken("Leeds", "", "."));
+    }
 }

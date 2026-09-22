@@ -40,6 +40,9 @@ public interface PracticeSessionRepository extends JpaRepository<PracticeSession
             @Param("status") SessionStatus status
     );
 
+    @EntityGraph(attributePaths = "lesson")
+    List<PracticeSession> findByUserIdAndStatusOrderByCompletedAtDesc(Long userId, SessionStatus status);
+
     boolean existsByLessonId(Long lessonId);
 
     boolean existsByUserIdAndLessonId(Long userId, Long lessonId);

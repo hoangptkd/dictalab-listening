@@ -33,7 +33,10 @@
         adminLessons: [],
         selectedAdminLessonId: null,
         adminSelectedLesson: null,
-        adminEditingNew: false
+        adminEditingNew: false,
+        historySessions: [],
+        historyFilter: "all",
+        historyViewingSession: false
     };
 
     const outcomeLabels = {
@@ -125,7 +128,11 @@
         adminPublishTitle: document.querySelector("#admin-publish-title"),
         adminPublishHelp: document.querySelector("#admin-publish-help"),
         adminPublicationButton: document.querySelector("#admin-publication-button"),
-        adminStatus: document.querySelector("#admin-status")
+        adminStatus: document.querySelector("#admin-status"),
+        historyLevelTabs: document.querySelector("#history-level-tabs"),
+        historyList: document.querySelector("#history-list"),
+        historyEmpty: document.querySelector("#history-empty"),
+        historyCount: document.querySelector("#history-count")
     };
 
     document.addEventListener("DOMContentLoaded", init);
@@ -212,6 +219,23 @@
         elements.adminSentenceList.addEventListener("click", handleAdminSentenceAction);
         elements.adminSentenceList.addEventListener("change", handleAdminAudioUpload);
         elements.adminPublicationButton.addEventListener("click", toggleAdminPublication);
+        elements.historyLevelTabs.addEventListener("click", event => {
+            const tab = event.target.closest("[data-history-level]");
+            if (tab) selectHistoryLevel(tab.dataset.historyLevel);
+        });
+        elements.historyList.addEventListener("click", event => {
+            const card = event.target.closest("[data-history-session-id]");
+            if (card) viewHistorySession(card.dataset.historySessionId);
+        });
+        elements.historyList.addEventListener("keydown", event => {
+            if (event.key === "Enter" || event.key === " ") {
+                const card = event.target.closest("[data-history-session-id]");
+                if (card) {
+                    event.preventDefault();
+                    viewHistorySession(card.dataset.historySessionId);
+                }
+            }
+        });
         document.addEventListener("keydown", event => {
             if (event.altKey && event.key.toLowerCase() === "p" && !document.querySelector("#practice-view").hidden) {
                 event.preventDefault();
@@ -322,6 +346,9 @@
             }
             await refreshAdminLessons();
         }
+        if (route === "history") {
+            await loadHistory();
+        }
         if (route === "dashboard") {
             await refreshDashboard(true);
         }
@@ -411,17 +438,25 @@
                 ? (lesson.completed ? "Đang luyện lại" : "Đang học")
                 : lesson.completed ? "Đã hoàn thành" : "Chưa bắt đầu";
             const stateClass = lesson.inProgress ? "is-in-progress" : lesson.completed ? "is-completed" : "is-new";
-            const preview = lesson.previewWords?.length ? `
-                <div class="lesson-preview" aria-label="Từ khó nghe trước">
-                    <span>Nghe trước · không tính đủ trọng số CEFR</span>
-                    <div>${lesson.previewWords.map(item => `
-                        <button type="button" data-preview-word="${escapeHtml(item.word)}"
-                                data-preview-audio-url="${escapeHtml(lesson.previewAudioUrl || "")}"
-                                data-preview-start="${item.audioStartSeconds ?? ""}"
-                                data-preview-end="${item.audioEndSeconds ?? ""}"
-                                aria-label="Nghe từ ${escapeHtml(item.word)}">
-                            <i aria-hidden="true">▶</i>${escapeHtml(item.word)}
-                        </button>`).join("")}</div>
+            const previewGroups = [
+                ["Từ khó", lesson.previewWords?.filter(item => !item.properName) || []],
+                ["Tên riêng", lesson.previewWords?.filter(item => item.properName) || []]
+            ].filter(([, items]) => items.length);
+            const preview = previewGroups.length ? `
+                <div class="lesson-preview" aria-label="Từ cần nghe trước">
+                    <span class="lesson-preview-label">Nghe trước · không tính trọng số CEFR</span>
+                    ${previewGroups.map(([label, items]) => `
+                        <div class="lesson-preview-group">
+                            <strong>${label}</strong>
+                            <div>${items.map(item => `
+                                <button type="button" data-preview-word="${escapeHtml(item.word)}"
+                                        data-preview-audio-url="${escapeHtml(lesson.previewAudioUrl || "")}"
+                                        data-preview-start="${item.audioStartSeconds ?? ""}"
+                                        data-preview-end="${item.audioEndSeconds ?? ""}"
+                                        aria-label="Nghe từ ${escapeHtml(item.word)}">
+                                    <i aria-hidden="true">▶</i>${escapeHtml(item.word)}
+                                </button>`).join("")}</div>
+                        </div>`).join("")}
                 </div>` : "";
             return `
             <article class="lesson-card ${stateClass}">
@@ -564,7 +599,14 @@
                               value="${escapeAttribute(inputValue)}" ${word.correct ? "readonly aria-readonly=\"true\"" : ""}
                               aria-invalid="${word.userInput && !word.correct ? "true" : "false"}">
                    </label>`;
-            return `<span class="${classes.join(" ")}" data-slot-index="${word.index}">${hint}${control}</span>`;
+            const before = word.punctuationBefore
+                ? `<span class="word-punctuation before">${escapeHtml(word.punctuationBefore)}</span>`
+                : "";
+            const after = word.punctuationAfter
+                ? `<span class="word-punctuation after">${escapeHtml(word.punctuationAfter)}</span>`
+                : "";
+            return `<span class="dictation-token">${before}<span class="${classes.join(" ")}" `
+                + `data-slot-index="${word.index}">${hint}${control}</span>${after}</span>`;
         }).join("");
 
         const resolved = words.filter(word => word.correct || word.revealed).length;
@@ -1024,8 +1066,9 @@
         }
     }
 
-    function renderResult(result) {
+    function renderResult(result, isHistoryReview = false) {
         state.lastResult = result;
+        state.historyViewingSession = isHistoryReview;
         state.reviewAudioDurations.clear();
         document.querySelector("#result-score").textContent = Math.round(result.overallScore);
         document.querySelector("#result-first").textContent = `${formatPercent(result.firstAttemptAccuracy)}%`;
@@ -1044,6 +1087,26 @@
                 : result.firstAttemptAccuracy >= 85
                     ? "Bạn hoàn thành chính xác, nhưng đã dùng nghe chậm, replay hoặc trợ giúp. Hãy thử một bài mới ở tốc độ chuẩn."
                 : "Hãy luyện thêm ở tốc độ này. First attempt thấp là dữ liệu hữu ích, không phải thất bại.";
+
+        const resultActions = document.querySelector(".result-score-card");
+        const existingBack = resultActions.querySelector(".history-back-link");
+        if (existingBack) existingBack.remove();
+        const dashboardButton = resultActions.querySelector("[data-route='dashboard']");
+        const catalogButton = document.querySelector(".result-details .text-button[data-route='catalog']");
+        if (isHistoryReview) {
+            if (dashboardButton) dashboardButton.hidden = true;
+            if (catalogButton) catalogButton.hidden = true;
+            const backButton = document.createElement("button");
+            backButton.className = "history-back-link";
+            backButton.type = "button";
+            backButton.innerHTML = `← Quay lại lịch sử`;
+            backButton.addEventListener("click", () => navigate("history"));
+            resultActions.appendChild(backButton);
+        } else {
+            if (dashboardButton) dashboardButton.hidden = false;
+            if (catalogButton) catalogButton.hidden = false;
+        }
+
         renderLessonReview(result);
         loadReviewAudioMetrics(result).catch(() => {
             if (state.lastResult?.sessionId === result.sessionId) {
@@ -1940,6 +2003,114 @@
     function setAdminStatus(message, error = false) {
         elements.adminStatus.textContent = message;
         elements.adminStatus.classList.toggle("is-error", error);
+    }
+
+    /* ─── History Functions ─── */
+
+    async function loadHistory() {
+        try {
+            state.historySessions = await api("/api/v1/history");
+            renderHistoryLevelTabs();
+            renderHistoryList();
+        } catch (error) {
+            showToast(error.message, true);
+        }
+    }
+
+    function renderHistoryLevelTabs() {
+        const levels = ["all", ...new Set(state.historySessions.map(s => s.level))];
+        if (!levels.includes(state.historyFilter)) {
+            state.historyFilter = "all";
+        }
+        const levelLabels = { all: "Tất cả", A1: "A1", A2: "A2", B1: "B1", B2: "B2" };
+        elements.historyLevelTabs.innerHTML = levels.map(level => `
+            <button class="level-tab${level === state.historyFilter ? " is-active" : ""}" type="button"
+                    role="tab" aria-selected="${level === state.historyFilter}"
+                    data-history-level="${escapeAttribute(level)}">
+                <strong>${escapeHtml(levelLabels[level] || level)}</strong>
+            </button>
+        `).join("");
+
+        const tabs = [...elements.historyLevelTabs.querySelectorAll("[role='tab']")];
+        tabs.forEach((tab, index) => tab.addEventListener("keydown", event => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+                return;
+            }
+            event.preventDefault();
+            let nextIndex = index;
+            if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+            if (event.key === "ArrowLeft") nextIndex = (index - 1 + tabs.length) % tabs.length;
+            if (event.key === "Home") nextIndex = 0;
+            if (event.key === "End") nextIndex = tabs.length - 1;
+            tabs[nextIndex].focus();
+            selectHistoryLevel(tabs[nextIndex].dataset.historyLevel);
+        }));
+    }
+
+    function selectHistoryLevel(level) {
+        state.historyFilter = level;
+        renderHistoryLevelTabs();
+        renderHistoryList();
+    }
+
+    function renderHistoryList() {
+        const filtered = state.historyFilter === "all"
+            ? state.historySessions
+            : state.historySessions.filter(s => s.level === state.historyFilter);
+
+        elements.historyEmpty.hidden = filtered.length > 0;
+        elements.historyCount.textContent = filtered.length
+            ? `${filtered.length} buổi luyện`
+            : "";
+
+        elements.historyList.innerHTML = filtered.map(session => {
+            const score = Math.round(session.overallScore);
+            const scoreClass = score >= 85 ? "is-excellent" : score >= 65 ? "is-good" : score >= 40 ? "is-fair" : "is-needs-work";
+            const date = session.completedAt ? new Date(session.completedAt) : new Date();
+            const dateStr = date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+            const timeStr = date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+            const practiceMinutes = Math.max(1, Math.round(session.practiceSeconds / 60));
+            return `
+                <article class="history-card" data-history-session-id="${escapeAttribute(session.sessionId)}"
+                         tabindex="0" role="button" aria-label="Xem lại ${escapeAttribute(session.lessonTitle)}">
+                    <div class="history-score-badge ${scoreClass}">${score}</div>
+                    <div class="history-card-body">
+                        <h3>
+                            <span class="history-level-badge" data-level="${escapeAttribute(session.level)}">${escapeHtml(session.level)}</span>
+                            ${escapeHtml(session.lessonTitle)}
+                        </h3>
+                        <p class="history-card-meta">
+                            <span>${escapeHtml(dateStr)} ${escapeHtml(timeStr)}</span>
+                            <span>${practiceMinutes} phút</span>
+                            <span>${session.totalReplays} lượt nghe</span>
+                            <span class="history-exposure-badge ${session.firstExposure ? "is-first" : "is-redo"}">
+                                ${session.firstExposure ? "Lần đầu" : "Làm lại"}
+                            </span>
+                        </p>
+                    </div>
+                    <div class="history-card-stats">
+                        <div class="history-stat">
+                            <strong>${formatPercent(session.firstAttemptAccuracy)}%</strong>
+                            <small>First attempt</small>
+                        </div>
+                        <div class="history-stat">
+                            <strong>${formatPercent(session.finalAccuracy)}%</strong>
+                            <small>Final</small>
+                        </div>
+                    </div>
+                </article>
+            `;
+        }).join("");
+    }
+
+    async function viewHistorySession(sessionId) {
+        try {
+            const result = await api(`/api/v1/history/${encodeURIComponent(sessionId)}`);
+            renderResult(result, true);
+            await navigate("result");
+        } catch (error) {
+            showToast(error.message, true);
+        }
     }
 
     function formatTime(totalSeconds) {

@@ -314,7 +314,7 @@ public class PracticeService {
         return toResult(session, review);
     }
 
-    private ApiDtos.LessonResult toResult(PracticeSession session, ApiDtos.LessonReview review) {
+    ApiDtos.LessonResult toResult(PracticeSession session, ApiDtos.LessonReview review) {
         return new ApiDtos.LessonResult(
                 session.getId(), session.getLesson().getId(), session.getLesson().getTitle(),
                 session.getLesson().getLevel(), session.getFirstAttemptAccuracy(), session.getFinalAccuracy(),
@@ -325,7 +325,7 @@ public class PracticeService {
         );
     }
 
-    private ApiDtos.LessonReview toLessonReview(PracticeSession session, int totalWords,
+    ApiDtos.LessonReview toLessonReview(PracticeSession session, int totalWords,
                                                  List<ApiDtos.SentenceReview> sentences) {
         Lesson lesson = session.getLesson();
         String sourceName = "DictaLab";
@@ -358,7 +358,7 @@ public class PracticeService {
         );
     }
 
-    private ApiDtos.SentenceReview toSentenceReview(SentenceAttempt attempt, List<String> expectedWords,
+    ApiDtos.SentenceReview toSentenceReview(SentenceAttempt attempt, List<String> expectedWords,
                                                      List<WordAttempt> wordAttempts,
                                                      Map<Long, List<WordAttemptEvent>> eventsByWord) {
         Map<Integer, WordAttempt> attemptsByIndex = new HashMap<>();
@@ -401,15 +401,15 @@ public class PracticeService {
 
     private ApiDtos.SentenceState toState(SentenceAttempt attempt) {
         LessonSentence sentence = attempt.getSentence();
-        List<String> expectedWords = tokenizer.words(sentence.getTranscript());
+        List<TranscriptTokenizer.TranscriptToken> expectedTokens = tokenizer.tokens(sentence.getTranscript());
         Map<Integer, WordAttempt> attemptsByIndex = new HashMap<>();
         if (attempt.getId() != null) {
             wordAttemptRepository.findBySentenceAttemptIdOrderByWordIndex(attempt.getId())
                     .forEach(word -> attemptsByIndex.put(word.getWordIndex(), word));
         }
 
-        List<ApiDtos.WordSlot> slots = java.util.stream.IntStream.range(0, expectedWords.size())
-                .mapToObj(index -> toWordSlot(index, expectedWords.get(index), attemptsByIndex.get(index)))
+        List<ApiDtos.WordSlot> slots = java.util.stream.IntStream.range(0, expectedTokens.size())
+                .mapToObj(index -> toWordSlot(index, expectedTokens.get(index), attemptsByIndex.get(index)))
                 .toList();
         boolean resolved = slots.stream().allMatch(slot -> slot.correct() || slot.revealed());
         boolean requiresReplay = attempt.hasAnswerReveal() && !attempt.isReplayedAfterReveal();
@@ -424,7 +424,9 @@ public class PracticeService {
         );
     }
 
-    private ApiDtos.WordSlot toWordSlot(int index, String expectedWord, WordAttempt attempt) {
+    private ApiDtos.WordSlot toWordSlot(int index, TranscriptTokenizer.TranscriptToken token,
+                                        WordAttempt attempt) {
+        String expectedWord = token.word();
         boolean revealed = attempt != null && attempt.isRevealed();
         boolean correct = attempt != null && attempt.isFinalCorrect();
         String firstLetter = attempt != null && attempt.hasFirstLetterHint()
@@ -435,6 +437,7 @@ public class PracticeService {
         LearnerErrorType errorType = attempt == null ? null : attempt.getErrorType();
         return new ApiDtos.WordSlot(
                 index, tokenizer.visibleLength(expectedWord), tokenizer.mask(expectedWord),
+                token.punctuationBefore(), token.punctuationAfter(),
                 firstLetter, revealedText, userInput, correct, revealed, errorType
         );
     }

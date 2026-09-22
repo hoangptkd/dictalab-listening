@@ -10,3 +10,4 @@ qa-output/
 downloads/
 __pycache__/
 *.pyc
+.agents/

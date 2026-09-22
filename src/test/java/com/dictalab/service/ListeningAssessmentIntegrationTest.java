@@ -49,8 +49,9 @@ class ListeningAssessmentIntegrationTest {
     @Test
     void publishedLessonsNeverExposeAThinOneWordPreview() {
         assertThat(lessonRepository.findByActiveTrueOrderByLevelAscDisplayOrderAsc())
-                .allSatisfy(lesson -> assertThat(previewVocabularyService.wordsFor(lesson).size())
-                        .isIn(0, 2, 3, 4, 5));
+                .allSatisfy(lesson -> assertThat(previewVocabularyService.wordsFor(lesson).stream()
+                        .filter(word -> !word.properName()).count())
+                        .isIn(0L, 2L, 3L, 4L, 5L));
     }
 
     @Test

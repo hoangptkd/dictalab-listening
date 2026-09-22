@@ -77,8 +77,10 @@ class PersonalContentIntegrationTest {
         ApiDtos.LessonSummary summary = catalogService.lessons(administrator.getId(), CefrLevel.A2, true).stream()
                 .filter(item -> item.id().equals(personalLesson.getId())).findFirst().orElseThrow();
         assertThat(summary.previewAudioUrl()).isEqualTo("/private-media/A2/test-audio.mp3");
-        assertThat(summary.previewWords()).extracting(ApiDtos.PreviewWord::word)
+        assertThat(summary.previewWords()).filteredOn(word -> !word.properName())
+                .extracting(ApiDtos.PreviewWord::word)
                 .containsExactly("private", "listening");
+        assertThat(summary.previewWords()).filteredOn(ApiDtos.PreviewWord::properName).isEmpty();
 
         assertThatThrownBy(() -> practiceService.start(
                 regularUser.getId(), new ApiDtos.StartSessionRequest(personalLesson.getId())

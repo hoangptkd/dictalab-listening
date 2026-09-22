@@ -91,6 +91,9 @@
             <button class="nav-link is-active" type="button" data-route="catalog" data-mobile-label="Luyện tập" aria-current="page">
                 Phòng luyện
             </button>
+            <button class="nav-link" type="button" data-route="history" data-mobile-label="Lịch sử">
+                Lịch sử
+            </button>
             <button class="nav-link" type="button" data-route="dashboard" data-mobile-label="Tiến bộ">
                 Tiến bộ
             </button>
@@ -422,6 +425,34 @@
                     </div>
                     <div id="error-breakdown" class="error-breakdown"></div>
                 </section>
+            </div>
+        </section>
+
+        <section id="history-view" class="view" hidden aria-labelledby="history-heading">
+            <div class="history-header">
+                <div>
+                    <p class="eyebrow">Practice journal · every session matters</p>
+                    <h1 id="history-heading">Nhật ký<br><em>luyện nghe.</em></h1>
+                </div>
+                <p>
+                    Mỗi bài bạn đã luyện đều được lưu lại. Bấm vào bất kỳ buổi nào để xem lại transcript,
+                    điểm số và dấu vết nghe từng từ.
+                </p>
+            </div>
+            <div class="history-controls">
+                <div id="history-level-tabs" class="history-level-tabs" role="tablist" aria-label="Lọc theo level">
+                    <button class="level-tab is-active" type="button" role="tab" aria-selected="true" data-history-level="all">
+                        <strong>Tất cả</strong>
+                    </button>
+                </div>
+                <p id="history-count" class="history-count"></p>
+            </div>
+            <div id="history-list" class="history-list"></div>
+            <div id="history-empty" class="history-empty" hidden>
+                <p>Chưa có buổi luyện nào.</p>
+                <button class="primary-button" type="button" data-route="catalog">
+                    Bắt đầu luyện nghe <span aria-hidden="true">→</span>
+                </button>
             </div>
         </section>
 

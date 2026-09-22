@@ -109,6 +109,18 @@ DICTALAB_MEDIA_ROOT=./data/media
 DICTALAB_ADMIN_EMAILS=your-email@example.com
 ```
 
+Tên riêng và từ khó được phân loại ngoại tuyến bằng `scripts/enrich-preview-vocabulary.py`, sau đó
+lưu vào PostgreSQL. API key ShopAIKey chỉ nhập khi chạy script trên máy quản trị; web và VPS không giữ
+key, không gọi AI khi người dùng mở bài.
+
+```powershell
+python scripts/enrich-preview-vocabulary.py `
+  --ssh-host your-vps `
+  --ssh-key C:\path\to\vps-key `
+  --prompt-api-key `
+  --apply
+```
+
 ### Kết nối tới PostgreSQL khác
 
 ```powershell

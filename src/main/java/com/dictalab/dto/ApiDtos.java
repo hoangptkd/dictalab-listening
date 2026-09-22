@@ -44,7 +44,8 @@ public final class ApiDtos {
     ) {
     }
 
-    public record PreviewWord(String word, Double audioStartSeconds, Double audioEndSeconds) {
+    public record PreviewWord(String word, Double audioStartSeconds, Double audioEndSeconds,
+                              boolean properName) {
     }
 
     public record StartSessionRequest(
@@ -91,6 +92,8 @@ public final class ApiDtos {
             int index,
             int length,
             String mask,
+            String punctuationBefore,
+            String punctuationAfter,
             String firstLetter,
             String revealedText,
             String userInput,
@@ -300,6 +303,23 @@ public final class ApiDtos {
             ErrorBreakdown errors,
             Recommendation recommendation,
             ListeningAssessment assessment
+    ) {
+    }
+
+    public record HistoryEntry(
+            String sessionId,
+            Long lessonId,
+            String lessonTitle,
+            CefrLevel level,
+            double overallScore,
+            double firstAttemptAccuracy,
+            double finalAccuracy,
+            int totalReplays,
+            int hintCount,
+            int revealCount,
+            int practiceSeconds,
+            boolean firstExposure,
+            Instant completedAt
     ) {
     }
 
