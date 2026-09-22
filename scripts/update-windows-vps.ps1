@@ -2,7 +2,7 @@ param(
     [string]$ArtifactPath = "C:\DictaLab\staging\dictalab-new.jar",
     [string]$ExpectedSha256 = "",
     [string]$ServiceName = "DictaLab",
-    [string]$HealthUrl = "http://127.0.0.1/actuator/health",
+    [string]$HealthUrl = "http://127.0.0.1:18081/actuator/health",
     [int]$HealthTimeoutSeconds = 180
 )
 

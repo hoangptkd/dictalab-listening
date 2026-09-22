@@ -183,7 +183,7 @@ $serviceEnvironment = @(
     "DB_URL=jdbc:postgresql://127.0.0.1:5432/dictalab",
     "DB_USERNAME=dictalab_app",
     "DB_PASSWORD=$($secrets.AppPassword)",
-    "PORT=80",
+    "PORT=18081",
     "SESSION_COOKIE_SECURE=false",
     "DICTALAB_MEDIA_ROOT=$mediaDir"
 )
@@ -199,8 +199,8 @@ if (-not [string]::IsNullOrWhiteSpace($AdminEmails)) {
 & $nssm set DictaLab DependOnService $postgresService.Name | Out-Null
 & $nssm set DictaLab Start SERVICE_AUTO_START | Out-Null
 
-if (-not (Get-NetFirewallRule -Name "DictaLab-HTTP" -ErrorAction SilentlyContinue)) {
-    New-NetFirewallRule -Name "DictaLab-HTTP" -DisplayName "DictaLab HTTP" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow | Out-Null
+if (-not (Get-NetFirewallRule -Name "DictaLab-HTTP-18081" -ErrorAction SilentlyContinue)) {
+    New-NetFirewallRule -Name "DictaLab-HTTP-18081" -DisplayName "DictaLab HTTP 18081" -Direction Inbound -Protocol TCP -LocalPort 18081 -Action Allow | Out-Null
 }
 
 Start-Service DictaLab
@@ -208,10 +208,10 @@ $deadline = (Get-Date).AddMinutes(3)
 do {
     Start-Sleep -Seconds 3
     try {
-        $health = Invoke-RestMethod -Uri "http://localhost/actuator/health" -TimeoutSec 5
+        $health = Invoke-RestMethod -Uri "http://localhost:18081/actuator/health" -TimeoutSec 5
         if ($health.status -eq "UP") {
             Write-Output "DEPLOYMENT_OK"
-            Write-Output "URL=http://localhost/"
+            Write-Output "URL=http://localhost:18081/"
             Write-Output "SERVICE=$((Get-Service DictaLab).Status)"
             Write-Output "DATABASE=$((Get-Service $postgresService.Name).Status)"
             exit 0
