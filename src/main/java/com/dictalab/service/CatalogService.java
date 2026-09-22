@@ -2,13 +2,20 @@ package com.dictalab.service;
 
 import com.dictalab.domain.CefrLevel;
 import com.dictalab.domain.Lesson;
+import com.dictalab.domain.PracticeSession;
+import com.dictalab.domain.SessionStatus;
 import com.dictalab.dto.ApiDtos;
 import com.dictalab.repository.LessonRepository;
 import com.dictalab.repository.LessonSentenceRepository;
+import com.dictalab.repository.PracticeSessionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 @Transactional(readOnly = true)
@@ -16,10 +23,16 @@ public class CatalogService {
 
     private final LessonRepository lessonRepository;
     private final LessonSentenceRepository sentenceRepository;
+    private final PracticeSessionRepository sessionRepository;
+    private final PreviewVocabularyService previewVocabularyService;
 
-    public CatalogService(LessonRepository lessonRepository, LessonSentenceRepository sentenceRepository) {
+    public CatalogService(LessonRepository lessonRepository, LessonSentenceRepository sentenceRepository,
+                          PracticeSessionRepository sessionRepository,
+                          PreviewVocabularyService previewVocabularyService) {
         this.lessonRepository = lessonRepository;
         this.sentenceRepository = sentenceRepository;
+        this.sessionRepository = sessionRepository;
+        this.previewVocabularyService = previewVocabularyService;
     }
 
     public List<ApiDtos.LevelOption> levels() {
@@ -31,13 +44,39 @@ public class CatalogService {
         );
     }
 
-    public List<ApiDtos.LessonSummary> lessons(CefrLevel level) {
+    public List<ApiDtos.LessonSummary> lessons(Long userId, CefrLevel level) {
+        return lessons(userId, level, false);
+    }
+
+    public List<ApiDtos.LessonSummary> lessons(Long userId, CefrLevel level, boolean administrator) {
+        Map<Long, PracticeSession> activeSessions = new HashMap<>();
+        Set<Long> completedLessonIds = new HashSet<>();
+        if (userId != null) {
+            sessionRepository.findByUserIdAndLessonLevelAndStatusOrderByStartedAtDesc(
+                            userId, level, SessionStatus.IN_PROGRESS
+                    ).forEach(session -> activeSessions.putIfAbsent(session.getLesson().getId(), session));
+            completedLessonIds.addAll(sessionRepository.findDistinctLessonIds(
+                    userId, level, SessionStatus.COMPLETED
+            ));
+        }
         return lessonRepository.findByLevelAndActiveTrueOrderByDisplayOrder(level).stream()
-                .map(this::toSummary)
+                .filter(lesson -> administrator || !lesson.isPersonalContent())
+                .map(lesson -> toSummary(
+                        lesson,
+                        activeSessions.get(lesson.getId()),
+                        completedLessonIds.contains(lesson.getId())
+                ))
                 .toList();
     }
 
-    public ApiDtos.LessonSummary toSummary(Lesson lesson) {
+    private ApiDtos.LessonSummary toSummary(Lesson lesson, PracticeSession activeSession, boolean completed) {
+        int sentenceCount = Math.toIntExact(sentenceRepository.countByLessonId(lesson.getId()));
+        int completedSentences = activeSession == null
+                ? (completed ? sentenceCount : 0)
+                : Math.max(0, Math.min(sentenceCount, activeSession.getCurrentSentencePosition() - 1));
+        int progressPercent = sentenceCount == 0
+                ? 0
+                : (int) Math.round(completedSentences * 100.0 / sentenceCount);
         return new ApiDtos.LessonSummary(
                 lesson.getId(),
                 lesson.getSlug(),
@@ -46,7 +85,13 @@ public class CatalogService {
                 lesson.getLevel(),
                 lesson.getTopic(),
                 lesson.getEstimatedMinutes(),
-                Math.toIntExact(sentenceRepository.countByLessonId(lesson.getId()))
+                sentenceCount,
+                progressPercent,
+                activeSession != null,
+                completed,
+                sentenceRepository.findByLessonIdAndPosition(lesson.getId(), 1)
+                        .map(com.dictalab.domain.LessonSentence::getAudioUrl).orElse(null),
+                previewVocabularyService.wordsFor(lesson)
         );
     }
 }

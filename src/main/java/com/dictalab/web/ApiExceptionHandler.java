@@ -5,6 +5,8 @@ import com.dictalab.exception.InvalidPracticeStateException;
 import com.dictalab.exception.ResourceNotFoundException;
 import com.dictalab.exception.AuthenticationFailedException;
 import com.dictalab.exception.EmailAlreadyExistsException;
+import com.dictalab.exception.ContentManagementException;
+import com.dictalab.exception.MediaStorageException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
@@ -12,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.Instant;
 
@@ -40,6 +43,24 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiDtos.ApiError> emailExists(EmailAlreadyExistsException exception,
                                                          HttpServletRequest request) {
         return error(HttpStatus.CONFLICT, exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(ContentManagementException.class)
+    public ResponseEntity<ApiDtos.ApiError> contentConflict(ContentManagementException exception,
+                                                             HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(MediaStorageException.class)
+    public ResponseEntity<ApiDtos.ApiError> invalidMedia(MediaStorageException exception,
+                                                          HttpServletRequest request) {
+        return error(HttpStatus.BAD_REQUEST, exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiDtos.ApiError> uploadTooLarge(MaxUploadSizeExceededException exception,
+                                                            HttpServletRequest request) {
+        return error(HttpStatus.PAYLOAD_TOO_LARGE, "File audio vượt quá giới hạn cho phép.", request);
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, ConstraintViolationException.class})

@@ -9,6 +9,7 @@ import com.dictalab.domain.ReplayEventType;
 import com.dictalab.domain.SentenceAttempt;
 import com.dictalab.domain.SessionStatus;
 import com.dictalab.domain.WordAttempt;
+import com.dictalab.domain.WordAttemptEvent;
 import com.dictalab.domain.WordLearningOutcome;
 import com.dictalab.domain.AppUser;
 import com.dictalab.dto.ApiDtos;
@@ -19,6 +20,7 @@ import com.dictalab.repository.LessonSentenceRepository;
 import com.dictalab.repository.PracticeSessionRepository;
 import com.dictalab.repository.SentenceAttemptRepository;
 import com.dictalab.repository.WordAttemptRepository;
+import com.dictalab.repository.WordAttemptEventRepository;
 import com.dictalab.repository.AppUserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,8 +41,11 @@ public class PracticeService {
     private final PracticeSessionRepository sessionRepository;
     private final SentenceAttemptRepository sentenceAttemptRepository;
     private final WordAttemptRepository wordAttemptRepository;
+    private final WordAttemptEventRepository wordAttemptEventRepository;
     private final TranscriptTokenizer tokenizer;
     private final ScoringService scoringService;
+    private final ListeningErrorClassifier errorClassifier;
+    private final ListeningAssessmentService assessmentService;
     private final AppUserRepository userRepository;
     private final Clock clock;
 
@@ -49,17 +54,23 @@ public class PracticeService {
                            PracticeSessionRepository sessionRepository,
                            SentenceAttemptRepository sentenceAttemptRepository,
                            WordAttemptRepository wordAttemptRepository,
+                           WordAttemptEventRepository wordAttemptEventRepository,
                            AppUserRepository userRepository,
                            TranscriptTokenizer tokenizer,
-                           ScoringService scoringService) {
+                           ScoringService scoringService,
+                           ListeningErrorClassifier errorClassifier,
+                           ListeningAssessmentService assessmentService) {
         this.lessonRepository = lessonRepository;
         this.sentenceRepository = sentenceRepository;
         this.sessionRepository = sessionRepository;
         this.sentenceAttemptRepository = sentenceAttemptRepository;
         this.wordAttemptRepository = wordAttemptRepository;
+        this.wordAttemptEventRepository = wordAttemptEventRepository;
         this.userRepository = userRepository;
         this.tokenizer = tokenizer;
         this.scoringService = scoringService;
+        this.errorClassifier = errorClassifier;
+        this.assessmentService = assessmentService;
         this.clock = Clock.systemUTC();
     }
 
@@ -70,6 +81,9 @@ public class PracticeService {
         Lesson lesson = lessonRepository.findById(request.lessonId())
                 .filter(Lesson::isActive)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bài luyện."));
+        if (lesson.isPersonalContent() && !"ADMIN".equals(user.getRole())) {
+            throw new ResourceNotFoundException("Không tìm thấy bài luyện.");
+        }
 
         PracticeSession existingSession = sessionRepository
                 .findFirstByUser_IdAndLesson_IdAndStatusOrderByStartedAtDesc(
@@ -88,7 +102,8 @@ public class PracticeService {
         LessonSentence firstSentence = sentenceRepository.findByLessonIdAndPosition(lesson.getId(), 1)
                 .orElseThrow(() -> new InvalidPracticeStateException("Bài luyện chưa có câu nghe."));
 
-        PracticeSession session = sessionRepository.save(new PracticeSession(user, lesson, now()));
+        boolean firstExposure = !sessionRepository.existsByUserIdAndLessonId(userId, lesson.getId());
+        PracticeSession session = sessionRepository.save(new PracticeSession(user, lesson, now(), firstExposure));
         SentenceAttempt attempt = sentenceAttemptRepository.save(new SentenceAttempt(session, firstSentence, now()));
         return new ApiDtos.PracticeStartResponse(
                 session.getId(), lesson.getId(), lesson.getTitle(), lesson.getLevel(), toState(attempt)
@@ -112,8 +127,13 @@ public class PracticeService {
         PracticeSession session = getSession(userId, sessionId);
         SentenceAttempt attempt = currentAttempt(session, sentenceId);
         if (request.event() == ReplayEventType.STARTED) {
-            attempt.incrementReplayCount();
-            session.incrementReplays();
+            boolean sentenceReadyToComplete = toState(attempt).canComplete();
+            if (!sentenceReadyToComplete) {
+                double playbackSpeed = request.playbackSpeed() == null ? 1.0 : request.playbackSpeed();
+                attempt.incrementReplayCount();
+                attempt.recordPlayback(playbackSpeed);
+                session.incrementReplays();
+            }
         } else if (attempt.hasAnswerReveal()) {
             attempt.markReplayCompleted();
         }
@@ -130,9 +150,24 @@ public class PracticeService {
         validateWordIndex(wordIndex, expectedWords);
 
         WordAttempt wordAttempt = getOrCreateWordAttempt(attempt, wordIndex);
+        String rawAnswer = request.answer().trim();
+        String normalizedAnswer = tokenizer.normalize(rawAnswer);
         String expected = tokenizer.normalize(expectedWords.get(wordIndex));
-        boolean correct = expected.equals(tokenizer.normalize(request.answer()));
-        wordAttempt.recordAnswer(request.answer().trim(), correct);
+        boolean correct = expected.equals(normalizedAnswer);
+        boolean contextAssisted = attempt.getReplayCount() > 1 || attempt.getSlowPlaybackCount() > 0;
+        wordAttempt.recordAnswer(rawAnswer, correct, contextAssisted);
+        var errorCategory = correct ? null : errorClassifier.classify(
+                expected,
+                normalizedAnswer,
+                expectedWords.stream().map(tokenizer::normalize).toList(),
+                wordIndex
+        );
+        wordAttempt.recordInferredError(errorCategory);
+        long responseTimeMs = request.responseTimeMs() == null ? 0 : request.responseTimeMs();
+        wordAttemptEventRepository.save(new WordAttemptEvent(
+                wordAttempt, wordAttempt.getAttemptCount(), rawAnswer, normalizedAnswer,
+                correct, responseTimeMs, errorCategory, now()
+        ));
         return toState(attempt);
     }
 
@@ -235,6 +270,11 @@ public class PracticeService {
         int firstLetterHints = 0;
         int wordReveals = 0;
         int sentenceReveals = 0;
+        Map<Long, List<WordAttemptEvent>> eventsByWord = new HashMap<>();
+        wordAttemptEventRepository.findBySessionIds(List.of(session.getId()))
+                .forEach(event -> eventsByWord
+                        .computeIfAbsent(event.getWordAttempt().getId(), ignored -> new ArrayList<>())
+                        .add(event));
 
         for (SentenceAttempt attempt : attempts) {
             List<String> expectedWords = tokenizer.words(attempt.getSentence().getTranscript());
@@ -260,7 +300,7 @@ public class PracticeService {
                     }
                 }
             }
-            sentenceReviews.add(toSentenceReview(attempt, expectedWords, wordAttempts));
+            sentenceReviews.add(toSentenceReview(attempt, expectedWords, wordAttempts, eventsByWord));
         }
 
         ScoringService.ScoreBreakdown score = scoringService.calculate(
@@ -280,7 +320,8 @@ public class PracticeService {
                 session.getLesson().getLevel(), session.getFirstAttemptAccuracy(), session.getFinalAccuracy(),
                 session.getTotalReplays(), session.getHintCount(), session.getRevealCount(),
                 session.getKnownMissedCount(), session.getUnknownCount(), session.getTotalPracticeSeconds(),
-                session.getOverallScore(), session.getCompletedAt(), review
+                session.getOverallScore(), session.getCompletedAt(), review,
+                assessmentService.assess(session.getUser().getId())
         );
     }
 
@@ -300,13 +341,26 @@ public class PracticeService {
                 }
             }
         }
+        boolean completeDuration = !sentences.isEmpty() && sentences.stream().allMatch(sentence ->
+                sentence.audioStartSeconds() != null && sentence.audioEndSeconds() != null
+                        && sentence.audioEndSeconds() > sentence.audioStartSeconds());
+        Double durationSeconds = completeDuration
+                ? Math.round(sentences.stream().mapToDouble(sentence ->
+                        sentence.audioEndSeconds() - sentence.audioStartSeconds()).sum() * 100.0) / 100.0
+                : null;
+        Integer speechRateWpm = durationSeconds == null || durationSeconds == 0
+                ? null : (int) Math.round(totalWords * 60.0 / durationSeconds);
         return new ApiDtos.LessonReview(
-                sourceName, sourceUrl, lesson.getTopic(), sentences.size(), totalWords, sentences
+                sourceName, sourceUrl, lesson.getTopic(), durationSeconds, speechRateWpm,
+                lesson.getSpeakerCount(), lesson.getAccentProfile(),
+                lesson.getVocabularyDifficulty(), lesson.getGrammarDifficulty(), lesson.getSentenceDifficulty(),
+                lesson.isAssessmentCalibrated(), sentences.size(), totalWords, sentences
         );
     }
 
     private ApiDtos.SentenceReview toSentenceReview(SentenceAttempt attempt, List<String> expectedWords,
-                                                     List<WordAttempt> wordAttempts) {
+                                                     List<WordAttempt> wordAttempts,
+                                                     Map<Long, List<WordAttemptEvent>> eventsByWord) {
         Map<Integer, WordAttempt> attemptsByIndex = new HashMap<>();
         wordAttempts.forEach(word -> attemptsByIndex.put(word.getWordIndex(), word));
         List<ApiDtos.WordReview> words = java.util.stream.IntStream.range(0, expectedWords.size())
@@ -324,7 +378,14 @@ public class PracticeService {
                             word == null ? null : word.getLastAnswer(),
                             word == null ? 0 : word.getAttemptCount(),
                             outcome,
-                            word == null ? null : word.getErrorType()
+                            word == null ? null : word.getErrorType(),
+                            word == null ? null : word.getInferredErrorCategory(),
+                            word == null ? List.of() : eventsByWord.getOrDefault(word.getId(), List.of()).stream()
+                                    .map(event -> new ApiDtos.WordAttemptReview(
+                                            event.getAttemptNumber(), event.getRawAnswer(),
+                                            event.getNormalizedAnswer(), event.isCorrect(),
+                                            event.getResponseTimeMs(), event.getErrorCategory()
+                                    )).toList()
                     );
                 })
                 .toList();
@@ -333,7 +394,8 @@ public class PracticeService {
                 attempt.getSentence().getTranscript(), attempt.getSentence().getAudioUrl(),
                 attempt.getSentence().getAudioStartSeconds(), attempt.getSentence().getAudioEndSeconds(),
                 attempt.getReplayCount(), attempt.getTimeSpentSeconds(), attempt.getFirstLetterHintCount(),
-                attempt.getWordRevealCount(), attempt.isFullRevealUsed(), words
+                attempt.getWordRevealCount(), attempt.isFullRevealUsed(), attempt.getAveragePlaybackSpeed(),
+                attempt.getSlowPlaybackCount(), words
         );
     }
 

@@ -1,5 +1,6 @@
 param(
-    [string]$AppJar = "C:\DictaLab\staging\dictalab.jar"
+    [string]$AppJar = "C:\DictaLab\staging\dictalab.jar",
+    [string]$AdminEmails = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -8,6 +9,7 @@ Set-StrictMode -Version Latest
 $appRoot = "C:\DictaLab"
 $appDir = Join-Path $appRoot "app"
 $logDir = Join-Path $appRoot "logs"
+$mediaDir = Join-Path $appRoot "media"
 $secretDir = Join-Path $env:ProgramData "DictaLab"
 $secretPath = Join-Path $secretDir "database-secrets.xml"
 
@@ -31,7 +33,7 @@ function Invoke-ChocoInstall {
 }
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-New-Item -ItemType Directory -Force -Path $appDir, $logDir, $secretDir | Out-Null
+New-Item -ItemType Directory -Force -Path $appDir, $logDir, $mediaDir, $secretDir | Out-Null
 
 if (-not (Get-Command choco.exe -ErrorAction SilentlyContinue)) {
     Set-ExecutionPolicy Bypass -Scope Process -Force
@@ -182,8 +184,12 @@ $serviceEnvironment = @(
     "DB_USERNAME=dictalab_app",
     "DB_PASSWORD=$($secrets.AppPassword)",
     "PORT=80",
-    "SESSION_COOKIE_SECURE=false"
+    "SESSION_COOKIE_SECURE=false",
+    "DICTALAB_MEDIA_ROOT=$mediaDir"
 )
+if (-not [string]::IsNullOrWhiteSpace($AdminEmails)) {
+    $serviceEnvironment += "DICTALAB_ADMIN_EMAILS=$AdminEmails"
+}
 & $nssm set DictaLab AppEnvironmentExtra $serviceEnvironment | Out-Null
 & $nssm set DictaLab AppStdout (Join-Path $logDir "stdout.log") | Out-Null
 & $nssm set DictaLab AppStderr (Join-Path $logDir "stderr.log") | Out-Null

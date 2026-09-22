@@ -18,11 +18,14 @@ public class DashboardService {
 
     private final PracticeSessionRepository sessionRepository;
     private final RecommendationService recommendationService;
+    private final ListeningAssessmentService assessmentService;
 
     public DashboardService(PracticeSessionRepository sessionRepository,
-                            RecommendationService recommendationService) {
+                            RecommendationService recommendationService,
+                            ListeningAssessmentService assessmentService) {
         this.sessionRepository = sessionRepository;
         this.recommendationService = recommendationService;
+        this.assessmentService = assessmentService;
     }
 
     public ApiDtos.DashboardResponse dashboard(Long userId) {
@@ -67,7 +70,8 @@ public class DashboardService {
                 sessions.stream().mapToInt(PracticeSession::getUnknownCount).sum()
         );
         return new ApiDtos.DashboardResponse(
-                summary, trend, byLevel, errors, recommendationService.recommend(userId)
+                summary, trend, byLevel, errors, recommendationService.recommend(userId),
+                assessmentService.assess(userId)
         );
     }
 

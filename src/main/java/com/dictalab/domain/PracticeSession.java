@@ -73,13 +73,16 @@ public class PracticeSession {
     @Column(name = "overall_score", nullable = false)
     private double overallScore;
 
+    @Column(name = "first_exposure", nullable = false)
+    private boolean firstExposure;
+
     @Version
     private long version;
 
     protected PracticeSession() {
     }
 
-    public PracticeSession(AppUser user, Lesson lesson, Instant startedAt) {
+    public PracticeSession(AppUser user, Lesson lesson, Instant startedAt, boolean firstExposure) {
         this.id = UUID.randomUUID().toString();
         this.user = user;
         this.learnerId = user.getEmail();
@@ -87,6 +90,7 @@ public class PracticeSession {
         this.status = SessionStatus.IN_PROGRESS;
         this.currentSentencePosition = 1;
         this.startedAt = startedAt;
+        this.firstExposure = firstExposure;
     }
 
     public String getId() {
@@ -171,6 +175,10 @@ public class PracticeSession {
 
     public double getOverallScore() {
         return overallScore;
+    }
+
+    public boolean isFirstExposure() {
+        return firstExposure;
     }
 
     public void complete(Instant completedAt, int totalPracticeSeconds, double firstAttemptAccuracy,

@@ -2,7 +2,9 @@ package com.dictalab.web;
 
 import com.dictalab.domain.CefrLevel;
 import com.dictalab.dto.ApiDtos;
+import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.CatalogService;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,7 +30,10 @@ public class CatalogController {
     }
 
     @GetMapping("/lessons")
-    public List<ApiDtos.LessonSummary> lessons(@RequestParam CefrLevel level) {
-        return catalogService.lessons(level);
+    public List<ApiDtos.LessonSummary> lessons(
+            @AuthenticationPrincipal DictaLabPrincipal principal,
+            @RequestParam CefrLevel level) {
+        boolean administrator = principal != null && "ADMIN".equals(principal.role());
+        return catalogService.lessons(principal == null ? null : principal.id(), level, administrator);
     }
 }

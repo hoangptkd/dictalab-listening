@@ -75,7 +75,7 @@ jobs:
           )
           ssh "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
             'powershell.exe -NoLogo -NoProfile -NonInteractive -Command "New-Item -ItemType Directory -Force -Path C:\DictaLab\staging | Out-Null"'
-          scp "${ssh_options[@]}" dictalab-new.jar scripts/update-windows-vps.ps1 \
+          scp "${ssh_options[@]}" dictalab-new.jar scripts/update-windows-vps.ps1 scripts/configure-admin-windows-vps.ps1 \
             "$VPS_USER@$VPS_HOST:C:/DictaLab/staging/"
 
       - name: Activate release with automatic rollback

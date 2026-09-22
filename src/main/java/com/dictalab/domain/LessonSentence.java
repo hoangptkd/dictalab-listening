@@ -46,6 +46,13 @@ public class LessonSentence {
     protected LessonSentence() {
     }
 
+    public LessonSentence(Lesson lesson, int position, String transcript, double speechRate) {
+        this.lesson = lesson;
+        this.position = position;
+        this.transcript = transcript;
+        this.speechRate = speechRate;
+    }
+
     public Long getId() {
         return id;
     }
@@ -76,5 +83,22 @@ public class LessonSentence {
 
     public double getSpeechRate() {
         return speechRate;
+    }
+
+    public void update(String transcript, double speechRate, Double audioStartSeconds, Double audioEndSeconds) {
+        this.transcript = transcript;
+        this.speechRate = speechRate;
+        this.audioStartSeconds = audioStartSeconds;
+        this.audioEndSeconds = audioEndSeconds;
+    }
+
+    public void attachAudio(String audioUrl) {
+        this.audioUrl = audioUrl;
+        this.audioStartSeconds = null;
+        this.audioEndSeconds = null;
+    }
+
+    public void moveTo(int position) {
+        this.position = position;
     }
 }

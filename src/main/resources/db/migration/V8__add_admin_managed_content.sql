@@ -1,0 +1,13 @@
+ALTER TABLE lessons
+    ADD COLUMN content_origin VARCHAR(30) NOT NULL DEFAULT 'BUNDLED';
+
+ALTER TABLE lessons
+    ADD COLUMN created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE lessons
+    ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE lessons
+    ADD CONSTRAINT ck_lesson_content_origin CHECK (content_origin IN ('BUNDLED', 'ADMIN_UPLOAD'));
+
+CREATE INDEX idx_lessons_active_updated ON lessons(active, updated_at DESC);

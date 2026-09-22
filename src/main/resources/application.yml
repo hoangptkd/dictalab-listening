@@ -17,6 +17,10 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 26MB
 
 server:
   port: ${PORT:18081}
@@ -38,6 +42,18 @@ management:
         include: health,info
 
 dictalab:
+  assessment:
+    minimum-unseen-lessons: 5
+    maximum-unseen-lessons: 10
+  admin:
+    emails: ${DICTALAB_ADMIN_EMAILS:}
+  media:
+    root: ${DICTALAB_MEDIA_ROOT:./data/media}
+    max-file-size: 25MB
+  personal-content:
+    enabled: ${DICTALAB_PERSONAL_CONTENT_ENABLED:false}
+    root: ${DICTALAB_PERSONAL_CONTENT_ROOT:./data/personal-content}
+    manifest: ${DICTALAB_PERSONAL_CONTENT_MANIFEST:./data/personal-content/manifest.json}
   scoring:
     first-attempt-weight: 0.65
     final-accuracy-weight: 0.25

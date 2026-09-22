@@ -12,6 +12,14 @@ spring:
     enabled: true
 
 dictalab:
+  assessment:
+    minimum-unseen-lessons: 5
+    maximum-unseen-lessons: 10
+  admin:
+    emails: admin@dictalab.local
+  media:
+    root: target/test-media
+    max-file-size: 2MB
   scoring:
     first-attempt-weight: 0.65
     final-accuracy-weight: 0.25

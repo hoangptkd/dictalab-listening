@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "contentOrigin": "BRITISH_COUNCIL_PERSONAL",
+  "lessons": [
+    {
+      "slug": "british-council-personal-a2-test-v2",
+      "title": "Personal listening test",
+      "description": "Private test fixture.",
+      "level": "A2",
+      "topic": "British Council",
+      "estimatedMinutes": 1,
+      "displayOrder": 999,
+      "audioPath": "A2/test-audio.mp3",
+      "speakerCount": 1,
+      "accentProfile": "British English",
+      "vocabularyDifficulty": 2,
+      "grammarDifficulty": 2,
+      "sentenceDifficulty": 2,
+      "assessmentCalibrated": false,
+      "previewWords": [
+        {
+          "word": "private",
+          "audioStartSeconds": 0.5,
+          "audioEndSeconds": 1.1
+        },
+        {
+          "word": "listening",
+          "audioStartSeconds": 1.1,
+          "audioEndSeconds": 1.8
+        }
+      ],
+      "sentences": [
+        {
+          "position": 1,
+          "transcript": "This is private listening content.",
+          "audioStartSeconds": 0.0,
+          "audioEndSeconds": 2.5,
+          "speechRate": 1.0
+        }
+      ]
+    }
+  ]
+}

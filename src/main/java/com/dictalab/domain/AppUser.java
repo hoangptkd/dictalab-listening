@@ -94,4 +94,13 @@ public class AppUser {
         this.lastLoginAt = now;
         this.updatedAt = now;
     }
+
+    public boolean promoteToAdmin(Instant now) {
+        if ("ADMIN".equals(this.role)) {
+            return false;
+        }
+        this.role = "ADMIN";
+        this.updatedAt = now;
+        return true;
+    }
 }

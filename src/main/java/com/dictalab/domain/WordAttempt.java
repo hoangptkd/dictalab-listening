@@ -36,6 +36,9 @@ public class WordAttempt {
     @Column(name = "first_attempt_correct")
     private Boolean firstAttemptCorrect;
 
+    @Column(name = "first_attempt_assisted", nullable = false)
+    private boolean firstAttemptAssisted;
+
     @Column(name = "final_correct", nullable = false)
     private boolean finalCorrect;
 
@@ -58,6 +61,10 @@ public class WordAttempt {
     @Enumerated(EnumType.STRING)
     @Column(name = "error_type", length = 30)
     private LearnerErrorType errorType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "inferred_error_category", length = 30)
+    private ListeningErrorCategory inferredErrorCategory;
 
     protected WordAttempt() {
     }
@@ -115,12 +122,17 @@ public class WordAttempt {
         return errorType;
     }
 
-    public void recordAnswer(String answer, boolean correct) {
+    public ListeningErrorCategory getInferredErrorCategory() {
+        return inferredErrorCategory;
+    }
+
+    public void recordAnswer(String answer, boolean correct, boolean contextualAssistance) {
         this.attemptCount++;
         this.lastAnswer = answer;
         if (firstAttemptCorrect == null) {
             firstAnswer = answer;
             firstAttemptCorrect = correct;
+            firstAttemptAssisted = contextualAssistance || firstLetterHint || revealed;
             if (!correct) {
                 errorType = LearnerErrorType.KNOWN_BUT_MISSED;
             }
@@ -150,7 +162,9 @@ public class WordAttempt {
         finalCorrect = false;
         if (firstAttemptCorrect == null) {
             firstAttemptCorrect = false;
+            firstAttemptAssisted = true;
             errorType = LearnerErrorType.UNKNOWN;
+            inferredErrorCategory = ListeningErrorCategory.OMISSION;
         }
         return true;
     }
@@ -179,5 +193,15 @@ public class WordAttempt {
 
     public void classify(LearnerErrorType type) {
         this.errorType = type;
+    }
+
+    public void recordInferredError(ListeningErrorCategory category) {
+        if (category != null) {
+            this.inferredErrorCategory = category;
+        }
+    }
+
+    public boolean isFirstAttemptAssisted() {
+        return firstAttemptAssisted;
     }
 }

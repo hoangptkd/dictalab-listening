@@ -3,8 +3,11 @@ package com.dictalab.dto;
 import com.dictalab.domain.CefrLevel;
 import com.dictalab.domain.HintType;
 import com.dictalab.domain.LearnerErrorType;
+import com.dictalab.domain.ListeningErrorCategory;
 import com.dictalab.domain.ReplayEventType;
 import com.dictalab.domain.WordLearningOutcome;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -32,8 +35,16 @@ public final class ApiDtos {
             CefrLevel level,
             String topic,
             int estimatedMinutes,
-            int sentenceCount
+            int sentenceCount,
+            int progressPercent,
+            boolean inProgress,
+            boolean completed,
+            String previewAudioUrl,
+            List<PreviewWord> previewWords
     ) {
+    }
+
+    public record PreviewWord(String word, Double audioStartSeconds, Double audioEndSeconds) {
     }
 
     public record StartSessionRequest(
@@ -42,8 +53,12 @@ public final class ApiDtos {
     }
 
     public record CheckWordRequest(
-            @NotBlank @Size(max = 100) String answer
+            @NotBlank @Size(max = 100) String answer,
+            @Min(0) @Max(300000) Long responseTimeMs
     ) {
+        public CheckWordRequest(String answer) {
+            this(answer, null);
+        }
     }
 
     public record HintRequest(
@@ -52,7 +67,13 @@ public final class ApiDtos {
     ) {
     }
 
-    public record ReplayRequest(@NotNull ReplayEventType event) {
+    public record ReplayRequest(
+            @NotNull ReplayEventType event,
+            @DecimalMin("0.5") @DecimalMax("1.5") Double playbackSpeed
+    ) {
+        public ReplayRequest(ReplayEventType event) {
+            this(event, null);
+        }
     }
 
     public record ClassifyWordRequest(
@@ -122,7 +143,8 @@ public final class ApiDtos {
             int practiceSeconds,
             double overallScore,
             Instant completedAt,
-            LessonReview review
+            LessonReview review,
+            ListeningAssessment assessment
     ) {
     }
 
@@ -130,6 +152,14 @@ public final class ApiDtos {
             String sourceName,
             String sourceUrl,
             String topic,
+            Double audioDurationSeconds,
+            Integer speechRateWpm,
+            int speakerCount,
+            String accentProfile,
+            int vocabularyDifficulty,
+            int grammarDifficulty,
+            int sentenceDifficulty,
+            boolean assessmentCalibrated,
             int totalSentences,
             int totalWords,
             List<SentenceReview> sentences
@@ -148,6 +178,8 @@ public final class ApiDtos {
             int firstLetterHintCount,
             int wordRevealCount,
             boolean fullRevealUsed,
+            double averagePlaybackSpeed,
+            int slowPlaybackCount,
             List<WordReview> words
     ) {
     }
@@ -159,7 +191,19 @@ public final class ApiDtos {
             String lastAnswer,
             int attemptCount,
             WordLearningOutcome outcome,
-            LearnerErrorType errorType
+            LearnerErrorType errorType,
+            ListeningErrorCategory inferredErrorCategory,
+            List<WordAttemptReview> attempts
+    ) {
+    }
+
+    public record WordAttemptReview(
+            int attemptNumber,
+            String rawAnswer,
+            String normalizedAnswer,
+            boolean correct,
+            long responseTimeMs,
+            ListeningErrorCategory errorCategory
     ) {
     }
 
@@ -208,12 +252,54 @@ public final class ApiDtos {
     ) {
     }
 
+    public record AssessmentMetrics(
+            double unassistedFirstPassAccuracy,
+            double firstAttemptAccuracy,
+            double finalAccuracy,
+            double functionWordAccuracy,
+            double contentWordAccuracy,
+            int functionWordsObserved,
+            int contentWordsObserved,
+            double averageReplayPerSentence,
+            double hintDependencyRate,
+            double slowPlaybackDependencyRate,
+            double revealRate,
+            long averageResponseTimeMs
+    ) {
+    }
+
+    public record ErrorCategoryBreakdown(
+            int omission,
+            int insertion,
+            int substitution,
+            int spelling,
+            int wordForm,
+            int wordOrder
+    ) {
+    }
+
+    public record ListeningAssessment(
+            CefrLevel estimatedLevel,
+            double abilityScore,
+            double confidence,
+            String confidenceBand,
+            boolean provisional,
+            int evidenceLessons,
+            int requiredLessons,
+            int calibratedLessons,
+            AssessmentMetrics metrics,
+            ErrorCategoryBreakdown errorCategories,
+            String summary
+    ) {
+    }
+
     public record DashboardResponse(
             DashboardSummary summary,
             List<TrendPoint> trend,
             List<LevelProgress> byLevel,
             ErrorBreakdown errors,
-            Recommendation recommendation
+            Recommendation recommendation,
+            ListeningAssessment assessment
     ) {
     }
 

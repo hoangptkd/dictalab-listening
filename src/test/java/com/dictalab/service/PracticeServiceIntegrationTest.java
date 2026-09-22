@@ -5,12 +5,15 @@ import com.dictalab.domain.AppUser;
 import com.dictalab.domain.Lesson;
 import com.dictalab.domain.LessonSentence;
 import com.dictalab.domain.ReplayEventType;
+import com.dictalab.domain.ListeningErrorCategory;
 import com.dictalab.domain.WordLearningOutcome;
 import com.dictalab.dto.ApiDtos;
 import com.dictalab.exception.InvalidPracticeStateException;
 import com.dictalab.repository.LessonRepository;
 import com.dictalab.repository.LessonSentenceRepository;
 import com.dictalab.repository.AppUserRepository;
+import com.dictalab.repository.SentenceAttemptRepository;
+import com.dictalab.repository.WordAttemptEventRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +36,9 @@ class PracticeServiceIntegrationTest {
     private PracticeService practiceService;
 
     @Autowired
+    private CatalogService catalogService;
+
+    @Autowired
     private LessonRepository lessonRepository;
 
     @Autowired
@@ -43,6 +49,12 @@ class PracticeServiceIntegrationTest {
 
     @Autowired
     private AppUserRepository userRepository;
+
+    @Autowired
+    private SentenceAttemptRepository sentenceAttemptRepository;
+
+    @Autowired
+    private WordAttemptEventRepository wordAttemptEventRepository;
 
     private Long userId;
 
@@ -57,6 +69,11 @@ class PracticeServiceIntegrationTest {
 
     @Test
     void resumesInProgressLessonWithSavedSentenceAndWords() {
+        ApiDtos.LessonSummary untouched = catalogLesson(1L);
+        assertThat(untouched.progressPercent()).isZero();
+        assertThat(untouched.inProgress()).isFalse();
+        assertThat(untouched.completed()).isFalse();
+
         ApiDtos.PracticeStartResponse initial = practiceService.start(
                 userId, new ApiDtos.StartSessionRequest(1L)
         );
@@ -88,6 +105,10 @@ class PracticeServiceIntegrationTest {
         assertThat(resumed.sentence().replayCount()).isEqualTo(1);
         assertThat(resumed.sentence().words().get(0).correct()).isTrue();
         assertThat(resumed.sentence().words().get(0).userInput()).isEqualTo("She");
+        ApiDtos.LessonSummary progress = catalogLesson(1L);
+        assertThat(progress.progressPercent()).isEqualTo(33);
+        assertThat(progress.inProgress()).isTrue();
+        assertThat(progress.completed()).isFalse();
     }
 
     @Test
@@ -183,6 +204,49 @@ class PracticeServiceIntegrationTest {
                 .flatExtracting(ApiDtos.SentenceReview::words)
                 .extracting(ApiDtos.WordReview::outcome)
                 .containsOnly(WordLearningOutcome.FIRST_ATTEMPT);
+        assertThat(completion.result().assessment().evidenceLessons()).isEqualTo(1);
+        assertThat(completion.result().assessment().provisional()).isTrue();
+        assertThat(completion.result().assessment().confidence()).isLessThanOrEqualTo(49);
+        assertThat(completion.result().assessment().metrics().unassistedFirstPassAccuracy()).isEqualTo(100);
+        assertThat(completion.result().assessment().metrics().averageReplayPerSentence()).isZero();
+
+        ApiDtos.LessonSummary completed = catalogLesson(1L);
+        assertThat(completed.progressPercent()).isEqualTo(100);
+        assertThat(completed.inProgress()).isFalse();
+        assertThat(completed.completed()).isTrue();
+
+        practiceService.start(userId, new ApiDtos.StartSessionRequest(1L));
+        ApiDtos.LessonSummary repeating = catalogLesson(1L);
+        assertThat(repeating.progressPercent()).isZero();
+        assertThat(repeating.inProgress()).isTrue();
+        assertThat(repeating.completed()).isTrue();
+    }
+
+    @Test
+    void recordsEveryWordAttemptResponseTimeAndPlaybackSpeed() {
+        ApiDtos.PracticeStartResponse session = practiceService.start(
+                userId, new ApiDtos.StartSessionRequest(1L)
+        );
+        Long sentenceId = session.sentence().sentenceId();
+        practiceService.replay(userId, session.sessionId(), sentenceId,
+                new ApiDtos.ReplayRequest(ReplayEventType.STARTED, 0.75));
+        practiceService.replay(userId, session.sessionId(), sentenceId,
+                new ApiDtos.ReplayRequest(ReplayEventType.COMPLETED, 0.75));
+
+        practiceService.checkWord(userId, session.sessionId(), sentenceId, 1,
+                new ApiDtos.CheckWordRequest("buy", 1234L));
+
+        var events = wordAttemptEventRepository.findBySessionIds(List.of(session.sessionId()));
+        assertThat(events).singleElement().satisfies(event -> {
+            assertThat(event.getAttemptNumber()).isEqualTo(1);
+            assertThat(event.getRawAnswer()).isEqualTo("buy");
+            assertThat(event.getResponseTimeMs()).isEqualTo(1234);
+            assertThat(event.getErrorCategory()).isEqualTo(ListeningErrorCategory.WORD_FORM);
+        });
+        var attempt = sentenceAttemptRepository
+                .findByPracticeSessionIdAndSentenceId(session.sessionId(), sentenceId).orElseThrow();
+        assertThat(attempt.getAveragePlaybackSpeed()).isEqualTo(0.75);
+        assertThat(attempt.getSlowPlaybackCount()).isEqualTo(1);
     }
 
     @Test
@@ -278,6 +342,31 @@ class PracticeServiceIntegrationTest {
         assertThat(ready.canComplete()).isTrue();
     }
 
+    @Test
+    void doesNotCountListeningAgainAfterSentenceIsReadyToComplete() {
+        ApiDtos.PracticeStartResponse session = practiceService.start(
+                userId, new ApiDtos.StartSessionRequest(1L)
+        );
+        ApiDtos.SentenceState sentence = session.sentence();
+        listenToSentence(userId, session.sessionId(), sentence.sentenceId());
+        List<String> answers = List.of("Anna", "buys", "fresh", "apples", "at", "the", "market");
+        for (int wordIndex = 0; wordIndex < answers.size(); wordIndex++) {
+            sentence = practiceService.checkWord(
+                    userId, session.sessionId(), sentence.sentenceId(), wordIndex,
+                    new ApiDtos.CheckWordRequest(answers.get(wordIndex))
+            );
+        }
+        assertThat(sentence.canComplete()).isTrue();
+        assertThat(sentence.replayCount()).isEqualTo(1);
+
+        listenToSentence(userId, session.sessionId(), sentence.sentenceId());
+
+        ApiDtos.SentenceState afterListeningAgain = practiceService
+                .current(userId, session.sessionId()).sentence();
+        assertThat(afterListeningAgain.canComplete()).isTrue();
+        assertThat(afterListeningAgain.replayCount()).isEqualTo(1);
+    }
+
     private void listenToSentence(Long learner, String sessionId, Long sentenceId) {
         practiceService.replay(
                 learner, sessionId, sentenceId, new ApiDtos.ReplayRequest(ReplayEventType.STARTED)
@@ -285,5 +374,12 @@ class PracticeServiceIntegrationTest {
         practiceService.replay(
                 learner, sessionId, sentenceId, new ApiDtos.ReplayRequest(ReplayEventType.COMPLETED)
         );
+    }
+
+    private ApiDtos.LessonSummary catalogLesson(Long lessonId) {
+        return catalogService.lessons(userId, com.dictalab.domain.CefrLevel.A1).stream()
+                .filter(lesson -> lesson.id().equals(lessonId))
+                .findFirst()
+                .orElseThrow();
     }
 }

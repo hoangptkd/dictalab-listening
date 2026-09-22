@@ -1,6 +1,7 @@
 package com.dictalab.service;
 
 import com.dictalab.domain.AppUser;
+import com.dictalab.config.AdminProperties;
 import com.dictalab.dto.AuthDtos;
 import com.dictalab.exception.AuthenticationFailedException;
 import com.dictalab.exception.EmailAlreadyExistsException;
@@ -26,13 +27,16 @@ public class AccountService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final Clock clock;
+    private final AdminProperties adminProperties;
 
     public AccountService(AppUserRepository userRepository,
                           PasswordEncoder passwordEncoder,
-                          AuthenticationManager authenticationManager) {
+                          AuthenticationManager authenticationManager,
+                          AdminProperties adminProperties) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
+        this.adminProperties = adminProperties;
         this.clock = Clock.systemUTC();
     }
 
@@ -43,12 +47,16 @@ public class AccountService {
             throw new EmailAlreadyExistsException("Email này đã được đăng ký.");
         }
         Instant now = Instant.now(clock);
-        AppUser user = userRepository.save(new AppUser(
+        AppUser user = new AppUser(
                 email,
                 request.displayName().trim(),
                 passwordEncoder.encode(request.password()),
                 now
-        ));
+        );
+        if (adminProperties.contains(email)) {
+            user.promoteToAdmin(now);
+        }
+        user = userRepository.save(user);
         Authentication authentication = authenticate(email, request.password());
         user.recordLogin(now);
         return new AuthenticatedAccount(user, authentication);
@@ -57,10 +65,15 @@ public class AccountService {
     @Transactional
     public AuthenticatedAccount login(AuthDtos.LoginRequest request) {
         String email = normalizeEmail(request.email());
+        Instant now = Instant.now(clock);
         Authentication authentication = authenticate(email, request.password());
         AppUser user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new AuthenticationFailedException("Email hoặc mật khẩu không đúng."));
-        user.recordLogin(Instant.now(clock));
+        if (adminProperties.contains(email) && user.promoteToAdmin(now)) {
+            userRepository.saveAndFlush(user);
+            authentication = authenticate(email, request.password());
+        }
+        user.recordLogin(now);
         return new AuthenticatedAccount(user, authentication);
     }
 

@@ -55,6 +55,15 @@ public class SentenceAttempt {
     @Column(nullable = false)
     private boolean completed;
 
+    @Column(name = "playback_event_count", nullable = false)
+    private int playbackEventCount;
+
+    @Column(name = "slow_playback_count", nullable = false)
+    private int slowPlaybackCount;
+
+    @Column(name = "playback_speed_sum", nullable = false)
+    private double playbackSpeedSum;
+
     protected SentenceAttempt() {
     }
 
@@ -143,5 +152,25 @@ public class SentenceAttempt {
 
     public boolean hasAnswerReveal() {
         return fullRevealUsed || wordRevealCount > 0;
+    }
+
+    public void recordPlayback(double speed) {
+        playbackEventCount++;
+        playbackSpeedSum += speed;
+        if (speed < 0.99) {
+            slowPlaybackCount++;
+        }
+    }
+
+    public int getPlaybackEventCount() {
+        return playbackEventCount;
+    }
+
+    public int getSlowPlaybackCount() {
+        return slowPlaybackCount;
+    }
+
+    public double getAveragePlaybackSpeed() {
+        return playbackEventCount == 0 ? 1.0 : playbackSpeedSum / playbackEventCount;
     }
 }

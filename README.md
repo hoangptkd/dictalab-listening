@@ -10,14 +10,18 @@ MVP web luyện nghe chép chính tả tiếng Anh theo CEFR A1–B2. Người h
 - Mỗi bài gồm nhiều câu; mỗi từ có một ô nhập riêng và độ rộng theo độ dài từ.
 - Từ đúng chuyển màu xanh và có hiệu ứng; từ sai được đánh dấu để thử lại.
 - Ghi nhận số lần nghe và thời gian làm từng câu.
+- Ghi từng lần nhập: đáp án thô/chuẩn hóa, số lần thử, đúng/sai và thời gian phản hồi.
+- Cho chọn tốc độ 0,75×/1×/1,25× và đo mức phụ thuộc vào nghe chậm.
 - Ba mức gợi ý: chữ cái đầu, mở một từ, mở toàn bộ câu.
 - Từ/câu đã mở đáp án không được tính là trả lời đúng cuối cùng.
 - Sau khi mở đáp án, người học bắt buộc nghe lại trọn câu trước khi tiếp tục.
 - Phân loại từ sai thành “biết nhưng nghe lỡ” hoặc “từ chưa biết”.
 - Lưu first-attempt accuracy, final accuracy, replay, hint/reveal, loại lỗi, thời gian và overall score.
 - Dashboard theo thời gian, level, loại lỗi và gợi ý bài tiếp theo.
+- Ước lượng năng lực nghe A1–B2 kèm độ tin cậy từ tối đa 10 bài chưa từng học gần nhất.
 - Giao diện responsive, hỗ trợ bàn phím, trình đọc màn hình và chế độ giảm chuyển động.
 - 20 bài ELLLO A1–B2 với 910 câu từ 79 bản ghi hội thoại người thật; trung bình khoảng 5 từ/câu.
+- Khu vực quản trị nội dung: tạo bản nháp, thêm/sửa câu, tải hoặc thay audio, nghe thử và xuất bản ngay, không cần build hay deploy lại JAR.
 
 ## Công nghệ
 
@@ -30,13 +34,13 @@ MVP web luyện nghe chép chính tả tiếng Anh theo CEFR A1–B2. Người h
 
 ## Chạy local với PostgreSQL
 
-Yêu cầu Java 17+, Maven 3.9+ và Docker Desktop. Lần đầu tiên, sao chép `.env.example`
+Yêu cầu Java 17+, Maven 3.9+, PowerShell 7 và Docker Desktop. Lần đầu tiên, sao chép `.env.example`
 thành `.env` rồi đổi `POSTGRES_PASSWORD`. File `.env` đã được Git bỏ qua.
 
 ```powershell
 Copy-Item .env.example .env
-# Sửa POSTGRES_PASSWORD trong .env, sau đó chạy:
-.\scripts\run-local.ps1
+# Sửa POSTGRES_PASSWORD trong .env, sau đó chạy bằng PowerShell 7:
+pwsh -File .\scripts\run-local.ps1
 ```
 
 Script khởi động PostgreSQL trong Docker ở cổng cố định `15433`, chờ database sẵn sàng rồi chạy
@@ -67,6 +71,43 @@ python scripts/split-elllo-sentences.py --force
 
 Nếu thay đổi mốc trên môi trường đã chạy Flyway, hãy tạo một migration tiến tới mới;
 không sửa V7 hoặc migration cũ đã được áp dụng.
+
+## Thêm bài nghe sau khi đã deploy
+
+Nội dung do quản trị viên tạo được lưu tách khỏi JAR:
+
+- thông tin bài và transcript nằm trong PostgreSQL;
+- audio tải lên nằm tại `DICTALAB_MEDIA_ROOT` (production khuyến nghị `C:\DictaLab\media`);
+- bài mới bắt đầu là **bản nháp** và chỉ xuất hiện với người học sau khi đủ audio rồi bấm **Xuất bản bài**;
+- thay JAR hoặc chạy workflow deploy không xóa PostgreSQL và thư mục media.
+
+Để cấp quyền quản trị trên Windows VPS lần đầu, chạy PowerShell với quyền Administrator:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File C:\DictaLab\staging\configure-admin-windows-vps.ps1 `
+  -AdminEmails "email-cua-ban@example.com"
+```
+
+Sau đó đăng xuất và đăng nhập lại. Thanh điều hướng sẽ có mục **Quản trị nội dung**. Có thể khai báo
+nhiều email bằng dấu phẩy. Script cũng cố định thư mục audio tại `C:\DictaLab\media` và khởi động lại service.
+
+Quy trình thêm một bài:
+
+1. Chọn **Quản trị nội dung → Bài mới**, nhập level, tên, chủ đề và mô tả.
+2. Thêm transcript chính xác cho từng câu.
+3. Tải MP3/M4A/WAV người thật tương ứng với từng câu rồi bấm **Nghe thử**.
+4. Sắp xếp câu và bấm **Xuất bản bài**. Người học thấy bài ngay, không cần deploy lại.
+
+Giới hạn mặc định là 25 MB/file. Tên file trên máy chủ được sinh bằng UUID; tên file từ trình duyệt
+không được dùng làm đường dẫn. Backend kiểm tra phần mở rộng, MIME type và chữ ký file. Khi bài đã có
+lịch sử học, transcript/audio bị khóa để kết quả cũ không thay đổi; hãy tạo bài mới nếu cần thay nội dung.
+
+Khi chạy local, đặt email tài khoản của bạn trong `.env`:
+
+```text
+DICTALAB_MEDIA_ROOT=./data/media
+DICTALAB_ADMIN_EMAILS=your-email@example.com
+```
 
 ### Kết nối tới PostgreSQL khác
 
@@ -106,6 +147,24 @@ Thuật toán gợi ý ưu tiên kết quả gần đây của cùng level:
 - dưới 55%: đề xuất level thấp hơn để củng cố;
 - còn lại: tiếp tục cùng level và ưu tiên bài chưa hoàn thành.
 
+## Ước lượng năng lực nghe
+
+Sau mỗi bài, hệ thống trả một mức A1–B2 và độ tin cậy. Đây là chỉ báo chẩn đoán nội bộ, không phải
+chứng chỉ CEFR chuẩn hóa. Kết quả được đánh dấu **tạm thời** nếu có dưới 5 bài chưa từng học hoặc bài
+chưa được hiệu chỉnh.
+
+Ước lượng chỉ dùng tối đa 10 bài mới gần nhất và tính đến:
+
+- CEFR, tốc độ nói từ mốc audio, số người nói và ba mức khó từ vựng/ngữ pháp/câu;
+- độ chính xác lần đầu không trợ giúp, lần đầu và cuối;
+- độ chính xác từ chức năng so với từ nội dung;
+- replay vượt quá lượt nghe đầu, gợi ý, nghe chậm, reveal và thời gian phản hồi;
+- độ đầy đủ của telemetry, số từ quan sát, độ phủ level và trạng thái hiệu chỉnh để tính confidence.
+
+Lỗi từ được suy luận thành bỏ sót, thay từ, chính tả, biến thể từ và sai thứ tự. Với giao diện mỗi từ
+một ô hiện tại, lỗi **chèn từ** chưa thể nhận diện đáng tin cậy; lỗi nối âm cũng cần dữ liệu căn chỉnh
+âm vị hoặc gắn nhãn thủ công. Hai tín hiệu này được giữ là giới hạn rõ ràng thay vì đoán và làm sai mức.
+
 ## API chính
 
 | Method | Endpoint | Mục đích |
@@ -125,6 +184,9 @@ Thuật toán gợi ý ưu tiên kết quả gần đây của cùng level:
 | `POST` | `.../sentences/{sentenceId}/classifications` | Phân loại từ bị sai |
 | `POST` | `.../sentences/{sentenceId}/complete` | Hoàn tất câu |
 | `GET` | `/api/v1/dashboard` | Dashboard và recommendation của tài khoản đang đăng nhập |
+| `GET/POST` | `/api/admin/lessons` | Liệt kê hoặc tạo bản nháp (chỉ ADMIN) |
+| `POST/PUT/DELETE` | `/api/admin/lessons/{id}/sentences/**` | Quản lý câu và tải audio (chỉ ADMIN) |
+| `PUT` | `/api/admin/lessons/{id}/publication` | Xuất bản hoặc gỡ xuất bản (chỉ ADMIN) |
 
 Tất cả API `/api/v1/**` yêu cầu đăng nhập. Backend lấy user ID từ session bảo mật; frontend không thể
 truyền một learner ID khác để xem hoặc sửa lịch sử của người khác. Các request thay đổi dữ liệu được
@@ -157,8 +219,8 @@ mvn test
 node --check src/main/resources/static/js/app.js
 ```
 
-Test hiện có bao phủ tokenizer, công thức chấm điểm, luồng hoàn thành, ràng buộc nghe lại sau khi reveal,
-đăng ký, session đăng nhập, CSRF và quyền truy cập API.
+Test hiện có bao phủ tokenizer, công thức chấm điểm, telemetry từng lần nhập/tốc độ, giới hạn 10 bài mới,
+phân loại lỗi, luồng hoàn thành, ràng buộc nghe lại sau khi reveal, đăng ký, session đăng nhập, CSRF và quyền truy cập API.
 Test dùng H2 in-memory riêng và không tác động tới dữ liệu PostgreSQL local.
 
 ## CI/CD lên Windows Server 2019

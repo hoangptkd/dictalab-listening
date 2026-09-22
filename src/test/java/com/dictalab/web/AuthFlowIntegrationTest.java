@@ -66,4 +66,20 @@ class AuthFlowIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.message").value("Email hoặc mật khẩu không đúng."));
     }
+
+    @Test
+    void configuredAdminEmailReceivesAdminRoleAtRegistration() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "displayName": "Content admin",
+                                  "email": "admin@dictalab.local",
+                                  "password": "admin1234"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.role").value("ADMIN"));
+    }
 }
