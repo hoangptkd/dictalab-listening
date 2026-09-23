@@ -4,7 +4,7 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $envPath = Join-Path $projectRoot '.env'
 
 if (-not (Test-Path -LiteralPath $envPath)) {
-    throw 'Không tìm thấy .env. Hãy sao chép .env.example thành .env và đổi POSTGRES_PASSWORD.'
+    throw "Khong tim thay .env. Hay sao chep .env.example thanh .env va doi POSTGRES_PASSWORD."
 }
 
 Get-Content -LiteralPath $envPath | ForEach-Object {
@@ -19,7 +19,7 @@ Get-Content -LiteralPath $envPath | ForEach-Object {
 
 foreach ($requiredName in @('POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_PORT', 'APP_PORT')) {
     if (-not (Test-Path "Env:$requiredName") -or [string]::IsNullOrWhiteSpace((Get-Item "Env:$requiredName").Value)) {
-        throw "Thiếu biến $requiredName trong .env."
+        throw "Thieu bien $requiredName trong .env."
     }
 }
 
@@ -39,31 +39,31 @@ try {
         try {
             $health = Invoke-RestMethod -Uri "http://localhost:$appPort/actuator/health" -TimeoutSec 3
             if ($health.status -eq 'UP') {
-                Write-Host "DictaLab đang chạy tại http://localhost:$appPort"
+                Write-Host "DictaLab dang chay tai http://localhost:$appPort"
                 return
             }
         }
         catch {
-            # Cổng đang do tiến trình khác sử dụng; báo lỗi rõ ở bên dưới.
+            # Cong dang do tien trinh khac su dung
         }
-        throw "Cổng web cố định $appPort đang bị tiến trình $($appListener.OwningProcess) sử dụng."
+        throw "Cong web co dinh $appPort dang bi tien trinh $($appListener.OwningProcess) su dung."
     }
 
     $postgresListener = Get-NetTCPConnection -State Listen -LocalPort $postgresPort -ErrorAction SilentlyContinue |
         Select-Object -First 1
     $dictaLabContainer = docker ps --filter 'name=^/dictalab-postgres$' --format '{{.Names}}'
     if ($postgresListener -and $dictaLabContainer -ne 'dictalab-postgres') {
-        throw "Cổng PostgreSQL cố định $postgresPort đang bị ứng dụng khác sử dụng."
+        throw "Cong PostgreSQL co dinh $postgresPort dang bi ung dung khac su dung."
     }
 
     docker compose up -d --wait --wait-timeout 60 postgres
     if ($LASTEXITCODE -ne 0) {
-        throw 'PostgreSQL không khởi động thành công.'
+        throw "PostgreSQL khong khoi dong thanh cong."
     }
 
     & mvn spring-boot:run
     if ($LASTEXITCODE -ne 0) {
-        throw "Spring Boot đã dừng với mã lỗi $LASTEXITCODE."
+        throw "Spring Boot da dung voi ma loi $LASTEXITCODE."
     }
 }
 finally {
