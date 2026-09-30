@@ -33,6 +33,12 @@ public class AppUser {
     @Column(nullable = false)
     private boolean enabled;
 
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified;
+
+    @Column(name = "auth_version", nullable = false)
+    private long authVersion;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -82,6 +88,12 @@ public class AppUser {
         return enabled;
     }
 
+    public boolean isEmailVerified() { return emailVerified; }
+
+    public long getAuthVersion() { return authVersion; }
+
+    public Instant getUpdatedAt() { return updatedAt; }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -92,6 +104,37 @@ public class AppUser {
 
     public void recordLogin(Instant now) {
         this.lastLoginAt = now;
+        this.updatedAt = now;
+    }
+
+    public void rename(String name, Instant now) { this.displayName = name; this.updatedAt = now; }
+
+    public void changePassword(String hash, Instant now) {
+        this.passwordHash = hash;
+        this.authVersion++;
+        this.updatedAt = now;
+    }
+
+    public void changeEmail(String newEmail, Instant now) {
+        this.email = newEmail;
+        this.emailVerified = true;
+        this.authVersion++;
+        this.updatedAt = now;
+    }
+
+    public void verifyEmail(Instant now) { this.emailVerified = true; this.updatedAt = now; }
+
+    public void revokeSessions(Instant now) { this.authVersion++; this.updatedAt = now; }
+
+    public void setEnabled(boolean value, Instant now) {
+        this.enabled = value;
+        this.authVersion++;
+        this.updatedAt = now;
+    }
+
+    public void setRole(String value, Instant now) {
+        this.role = value;
+        this.authVersion++;
         this.updatedAt = now;
     }
 

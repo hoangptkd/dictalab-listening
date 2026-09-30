@@ -7,6 +7,15 @@ import com.dictalab.service.CatalogService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -19,9 +28,11 @@ import java.util.List;
 public class CatalogController {
 
     private final CatalogService catalogService;
+    private final JdbcTemplate db;
 
-    public CatalogController(CatalogService catalogService) {
+    public CatalogController(CatalogService catalogService, JdbcTemplate db) {
         this.catalogService = catalogService;
+        this.db = db;
     }
 
     @GetMapping("/levels")
@@ -35,5 +46,19 @@ public class CatalogController {
             @RequestParam CefrLevel level) {
         boolean administrator = principal != null && "ADMIN".equals(principal.role());
         return catalogService.lessons(principal == null ? null : principal.id(), level, administrator);
+    }
+
+    public record Preview(@NotNull @Positive Long lessonId, @NotBlank String audioUrl) {}
+
+    @PostMapping("/preview-exposure")
+    public void preview(@AuthenticationPrincipal DictaLabPrincipal user, @Valid @RequestBody Preview body) {
+        Integer valid = db.queryForObject("""
+                SELECT COUNT(*) FROM lesson_sentences s JOIN lessons l ON l.id=s.lesson_id
+                WHERE s.lesson_id=? AND s.audio_url=? AND l.active=TRUE
+                    AND (l.content_origin<>'BRITISH_COUNCIL_PERSONAL' OR ?=TRUE)
+                """, Integer.class, body.lessonId(), body.audioUrl(), "ADMIN".equals(user.role()));
+        if (valid == null || valid == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        db.update("INSERT INTO audio_exposure_events(user_id,audio_url,source) VALUES (?,?,?)",
+                user.id(), body.audioUrl(), "VOCAB_PREVIEW");
     }
 }

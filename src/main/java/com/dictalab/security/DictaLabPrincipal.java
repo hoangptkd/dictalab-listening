@@ -14,13 +14,19 @@ public record DictaLabPrincipal(
         String displayName,
         String passwordHash,
         String role,
-        boolean enabled
+        boolean enabled,
+        long authVersion
 ) implements UserDetails {
+
+    public DictaLabPrincipal(Long id, String email, String displayName, String passwordHash,
+                             String role, boolean enabled) {
+        this(id, email, displayName, passwordHash, role, enabled, 0);
+    }
 
     public static DictaLabPrincipal from(AppUser user) {
         return new DictaLabPrincipal(
                 user.getId(), user.getEmail(), user.getDisplayName(), user.getPasswordHash(),
-                user.getRole(), user.isEnabled()
+                user.getRole(), user.isEnabled(), user.getAuthVersion()
         );
     }
 
@@ -38,4 +44,7 @@ public record DictaLabPrincipal(
     public String getUsername() {
         return email;
     }
+
+    @Override
+    public boolean isEnabled() { return enabled; }
 }

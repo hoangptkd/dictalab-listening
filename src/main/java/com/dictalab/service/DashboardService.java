@@ -30,7 +30,7 @@ public class DashboardService {
 
     public ApiDtos.DashboardResponse dashboard(Long userId) {
         List<PracticeSession> sessions = sessionRepository
-                .findByUserIdAndStatusOrderByCompletedAtAsc(userId, SessionStatus.COMPLETED);
+                .findByUserIdAndStatusAndRoomIdIsNullOrderByCompletedAtAsc(userId, SessionStatus.COMPLETED);
 
         ApiDtos.DashboardSummary summary = new ApiDtos.DashboardSummary(
                 sessions.size(),

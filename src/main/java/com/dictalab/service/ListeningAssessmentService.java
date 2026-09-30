@@ -150,7 +150,7 @@ public class ListeningAssessmentService {
 
     private List<PracticeSession> selectEvidence(Long userId) {
         List<PracticeSession> completed = new ArrayList<>(sessionRepository
-                .findByUserIdAndStatusOrderByCompletedAtAsc(userId, SessionStatus.COMPLETED));
+                .findByUserIdAndStatusAndRoomIdIsNullOrderByCompletedAtAsc(userId, SessionStatus.COMPLETED));
         Collections.reverse(completed);
         List<PracticeSession> evidence = new ArrayList<>();
         Set<Long> lessonIds = new HashSet<>();

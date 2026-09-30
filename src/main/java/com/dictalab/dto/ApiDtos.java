@@ -323,6 +323,6 @@ public final class ApiDtos {
     ) {
     }
 
-    public record ApiError(int status, String message, String path, Instant timestamp) {
+    public record ApiError(int status, String message, String path, Instant timestamp, String errorId) {
     }
 }

@@ -1,0 +1,20 @@
+{
+    admin off
+    auto_https disable_redirects
+    https_port 18443
+    storage file_system C:\DictaLab\https\data
+}
+
+https://160.191.244.27:18443 {
+    tls {
+        issuer acme https://acme-v02.api.letsencrypt.org/directory {
+            profile shortlived
+            disable_tlsalpn_challenge
+        }
+    }
+    reverse_proxy 127.0.0.1:18082
+}
+
+http://160.191.244.27:18081 {
+    redir https://160.191.244.27:18443{uri} 308
+}

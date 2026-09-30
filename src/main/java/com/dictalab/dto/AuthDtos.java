@@ -46,12 +46,13 @@ public final class AuthDtos {
             String email,
             String displayName,
             String role,
+            boolean emailVerified,
             Instant createdAt,
             Instant lastLoginAt
     ) {
         public static CurrentUserResponse from(AppUser user) {
             return new CurrentUserResponse(
-                    user.getId(), user.getEmail(), user.getDisplayName(), user.getRole(),
+                    user.getId(), user.getEmail(), user.getDisplayName(), user.getRole(), user.isEmailVerified(),
                     user.getCreatedAt(), user.getLastLoginAt()
             );
         }

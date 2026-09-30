@@ -29,7 +29,7 @@ public class RecommendationService {
 
     public ApiDtos.Recommendation recommend(Long userId) {
         List<PracticeSession> completed = sessionRepository
-                .findByUserIdAndStatusOrderByCompletedAtAsc(userId, SessionStatus.COMPLETED);
+                .findByUserIdAndStatusAndRoomIdIsNullOrderByCompletedAtAsc(userId, SessionStatus.COMPLETED);
         if (completed.isEmpty()) {
             return lessonRepository.findByLevelAndActiveTrueOrderByDisplayOrder(CefrLevel.A1).stream()
                     .findFirst()

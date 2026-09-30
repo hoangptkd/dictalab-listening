@@ -76,6 +76,9 @@ public class PracticeSession {
     @Column(name = "first_exposure", nullable = false)
     private boolean firstExposure;
 
+    @Column(name = "room_id", length = 36)
+    private String roomId;
+
     @Version
     private long version;
 
@@ -179,6 +182,14 @@ public class PracticeSession {
 
     public boolean isFirstExposure() {
         return firstExposure;
+    }
+
+    public String getRoomId() {
+        return roomId;
+    }
+
+    public void setRoomId(String roomId) {
+        this.roomId = roomId;
     }
 
     public void complete(Instant completedAt, int totalPracticeSeconds, double firstAttemptAccuracy,

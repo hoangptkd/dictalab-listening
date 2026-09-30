@@ -22,12 +22,15 @@ MVP web luyện nghe chép chính tả tiếng Anh theo CEFR A1–B2. Người h
 - Giao diện responsive, hỗ trợ bàn phím, trình đọc màn hình và chế độ giảm chuyển động.
 - 20 bài ELLLO A1–B2 với 910 câu từ 79 bản ghi hội thoại người thật; trung bình khoảng 5 từ/câu.
 - Khu vực quản trị nội dung: tạo bản nháp, thêm/sửa câu, tải hoặc thay audio, nghe thử và xuất bản ngay, không cần build hay deploy lại JAR.
+- **Luyện cùng bạn (phòng 1–1):** Mời bạn bằng link, gọi thoại qua WebRTC và học chung bài nghe. Chủ phòng chọn bài/chuyển câu; hai người xem phần nhập của nhau trực tiếp, nhưng lưu phiên và kết quả riêng. Tối đa 2 người mỗi phòng.
 
 ## Công nghệ
 
 - Java 17
 - Spring Boot 4.1.1
 - Spring MVC, Spring Security, Spring Data JPA, Bean Validation, Actuator
+- **Spring WebSocket** (signaling server cho Voice Room)
+- **WebRTC** (peer-to-peer audio, phía client)
 - PostgreSQL 18 và Flyway; H2 chỉ dùng cho test tự động
 - HTML, CSS và JavaScript thuần
 - Audio người thật từ ELLLO; Web Speech API chỉ dùng làm phương án dự phòng
@@ -72,6 +75,47 @@ python scripts/split-elllo-sentences.py --force
 Nếu thay đổi mốc trên môi trường đã chạy Flyway, hãy tạo một migration tiến tới mới;
 không sửa V7 hoặc migration cũ đã được áp dụng.
 
+## Voice Room — Luyện cùng bạn
+
+Tính năng gọi thoại 1-1 dùng **WebRTC** để truyền âm thanh thẳng giữa hai trình duyệt (peer-to-peer) và **WebSocket** để trao đổi tín hiệu kết nối (signaling).
+
+### Cách dùng
+
+1. Đăng nhập, vào tab **Luyện cùng bạn** → **Tạo phòng**.
+2. Sao chép link mời và gửi cho người bạn qua ứng dụng nhắn tin.
+3. Bạn mở link, xin tham gia → chủ phòng bấm **Chấp nhận**.
+4. Cả hai bấm **Tham gia cuộc gọi** → cho phép truy cập mic → gọi thoại bắt đầu.
+5. Chủ phòng bấm **Chọn bài học chung**. Hai người nhập đáp án riêng và thấy phần nhập của nhau trong lúc gõ.
+6. Cả hai bấm **Sẵn sàng**, rồi chủ phòng bấm **Chuyển câu cho cả hai**. Kết quả học chung không dùng để ước lượng năng lực nghe độc lập.
+7. Bấm **Tắt mic** / **Bật mic** để kiểm soát âm thanh. Bấm **Rời phòng** để kết thúc.
+
+### Yêu cầu kỹ thuật
+
+| Điều kiện | Chi tiết |
+|---|---|
+| HTTPS | Bắt buộc trên production để WebRTC hoạt động. Local dev (`localhost`) được miễn. |
+| TURN server | Không bắt buộc nhưng khuyến nghị nếu hai thiết bị ở hai mạng khác nhau (VD: mạng mobile ↔ mạng WiFi nhà). Nếu không có TURN, cuộc gọi có thể thất bại khi qua NAT nghiêm ngặt. |
+
+### Cấu hình TURN (tùy chọn)
+
+Nếu bạn có TURN server (ví dụ Coturn), thêm vào `.env`:
+
+```env
+DICTALAB_TURN_URL=turn:your-turn.example.com:3478
+DICTALAB_TURN_SECRET=your-shared-secret
+DICTALAB_TURN_TTL_SECONDS=3600
+```
+
+Credentials được tính tự động theo chuẩn RFC 5766 (HMAC-SHA1) và cấp cho người dùng đã xác thực qua endpoint `/api/v1/rooms/{roomId}/ice-config`. Bỏ trống nếu không dùng TURN — ứng dụng tự fallback về Google STUN.
+
+### Allowed origins
+
+Để WebSocket handshake không bị từ chối khi chạy production hoặc đằng sau reverse proxy:
+
+```env
+DICTALAB_ALLOWED_ORIGINS=https://your-domain.com,https://www.your-domain.com
+```
+
 ## Thêm bài nghe sau khi đã deploy
 
 Nội dung do quản trị viên tạo được lưu tách khỏi JAR:
@@ -109,9 +153,16 @@ DICTALAB_MEDIA_ROOT=./data/media
 DICTALAB_ADMIN_EMAILS=your-email@example.com
 ```
 
+Email trong `DICTALAB_ADMIN_EMAILS` chỉ nhận quyền quản trị sau khi xác minh bằng liên kết gửi đến
+chính địa chỉ đó. Cần cấu hình `DICTALAB_PUBLIC_URL`, `DICTALAB_MAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`,
+`SMTP_USERNAME`, `SMTP_PASSWORD` và TLS cho backend trước khi dùng xác minh email, đổi email hoặc
+đặt lại mật khẩu. Nếu SMTP chưa cấu hình, các thao tác này trả lỗi rõ ràng; người dùng vẫn có thể
+đăng ký và học bằng tài khoản thường. Tài khoản admin đã tồn tại giữ nguyên vai trò hiện tại,
+vì vậy cần rà danh sách admin trước khi phát hành bản mới.
+
 Tên riêng và từ khó được phân loại ngoại tuyến bằng `scripts/enrich-preview-vocabulary.py`, sau đó
 lưu vào PostgreSQL. API key ShopAIKey chỉ nhập khi chạy script trên máy quản trị; web và VPS không giữ
-key, không gọi AI khi người dùng mở bài.
+key cho bước này. Module Listening dùng khóa ShopAIKey trên backend để tạo câu hỏi và chấm nhớ ý.
 
 ```powershell
 python scripts/enrich-preview-vocabulary.py `
@@ -200,6 +251,33 @@ một ô hiện tại, lỗi **chèn từ** chưa thể nhận diện đáng tin
 | `POST/PUT/DELETE` | `/api/admin/lessons/{id}/sentences/**` | Quản lý câu và tải audio (chỉ ADMIN) |
 | `PUT` | `/api/admin/lessons/{id}/publication` | Xuất bản hoặc gỡ xuất bản (chỉ ADMIN) |
 
+### Listening Comprehension
+
+Vào `/listening` để chọn bài một hoặc hai lượt. Mỗi lượt phát trọn audio một lần, tiếp theo là
+ghi nhớ tự do (English/Vietnamese) và 5–8 câu hỏi. Đáp án, transcript và nghe từng đoạn chỉ mở
+sau khi hoàn thành assessment. Nếu lượt nghe bị gián đoạn, người học kết thúc phiên đó và bắt đầu
+phiên mới; lượt đã gián đoạn không có báo cáo. Báo cáo dùng lượt 1 làm chỉ số chính, hiển thị điểm
+hiểu/nhớ theo lượt, mức thay đổi và độ chính xác theo loại câu hỏi.
+
+Một bài A1 mẫu được tạo bởi migration. Quản trị viên mở **Quản trị bài nghe** trong màn hình
+Listening, chọn audio đã căn mốc để ShopAIKey tạo bản nháp hoặc nhập thủ công, sau đó duyệt/sửa
+facts, câu hỏi, đáp án và giải thích trước khi xuất bản. Đặt `SHOPAIKEY_API_KEY` trên máy chủ;
+có thể đổi `SHOPAIKEY_MODEL` và `SHOPAIKEY_URL`. Nếu chưa có khóa, phần câu hỏi vẫn chấm được,
+còn recall hiển thị là chưa chấm. Bản nháp cần audio hội thoại và mốc thời gian câu đã có trong
+lesson. Bài đã xuất bản không thể sửa trực tiếp; quản trị viên tạo bản sửa mới và xuất bản
+phiên bản đó, trong khi các kết quả cũ vẫn giữ nội dung của phiên bản trước.
+
+Trạng thái “chưa ghi nhận học” dựa trên phiên Dictation/Listening, sự kiện nghe từ vựng trước bài
+và khai báo của người học. Vì audio vẫn có thể đã được nghe bên ngoài ứng dụng,
+hiện chưa coi lượt này là benchmark sạch đã xác minh. Các file transcript `.json`/`.txt` dưới
+`/audio/elllo/` bị chặn truy cập trực tiếp, nhưng audio và nội dung Dictation đã công bố vẫn
+có thể được xem theo flow cũ. Các API Listening giữ session theo chủ sở hữu và dùng CSRF.
+
+Người học quản lý hồ sơ tại `/account`, báo audio/transcript/điểm sai hoặc yêu cầu xóa tài khoản
+tại `/support`. Admin xử lý người dùng tại `/admin/users`, yêu cầu hỗ trợ tại `/admin/support`.
+Đổi mật khẩu, khóa tài khoản và đổi vai trò thu hồi phiên đăng nhập cũ. Xóa tài khoản theo yêu cầu
+sẽ xóa lịch sử học và dữ liệu hỗ trợ liên quan; thao tác này không thể hoàn tác.
+
 Tất cả API `/api/v1/**` yêu cầu đăng nhập. Backend lấy user ID từ session bảo mật; frontend không thể
 truyền một learner ID khác để xem hoặc sửa lịch sử của người khác. Các request thay đổi dữ liệu được
 bảo vệ bằng CSRF token.
@@ -222,7 +300,7 @@ src/main/resources
 
 ## Lưu ý cho production
 
-Bản local đã dùng audio ELLLO người thật. API hiện vẫn gửi `speechText` để hỗ trợ phương án đọc dự phòng, vì vậy transcript có thể được xem trong DevTools. Với bản production, chỉ nên trả `audioUrl` được bảo vệ và không đưa transcript chưa reveal vào response. Hãy dùng PostgreSQL, bật HTTPS với `SESSION_COOKIE_SECURE=true`, đưa audio lên object storage/CDN và bổ sung rate limiting trước khi public. Kiểm tra điều khoản ELLLO trước khi phân phối công khai hoặc dùng cho mục đích thương mại.
+Bản local đã dùng audio ELLLO người thật. API hiện vẫn gửi `speechText` để hỗ trợ phương án đọc dự phòng, vì vậy transcript có thể được xem trong DevTools. Production đã dùng PostgreSQL và HTTPS với cookie `Secure`. Vẫn cần trả `audioUrl` được bảo vệ thay cho transcript chưa reveal, đưa audio lên object storage/CDN và bổ sung rate limiting trước khi public. Kiểm tra điều khoản ELLLO trước khi phân phối công khai hoặc dùng cho mục đích thương mại.
 
 ## Kiểm thử
 
@@ -240,9 +318,11 @@ Test dùng H2 in-memory riêng và không tác động tới dữ liệu Postgre
 Workflow `.github/workflows/deploy.yml` chạy khi có commit được push vào nhánh `main`:
 
 1. Chạy toàn bộ test và build JAR bằng Java 17.
-2. Kết nối VPS bằng SSH deploy key và tải bản build lên thư mục staging.
-3. Xác minh SHA-256, cập nhật Windows Service `DictaLab` và kiểm tra health endpoint.
-4. Nếu bản mới không khởi động thành công, tự động phục hồi JAR trước đó.
+2. Kết nối VPS bằng SSH deploy key, tải bản build và script triển khai lên thư mục staging.
+3. Tạo và xác minh bản sao PostgreSQL riêng tư trước khi chạy migration.
+4. Xác minh SHA-256, cập nhật Windows Service `DictaLab` và kiểm tra health endpoint.
+5. Nếu backup thất bại, pipeline dừng trước migration; nếu bản mới không khởi động thành công,
+   tự động phục hồi JAR trước đó.
 
 Khai báo bốn repository secrets tại **Settings → Secrets and variables → Actions**:
 
@@ -255,3 +335,18 @@ Khai báo bốn repository secrets tại **Settings → Secrets and variables �
 
 Không thêm mật khẩu VPS, mật khẩu PostgreSQL hoặc private key vào repository. Database secrets tiếp tục
 chỉ nằm trên VPS. Có thể chạy deploy thủ công bằng nút **Run workflow** trong GitHub Actions.
+
+## HTTPS trên VPS
+
+Ứng dụng production mở tại [https://160.191.244.27:18443/](https://160.191.244.27:18443/).
+Địa chỉ HTTP cũ ở cổng `18081` chuyển hướng sang HTTPS và giữ nguyên đường dẫn, query.
+Cổng `443` thuộc ứng dụng WebLens trên cùng VPS, nên DictaLab dùng cổng HTTPS riêng.
+
+Windows Service `DictaLabHttps` chạy Caddy với [Caddyfile](scripts/https/Caddyfile), chuyển tiếp
+HTTP và WebSocket vào `127.0.0.1:18082`. Service `DictaLab` chỉ nghe trên localhost, dùng cookie
+`Secure` và xử lý `X-Forwarded-*` từ proxy. Chứng chỉ IP của Let's Encrypt có hạn khoảng 6 ngày;
+Caddy tự gia hạn. Giữ service `DictaLabHttps` chạy và cổng `80` mở để xác thực/gia hạn chứng chỉ;
+cổng `18443` phục vụ người dùng. Kiểm tra HTTPS sau khi triển khai bằng
+`https://160.191.244.27:18443/actuator/health`.
+Khóa chứng chỉ trong `C:\DictaLab\https\data` chỉ cho `SYSTEM` và `Administrators` truy cập;
+[script phân quyền](scripts/https/secure-cert-storage.ps1) dùng lại được khi cần kiểm tra.

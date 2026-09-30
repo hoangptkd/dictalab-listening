@@ -16,7 +16,9 @@ dictalab:
     minimum-unseen-lessons: 5
     maximum-unseen-lessons: 10
   admin:
-    emails: admin@dictalab.local
+    emails:
+      - admin@dictalab.local
+      - verified-admin@dictalab.local
   media:
     root: target/test-media
     max-file-size: 2MB
@@ -28,3 +30,8 @@ dictalab:
     word-reveal-penalty: 8.0
     sentence-reveal-penalty: 20.0
     extra-replay-penalty: 1.5
+  room:
+    allowed-origins: http://localhost:18081
+    turn-url:
+    turn-secret:
+    turn-ttl-seconds: 3600

@@ -21,6 +21,14 @@ spring:
     multipart:
       max-file-size: 25MB
       max-request-size: 26MB
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:true}
 
 server:
   port: ${PORT:18081}
@@ -42,6 +50,12 @@ management:
         include: health,info
 
 dictalab:
+  public-url: ${DICTALAB_PUBLIC_URL:http://localhost:18081}
+  mail-from: ${DICTALAB_MAIL_FROM:}
+  shopaikey:
+    api-key: ${SHOPAIKEY_API_KEY:}
+    model: ${SHOPAIKEY_MODEL:claude-sonnet-4-5}
+    url: ${SHOPAIKEY_URL:https://api.shopaikey.com/v1/chat/completions}
   assessment:
     minimum-unseen-lessons: 5
     maximum-unseen-lessons: 10
@@ -62,3 +76,8 @@ dictalab:
     word-reveal-penalty: 8.0
     sentence-reveal-penalty: 20.0
     extra-replay-penalty: 1.5
+  room:
+    allowed-origins: ${DICTALAB_ALLOWED_ORIGINS:http://localhost:18081,http://127.0.0.1:18081,https://160.191.244.27:18443}
+    turn-url: ${DICTALAB_TURN_URL:}
+    turn-secret: ${DICTALAB_TURN_SECRET:}
+    turn-ttl-seconds: ${DICTALAB_TURN_TTL_SECONDS:3600}

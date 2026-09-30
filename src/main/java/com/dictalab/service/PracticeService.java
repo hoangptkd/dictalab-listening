@@ -24,6 +24,7 @@ import com.dictalab.repository.WordAttemptEventRepository;
 import com.dictalab.repository.AppUserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -47,6 +48,7 @@ public class PracticeService {
     private final ListeningErrorClassifier errorClassifier;
     private final ListeningAssessmentService assessmentService;
     private final AppUserRepository userRepository;
+    private final JdbcTemplate db;
     private final Clock clock;
 
     public PracticeService(LessonRepository lessonRepository,
@@ -59,7 +61,8 @@ public class PracticeService {
                            TranscriptTokenizer tokenizer,
                            ScoringService scoringService,
                            ListeningErrorClassifier errorClassifier,
-                           ListeningAssessmentService assessmentService) {
+                           ListeningAssessmentService assessmentService,
+                           JdbcTemplate db) {
         this.lessonRepository = lessonRepository;
         this.sentenceRepository = sentenceRepository;
         this.sessionRepository = sessionRepository;
@@ -71,6 +74,7 @@ public class PracticeService {
         this.scoringService = scoringService;
         this.errorClassifier = errorClassifier;
         this.assessmentService = assessmentService;
+        this.db = db;
         this.clock = Clock.systemUTC();
     }
 
@@ -86,7 +90,7 @@ public class PracticeService {
         }
 
         PracticeSession existingSession = sessionRepository
-                .findFirstByUser_IdAndLesson_IdAndStatusOrderByStartedAtDesc(
+                .findFirstByUser_IdAndLesson_IdAndRoomIdIsNullAndStatusOrderByStartedAtDesc(
                         userId, lesson.getId(), SessionStatus.IN_PROGRESS
                 )
                 .orElse(null);
@@ -102,12 +106,68 @@ public class PracticeService {
         LessonSentence firstSentence = sentenceRepository.findByLessonIdAndPosition(lesson.getId(), 1)
                 .orElseThrow(() -> new InvalidPracticeStateException("Bài luyện chưa có câu nghe."));
 
-        boolean firstExposure = !sessionRepository.existsByUserIdAndLessonId(userId, lesson.getId());
+        Integer otherExposure = db.queryForObject("""
+                SELECT (SELECT COUNT(*) FROM listening_sessions s JOIN listening_units u ON u.id=s.unit_id
+                    WHERE s.user_id=? AND u.audio_url IN
+                        (SELECT audio_url FROM lesson_sentences WHERE lesson_id=?))
+                    + (SELECT COUNT(*) FROM audio_exposure_events e WHERE e.user_id=? AND e.audio_url IN
+                        (SELECT audio_url FROM lesson_sentences WHERE lesson_id=?))
+                """, Integer.class, userId, lesson.getId(), userId, lesson.getId());
+        boolean firstExposure = !sessionRepository.existsByUserIdAndLessonId(userId, lesson.getId())
+                && otherExposure != null && otherExposure == 0;
         PracticeSession session = sessionRepository.save(new PracticeSession(user, lesson, now(), firstExposure));
         SentenceAttempt attempt = sentenceAttemptRepository.save(new SentenceAttempt(session, firstSentence, now()));
         return new ApiDtos.PracticeStartResponse(
                 session.getId(), lesson.getId(), lesson.getTitle(), lesson.getLevel(), toState(attempt)
         );
+    }
+
+    public int sharedLessonSize(Long lessonId) {
+        Lesson lesson = lessonRepository.findById(lessonId)
+                .filter(Lesson::isActive)
+                .filter(value -> !value.isPersonalContent())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bài học chung."));
+        return Math.toIntExact(sentenceRepository.countByLessonId(lesson.getId()));
+    }
+
+    @Transactional
+    public ApiDtos.PracticeStartResponse startShared(Long userId, String roomId, Long lessonId) {
+        PracticeSession existing = sessionRepository.findFirstByUserIdAndRoomIdOrderByStartedAtDesc(userId, roomId)
+                .orElse(null);
+        if (existing != null) {
+            if (!existing.getLesson().getId().equals(lessonId)) {
+                throw new InvalidPracticeStateException("Buổi học chung đã thay đổi bài.");
+            }
+            if (existing.getStatus() == SessionStatus.COMPLETED) {
+                return new ApiDtos.PracticeStartResponse(existing.getId(), lessonId,
+                        existing.getLesson().getTitle(), existing.getLesson().getLevel(), null);
+            }
+            return current(userId, existing.getId());
+        }
+        AppUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản."));
+        Lesson lesson = lessonRepository.findById(lessonId)
+                .filter(Lesson::isActive)
+                .filter(value -> !value.isPersonalContent())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bài học chung."));
+        LessonSentence first = sentenceRepository.findByLessonIdAndPosition(lessonId, 1)
+                .orElseThrow(() -> new InvalidPracticeStateException("Bài học chưa có câu nghe."));
+        PracticeSession session = new PracticeSession(user, lesson, now(), false);
+        session.setRoomId(roomId);
+        sessionRepository.save(session);
+        SentenceAttempt attempt = sentenceAttemptRepository.save(new SentenceAttempt(session, first, now()));
+        return new ApiDtos.PracticeStartResponse(session.getId(), lessonId, lesson.getTitle(), lesson.getLevel(),
+                toState(attempt));
+    }
+
+    public boolean isSharedSentenceReady(Long userId, String roomId, int position) {
+        PracticeSession session = sessionRepository.findFirstByUserIdAndRoomIdOrderByStartedAtDesc(userId, roomId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phiên học chung."));
+        if (session.getStatus() != SessionStatus.IN_PROGRESS || session.getCurrentSentencePosition() != position) {
+            return false;
+        }
+        LessonSentence sentence = currentSentence(session);
+        return toState(getOrFailAttempt(session, sentence.getId())).canComplete();
     }
 
     public ApiDtos.PracticeStartResponse current(Long userId, String sessionId) {

@@ -15,12 +15,17 @@ public interface PracticeSessionRepository extends JpaRepository<PracticeSession
 
     Optional<PracticeSession> findByIdAndUserId(String id, Long userId);
 
-    Optional<PracticeSession> findFirstByUser_IdAndLesson_IdAndStatusOrderByStartedAtDesc(
+    Optional<PracticeSession> findFirstByUser_IdAndLesson_IdAndRoomIdIsNullAndStatusOrderByStartedAtDesc(
             Long userId, Long lessonId, SessionStatus status
     );
 
+    Optional<PracticeSession> findFirstByUserIdAndRoomIdOrderByStartedAtDesc(Long userId, String roomId);
+
     @EntityGraph(attributePaths = "lesson")
     List<PracticeSession> findByUserIdAndStatusOrderByCompletedAtAsc(Long userId, SessionStatus status);
+
+    @EntityGraph(attributePaths = "lesson")
+    List<PracticeSession> findByUserIdAndStatusAndRoomIdIsNullOrderByCompletedAtAsc(Long userId, SessionStatus status);
 
     @EntityGraph(attributePaths = "lesson")
     List<PracticeSession> findByUserIdAndLessonLevelAndStatusOrderByStartedAtDesc(

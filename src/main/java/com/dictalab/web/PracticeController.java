@@ -38,6 +38,7 @@ public class PracticeController {
         return practiceService.current(principal.id(), sessionId);
     }
 
+
     @PostMapping("/{sessionId}/sentences/{sentenceId}/replay-events")
     public ApiDtos.SentenceState replay(
             @AuthenticationPrincipal DictaLabPrincipal principal,

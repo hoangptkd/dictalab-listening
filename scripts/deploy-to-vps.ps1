@@ -2,7 +2,7 @@ param(
     [string]$VpsHost = "160.191.244.27",
     [string]$VpsUser = "Administrator",
     [string]$SshKey = "C:\Users\HP\.ssh\dictalab_vps_ed25519_v2",
-    [string]$HealthUrl = "http://160.191.244.27:18081/actuator/health"
+    [string]$HealthUrl = "https://160.191.244.27:18443/actuator/health"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -95,7 +95,7 @@ try {
     Write-Host ""
     Write-Host "=========================================" -ForegroundColor Green
     Write-Host "  DEPLOY THANH CONG TREN VPS!" -ForegroundColor Green
-    Write-Host "  URL: http://${VpsHost}:18081/" -ForegroundColor Green
+    Write-Host "  URL: https://${VpsHost}:18443/" -ForegroundColor Green
     Write-Host "=========================================" -ForegroundColor Green
 }
 finally {

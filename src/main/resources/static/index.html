@@ -6,12 +6,13 @@
     <meta name="theme-color" content="#132a2b">
     <meta name="description" content="Luyện nghe và chép chính tả tiếng Anh theo CEFR A1–B2.">
     <title>DictaLab · Luyện nghe chép chính tả</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
-<section id="auth-screen" class="auth-screen" aria-labelledby="auth-heading">
+<main id="auth-screen" class="auth-screen" aria-labelledby="auth-heading">
     <div class="auth-story">
-        <div class="auth-brand" aria-label="DictaLab">
+        <div class="auth-brand">
             <span class="brand-mark" aria-hidden="true">D</span>
             <span><strong>DictaLab</strong><small>listen · notice · remember</small></span>
         </div>
@@ -71,44 +72,54 @@
                 </button>
             </form>
 
+            <div id="account-public-actions" hidden></div>
+            <a id="forgot-password-link" class="text-button" href="/reset-password">Quên mật khẩu?</a>
             <p id="auth-status" class="auth-status" role="status" aria-live="polite"></p>
         </div>
     </div>
-</section>
+</main>
 
 <div id="app-shell" class="page-shell" hidden>
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
     <header class="site-header">
-        <button class="brand" type="button" data-route="catalog" aria-label="Về trang chọn bài">
+        <a class="brand" href="/catalog?level=A1&page=1" data-route="catalog" aria-label="Về trang chọn bài">
             <span class="brand-mark" aria-hidden="true">D</span>
             <span>
                 <strong>DictaLab</strong>
                 <small>listen · notice · remember</small>
             </span>
-        </button>
+        </a>
 
         <nav class="main-nav" aria-label="Điều hướng chính">
-            <button class="nav-link is-active" type="button" data-route="catalog" data-mobile-label="Luyện tập" aria-current="page">
+            <a class="nav-link is-active" href="/catalog?level=A1&page=1" data-route="catalog" data-mobile-label="Luyện tập" aria-current="page">
                 Phòng luyện
-            </button>
-            <button class="nav-link" type="button" data-route="history" data-mobile-label="Lịch sử">
+            </a>
+            <a class="nav-link" href="/listening" data-route="listening" data-mobile-label="Nghe hiểu">
+                Nghe hiểu
+            </a>
+            <a class="nav-link" href="/history?level=all&page=1" data-route="history" data-mobile-label="Lịch sử">
                 Lịch sử
-            </button>
-            <button class="nav-link" type="button" data-route="dashboard" data-mobile-label="Tiến bộ">
+            </a>
+            <a class="nav-link" href="/dashboard" data-route="dashboard" data-mobile-label="Tiến bộ">
                 Tiến bộ
-            </button>
-            <button id="admin-nav-link" class="nav-link" type="button" data-route="admin" data-mobile-label="Quản trị" hidden>
+            </a>
+            <a class="nav-link" href="/rooms" data-route="room" data-mobile-label="Cùng bạn"
+                    id="room-nav-link">
+                Luyện cùng bạn
+            </a>
+            <a id="admin-nav-link" class="nav-link" href="/admin/lessons?page=1" data-route="admin" data-mobile-label="Quản trị" hidden>
                 Quản trị nội dung
-            </button>
+            </a>
+            <a class="nav-link" href="/support" data-route="support" data-mobile-label="Hỗ trợ">Hỗ trợ</a>
         </nav>
 
         <div class="account-cluster">
-            <div class="streak-pill" aria-label="Số buổi đã hoàn thành">
+            <div class="streak-pill" role="group" aria-label="Số buổi đã hoàn thành">
                 <span aria-hidden="true">●</span>
                 <strong id="header-session-count">0</strong> buổi
             </div>
             <div class="account-copy">
-                <strong id="account-name">Người học</strong>
+                <a id="account-link" href="/account" data-route="account" aria-label="Tài khoản"><strong id="account-name">Người học</strong></a>
                 <small id="account-email"></small>
             </div>
             <button id="logout-button" class="logout-button" type="button">Đăng xuất</button>
@@ -116,6 +127,30 @@
     </header>
 
     <main id="main-content" tabindex="-1">
+        <section id="account-view" class="view" hidden aria-labelledby="account-heading">
+            <div class="lesson-browser account-page"><p class="section-index">Hồ sơ học tập</p>
+                <h1 id="account-heading">Tài khoản của bạn.</h1><div id="account-content" aria-live="polite"></div></div>
+        </section>
+        <section id="support-view" class="view" hidden aria-labelledby="support-heading">
+            <div class="lesson-browser account-page"><p class="section-index">Trợ giúp</p>
+                <h1 id="support-heading">Chúng tôi có thể giúp gì?</h1><div id="support-content" aria-live="polite"></div></div>
+        </section>
+        <section id="admin-users-view" class="view" hidden aria-labelledby="admin-users-heading">
+            <div class="lesson-browser account-page"><p class="section-index">Quản trị</p>
+                <h1 id="admin-users-heading">Người dùng.</h1><div id="admin-users-content" aria-live="polite"></div></div>
+        </section>
+        <section id="admin-support-view" class="view" hidden aria-labelledby="admin-support-heading">
+            <div class="lesson-browser account-page"><p class="section-index">Quản trị</p>
+                <h1 id="admin-support-heading">Yêu cầu hỗ trợ.</h1><div id="admin-support-content" aria-live="polite"></div></div>
+        </section>
+        <section id="listening-view" class="view" hidden aria-labelledby="listening-heading">
+            <div class="lesson-browser listening-browser">
+                <p class="section-index">Listening Comprehension</p>
+                <h1 id="listening-heading">Nghe hiểu từ lần đầu.</h1>
+                <p>Nghe trọn bài một lần, ghi lại điều bạn nhớ, rồi trả lời câu hỏi. Lượt nghe thứ hai giúp bạn thấy mình tiến bộ ở đâu.</p>
+                <div id="listening-content" aria-live="polite"></div>
+            </div>
+        </section>
         <section id="catalog-view" class="view" aria-labelledby="catalog-heading">
             <div class="catalog-hero">
                 <div class="hero-copy">
@@ -157,16 +192,29 @@
 
         <section id="practice-view" class="view" hidden aria-labelledby="practice-title">
             <div class="practice-topbar">
-                <button id="leave-practice" class="text-button" type="button">
+                <a id="leave-practice" class="text-button" href="/catalog?level=A1&page=1" data-route="catalog">
                     <span aria-hidden="true">←</span> Đổi bài luyện
-                </button>
+                </a>
                 <div class="practice-progress-copy">
                     <span id="practice-level" class="level-stamp">A1</span>
-                    <p><strong id="practice-title">Bài luyện</strong></p>
+                    <h1 id="practice-title">Bài luyện</h1>
                 </div>
                 <div class="progress-label">
                     Câu <strong id="sentence-position">1</strong>/<span id="sentence-total">3</span>
                 </div>
+            </div>
+            <div id="shared-practice-bar" class="shared-practice-bar" role="group" aria-label="Phòng học chung" hidden>
+                <strong>Học cùng bạn</strong>
+                <div class="shared-call-people" aria-hidden="true">
+                    <img id="shared-host-avatar" src="/images/avatar-host.svg" alt="" width="32" height="32">
+                    <img id="shared-guest-avatar" src="/images/avatar-guest.svg" alt="" width="32" height="32">
+                </div>
+                <span id="shared-call-status" role="status">Voice chưa bắt đầu</span>
+                <time id="shared-call-timer" class="call-timer" role="timer" aria-live="off" datetime="PT0S" aria-label="Thời gian gọi">00:00</time>
+                <button id="shared-mic-button" class="text-button" type="button" aria-pressed="false">Bật mic</button>
+                <button id="shared-enable-audio" class="text-button" type="button" hidden>Bật nghe bạn học</button>
+                <button id="shared-reconnect" class="text-button" type="button" hidden>Kết nối lại</button>
+                <a id="shared-room-button" class="text-button" href="/rooms" data-route="room">Về phòng</a>
             </div>
             <div class="progress-track" aria-hidden="true">
                 <span id="sentence-progress"></span>
@@ -206,6 +254,14 @@
                         <div><span>Trợ giúp</span><strong id="hint-count">0</strong></div>
                     </div>
                     <p id="speech-support-note" class="support-note" hidden></p>
+                    <section id="peer-practice-panel" class="peer-practice-panel" aria-labelledby="peer-practice-heading" hidden>
+                        <h3 id="peer-practice-heading">Bạn học đang nhập</h3>
+                        <div id="peer-word-slots" class="peer-word-slots" role="group" aria-label="Phần nhập của bạn học"></div>
+                        <p id="peer-practice-status" role="status" aria-live="polite"></p>
+                        <button id="room-advance-sentence" class="primary-button" type="button" hidden disabled>
+                            Chuyển câu cho cả hai
+                        </button>
+                    </section>
                 </section>
 
                 <section class="dictation-panel" aria-labelledby="dictation-heading">
@@ -273,9 +329,9 @@
                     </div>
                     <h1 id="result-heading">Bạn đã nghe xong.</h1>
                     <p id="result-message"></p>
-                    <button class="primary-button" type="button" data-route="dashboard">
+                    <a class="primary-button" href="/dashboard" data-route="dashboard">
                         Xem tiến bộ <span aria-hidden="true">→</span>
-                    </button>
+                    </a>
                 </div>
                 <div class="result-details">
                     <p class="section-index">Bản ghi buổi luyện</p>
@@ -313,9 +369,9 @@
                             <p>Từ cần đưa vào danh sách ôn tập.</p>
                         </article>
                     </div>
-                    <button class="text-button" type="button" data-route="catalog">
+                    <a class="text-button" href="/catalog?level=A1&page=1" data-route="catalog">
                         ← Chọn bài khác
-                    </button>
+                    </a>
                 </div>
             </div>
 
@@ -450,9 +506,9 @@
             <div id="history-list" class="history-list"></div>
             <div id="history-empty" class="history-empty" hidden>
                 <p>Chưa có buổi luyện nào.</p>
-                <button class="primary-button" type="button" data-route="catalog">
+                <a class="primary-button" href="/catalog?level=A1&page=1" data-route="catalog">
                     Bắt đầu luyện nghe <span aria-hidden="true">→</span>
-                </button>
+                </a>
             </div>
         </section>
 
@@ -475,7 +531,7 @@
                             <p class="section-index">Thư viện</p>
                             <h2 id="admin-library-heading">Các bài nghe</h2>
                         </div>
-                        <button id="admin-new-lesson" class="primary-button compact" type="button">+ Bài mới</button>
+                        <a id="admin-new-lesson" class="primary-button compact" href="/admin/lessons/new">+ Bài mới</a>
                     </div>
                     <label class="admin-search">
                         <span class="sr-only">Tìm bài theo tên, mã hoặc level</span>
@@ -553,7 +609,7 @@
                                 </label>
                             </div>
                             <div class="admin-form-actions">
-                                <button id="admin-cancel-create" class="text-button" type="button" hidden>Hủy tạo bài</button>
+                                <a id="admin-cancel-create" class="text-button" href="/admin/lessons?page=1" hidden>Hủy tạo bài</a>
                                 <button class="primary-button" type="submit">Lưu thông tin</button>
                             </div>
                         </form>
@@ -592,11 +648,163 @@
                 </section>
             </div>
         </section>
+
+        <section id="room-view" class="view" hidden aria-labelledby="room-heading">
+
+            <!-- === LOBBY === -->
+            <div id="room-lobby" class="room-lobby">
+                <div class="room-lobby-hero">
+                    <p class="eyebrow">Luyện cùng bạn · Voice 1-1</p>
+                    <h1 id="room-heading">Nói chuyện tiếng Anh<br><em>cùng một người bạn.</em></h1>
+                    <p class="room-lobby-intro">Tạo phòng riêng, gửi đường dẫn cho bạn bè và gọi thoại hai chiều ngay trên website. Không cài thêm gì.</p>
+                </div>
+                <div class="room-lobby-actions">
+                    <div class="room-action-card">
+                        <p class="room-action-label">Tạo phòng mới</p>
+                        <p class="room-action-desc">Sao chép đường dẫn và gửi cho bạn bè qua ứng dụng nhắn tin.</p>
+                        <button id="room-create-btn" class="primary-button" type="button">
+                            Tạo phòng <span aria-hidden="true">→</span>
+                        </button>
+                    </div>
+                    <div class="room-action-divider" aria-hidden="true">hoặc</div>
+                    <div class="room-action-card">
+                        <p class="room-action-label">Nhập link mời</p>
+                        <p class="room-action-desc">Dán link bạn nhận được vào ô bên dưới để vào phòng.</p>
+                        <form id="room-join-form" class="room-join-form">
+                            <label class="sr-only" for="room-invite-input">Link mời tham gia phòng</label>
+                            <input id="room-invite-input" type="text" inputmode="url" class="room-invite-input"
+                                   placeholder="https://... hoặc chỉ nhập mã mời" autocomplete="off" required>
+                            <button class="primary-button" type="submit">
+                                Vào phòng
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                <p id="room-lobby-status" class="room-lobby-status" role="status" aria-live="polite"></p>
+            </div>
+
+            <!-- === ROOM CALL PANEL === -->
+            <div id="room-call-panel" class="room-call-panel" hidden>
+                <div class="room-topbar">
+                    <div>
+                        <p class="section-index">Phiên gọi thoại</p>
+                        <h1 id="room-code" class="room-code">Phòng —</h1>
+                    </div>
+                    <div class="room-topbar-actions">
+                        <button id="room-copy-invite" class="text-button" type="button"
+                                aria-label="Sao chép link mời">
+                            <span aria-hidden="true">📋</span> Sao chép link mời
+                        </button>
+                        <button id="room-leave-btn" class="text-button room-leave-btn" type="button"
+                                aria-label="Rời phòng">
+                            <span aria-hidden="true">✕</span> Rời phòng
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Thanh trạng thái -->
+                <div class="room-status-bar">
+                    <span id="room-status-badge" class="room-status-badge" role="status" aria-live="polite"></span>
+                    <time id="room-call-timer" class="call-timer" role="timer" aria-live="off" datetime="PT0S" aria-label="Thời gian gọi">00:00</time>
+                </div>
+                <section class="room-study-actions" aria-label="Bài học chung">
+                    <p id="room-study-status" role="status" aria-live="polite">Chưa chọn bài học chung.</p>
+                    <a id="room-choose-lesson" class="primary-button" href="/catalog?level=A1&page=1" data-route="catalog" hidden>Chọn bài học chung</a>
+                    <a id="room-return-practice" class="text-button" href="/catalog?level=A1&page=1" hidden>Vào bài học</a>
+                </section>
+
+                <!-- Thẻ thành viên -->
+                <div class="room-members" role="group" aria-label="Thành viên trong phòng">
+                    <div class="room-member-card" id="room-member-host">
+                        <div class="room-member-avatar" id="room-host-avatar" aria-hidden="true">
+                            <img src="/images/avatar-host.svg" alt="" width="52" height="52">
+                        </div>
+                        <div class="room-member-info">
+                            <strong id="room-host-name">Chủ phòng</strong>
+                            <span id="room-host-tag" class="room-member-tag">Chủ phòng</span>
+                            <span id="room-host-activity" class="room-member-activity">Mic chưa bật</span>
+                        </div>
+                        <div id="room-host-mic-indicator" class="room-mic-indicator" aria-hidden="true"></div>
+                    </div>
+
+                    <div class="room-members-divider" aria-hidden="true">↔</div>
+
+                    <div class="room-member-card" id="room-member-guest">
+                        <div class="room-member-avatar" id="room-guest-avatar" aria-hidden="true">
+                            <img src="/images/avatar-guest.svg" alt="" width="52" height="52">
+                        </div>
+                        <div class="room-member-info">
+                            <strong id="room-guest-name">Chưa có ai</strong>
+                            <span id="room-guest-tag" class="room-member-tag">Chờ tham gia</span>
+                            <span id="room-guest-activity" class="room-member-activity">Chưa kết nối</span>
+                        </div>
+                        <div id="room-guest-mic-indicator" class="room-mic-indicator" aria-hidden="true"></div>
+                    </div>
+                </div>
+
+                <!-- Duyệt / Từ chối (chỉ hiện khi có pending) -->
+                <div id="room-approval-panel" class="room-approval-panel" hidden
+                     role="region" aria-label="Yêu cầu tham gia">
+                    <p id="room-approval-text" class="room-approval-text"></p>
+                    <div class="room-approval-actions">
+                        <button id="room-approve-btn" class="primary-button" type="button">Chấp nhận</button>
+                        <button id="room-reject-btn" class="text-button" type="button">Từ chối</button>
+                    </div>
+                </div>
+
+                <!-- Điều khiển gọi -->
+                <div class="room-controls">
+                    <button id="room-mic-btn" class="room-mic-button" type="button"
+                            aria-pressed="false" disabled>
+                        <span class="room-mic-icon" aria-hidden="true">🎤</span>
+                        <span id="room-mic-label">Bật mic</span>
+                    </button>
+
+                    <button id="room-join-call-btn" class="primary-button room-join-call-btn" type="button" hidden>
+                        <span aria-hidden="true">📞</span> Tham gia cuộc gọi
+                    </button>
+
+                    <button id="room-reconnect-btn" class="primary-button" type="button" hidden>
+                        Kết nối lại
+                    </button>
+                </div>
+
+                <!-- Nút bật nghe (khi trình duyệt chặn autoplay) -->
+                <div id="room-autoplay-notice" class="room-autoplay-notice" hidden
+                     role="alert">
+                    <p>Trình duyệt đang chặn phát âm thanh tự động.</p>
+                    <button id="room-enable-audio-btn" class="primary-button compact" type="button">Bật nghe</button>
+                </div>
+
+                <!-- Thông báo lỗi -->
+                <div id="room-error-box" class="room-error-box" hidden role="alert" aria-live="assertive">
+                    <p id="room-error-text"></p>
+                    <p id="room-error-hint" class="room-error-hint"></p>
+                </div>
+
+                <!-- audio element ẩn chứa luồng remote -->
+                <audio id="room-remote-audio" autoplay playsinline aria-hidden="true"></audio>
+            </div>
+
+            <!-- === PENDING PANEL (guest đang chờ duyệt) === -->
+            <div id="room-pending-panel" class="room-pending-panel" hidden>
+                <div class="room-pending-content">
+                    <div class="room-pending-icon" aria-hidden="true">⏳</div>
+                    <h1>Chờ chủ phòng duyệt</h1>
+                    <p id="room-pending-host-name">Bạn đã gửi yêu cầu tham gia. Vui lòng đợi.</p>
+                    <p id="room-pending-status" class="room-pending-status" role="status" aria-live="polite"></p>
+                    <button id="room-pending-cancel-btn" class="text-button" type="button">Hủy yêu cầu</button>
+                </div>
+            </div>
+
+        </section>
     </main>
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <script src="/js/app.js" defer></script>
+<script src="/js/listening.js" defer></script>
+<script src="/js/account.js" defer></script>
 </body>
 </html>

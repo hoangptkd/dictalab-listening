@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,16 +32,19 @@ public class AdminContentService {
     private final LessonSentenceRepository sentenceRepository;
     private final PracticeSessionRepository sessionRepository;
     private final MediaStorageService mediaStorage;
+    private final JdbcTemplate jdbcTemplate;
     private final Clock clock = Clock.systemUTC();
 
     public AdminContentService(LessonRepository lessonRepository,
                                LessonSentenceRepository sentenceRepository,
                                PracticeSessionRepository sessionRepository,
-                               MediaStorageService mediaStorage) {
+                               MediaStorageService mediaStorage,
+                               JdbcTemplate jdbcTemplate) {
         this.lessonRepository = lessonRepository;
         this.sentenceRepository = sentenceRepository;
         this.sessionRepository = sessionRepository;
         this.mediaStorage = mediaStorage;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public List<AdminDtos.LessonListItem> listLessons() {
@@ -83,7 +87,10 @@ public class AdminContentService {
     public AdminDtos.LessonResponse updateLesson(Long lessonId, AdminDtos.UpdateLessonRequest request) {
         Lesson lesson = requireLesson(lessonId);
         boolean levelChanged = lesson.getLevel() != request.level();
-        if (sessionRepository.existsByLessonId(lessonId) && lesson.getLevel() != request.level()) {
+        Integer listeningUnits = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM listening_units WHERE lesson_id=?", Integer.class, lessonId);
+        if ((sessionRepository.existsByLessonId(lessonId) || listeningUnits != null && listeningUnits > 0)
+                && lesson.getLevel() != request.level()) {
             throw new ContentManagementException(
                     "Không thể đổi level vì bài đã có lịch sử học. Các thông tin mô tả khác vẫn có thể sửa."
             );
@@ -253,6 +260,10 @@ public class AdminContentService {
                     "Bài đã có lịch sử học nên nội dung câu được khóa để bảo toàn kết quả. Hãy tạo một bài mới."
             );
         }
+        Integer listening = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM listening_units WHERE lesson_id=?", Integer.class, lesson.getId());
+        if (listening != null && listening > 0)
+            throw new ContentManagementException("Bài đã được dùng làm nguồn nghe hiểu. Hãy tạo bài học mới.");
     }
 
     private void manageFilesAfterTransaction(String previousUrl, String newUrl) {

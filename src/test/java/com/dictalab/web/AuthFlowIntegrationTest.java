@@ -68,7 +68,7 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
-    void configuredAdminEmailReceivesAdminRoleAtRegistration() throws Exception {
+    void registeringAllowlistedEmailDoesNotGrantAdminWithoutVerification() throws Exception {
         mockMvc.perform(post("/api/auth/register")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -80,6 +80,6 @@ class AuthFlowIntegrationTest {
                                 }
                                 """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.role").value("ADMIN"));
+                .andExpect(jsonPath("$.role").value("USER"));
     }
 }
