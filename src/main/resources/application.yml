@@ -44,6 +44,9 @@ server:
     include-stacktrace: never
 
 management:
+  health:
+    mail:
+      enabled: false
   endpoints:
     web:
       exposure:
