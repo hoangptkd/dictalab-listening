@@ -248,6 +248,13 @@ pwsh -File .\scripts\check-coach-local.ps1
 Check yêu cầu `source=AI`, giới hạn insight/action/review, lưu báo cáo và xác nhận điểm không đổi.
 Tài khoản QA tồn tại trong database local; script không thay đổi điểm của tài khoản đang dùng.
 
+Trên Windows VPS, bridge có thể chạy bằng `scripts/start-coach-bridge-vps.ps1` qua Scheduled Task
+`DictaLabCoachBridge` trong phiên Administrator tương tác. Sau khi đăng nhập ChatGPT trong Chrome
+của VPS, chạy `scripts/enable-coach-vps.ps1` trên VPS; script kiểm tra phản hồi ChatGPT thật trước
+khi bật AI Coach cho service và khôi phục cấu hình nếu app không lên health. Scheduled Task cần
+phiên Administrator đăng nhập lại sau khi máy khởi động; khi phiên đó chưa có, trang kết quả vẫn
+dùng Smart Review theo quy tắc backend.
+
 Nếu bridge chạy trên máy khác, đặt URL tới kết nối riêng có bảo vệ; `127.0.0.1` luôn là máy
 backend, không phải máy người học. Khóa tùy chọn chỉ dùng khi proxy trước bridge có xác thực.
 
