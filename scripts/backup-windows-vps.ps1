@@ -39,7 +39,8 @@ foreach ($identity in @("BUILTIN\Administrators", "NT AUTHORITY\SYSTEM")) {
     $acl.AddAccessRule($rule)
 }
 Set-Acl -LiteralPath $BackupDirectory -AclObject $acl
-$drive = Get-PSDrive -Name ([System.IO.Path]::GetPathRoot($BackupDirectory).TrimEnd(':' ))
+$driveName = (Split-Path -Qualifier $BackupDirectory).TrimEnd(':')
+$drive = Get-PSDrive -Name $driveName
 $requiredBytes = [int64]($databaseBytes * 1.2) + 536870912
 if ($drive.Free -lt $requiredBytes) {
     throw "Insufficient free space for a verified database backup."
