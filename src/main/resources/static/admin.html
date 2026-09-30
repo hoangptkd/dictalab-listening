@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#132a2b">
+    <title>Quản trị · DictaLab</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/css/app.css">
+    <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body data-area="admin">
+<a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
+<div id="admin-loading" class="admin-loading" role="status">Đang mở trang quản trị…</div>
+<div id="app-shell" class="admin-shell" hidden>
+    <aside class="admin-sidebar" aria-label="Khu vực quản trị">
+        <a class="brand" href="/admin" aria-label="Trang chủ quản trị DictaLab">
+            <span class="brand-mark" aria-hidden="true">D</span>
+            <span><strong>DictaLab</strong><small>Trang quản trị</small></span>
+        </a>
+        <p class="section-index">Quản lý</p>
+        <nav class="admin-navigation" aria-label="Điều hướng quản trị">
+            <a class="nav-link" href="/admin/lessons?page=1" data-route="admin">Bài nghe</a>
+            <a class="nav-link" href="/admin/listening" data-route="admin-listening">Nghe hiểu</a>
+            <a class="nav-link" href="/admin/users" data-route="admin-users">Người dùng</a>
+            <a class="nav-link" href="/admin/support" data-route="admin-support">Yêu cầu hỗ trợ</a>
+        </nav>
+        <a class="admin-return" href="/catalog">← Về trang học tập</a>
+    </aside>
+    <div class="admin-main">
+        <header class="admin-topbar">
+            <span class="publication-badge is-published">Quản trị viên</span>
+            <div class="account-cluster">
+                <div class="account-copy">
+                    <a href="/account" aria-label="Thông tin tài khoản"><strong id="account-name">Quản trị viên</strong></a>
+                    <small id="account-email"></small>
+                </div>
+                <button id="logout-button" class="logout-button" type="button">Đăng xuất</button>
+            </div>
+        </header>
+        <main id="main-content" tabindex="-1">
+        <section id="admin-listening-view" class="view" hidden aria-labelledby="admin-listening-heading">
+            <div class="lesson-browser account-page listening-browser">
+                <p class="section-index">Nội dung học tập</p>
+                <h1 id="admin-listening-heading">Quản lý bài nghe hiểu.</h1>
+                <div id="listening-content" aria-live="polite"></div>
+            </div>
+        </section>
+        <section id="admin-users-view" class="view" hidden aria-labelledby="admin-users-heading">
+            <div class="lesson-browser account-page"><p class="section-index">Quản trị</p>
+                <h1 id="admin-users-heading">Người dùng.</h1><div id="admin-users-content" aria-live="polite"></div></div>
+        </section>
+        <section id="admin-support-view" class="view" hidden aria-labelledby="admin-support-heading">
+            <div class="lesson-browser account-page"><p class="section-index">Quản trị</p>
+                <h1 id="admin-support-heading">Yêu cầu hỗ trợ.</h1><div id="admin-support-content" aria-live="polite"></div></div>
+        </section>
+        <section id="admin-view" class="view admin-view" hidden aria-labelledby="admin-heading">
+            <header class="admin-hero">
+                <div>
+                    <p class="eyebrow">Nội dung học tập</p>
+                    <h1 id="admin-heading">Quản lý bài nghe.</h1>
+                </div>
+                <p>
+                    Tạo bản nháp, bổ sung audio và transcript, rồi xuất bản bài nghe cho người học.
+                </p>
+            </header>
+
+            <div class="admin-workspace">
+                <aside class="admin-library" aria-labelledby="admin-library-heading">
+                    <div class="admin-library-heading">
+                        <div>
+                            <p class="section-index">Thư viện</p>
+                            <h2 id="admin-library-heading">Các bài nghe</h2>
+                        </div>
+                        <a id="admin-new-lesson" class="primary-button compact" href="/admin/lessons/new">+ Bài mới</a>
+                    </div>
+                    <form id="admin-lesson-filters" class="admin-toolbar">
+                    <label class="admin-search">Tìm tên hoặc mã bài
+                        <span class="sr-only">Tìm bài theo tên hoặc mã</span>
+                        <input id="admin-lesson-search" name="q" type="search" maxlength="160" placeholder="Tên hoặc mã bài…">
+                    </label>
+                    <label>Level<select name="level"><option value="">Tất cả</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select></label>
+                    <label>Trạng thái<select name="status"><option value="">Tất cả</option><option value="PUBLISHED">Đã xuất bản</option><option value="DRAFT">Bản nháp</option></select></label>
+                    <label>Chủ đề<select name="topic"><option value="">Tất cả</option></select></label>
+                    <label>Nguồn<select name="origin"><option value="">Tất cả</option><option value="BUNDLED">Đóng gói</option><option value="ADMIN_UPLOAD">Tải lên</option><option value="BRITISH_COUNCIL_PERSONAL">Nội dung cá nhân</option></select></label>
+                    <label>Sắp xếp<select name="sort"><option value="updated">Cập nhật mới nhất</option><option value="title">Tên A–Z</option></select></label>
+                    <div class="admin-actions"><button class="primary-button compact" type="submit">Áp dụng</button><button class="text-button" type="button" data-clear>Xóa lọc</button></div>
+                    </form>
+                    <div id="admin-lesson-list" class="admin-lesson-list" aria-live="polite"></div>
+                </aside>
+
+                <section class="admin-editor" aria-labelledby="admin-editor-heading">
+                    <div id="admin-empty-state" class="admin-empty-state">
+                        <span aria-hidden="true">＋</span>
+                        <h2 id="admin-editor-heading">Chọn một bài hoặc tạo bài mới</h2>
+                        <p>Mỗi câu có transcript riêng và một file audio người thật.</p>
+                    </div>
+
+                    <div id="admin-editor-content" hidden>
+                        <div class="admin-editor-heading">
+                            <div>
+                                <p id="admin-editor-kicker" class="section-index">Bản nháp</p>
+                                <h2 id="admin-editor-title" tabindex="-1">Thông tin bài nghe</h2>
+                            </div>
+                            <span id="admin-publication-badge" class="publication-badge">Bản nháp</span>
+                            <button id="admin-copy-lesson" class="text-button" type="button">Tạo bản sửa mới</button>
+                        </div>
+
+                        <div id="admin-lock-notice" class="admin-notice" role="status" hidden></div>
+
+                        <form id="admin-lesson-form" class="admin-form" data-admin-dirty="lesson">
+                            <div class="admin-form-grid">
+                                <label>Mã bài
+                                    <input name="slug" type="text" maxlength="80" required
+                                           pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+                                           placeholder="vd: a1-ordering-coffee">
+                                    <small>Chữ thường, số và dấu gạch ngang; không đổi sau khi tạo.</small>
+                                </label>
+                                <label>Tên bài
+                                    <input name="title" type="text" maxlength="140" required
+                                           placeholder="Ordering coffee">
+                                </label>
+                                <label>Level
+                                    <select name="level" required>
+                                        <option value="A1">A1</option><option value="A2">A2</option>
+                                        <option value="B1">B1</option><option value="B2">B2</option>
+                                    </select>
+                                </label>
+                                <label>Chủ đề
+                                    <input name="topic" type="text" maxlength="60" required placeholder="Everyday life">
+                                </label>
+                                <label>Thời lượng ước tính (phút)
+                                    <input name="estimatedMinutes" type="number" min="1" max="120" value="5" required>
+                                </label>
+                                <label>Thứ tự hiển thị
+                                    <input name="displayOrder" type="number" min="1" value="100" required>
+                                </label>
+                                <label>Số người nói
+                                    <input name="speakerCount" type="number" min="0" max="10" value="0" required>
+                                    <small>Dùng 0 khi chưa xác định.</small>
+                                </label>
+                                <label>Giọng / vùng nói
+                                    <input name="accentProfile" type="text" maxlength="120"
+                                           placeholder="vd: US, UK, mixed">
+                                </label>
+                                <label>Độ khó từ vựng (1–5)
+                                    <input name="vocabularyDifficulty" type="number" min="1" max="5" value="1" required>
+                                </label>
+                                <label>Độ khó ngữ pháp (1–5)
+                                    <input name="grammarDifficulty" type="number" min="1" max="5" value="1" required>
+                                </label>
+                                <label>Độ khó câu (1–5)
+                                    <input name="sentenceDifficulty" type="number" min="1" max="5" value="1" required>
+                                </label>
+                                <label class="admin-field-wide">Mô tả
+                                    <textarea name="description" maxlength="500" rows="3" required
+                                              placeholder="Người học sẽ luyện nghe nội dung gì?"></textarea>
+                                    <small>Metadata độ khó được dùng cho ước lượng năng lực; thay đổi sẽ hủy trạng thái hiệu chỉnh cũ.</small>
+                                </label>
+                            </div>
+                            <div class="admin-form-actions">
+                                <a id="admin-cancel-create" class="text-button" href="/admin/lessons?page=1" hidden>Hủy tạo bài</a>
+                                <button class="primary-button" type="submit">Lưu thông tin</button>
+                            </div>
+                        </form>
+
+                        <section id="admin-sentence-section" class="admin-sentence-section" aria-labelledby="admin-sentences-heading">
+                            <div class="admin-section-heading">
+                                <div>
+                                    <p class="section-index">Transcript + audio</p>
+                                    <h3 id="admin-sentences-heading">Các câu trong bài</h3>
+                                </div>
+                                <span id="admin-sentence-count">0 câu</span>
+                            </div>
+                            <p class="admin-help">
+                                Nên dùng audio MP3, M4A hoặc WAV ngắn, chỉ chứa đúng một câu. Giới hạn 25 MB/file.
+                            </p>
+                            <form id="admin-add-sentence-form" class="admin-add-sentence" data-admin-dirty="add-sentence">
+                                <label>
+                                    <span>Thêm transcript của câu tiếp theo</span>
+                                    <textarea name="transcript" rows="2" maxlength="1000" required
+                                              placeholder="Type the exact sentence spoken in the audio."></textarea>
+                                </label>
+                                <button class="primary-button compact" type="submit">+ Thêm câu</button>
+                            </form>
+                            <div id="admin-sentence-list" class="admin-sentence-list"></div>
+                        </section>
+
+                        <footer class="admin-publish-bar">
+                            <div>
+                                <strong id="admin-publish-title">Chưa hiển thị với người học</strong>
+                                <p id="admin-publish-help">Thêm audio cho mọi câu để có thể xuất bản.</p>
+                            </div>
+                            <button id="admin-publication-button" class="primary-button dark" type="button">Xuất bản bài</button>
+                        </footer>
+                        <p id="admin-status" class="admin-status" role="status" aria-live="polite"></p>
+                        <details class="admin-panel"><summary>Nhật ký nội dung</summary><div id="admin-content-events"></div></details>
+                    </div>
+                </section>
+            </div>
+        </section>
+
+        </main>
+    </div>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<noscript><p>Vui lòng bật JavaScript để sử dụng trang quản trị.</p></noscript>
+<script src="/js/admin-ui.js" defer></script>
+<script src="/js/app.js" defer></script>
+<script src="/js/listening.js" defer></script>
+<script src="/js/account.js" defer></script>
+</body>
+</html>

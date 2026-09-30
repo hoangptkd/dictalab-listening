@@ -52,13 +52,31 @@ public class AdminContentService {
                 .map(lesson -> new AdminDtos.LessonListItem(
                         lesson.getId(), lesson.getSlug(), lesson.getTitle(), lesson.getLevel(), lesson.getTopic(),
                         lesson.getDisplayOrder(), lesson.isActive(), lesson.getContentOrigin(),
-                        sessionRepository.existsByLessonId(lesson.getId()),
+                        contentLocked(lesson.getId()),
                         Math.toIntExact(sentenceRepository.countByLessonId(lesson.getId())), lesson.getUpdatedAt()
                 )).toList();
     }
 
     public AdminDtos.LessonResponse lesson(Long lessonId) {
         return toResponse(requireLesson(lessonId));
+    }
+    @Transactional
+    public AdminDtos.LessonResponse copyLesson(Long lessonId) {
+        Lesson original=requireLesson(lessonId);
+        if(original.isPersonalContent()) throw new ContentManagementException("Không sao chép nội dung cá nhân thành bài phát hành công khai.");
+        Instant now=Instant.now(clock);
+        String slug="copy-"+lessonId+"-"+java.util.UUID.randomUUID().toString().substring(0,8);
+        String title=original.getTitle().substring(0,Math.min(125,original.getTitle().length()))+" · Bản sửa";
+        Lesson copied=lessonRepository.save(new Lesson(slug,title,original.getDescription(),original.getLevel(),original.getTopic(),original.getEstimatedMinutes(),original.getDisplayOrder()+1,now));
+        copied.updateAssessmentMetadata(original.getSpeakerCount(),original.getAccentProfile(),original.getVocabularyDifficulty(),original.getGrammarDifficulty(),original.getSentenceDifficulty(),false,now);
+        for(LessonSentence source:sentenceRepository.findByLessonIdOrderByPositionAsc(lessonId)) {
+            LessonSentence sentence=new LessonSentence(copied,source.getPosition(),source.getTranscript(),source.getSpeechRate());
+            sentence.update(source.getTranscript(),source.getSpeechRate(),source.getAudioStartSeconds(),source.getAudioEndSeconds());
+            // Keep audio identity for exposure tracking; uploads always create a new file.
+            if(source.getAudioUrl()!=null) sentence.attachAudio(source.getAudioUrl());
+            sentenceRepository.save(sentence);
+        }
+        sentenceRepository.flush(); return toResponse(copied);
     }
 
     @Transactional
@@ -266,6 +284,11 @@ public class AdminContentService {
             throw new ContentManagementException("Bài đã được dùng làm nguồn nghe hiểu. Hãy tạo bài học mới.");
     }
 
+    private boolean contentLocked(Long lessonId) {
+        return sessionRepository.existsByLessonId(lessonId) || Boolean.TRUE.equals(jdbcTemplate.queryForObject(
+                "SELECT EXISTS(SELECT 1 FROM listening_units WHERE lesson_id=?)", Boolean.class, lessonId));
+    }
+
     private void manageFilesAfterTransaction(String previousUrl, String newUrl) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
@@ -290,6 +313,10 @@ public class AdminContentService {
 
     private void deleteMediaQuietly(String audioUrl) {
         try {
+            if(audioUrl!=null && audioUrl.startsWith("/media/")) {
+                Integer references=jdbcTemplate.queryForObject("SELECT (SELECT COUNT(*) FROM lesson_sentences WHERE audio_url=?) + (SELECT COUNT(*) FROM listening_units WHERE audio_url=?)",Integer.class,audioUrl,audioUrl);
+                if(references!=null && references>0) return;
+            }
             mediaStorage.deleteIfManaged(audioUrl);
         } catch (RuntimeException exception) {
             LOGGER.warn("Không thể dọn file media không còn được tham chiếu: {}", audioUrl, exception);
@@ -320,7 +347,7 @@ public class AdminContentService {
         return new AdminDtos.LessonResponse(
                 lesson.getId(), lesson.getSlug(), lesson.getTitle(), lesson.getDescription(), lesson.getLevel(),
                 lesson.getTopic(), lesson.getEstimatedMinutes(), lesson.getDisplayOrder(), lesson.isActive(),
-                lesson.getContentOrigin(), sessionRepository.existsByLessonId(lesson.getId()),
+                lesson.getContentOrigin(), contentLocked(lesson.getId()),
                 lesson.getSpeakerCount(), lesson.getAccentProfile(), lesson.getVocabularyDifficulty(),
                 lesson.getGrammarDifficulty(), lesson.getSentenceDifficulty(), lesson.isAssessmentCalibrated(),
                 lesson.getUpdatedAt(),

@@ -223,6 +223,47 @@ class PracticeServiceIntegrationTest {
     }
 
     @Test
+    @Sql(statements = "INSERT INTO lesson_preview_words (lesson_id, position_index, word, proper_name) VALUES (1, 999, 'Anna', TRUE)")
+    @Sql(statements = "DELETE FROM lesson_preview_words WHERE lesson_id = 1 AND position_index = 999",
+            executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
+    void prefilledProperNameNeedsNoAnswerAndDoesNotAffectAccuracy() {
+        ApiDtos.PracticeStartResponse session = practiceService.start(
+                userId, new ApiDtos.StartSessionRequest(1L));
+        ApiDtos.WordSlot name = session.sentence().words().get(0);
+        assertThat(name.userInput()).isEqualTo("Anna");
+        assertThat(name.prefilled()).isTrue();
+        assertThat(name.correct()).isTrue();
+
+        ApiDtos.CompleteSentenceResponse completion = null;
+        for (int position = 0; position < 3; position++) {
+            ApiDtos.SentenceState sentence = session.sentence();
+            listenToSentence(userId, session.sessionId(), sentence.sentenceId());
+            if (position == 0) {
+                ApiDtos.SentenceState unchanged = practiceService.checkWord(userId, session.sessionId(),
+                        sentence.sentenceId(), 0, new ApiDtos.CheckWordRequest("wrong"));
+                assertThat(unchanged.words().get(0).userInput()).isEqualTo("Anna");
+            }
+            List<String> expected = tokenizer.words(sentence.speechText());
+            for (int index = 0; index < expected.size(); index++) {
+                if (!sentence.words().get(index).prefilled()) {
+                    sentence = practiceService.checkWord(userId, session.sessionId(), sentence.sentenceId(),
+                            index, new ApiDtos.CheckWordRequest(expected.get(index)));
+                }
+            }
+            assertThat(sentence.canComplete()).isTrue();
+            completion = practiceService.completeSentence(userId, session.sessionId(), sentence.sentenceId(),
+                    new ApiDtos.CompleteSentenceRequest(12));
+            if (!completion.lessonCompleted()) {
+                session = new ApiDtos.PracticeStartResponse(session.sessionId(), session.lessonId(),
+                        session.lessonTitle(), session.level(), completion.nextSentence());
+            }
+        }
+        assertThat(completion).isNotNull();
+        assertThat(completion.result().firstAttemptAccuracy()).isEqualTo(100.0);
+        assertThat(completion.result().finalAccuracy()).isEqualTo(100.0);
+    }
+
+    @Test
     void recordsEveryWordAttemptResponseTimeAndPlaybackSpeed() {
         ApiDtos.PracticeStartResponse session = practiceService.start(
                 userId, new ApiDtos.StartSessionRequest(1L)

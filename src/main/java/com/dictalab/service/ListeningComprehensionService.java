@@ -150,8 +150,10 @@ public class ListeningComprehensionService {
         Map<String, Object> session = session(userId, id);
         if (!"RECALL".equals(session.get("stage"))) bad("Không thể sửa bài nhớ lại ở bước này.");
         if (text == null || text.length() > 6000) bad("Bài nhớ lại vượt quá 6.000 ký tự.");
-        db.update("UPDATE listening_passes SET recall_text=? WHERE session_id=? AND pass_number=?",
-                text, id, number(session, "current_pass"));
+        if (db.update("""
+                UPDATE listening_passes SET recall_text=?
+                WHERE session_id=? AND pass_number=? AND recall_submitted_at IS NULL
+                """, text, id, number(session, "current_pass")) != 1) bad("Bài nhớ lại đã nộp.");
         return state(userId, id);
     }
 
@@ -160,8 +162,10 @@ public class ListeningComprehensionService {
         Map<String, Object> session = session(userId, id);
         if (!"RECALL".equals(session.get("stage"))) bad("Bài nhớ lại đã nộp.");
         if (text == null || text.length() > 6000) bad("Bài nhớ lại vượt quá 6.000 ký tự.");
-        db.update("UPDATE listening_passes SET recall_text=?,recall_submitted_at=? WHERE session_id=? AND pass_number=?",
-                text, now(), id, number(session, "current_pass"));
+        if (db.update("""
+                UPDATE listening_passes SET recall_text=?,recall_submitted_at=?
+                WHERE session_id=? AND pass_number=? AND recall_submitted_at IS NULL
+                """, text, now(), id, number(session, "current_pass")) != 1) bad("Bài nhớ lại đã nộp.");
         transition(id, "RECALL", "QUESTIONS");
         return state(userId, id);
     }
@@ -173,11 +177,12 @@ public class ListeningComprehensionService {
         int pass = number(session, "current_pass");
         JsonNode content = parse((String) unit(number(session, "unit_id").longValue(), false).get("content_json"));
         double score = scoreQuestions(content, originalAnswers(content, answers, order(session)));
-        db.update("""
+        if (db.update("""
                 UPDATE listening_passes SET answers_json=?,answers_submitted_at=?,comprehension_score=?,grading_status=?
-                WHERE session_id=? AND pass_number=?
+                WHERE session_id=? AND pass_number=? AND answers_submitted_at IS NULL
                 """, stringify(answers), now(), score,
-                ai.configured() || ((String) pass(id, pass).get("recall_text")).isBlank() ? "PENDING" : "FAILED", id, pass);
+                ai.configured() || ((String) pass(id, pass).get("recall_text")).isBlank() ? "PENDING" : "FAILED", id, pass) != 1)
+            bad("Câu hỏi đã nộp.");
         if (pass == 1) {
             db.update("UPDATE listening_sessions SET stage='PASS1_RESULT',version=version+1 WHERE id=?", id);
         } else {
@@ -193,8 +198,10 @@ public class ListeningComprehensionService {
         if (!"QUESTIONS".equals(session.get("stage"))) bad("Không thể sửa câu trả lời ở bước này.");
         JsonNode content = parse((String) unit(number(session, "unit_id").longValue(), false).get("content_json"));
         originalAnswers(content, answers, order(session));
-        db.update("UPDATE listening_passes SET answers_draft_json=? WHERE session_id=? AND pass_number=?",
-                stringify(answers), id, number(session, "current_pass"));
+        if (db.update("""
+                UPDATE listening_passes SET answers_draft_json=?
+                WHERE session_id=? AND pass_number=? AND answers_submitted_at IS NULL
+                """, stringify(answers), id, number(session, "current_pass")) != 1) bad("Câu hỏi đã nộp.");
         return state(userId, id);
     }
 
@@ -398,6 +405,7 @@ public class ListeningComprehensionService {
                 """, userId));
     }
 
+    @Transactional
     public Map<String, Object> createUnit(long lessonId, String audioUrl, double durationSeconds) {
         ensureNoDraft(lessonId, audioUrl);
         if (!Double.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 3600)
@@ -500,7 +508,7 @@ public class ListeningComprehensionService {
     @Transactional
     public Map<String, Object> retireUnit(long unitId) {
         unit(unitId, false);
-        db.update("UPDATE listening_units SET published=FALSE,retired=TRUE WHERE id=?", unitId);
+        db.update("UPDATE listening_units SET published=FALSE,retired=TRUE,edit_version=edit_version+1 WHERE id=?", unitId);
         return lowerKeys(unit(unitId, false));
     }
 
@@ -512,6 +520,9 @@ public class ListeningComprehensionService {
     }
 
     private void ensureNoDraft(long lessonId, String audioUrl) {
+        // Serialize draft creation for a source, including competing copy requests.
+        if (db.queryForList("SELECT id FROM lessons WHERE id=? FOR UPDATE",lessonId).isEmpty())
+            throw new ResourceNotFoundException("Không tìm thấy bài học.");
         Integer drafts = db.queryForObject("""
                 SELECT COUNT(*) FROM listening_units WHERE lesson_id=? AND audio_url=? AND published=FALSE AND retired=FALSE
                 """, Integer.class, lessonId, audioUrl);
@@ -533,7 +544,7 @@ public class ListeningComprehensionService {
             bad("Chỉ có thể sửa bản nháp đang hoạt động.");
         if (title == null || title.isBlank() || title.length() > 140) bad("Tên bài nghe không hợp lệ.");
         validateContent(content);
-        db.update("UPDATE listening_units SET title=?,content_json=? WHERE id=? AND published=FALSE AND retired=FALSE",
+        db.update("UPDATE listening_units SET title=?,content_json=?,edit_version=edit_version+1 WHERE id=? AND published=FALSE AND retired=FALSE",
                 title.strip(), stringify(content), unitId);
         return lowerKeys(unit(unitId, false));
     }
@@ -544,9 +555,9 @@ public class ListeningComprehensionService {
         if (Boolean.TRUE.equals(unit.get("published")) || Boolean.TRUE.equals(unit.get("retired")))
             bad("Chỉ có thể xuất bản bản nháp đang hoạt động.");
         validateContent(parse((String) unit.get("content_json")));
-        db.update("UPDATE listening_units SET published=FALSE,retired=TRUE WHERE lesson_id=? AND audio_url=? AND id<>?",
+        db.update("UPDATE listening_units SET published=FALSE,retired=TRUE,edit_version=edit_version+1 WHERE lesson_id=? AND audio_url=? AND id<>? AND retired=FALSE",
                 unit.get("lesson_id"), unit.get("audio_url"), unitId);
-        db.update("UPDATE listening_units SET published=TRUE WHERE id=?", unitId);
+        db.update("UPDATE listening_units SET published=TRUE,edit_version=edit_version+1 WHERE id=?", unitId);
         return lowerKeys(unit(unitId, false));
     }
 
@@ -700,15 +711,10 @@ public class ListeningComprehensionService {
 
     private Map<String, List<Integer>> newOrder(JsonNode content) {
         Map<String, List<Integer>> result = new HashMap<>();
-        int offset = ThreadLocalRandom.current().nextInt(3);
-        int questionNumber = 0;
         for (JsonNode question : content.path("questions")) {
             List<Integer> indices = new ArrayList<>();
             for (int i = 0; i < question.path("options").size(); i++) indices.add(i);
             Collections.shuffle(indices, ThreadLocalRandom.current());
-            int correct = question.path("correct").asInt();
-            int target = (questionNumber++ + offset) % indices.size();
-            Collections.swap(indices, indices.indexOf(correct), target);
             result.put(question.path("id").asText(), indices);
         }
         return result;

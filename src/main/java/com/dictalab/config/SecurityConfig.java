@@ -89,9 +89,9 @@ public class SecurityConfig {
                                 "/practice/*",
                                 "/history", "/history/*",
                                 "/dashboard",
-                                "/rooms", "/rooms/*", "/rooms/join/*",
-                                "/admin/lessons", "/admin/lessons/new", "/admin/lessons/*"
+                                "/rooms", "/rooms/*", "/rooms/join/*"
                         ).permitAll()
+                        .requestMatchers("/admin", "/admin/**", "/admin.html").hasRole("ADMIN")
                         // Private media — chỉ ADMIN
                         .requestMatchers("/private-media/**").hasRole("ADMIN")
                         // Admin API — chỉ ADMIN
@@ -104,16 +104,38 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .exceptionHandling(errors -> errors
-                        .authenticationEntryPoint((request, response, exception) -> writeError(
+                        .authenticationEntryPoint((request, response, exception) -> {
+                            if (isAdminPage(request)) {
+                                String next = request.getRequestURI()
+                                        + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+                                response.sendRedirect("/login?next=" + java.net.URLEncoder.encode(
+                                        next, java.nio.charset.StandardCharsets.UTF_8));
+                                return;
+                            }
+                            writeError(
                                 response, HttpServletResponse.SC_UNAUTHORIZED,
                                 "Vui lòng đăng nhập để tiếp tục."
-                        ))
-                        .accessDeniedHandler((request, response, exception) -> writeError(
+                            );
+                        })
+                        .accessDeniedHandler((request, response, exception) -> {
+                            if (isAdminPage(request)) {
+                                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                                request.getRequestDispatcher("/error/403.html").forward(request, response);
+                                return;
+                            }
+                            writeError(
                                 response, HttpServletResponse.SC_FORBIDDEN,
                                 "Bạn không có quyền thực hiện thao tác này."
-                        ))
+                            );
+                        })
                 )
                 .build();
+    }
+
+    private boolean isAdminPage(jakarta.servlet.http.HttpServletRequest request) {
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        return "GET".equals(request.getMethod())
+                && (path.equals("/admin") || path.startsWith("/admin/") || path.equals("/admin.html"));
     }
 
     private void writeError(HttpServletResponse response, int status, String message) throws java.io.IOException {

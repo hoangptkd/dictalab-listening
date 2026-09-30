@@ -4,6 +4,11 @@ import com.dictalab.domain.Lesson;
 import com.dictalab.domain.LessonSentence;
 import com.dictalab.repository.LessonRepository;
 import com.dictalab.repository.LessonSentenceRepository;
+import com.dictalab.domain.AppUser;
+import com.dictalab.repository.AppUserRepository;
+import com.dictalab.security.DictaLabPrincipal;
+import org.junit.jupiter.api.BeforeEach;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -29,6 +34,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class AdminContentIntegrationTest {
+    @Autowired AppUserRepository users;
+    private DictaLabPrincipal admin;
+    @BeforeEach
+    void adminPrincipal() {
+        var account=new AppUser("admin-"+UUID.randomUUID()+"@test.local","QA Admin","unused-test-hash",Instant.now());
+        account.promoteToAdmin(Instant.now()); admin=DictaLabPrincipal.from(users.saveAndFlush(account));
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -53,7 +65,7 @@ class AdminContentIntegrationTest {
     @Test
     void adminMutationsStillRequireCsrf() throws Exception {
         mockMvc.perform(post("/api/admin/lessons")
-                        .with(user("admin@example.com").roles("ADMIN"))
+                        .with(user(admin))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validLessonJson("csrf-required")))
                 .andExpect(status().isForbidden());
@@ -64,7 +76,7 @@ class AdminContentIntegrationTest {
         String slug = "admin-upload-" + UUID.randomUUID();
         mockMvc.perform(post("/api/admin/lessons")
                         .with(csrf())
-                        .with(user("admin@example.com").roles("ADMIN"))
+                        .with(user(admin))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validLessonJson(slug)))
                 .andExpect(status().isCreated())
@@ -73,7 +85,7 @@ class AdminContentIntegrationTest {
         Lesson lesson = lessonRepository.findBySlug(slug).orElseThrow();
         mockMvc.perform(post("/api/admin/lessons/{lessonId}/sentences", lesson.getId())
                         .with(csrf())
-                        .with(user("admin@example.com").roles("ADMIN"))
+                        .with(user(admin))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -95,7 +107,7 @@ class AdminContentIntegrationTest {
                         lesson.getId(), sentence.getId())
                         .file(audio)
                         .with(csrf())
-                        .with(user("admin@example.com").roles("ADMIN")))
+                        .with(user(admin)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sentences[0].audioUrl").value(org.hamcrest.Matchers.startsWith("/media/")));
 
@@ -105,14 +117,14 @@ class AdminContentIntegrationTest {
 
         mockMvc.perform(put("/api/admin/lessons/{lessonId}/publication", lesson.getId())
                         .with(csrf())
-                        .with(user("admin@example.com").roles("ADMIN"))
+                        .with(user(admin))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"published\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.published").value(true));
 
         mockMvc.perform(get("/api/v1/catalog/lessons?level=A1")
-                        .with(user("admin@example.com").roles("ADMIN")))
+                        .with(user(admin)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.slug == '" + slug + "')]").exists());
     }
@@ -122,14 +134,14 @@ class AdminContentIntegrationTest {
         String slug = "invalid-audio-" + UUID.randomUUID();
         mockMvc.perform(post("/api/admin/lessons")
                         .with(csrf())
-                        .with(user("admin@example.com").roles("ADMIN"))
+                        .with(user(admin))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validLessonJson(slug)))
                 .andExpect(status().isCreated());
         Lesson lesson = lessonRepository.findBySlug(slug).orElseThrow();
         mockMvc.perform(post("/api/admin/lessons/{lessonId}/sentences", lesson.getId())
                         .with(csrf())
-                        .with(user("admin@example.com").roles("ADMIN"))
+                        .with(user(admin))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -149,7 +161,7 @@ class AdminContentIntegrationTest {
                         lesson.getId(), sentence.getId())
                         .file(fakeAudio)
                         .with(csrf())
-                        .with(user("admin@example.com").roles("ADMIN")))
+                        .with(user(admin)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("File tải lên không phải audio MP3, M4A hoặc WAV hợp lệ."));
     }

@@ -7,6 +7,8 @@ import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.ListeningComprehensionService;
 import com.dictalab.service.ShopAiKeyClient;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -15,16 +17,24 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -38,6 +48,7 @@ class ListeningComprehensionIntegrationTest {
     @Autowired ObjectMapper json;
     @Autowired AppUserRepository users;
     @Autowired ListeningComprehensionService service;
+    @Autowired PlatformTransactionManager transactions;
     @MockitoBean ShopAiKeyClient ai;
 
     @Test
@@ -183,13 +194,13 @@ class ListeningComprehensionIntegrationTest {
                 .andReturn().getResponse().getContentAsString();
         var order = json.readTree(db.queryForObject("SELECT option_order_json FROM listening_sessions WHERE id=?",
                 String.class, id));
-        java.util.Set<Integer> correctPositions = new java.util.HashSet<>();
         for (int i = 1; i <= 5; i++) {
             var indices = order.path("Q" + i);
+            java.util.List<Integer> positions = new java.util.ArrayList<>();
             for (int position = 0; position < indices.size(); position++)
-                if (indices.path(position).asInt() == 0) correctPositions.add(position);
+                positions.add(indices.path(position).asInt());
+            assertThat(positions).containsExactlyInAnyOrder(0, 1, 2);
         }
-        assertThat(correctPositions.size()).isGreaterThan(1);
         mvc.perform(put(path + "/answers").with(user(principal(owner))).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content("{\"answers\":{\"Q1\":2}}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.answersDraft.Q1").value(2));
@@ -197,6 +208,80 @@ class ListeningComprehensionIntegrationTest {
                 .andExpect(jsonPath("$.answersDraft.Q1").value(2))
                 .andReturn().getResponse().getContentAsString();
         assertThat(json.readTree(after).path("questions")).isEqualTo(json.readTree(first).path("questions"));
+    }
+
+    @Test
+    void correctAnswersDoNotAlwaysFollowARotatingPositionPattern() {
+        AppUser owner = users.save(new AppUser("shuffle-" + UUID.randomUUID() + "@test.local",
+                "Listener", "unused", Instant.now()));
+        Long unit = db.queryForObject("SELECT id FROM listening_units WHERE published=TRUE ORDER BY id LIMIT 1", Long.class);
+        int rotatingPatterns = 0;
+        for (int run = 0; run < 12; run++) {
+            String id = (String) service.start(owner.getId(), unit, "ONE_PASS", false).get("sessionId");
+            var order = json.readTree(db.queryForObject("SELECT option_order_json FROM listening_sessions WHERE id=?",
+                    String.class, id));
+            java.util.List<Integer> positions = new java.util.ArrayList<>();
+            for (int i = 1; i <= 5; i++) {
+                var indices = order.path("Q" + i);
+                for (int position = 0; position < indices.size(); position++)
+                    if (indices.path(position).asInt() == 0) positions.add(position);
+            }
+            boolean rotating = true;
+            for (int i = 1; i < positions.size(); i++)
+                rotating &= positions.get(i) == (positions.get(0) + i) % 3;
+            if (rotating) rotatingPatterns++;
+        }
+        assertThat(rotatingPatterns).isLessThan(12);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"RECALL,false", "RECALL,true", "QUESTIONS,false", "QUESTIONS,true"})
+    void concurrentWriteCannotOverwriteSubmittedResponse(String stage, boolean submitting) throws Exception {
+        AppUser owner = users.save(new AppUser("recall-race-" + UUID.randomUUID() + "@test.local",
+                "Listener", "unused", Instant.now()));
+        Long unit = db.queryForObject("SELECT id FROM listening_units WHERE published=TRUE ORDER BY id LIMIT 1", Long.class);
+        String id = (String) service.start(owner.getId(), unit, "ONE_PASS", false).get("sessionId");
+        db.update("UPDATE listening_sessions SET stage='RECALL' WHERE id=?", id);
+        boolean recall = "RECALL".equals(stage);
+        if (!recall) service.submitRecall(owner.getId(), id, "submitted recall");
+        JdbcTemplate draftDb = spy(db);
+        CountDownLatch draftRead = new CountDownLatch(1);
+        CountDownLatch submitFinished = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            Object snapshot = invocation.callRealMethod();
+            draftRead.countDown();
+            if (!submitFinished.await(10, TimeUnit.SECONDS)) throw new AssertionError("Submission timed out");
+            return snapshot;
+        }).when(draftDb).queryForMap("SELECT * FROM listening_sessions WHERE id=? AND user_id=?", id, owner.getId());
+        var draftService = new ListeningComprehensionService(draftDb, json, ai);
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            var draft = executor.submit(() -> new TransactionTemplate(transactions).execute(status -> {
+                if (recall) return submitting ? draftService.submitRecall(owner.getId(), id, "late recall")
+                        : draftService.saveRecall(owner.getId(), id, "late recall");
+                return submitting ? draftService.submitAnswers(owner.getId(), id, Map.of("Q1", 0))
+                        : draftService.saveAnswers(owner.getId(), id, Map.of("Q1", 0));
+            }));
+            assertThat(draftRead.await(10, TimeUnit.SECONDS)).isTrue();
+            if (recall) service.submitRecall(owner.getId(), id, "submitted recall");
+            else service.submitAnswers(owner.getId(), id, Map.of("Q1", 1));
+            submitFinished.countDown();
+            assertThatThrownBy(() -> draft.get(10, TimeUnit.SECONDS))
+                    .isInstanceOf(ExecutionException.class).hasCauseInstanceOf(InvalidPracticeStateException.class);
+            assertThat(db.queryForObject("SELECT recall_text FROM listening_passes WHERE session_id=? AND pass_number=1",
+                    String.class, id)).isEqualTo("submitted recall");
+            assertThat(service.state(owner.getId(), id).get("stage")).isEqualTo(recall ? "QUESTIONS" : "PASS1_RESULT");
+            if (!recall) {
+                assertThat(json.readTree(db.queryForObject("SELECT answers_json FROM listening_passes WHERE session_id=? AND pass_number=1",
+                        String.class, id)).path("Q1").asInt()).isEqualTo(1);
+                assertThat(db.queryForObject("SELECT answers_draft_json FROM listening_passes WHERE session_id=? AND pass_number=1",
+                        String.class, id)).isNull();
+            }
+        } finally {
+            submitFinished.countDown();
+            executor.shutdownNow();
+            executor.awaitTermination(10, TimeUnit.SECONDS);
+        }
     }
 
     @Test

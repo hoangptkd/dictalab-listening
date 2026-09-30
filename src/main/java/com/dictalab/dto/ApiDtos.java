@@ -99,6 +99,7 @@ public final class ApiDtos {
             String userInput,
             boolean correct,
             boolean revealed,
+            boolean prefilled,
             LearnerErrorType errorType
     ) {
     }

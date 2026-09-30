@@ -7,10 +7,11 @@ const read = name => fs.readFileSync(path.resolve(__dirname, '../../main/resourc
 const html = fs.readFileSync(path.resolve(__dirname, '../../main/resources/static/index.html'), 'utf8');
 
 test('page navigation uses real links so browser link actions remain available', () => {
-    for (const route of ['catalog', 'listening', 'history', 'dashboard', 'room', 'admin']) {
+    for (const route of ['catalog', 'listening', 'history', 'dashboard', 'room']) {
         assert.match(html, new RegExp(`<a[^>]+data-route="${route}"`));
     }
     assert.doesNotMatch(html, /<button[^>]+data-route=/);
+    assert.match(html, /<a[^>]+id="admin-nav-link"[^>]+href="\/admin"/);
     assert.match(read('app.js'), /<a class="history-card" href=/);
     assert.match(read('listening.js'), /<a class="text-button" href="\/listening\?view=history"/);
 });
@@ -68,7 +69,7 @@ function listeningHarness(api, customRoot) {
     const buttons = [{disabled: true, isConnected: true}, {disabled: true, isConnected: true}];
     const notices = [];
     const root = customRoot || {innerHTML: 'original', querySelectorAll: () => buttons,
-        querySelector: () => ({addEventListener() {}})};
+        querySelector: selector => selector === 'audio' ? null : ({addEventListener() {}})};
     const window = {clearTimeout, setTimeout, DictaLabListeningBridge: {
         api, stopRecordedAudio() {}, showToast: message => notices.push(message)
     }};
@@ -153,4 +154,80 @@ test('Listening history navigation retains its subview and page', async () => {
     await navigate('listening', {view: 'history', page: 2});
     assert.equal(received.params.view, 'history');
     assert.equal(received.params.page, 2);
+});
+
+test('admin startup does not access learner elements or request learning data', async () => {
+    const source = read('app.js').match(/    async function enterApplication\([\s\S]*?\n    }\n/)[0];
+    const requested = [];
+    const loading = {hidden: false};
+    const elements = {appShell: {hidden: true}, accountName: {}, accountEmail: {}};
+    const enter = vm.runInNewContext(`${source}\nenterApplication`, {
+        isAdminArea: true, elements, state: {currentUser: {role: 'ADMIN', displayName: 'Admin', email: 'admin@test.local'}},
+        document: {querySelector: () => loading}, location: {pathname: '/admin/users', search: ''},
+        router: {parse: () => ({route: 'admin-users'})},
+        resolveUrlAndNavigate: async parsed => requested.push(parsed.route),
+        api: () => assert.fail('admin startup must not load catalog or learner dashboard')
+    });
+    await enter();
+    assert.equal(elements.appShell.hidden, false);
+    assert.equal(loading.hidden, true);
+    assert.deepEqual(requested, ['admin-users']);
+});
+
+test('cross-area navigation loads its own document and expired admin sessions retain destination', async () => {
+    const requests = [];
+    const source = read('app.js').match(/    async function resolveUrlAndNavigate\([\s\S]*?\n    }\n/)[0];
+    for (const [isAdminArea, route, target] of [[false, 'admin-users', '/admin/users'], [true, 'catalog', '/catalog']]) {
+        const resolve = vm.runInNewContext(`${source}\nresolveUrlAndNavigate`, {
+            isAdminArea, window: {DictaLabAdmin: {canLeave: () => true}}, router: {toPath: () => target}, location: {assign: path => requests.push(path)}
+        });
+        await resolve({route, params: {}});
+    }
+    assert.deepEqual(requests, ['/admin/users', '/catalog']);
+    let login;
+    const authSource = read('app.js').match(/    function showAuthScreen\([\s\S]*?\n    }\n/)[0];
+    const requireLogin = vm.runInNewContext(`${authSource}\nshowAuthScreen`, {
+        isAdminArea: true, location: {pathname: '/admin/lessons/42', search: '?page=3', replace: value => { login = value; }}
+    });
+    requireLogin();
+    assert.equal(login, '/login?next=%2Fadmin%2Flessons%2F42%3Fpage%3D3');
+});
+
+test('publishing a lesson stays in the admin editor', async () => {
+    let refreshed;
+    const source = read('app.js').match(/    async function toggleAdminPublication\([\s\S]*?\n    }\n/)[0];
+    const toggle = vm.runInNewContext(`${source}\ntoggleAdminPublication`, {
+        confirm: () => true,
+        selectedAdminLesson: () => ({id: 42, published: false}),
+        elements: {adminPublicationButton: {}}, api: async () => ({id: 42, published: true}),
+        refreshAdminLessons: async id => { refreshed = id; }, setAdminStatus() {},
+        selectLevel: () => assert.fail('publication must not navigate to the learner catalog')
+    });
+    await toggle();
+    assert.equal(refreshed, 42);
+});
+
+test('login initialization preserves the admin destination supplied by the server', () => {
+    const source = read('app.js').match(/    function showAuthScreen\([\s\S]*?\n    }\n/)[0];
+    let redirected;
+    const location = {pathname: '/login', search: '?next=%2Fadmin%2Fusers'};
+    const showAuth = vm.runInNewContext(`${source}\nshowAuthScreen`, {
+        isAdminArea: false, state: {}, stopRecordedAudio() {}, stopTimer() {}, switchAuthMode() {},
+        document: {body: {dataset: {}}}, elements: {appShell: {}, authScreen: {}, authStatus: {}},
+        router: {parse: () => ({route: 'login', query: new URLSearchParams(location.search)})},
+        window: {location, history: {replaceState(_state, _title, path) { redirected = path; }}, requestAnimationFrame() {}}
+    });
+    showAuth();
+    assert.equal(redirected, '/login?next=%2Fadmin%2Fusers');
+});
+
+test('legacy Listening administration links resolve to the dedicated admin page', () => {
+    const start = read('app.js').indexOf('    const router = {');
+    const end = read('app.js').indexOf('\n    function paginateList', start);
+    const router = vm.runInNewContext(`${read('app.js').slice(start, end)}\nrouter`, {URLSearchParams});
+    for (const path of ['/listening', '/admin/listening']) {
+        const result = router.parse(path, '?view=admin&edit=42&page=2');
+        assert.equal(result.route, 'admin-listening');
+        assert.equal(router.toPath(result.route, result.params), '/admin/listening?page=2&edit=42');
+    }
 });

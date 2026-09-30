@@ -1,5 +1,6 @@
 (() => {
     "use strict";
+    const isAdminArea = document.body.dataset.area === "admin";
 
     // ======================================================================
     // ROUTER — History API (pushState / replaceState / popstate)
@@ -22,6 +23,11 @@
             const s0 = seg[0] || "";
             const s1 = seg[1] || "";
             const s2 = seg[2] || "";
+
+            if ((s0 === "admin" && !s1) || s0 === "admin.html") return { route: "admin", params: {page}, query: q };
+            if ((s0 === "admin" && s1 === "listening") || (s0 === "listening" && q.get("view") === "admin")) {
+                return {route: "admin-listening", params: {edit: q.get("edit") || "", page}, query: q};
+            }
 
             if (s0 === "" || s0 === "login")  return { route: "login",    params: {}, query: q };
             if (s0 === "register")             return { route: "register", params: {}, query: q };
@@ -53,6 +59,7 @@
                 case "account":     return "/account";
                 case "support":     return "/support";
                 case "admin-users": return "/admin/users";
+                case "admin-listening": return `/admin/listening?page=${encodeURIComponent(params.page || 1)}${params.edit ? `&edit=${encodeURIComponent(params.edit)}` : ""}`;
                 case "admin-support": return "/admin/support";
                 case "catalog":     return `/catalog?level=${encodeURIComponent(params.level || "A1")}&page=${encodeURIComponent(params.page || 1)}`;
                 case "listening": {
@@ -371,6 +378,19 @@
             state.currentUser = await api("/api/auth/me", {redirectOnUnauthorized: false});
             await enterApplication();
         } catch (error) {
+            if (isAdminArea) {
+                if (error.status === 401) showAuthScreen();
+                else {
+                    const loading = document.querySelector("#admin-loading");
+                    loading.hidden = false;
+                    loading.replaceChildren(document.createTextNode(error.message + " "));
+                    const retry = document.createElement("a");
+                    retry.href = location.href;
+                    retry.textContent = "Thử lại";
+                    loading.appendChild(retry);
+                }
+                return;
+            }
             // Giữ nguyên URL để sau khi đăng nhập có thể redirect về đúng trang
             const { pathname, search } = window.location;
             const parsed = router.parse(pathname, search);
@@ -381,6 +401,21 @@
     }
 
     function bindEvents() {
+        elements.logoutButton.addEventListener("click", logout);
+        elements.accountLink = document.querySelector("#account-link");
+        elements.routeButtons.forEach(link => {
+            link.addEventListener("click", event => {
+                if (link.tagName === "A") {
+                    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                    event.preventDefault();
+                }
+                navigate(link.dataset.route);
+            });
+        });
+        if (isAdminArea) {
+            bindAdminEvents();
+            return;
+        }
         elements.loginTab.addEventListener("click", () => switchAuthMode("login"));
         elements.registerTab.addEventListener("click", () => switchAuthMode("register"));
         [elements.loginTab, elements.registerTab].forEach((tab, index, tabs) => {
@@ -394,17 +429,6 @@
         });
         elements.loginForm.addEventListener("submit", event => submitAuth(event, "login"));
         elements.registerForm.addEventListener("submit", event => submitAuth(event, "register"));
-        elements.logoutButton.addEventListener("click", logout);
-        elements.accountLink = document.querySelector("#account-link");
-        elements.routeButtons.forEach(link => {
-            link.addEventListener("click", event => {
-                if (link.tagName === "A") {
-                    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                    event.preventDefault();
-                }
-                navigate(link.dataset.route);
-            });
-        });
         elements.levelTabs.addEventListener("click", event => {
             const button = event.target.closest("[data-level]");
             if (button) {
@@ -438,40 +462,6 @@
         elements.dictationForm.addEventListener("submit", completeSentence);
         elements.reviewSentences.addEventListener("click", playReviewAudio);
         elements.copyAnalysisReport.addEventListener("click", copyAnalysisReport);
-        elements.adminNewLesson.addEventListener("click", event => {
-            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-            event.preventDefault();
-            showNewLessonEditor();
-        });
-        elements.adminCancelCreate.addEventListener("click", event => {
-            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-            event.preventDefault();
-            hideAdminEditor();
-        });
-        elements.adminLessonSearch.addEventListener("input", () => {
-            const url = new URL(location.href);
-            url.searchParams.set("page", "1");
-            window.history.replaceState(window.history.state, "", url);
-            renderAdminLessonList();
-        });
-        elements.adminLessonList.addEventListener("click", event => {
-            const link = event.target.closest("[data-admin-lesson-id]");
-            if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-            event.preventDefault();
-            selectAdminLesson(Number(link.dataset.adminLessonId));
-        });
-        elements.adminLessonForm.addEventListener("submit", saveAdminLesson);
-        elements.adminLessonForm.elements.level.addEventListener("change", event => {
-            if (!state.adminEditingNew) return;
-            const difficulty = ({A1: 1, A2: 2, B1: 3, B2: 4})[event.target.value] || 1;
-            elements.adminLessonForm.elements.vocabularyDifficulty.value = String(difficulty);
-            elements.adminLessonForm.elements.grammarDifficulty.value = String(difficulty);
-            elements.adminLessonForm.elements.sentenceDifficulty.value = String(difficulty);
-        });
-        elements.adminAddSentenceForm.addEventListener("submit", addAdminSentence);
-        elements.adminSentenceList.addEventListener("click", handleAdminSentenceAction);
-        elements.adminSentenceList.addEventListener("change", handleAdminAudioUpload);
-        elements.adminPublicationButton.addEventListener("click", toggleAdminPublication);
         elements.historyLevelTabs.addEventListener("click", event => {
             const tab = event.target.closest("[data-history-level]");
             if (tab) selectHistoryLevel(tab.dataset.historyLevel);
@@ -524,6 +514,55 @@
         elements.roomPendingCancelBtn.addEventListener("click", roomLeave);
     }
 
+    function bindAdminEvents() {
+        elements.adminNewLesson.addEventListener("click", event => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            showNewLessonEditor();
+        });
+        elements.adminCancelCreate.addEventListener("click", event => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            hideAdminEditor();
+        });
+        const filters = document.querySelector("#admin-lesson-filters");
+        filters.addEventListener("submit", event => {
+            event.preventDefault();
+            window.DictaLabAdmin.url({...Object.fromEntries(new FormData(filters)), page: 1});
+            refreshAdminLessons();
+        });
+        filters.querySelector("[data-clear]").addEventListener("click", () => {
+            window.DictaLabAdmin.url({page: 1}); refreshAdminLessons();
+        });
+        elements.adminLessonList.addEventListener("click", event => {
+            const link = event.target.closest("[data-admin-lesson-id]");
+            if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            selectAdminLesson(Number(link.dataset.adminLessonId));
+        });
+        elements.adminLessonForm.addEventListener("submit", event => { event.preventDefault(); window.DictaLabAdmin.busy(elements.adminEditorContent,()=>saveAdminLesson(event)); });
+        elements.adminLessonForm.elements.level.addEventListener("change", event => {
+            if (!state.adminEditingNew) return;
+            const difficulty = ({A1: 1, A2: 2, B1: 3, B2: 4})[event.target.value] || 1;
+            elements.adminLessonForm.elements.vocabularyDifficulty.value = String(difficulty);
+            elements.adminLessonForm.elements.grammarDifficulty.value = String(difficulty);
+            elements.adminLessonForm.elements.sentenceDifficulty.value = String(difficulty);
+        });
+        elements.adminAddSentenceForm.addEventListener("submit", event => { event.preventDefault(); window.DictaLabAdmin.busy(elements.adminEditorContent,()=>addAdminSentence(event)); });
+        elements.adminSentenceList.addEventListener("click", event=>window.DictaLabAdmin.busy(elements.adminEditorContent,()=>handleAdminSentenceAction(event)));
+        elements.adminSentenceList.addEventListener("change", event=>window.DictaLabAdmin.busy(elements.adminEditorContent,()=>handleAdminAudioUpload(event)));
+        elements.adminPublicationButton.addEventListener("click", ()=>window.DictaLabAdmin.busy(elements.adminEditorContent,toggleAdminPublication));
+        document.querySelector("#admin-copy-lesson").addEventListener("click",()=>window.DictaLabAdmin.busy(elements.adminEditorContent,async()=>{
+            const lesson=selectedAdminLesson(); if(!lesson) return;
+            if(!window.DictaLabAdmin.canLeave()) return;
+            try {
+                const copied=await api(`/api/admin/lessons/${lesson.id}/copy`,{method:"POST"});
+                history.pushState({},"",`/admin/lessons/${copied.id}`); window.DictaLabAdmin.rememberUrl();
+                await refreshAdminLessons(copied.id); setAdminStatus("Đã tạo bản nháp riêng. Bài gốc và lịch sử học vẫn được giữ.");
+            } catch(error) {setAdminStatus(error.message,true);}
+        }));
+    }
+
     async function refreshCsrf() {
         const csrf = await api("/api/auth/csrf", {redirectOnUnauthorized: false});
         state.csrfHeader = csrf.headerName;
@@ -531,6 +570,31 @@
     }
 
     async function enterApplication() {
+        if (isAdminArea) {
+            if (state.currentUser.role !== "ADMIN") {
+                location.replace("/admin");
+                return;
+            }
+            document.querySelector("#admin-loading").hidden = true;
+            elements.appShell.hidden = false;
+            elements.accountName.textContent = state.currentUser.displayName;
+            elements.accountEmail.textContent = state.currentUser.email;
+            await resolveUrlAndNavigate(router.parse(location.pathname, location.search), false);
+            return;
+        }
+        // Loading a different document gives each area its own layout and startup flow.
+        const destination = router.parse(location.pathname, location.search);
+        if (destination.route === "login" && destination.query.get("next")) {
+            const next = new URL(destination.query.get("next"), location.origin);
+            if (next.origin === location.origin && router.parse(next.pathname, next.search).route.startsWith("admin")) {
+                location.replace(next.pathname + next.search);
+                return;
+            }
+        }
+        if (destination.route.startsWith("admin")) {
+            location.replace(router.toPath(destination.route, destination.params));
+            return;
+        }
         elements.authScreen.hidden = true;
         elements.appShell.hidden = false;
         elements.accountName.textContent = state.currentUser.displayName;
@@ -558,7 +622,18 @@
      * @param {boolean} pushHistory — true khi gọi từ user action (navigate), false khi khởi động / popstate
      */
     async function resolveUrlAndNavigate({ route, params, query }, pushHistory = true) {
+        if (isAdminArea && pushHistory && window.DictaLabAdmin?.canLeave() === false) return;
+        if (route.startsWith("admin") !== isAdminArea) {
+            location.assign(router.toPath(route, params));
+            return;
+        }
         switch (route) {
+            case "admin-listening": {
+                if (pushHistory) router.push(route, params);
+                _showView(route);
+                await window.DictaLabListening?.show();
+                return;
+            }
             case "account":
             case "support":
             case "admin-users":
@@ -569,7 +644,7 @@
                     return;
                 }
                 if (pushHistory) router.push(route);
-                else if (!(route === "support" && query?.has("id"))) router.replace(route);
+                else if (!route.startsWith("admin-") && !(route === "support" && query?.has("id"))) router.replace(route);
                 _showView(route);
                 await window.DictaLabAccount?.show(route);
                 return;
@@ -747,7 +822,6 @@
                     return;
                 }
                 if (pushHistory) router.push("admin", params);
-                else router.replace("admin", params);
                 await _showView("admin");
                 await refreshAdminLessons();
                 return;
@@ -775,7 +849,6 @@
                 }
                 const { lessonId } = params;
                 if (pushHistory) router.push("admin-lesson", { lessonId, page: params.page });
-                else router.replace("admin-lesson", { lessonId, page: params.page });
                 await _showView("admin");
                 await refreshAdminLessons(lessonId);
                 return;
@@ -802,12 +875,18 @@
             catalog: "catalog", practice: "practice", result: "result",
             history: "history", dashboard: "dashboard", listening: "listening",
             room: "room", admin: "admin", account: "account", support: "support",
-            "admin-users": "admin-users", "admin-support": "admin-support", login: null, register: null
+            "admin-users": "admin-users", "admin-support": "admin-support", "admin-listening": "admin-listening", login: null, register: null
         }[route] || "catalog";
 
         const target = document.querySelector(`#${viewId}-view`);
         if (!target) return;
-        if (document.body.dataset.route === "listening" && viewId !== "listening") window.DictaLabListening?.leave();
+        if (document.body.dataset.route === "result" && viewId !== "result") window.DictaLabCoach?.leave();
+        if (isAdminArea) {
+            stopRecordedAudio();
+            const title = {admin: "Bài nghe", "admin-users": "Người dùng", "admin-support": "Yêu cầu hỗ trợ", "admin-listening": "Nghe hiểu"}[viewId];
+            document.title = `${title} · Quản trị DictaLab`;
+        }
+        if (["listening", "admin-listening"].includes(document.body.dataset.route) && viewId !== document.body.dataset.route) window.DictaLabListening?.leave();
         elements.views.forEach(view => view.hidden = view !== target);
         document.body.dataset.route = viewId;
         elements.navLinks.forEach(link => {
@@ -824,6 +903,11 @@
     }
 
     function showAuthScreen(message = "", nextPath = null) {
+        if (isAdminArea) {
+            location.replace(`/login?next=${encodeURIComponent(nextPath || location.pathname + location.search)}`);
+            return;
+        }
+        window.DictaLabCoach?.leave();
         window.DictaLabListening?.leave();
         stopRecordedAudio();
         document.body.dataset.route = "login";
@@ -836,6 +920,7 @@
         // Xác định mode từ URL hiện tại
         const parsed = router.parse(window.location.pathname, window.location.search);
         const mode = parsed.route === "register" ? "register" : "login";
+        nextPath ||= parsed.query.get("next");
         switchAuthMode(mode);
         elements.authStatus.textContent = message;
         // Lưu next path vào URL để sau đăng nhập redirect về đúng nơi
@@ -884,7 +969,8 @@
             elements.authStatus.textContent = "";
             // Đọc ?next= để redirect về đúng trang sau đăng nhập
             const nextParam = new URLSearchParams(window.location.search).get("next");
-            const safeNext = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : null;
+            const nextUrl = nextParam?.startsWith("/") ? new URL(nextParam, location.origin) : null;
+            const safeNext = nextUrl?.origin === location.origin ? nextUrl.pathname + nextUrl.search : null;
             if (safeNext) {
                 // Thay URL trước khi enterApplication đọc lại
                 window.history.replaceState({}, "", safeNext);
@@ -898,6 +984,7 @@
     }
 
     async function logout() {
+        if (isAdminArea && !window.DictaLabAdmin.canLeave()) return;
         elements.logoutButton.disabled = true;
         try {
             if (state.room && !await roomLeave()) return;
@@ -929,6 +1016,7 @@
             account:   { route: "account", params: {} },
             support:   { route: "support", params: {} },
             "admin-users": { route: "admin-users", params: {} },
+            "admin-listening": { route: "admin-listening", params: {edit: params.edit || "", page: params.page || 1} },
             "admin-support": { route: "admin-support", params: {} },
             room:      { route: "room",       params: {} },
             admin:     { route: "admin",      params: {} },
@@ -1183,11 +1271,12 @@
         elements.wordSlots.innerHTML = words.map(word => {
             const width = Math.max(3, Math.min(18, word.length));
             const draft = state.wordDrafts.get(word.index);
-            const inputValue = draft === undefined
+            const inputValue = word.prefilled ? word.userInput : draft === undefined
                 ? (word.userInput || word.firstLetter || "")
                 : draft;
             const classes = ["word-slot"];
-            if (word.correct) classes.push("is-correct");
+            if (word.prefilled) classes.push("is-prefilled");
+            else if (word.correct) classes.push("is-correct");
             if (word.revealed) classes.push("is-revealed");
             if (word.userInput && !word.correct && !word.revealed) classes.push("is-wrong");
             const hint = word.firstLetter
@@ -1199,11 +1288,12 @@
                        ${escapeHtml(word.revealedText)}
                    </span>`
                 : `<label>
-                       <span class="sr-only">Từ ${word.index + 1}, ${word.length} ký tự${word.firstLetter ? `, bắt đầu bằng ${escapeHtml(word.firstLetter)}` : ""}</span>
+                       <span class="sr-only">Từ ${word.index + 1}, ${word.length} ký tự${word.prefilled ? ", tên riêng đã điền sẵn" : word.firstLetter ? `, bắt đầu bằng ${escapeHtml(word.firstLetter)}` : ""}</span>
                        <input type="text" inputmode="text" autocomplete="off" autocapitalize="none" spellcheck="false"
                               data-word-index="${word.index}" maxlength="${word.length}"
                               style="width: calc(${width}ch + 24px)" placeholder="${escapeHtml(word.mask)}"
                               value="${escapeAttribute(inputValue)}" ${word.correct ? "readonly aria-readonly=\"true\"" : ""}
+                              ${word.prefilled ? "tabindex=\"-1\"" : ""}
                               aria-invalid="${word.userInput && !word.correct ? "true" : "false"}">
                    </label>`;
             const before = word.punctuationBefore
@@ -1216,8 +1306,9 @@
                 + `data-slot-index="${word.index}">${hint}${control}</span>${after}</span>`;
         }).join("");
 
-        const resolved = words.filter(word => word.correct || word.revealed).length;
-        elements.wordCompletion.textContent = `${resolved}/${words.length} từ`;
+        const answerable = words.filter(word => !word.prefilled);
+        const resolved = answerable.filter(word => word.correct || word.revealed).length;
+        elements.wordCompletion.textContent = `${resolved}/${answerable.length} từ`;
         roomQueueDraft();
     }
 
@@ -1362,7 +1453,7 @@
         const inputs = [...elements.wordSlots.querySelectorAll("input[data-word-index]:not(:disabled)")]
             .filter(candidate => Number(candidate.dataset.wordIndex) >= Number(input.dataset.wordIndex));
         inputs.forEach((candidate, position) => {
-            if (incomingWords[position]) {
+            if (incomingWords[position] && !candidate.readOnly) {
                 candidate.value = incomingWords[position].replace(/[.,!?;:]$/u, "");
                 candidate.dispatchEvent(new Event("input", {bubbles: true}));
             }
@@ -1710,15 +1801,13 @@
         document.querySelector("#result-known").textContent = result.knownButMissed;
         document.querySelector("#result-unknown").textContent = result.unknownWords;
         renderAssessment(elements.resultAssessment, result.assessment);
-        const independentAccuracy = result.assessment?.metrics?.unassistedFirstPassAccuracy
-            ?? result.firstAttemptAccuracy;
-        document.querySelector("#result-message").textContent = independentAccuracy >= 85
-            ? "Bạn nhận âm rất chắc ngay lần nghe độc lập. Hệ thống sẽ cân nhắc tăng độ khó."
-            : independentAccuracy >= 60
-                ? "Nền tảng đang tốt dần. Hãy chú ý những từ quen nhưng thường bị nuốt âm."
-                : result.firstAttemptAccuracy >= 85
-                    ? "Bạn hoàn thành chính xác, nhưng đã dùng nghe chậm, replay hoặc trợ giúp. Hãy thử một bài mới ở tốc độ chuẩn."
-                : "Hãy luyện thêm ở tốc độ này. First attempt thấp là dữ liệu hữu ích, không phải thất bại.";
+        document.querySelector("#coach-accuracy").textContent = `${formatPercent(result.firstAttemptAccuracy)}%`;
+        document.querySelector("#coach-lesson").textContent = `${result.lessonTitle} · ${result.level}`;
+        document.querySelector("#result-message").textContent = result.firstAttemptAccuracy >= 85
+            ? "Bạn nhận ra phần lớn từ ngay từ đầu. Ôn vài chỗ đã lỡ rồi thử một bài mới."
+            : result.firstAttemptAccuracy >= 60
+                ? "Bạn đã nắm được nhiều từ trong bài. Tập trung vào vài điểm còn vướng dưới đây."
+                : "Bài này còn nhiều chỗ khó. Bắt đầu bằng một nhóm lỗi nhỏ, nghe lại rồi thử lại.";
 
         const resultActions = document.querySelector(".result-score-card");
         const existingBack = resultActions.querySelector(".history-back-link");
@@ -1749,12 +1838,19 @@
             if (catalogButton) catalogButton.hidden = false;
         }
 
-        renderLessonReview(result);
-        loadReviewAudioMetrics(result).catch(() => {
-            if (state.lastResult?.sessionId === result.sessionId) {
-                elements.reviewAudioMetrics.innerHTML = "<span>Không đo được thời lượng audio</span>";
-            }
-        });
+        const technical = document.querySelector("#result-technical");
+        technical.open = false;
+        elements.reviewSentences.innerHTML = "";
+        let loaded = false;
+        technical.ontoggle = () => {
+            if (!technical.open || loaded || state.lastResult !== result) return;
+            loaded = true;
+            renderLessonReview(result);
+            loadReviewAudioMetrics(result).catch(() => {
+                if (state.lastResult === result) elements.reviewAudioMetrics.textContent = "Không đo được thời lượng audio";
+            });
+        };
+        window.DictaLabCoach?.show(result);
     }
 
     function renderLessonReview(result) {
@@ -1893,8 +1989,10 @@
             }
         });
         for (let start = 0; start < withoutSegments.length; start += 5) {
+            if (state.lastResult !== result) return;
             const batch = withoutSegments.slice(start, start + 5);
             const durations = await Promise.all(batch.map(sentence => readAudioDuration(sentence.audioUrl)));
+            if (state.lastResult !== result) return;
             batch.forEach((sentence, index) => {
                 if (durations[index] > 0) state.reviewAudioDurations.set(sentence.sentenceId, durations[index]);
             });
@@ -2294,38 +2392,51 @@
 
     async function refreshAdminLessons(preferredLessonId = null) {
         if (state.currentUser?.role !== "ADMIN") return;
+        const ui = window.DictaLabAdmin;
+        const request = ++adminListRequest;
+        const saved = ui.capture(elements.adminEditorContent);
+        const savedId = state.selectedAdminLessonId;
+        const filters = ui.query({q:"",level:"",status:"",topic:"",origin:"",sort:"updated",page:1});
+        const form = document.querySelector("#admin-lesson-filters");
+        elements.adminLessonList.setAttribute("aria-busy", "true");
         try {
-            state.adminLessons = await api("/api/admin/lessons");
-            if (document.body.dataset.route !== "admin") return;
+            const [result, options] = await Promise.all([api(`/api/admin/lessons/page?${new URLSearchParams({...filters,page: Math.max(0,Number(filters.page)-1)})}`), api("/api/admin/lessons/filters")]);
+            if (request !== adminListRequest || document.body.dataset.route !== "admin") return;
+            state.adminLessons = result.items.map(item => ({...item,contentOrigin:item.content_origin,contentLocked:item.content_locked,sentenceCount:item.sentence_count}));
+            state.adminPage = result;
+            form.elements.topic.innerHTML = '<option value="">Tất cả</option>' + [...new Set(options.map(item=>item.topic))].map(topic=>`<option value="${escapeAttribute(topic)}">${escapeHtml(topic)}</option>`).join("");
+            Object.entries(filters).forEach(([key,value])=>{ if(form.elements.namedItem(key)) form.elements.namedItem(key).value=value; });
+            const corrected=new URL(location.href); corrected.searchParams.set("page",result.page+1); history.replaceState(history.state,"",corrected); ui.rememberUrl();
             if (preferredLessonId !== null) {
                 state.selectedAdminLessonId = preferredLessonId;
                 state.adminEditingNew = false;
             }
             renderAdminLessonList();
-            if (!state.adminEditingNew && state.selectedAdminLessonId !== null) {
+            if (!state.adminEditingNew && state.selectedAdminLessonId !== null && (preferredLessonId !== null || !selectedAdminLesson())) {
                 try {
                     const lessonId = state.selectedAdminLessonId;
                     const lesson = await api(`/api/admin/lessons/${lessonId}`);
-                    if (document.body.dataset.route !== "admin" || state.selectedAdminLessonId !== lessonId) return;
+                    if (request !== adminListRequest || document.body.dataset.route !== "admin" || state.selectedAdminLessonId !== lessonId) return;
                     state.adminSelectedLesson = lesson;
                     renderAdminEditor(state.adminSelectedLesson);
-                } catch (_error) {
-                    hideAdminEditor();
+                    if (savedId === lesson.id) ui.restore(elements.adminEditorContent,saved);
+                } catch (error) {
+                    setAdminStatus(error.message,true);
                 }
             }
         } catch (error) {
-            elements.adminLessonList.innerHTML = `<p class="admin-help">${escapeHtml(error.message)}</p>`;
+            if (request === adminListRequest) ui.failure(elements.adminLessonList,error.message,()=>refreshAdminLessons());
+        } finally {
+            if (request === adminListRequest) elements.adminLessonList.setAttribute("aria-busy", "false");
         }
     }
+    let adminListRequest = 0;
 
     function renderAdminLessonList() {
-        const query = elements.adminLessonSearch.value.trim().toLowerCase();
-        const lessons = state.adminLessons.filter(lesson => !query || [
-            lesson.title, lesson.slug, lesson.level, lesson.topic
-        ].some(value => String(value).toLowerCase().includes(query)));
+        const lessons = state.adminLessons;
         elements.adminLessonList.innerHTML = lessons.length ? lessons.map(lesson => `
             <a class="admin-lesson-item${lesson.id === state.selectedAdminLessonId ? " is-selected" : ""}"
-                    href="${router.toPath("admin-lesson", {lessonId: lesson.id, page: new URLSearchParams(location.search).get("page") || 1})}"
+                    href="/admin/lessons/${lesson.id}${location.search}"
                     data-admin-lesson-id="${lesson.id}">
                 <span class="admin-lesson-meta">
                     <span>${escapeHtml(lesson.level)} · ${lesson.sentenceCount} câu</span>
@@ -2335,7 +2446,10 @@
                 <small>${escapeHtml(lesson.slug)}</small>
             </a>
         `).join("") : '<p class="admin-help">Không có bài nào khớp tìm kiếm.</p>';
-        paginateList(elements.adminLessonList, 10);
+        elements.adminLessonList.innerHTML += window.DictaLabAdmin.pager(state.adminPage);
+        elements.adminLessonList.querySelectorAll("[data-page]").forEach(button=>button.addEventListener("click",()=>{
+            window.DictaLabAdmin.url({...Object.fromEntries(new URLSearchParams(location.search)),page:button.dataset.page}); refreshAdminLessons();
+        }));
     }
 
     function selectedAdminLesson() {
@@ -2343,13 +2457,14 @@
     }
 
     async function selectAdminLesson(lessonId) {
+        if (!window.DictaLabAdmin.canLeave()) return;
         const lesson = state.adminLessons.find(item => item.id === lessonId);
         if (!lesson) return;
         state.selectedAdminLessonId = lessonId;
         state.adminEditingNew = false;
         renderAdminLessonList();
         // Cập nhật URL
-        router.push("admin-lesson", { lessonId, page: new URLSearchParams(location.search).get("page") });
+        history.pushState({},"",`/admin/lessons/${lessonId}${location.search}`); window.DictaLabAdmin.rememberUrl();
         try {
             const selected = await api(`/api/admin/lessons/${lessonId}`);
             if (state.selectedAdminLessonId !== lessonId || document.body.dataset.route !== "admin") return;
@@ -2362,6 +2477,7 @@
     }
 
     function showNewLessonEditor() {
+        if (!window.DictaLabAdmin.canLeave()) return;
         state.selectedAdminLessonId = null;
         state.adminSelectedLesson = null;
         state.adminEditingNew = true;
@@ -2373,6 +2489,7 @@
         elements.adminEditorTitle.textContent = "Thông tin bài nghe";
         elements.adminPublicationBadge.textContent = "Chưa lưu";
         elements.adminPublicationBadge.className = "publication-badge";
+        document.querySelector("#admin-copy-lesson").hidden=true;
         elements.adminLockNotice.hidden = true;
         elements.adminLessonForm.reset();
         elements.adminLessonForm.elements.estimatedMinutes.value = "5";
@@ -2388,6 +2505,7 @@
         setAdminStatus("");
         // Cập nhật URL
         router.push("admin-new", {});
+        window.DictaLabAdmin.track(elements.adminEditorContent);
         window.requestAnimationFrame(() => elements.adminLessonForm.elements.slug.focus());
     }
 
@@ -2399,6 +2517,7 @@
         elements.adminEmptyState.hidden = false;
         // Cập nhật URL về danh sách admin
         router.replace("admin", {});
+        window.DictaLabAdmin.rememberUrl();
         renderAdminLessonList();
     }
 
@@ -2407,6 +2526,7 @@
     }
 
     function renderAdminEditor(lesson) {
+        document.querySelector("#admin-copy-lesson").hidden=lesson.contentOrigin==="BRITISH_COUNCIL_PERSONAL";
         elements.adminEmptyState.hidden = true;
         elements.adminEditorContent.hidden = false;
         elements.adminEditorKicker.textContent = `${lesson.contentOrigin === "ADMIN_UPLOAD" ? "Nội dung tải lên" : "Nội dung đóng gói"} · ${lesson.slug}`;
@@ -2435,12 +2555,16 @@
         const temporarilyLocked = lesson.published && !lesson.contentLocked;
         elements.adminLockNotice.hidden = !(lesson.contentLocked || temporarilyLocked);
         if (lesson.contentLocked) {
-            elements.adminLockNotice.textContent = "Bài đã có lịch sử học. Transcript, audio và thứ tự câu được khóa để kết quả cũ không bị thay đổi. Bạn vẫn có thể sửa tên/mô tả hoặc gỡ xuất bản.";
+            elements.adminLockNotice.textContent = "Bài đã có lịch sử học hoặc được dùng làm nguồn nghe hiểu. Transcript, audio và thứ tự câu được khóa để bảo toàn nội dung. Bạn có thể sửa tên/mô tả, gỡ xuất bản hoặc tạo bản sửa mới.";
         } else if (temporarilyLocked) {
             elements.adminLockNotice.textContent = "Bài đang được xuất bản. Hãy gỡ xuất bản trước khi sửa câu hoặc thay audio.";
         }
         renderAdminSentences(lesson);
         renderAdminPublication(lesson);
+        window.DictaLabAdmin.track(elements.adminEditorContent);
+        api(`/api/admin/lessons/${lesson.id}/events`).then(events=>{
+            if(state.selectedAdminLessonId===lesson.id) document.querySelector("#admin-content-events").innerHTML=window.DictaLabAdmin.events(events);
+        }).catch(error=>{ document.querySelector("#admin-content-events").textContent=error.message; });
         setAdminStatus("");
     }
 
@@ -2455,7 +2579,7 @@
                 ? ` · đoạn ${Number(sentence.audioStartSeconds).toFixed(2)}–${Number(sentence.audioEndSeconds).toFixed(2)}s`
                 : "";
             return `
-                <article class="admin-sentence-card" data-sentence-id="${sentence.id}">
+                <article class="admin-sentence-card" data-sentence-id="${sentence.id}" data-admin-dirty="sentence-${sentence.id}">
                     <span class="admin-sentence-number"><span class="sr-only">Câu </span>${sentence.position}</span>
                     <div class="admin-sentence-body">
                         <label class="sr-only" for="admin-transcript-${sentence.id}">Transcript câu ${sentence.position}</label>
@@ -2526,6 +2650,7 @@
         setAdminStatus(creating ? "Đang tạo bản nháp…" : "Đang lưu thông tin…");
         try {
             const updated = await api(path, {method: creating ? "POST" : "PUT", body});
+            window.DictaLabAdmin.clean(elements.adminLessonForm);
             state.adminEditingNew = false;
             await refreshAdminLessons(updated.id);
             // Sau khi tạo mới, thay URL /admin/lessons/new → /admin/lessons/{id}
@@ -2550,6 +2675,7 @@
                 body: {transcript: textarea.value.trim(), speechRate: 1.0, audioStartSeconds: null, audioEndSeconds: null}
             });
             textarea.value = "";
+            window.DictaLabAdmin.clean(elements.adminAddSentenceForm);
             await refreshAdminLessons(updated.id);
             setAdminStatus("Đã thêm câu. Hãy tải audio chứa đúng câu này.");
             textarea.focus();
@@ -2580,7 +2706,7 @@
             return;
         }
 
-        if (action === "delete" && !window.confirm(`Xóa câu ${sentence.position}? Audio tải lên của câu này cũng sẽ bị xóa.`)) {
+        if (action === "delete" && !window.confirm(`Xóa câu ${sentence.position}? Audio tải lên chỉ được dọn khi không còn bài hoặc câu nào sử dụng.`)) {
             return;
         }
         button.disabled = true;
@@ -2609,6 +2735,7 @@
                 });
             }
             if (updated) {
+                if(action === "save" || action === "delete") window.DictaLabAdmin.clean(card);
                 await refreshAdminLessons(updated.id);
                 setAdminStatus(action === "delete" ? "Đã xóa câu." : "Đã lưu thay đổi câu.");
             }
@@ -2646,13 +2773,13 @@
     async function toggleAdminPublication() {
         const lesson = selectedAdminLesson();
         if (!lesson) return;
+        if (!confirm(lesson.published ? "Gỡ xuất bản bài này? Lịch sử học vẫn được giữ." : "Xuất bản nội dung đã lưu trên máy chủ? Các thay đổi chưa lưu trong form chưa được xuất bản.")) return;
         elements.adminPublicationButton.disabled = true;
         try {
             const updated = await api(`/api/admin/lessons/${lesson.id}/publication`, {
                 method: "PUT", body: {published: !lesson.published}
             });
             await refreshAdminLessons(updated.id);
-            await selectLevel(state.selectedLevel);
             setAdminStatus(updated.published
                 ? "Đã xuất bản. Người học có thể thấy bài ngay bây giờ."
                 : "Đã gỡ xuất bản. Lịch sử học vẫn được giữ nguyên.");
@@ -2816,6 +2943,10 @@
             },
             credentials: "same-origin"
         };
+        if (options.headers) Object.assign(request.headers, options.headers);
+        if (isAdminArea && !["GET","HEAD","OPTIONS"].includes(request.method) && /^\/api\/admin\/lessons\/\d+(?:\/|$)/.test(path) && state.adminSelectedLesson?.updatedAt) {
+            request.headers["X-Edit-Version"] = state.adminSelectedLesson.updatedAt;
+        }
         if (options.formData !== undefined) {
             request.body = options.formData;
         } else if (options.body !== undefined) {

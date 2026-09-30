@@ -1,0 +1,55 @@
+diff --git a/index.js b/index.js
+--- a/index.js
++++ b/index.js
+@@ -866,10 +866,7 @@ async function getPromptInput(
+ ) {
+ 
+   const selectors = [
+-    "#prompt-textarea",
+-    "textarea",
+-    "div[contenteditable='true'][role='textbox']",
+-    "div[contenteditable='true']"
++    "#prompt-textarea:visible, textarea:visible, div[contenteditable='true']:visible"
+   ];
+ 
+   const deadline =
+@@ -891,7 +888,7 @@ async function getPromptInput(
+ 
+         if (
+           await locator.count() >
+-          0
++          0 && await locator.isVisible()
+         ) {
+ 
+           return locator;
+@@ -914,10 +911,13 @@ async function getPromptInput(
+ async function getAssistantMessages(
+   page
+ ) {
+-  const locator =
++  let locator =
+     page.locator(
+       '[data-message-author-role="assistant"]'
+     );
++  if (await locator.count() === 0) {
++    locator = page.locator('[data-markdown-text-style="assistant-message"]');
++  }
+ 
+   const count =
+     await locator.count();
+@@ -1049,9 +1049,12 @@ async function submitPrompt(
+     150
+   );
+ 
+-  await page.keyboard.press(
+-    "Enter"
+-  );
++  const send = page.getByRole('button', { name: /^(Send|Envoyer|Gửi)$/ }).first();
++  if (await send.count() > 0) {
++    await send.click({ timeout: 10000 });
++  } else {
++    await input.press("Enter");
++  }
+ 
+ }
+ 

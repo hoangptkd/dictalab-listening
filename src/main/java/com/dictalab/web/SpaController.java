@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 public class SpaController {
 
     private static final String INDEX = "forward:/index.html";
+    private static final String ADMIN = "forward:/admin.html";
 
     /* ── Auth screens ─────────────────────────────────────────────────── */
 
@@ -30,7 +31,7 @@ public class SpaController {
         return INDEX;
     }
 
-    @GetMapping({"/reset-password", "/verify-email", "/account", "/support", "/admin/users", "/admin/support"})
+    @GetMapping({"/reset-password", "/verify-email", "/account", "/support"})
     public String accountAndSupport() { return INDEX; }
 
     /* ── Catalog ──────────────────────────────────────────────────────── */
@@ -90,18 +91,28 @@ public class SpaController {
 
     /* ── Admin ────────────────────────────────────────────────────────── */
 
+    @GetMapping({"/admin", "/admin/"})
+    public String adminHome() {
+        return "redirect:/admin/lessons";
+    }
+
+    @GetMapping({"/admin/users", "/admin/support", "/admin/listening"})
+    public String adminAccounts() {
+        return ADMIN;
+    }
+
     @GetMapping("/admin/lessons")
     public String adminLessons() {
-        return INDEX;
+        return ADMIN;
     }
 
     @GetMapping("/admin/lessons/new")
     public String adminNewLesson() {
-        return INDEX;
+        return ADMIN;
     }
 
     @GetMapping("/admin/lessons/{lessonId}")
     public String adminLessonDetail(@PathVariable Long lessonId) {
-        return INDEX;
+        return ADMIN;
     }
 }

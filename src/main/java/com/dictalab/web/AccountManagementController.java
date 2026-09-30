@@ -4,6 +4,7 @@ import com.dictalab.domain.AppUser;
 import com.dictalab.dto.AuthDtos;
 import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.AccountManagementService;
+import com.dictalab.service.AdminQueryService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -20,7 +21,8 @@ import java.util.Map;
 @RestController
 public class AccountManagementController {
     private final AccountManagementService service;
-    public AccountManagementController(AccountManagementService service) { this.service = service; }
+    private final AdminQueryService queries;
+    public AccountManagementController(AccountManagementService service, AdminQueryService queries) { this.service = service; this.queries=queries; }
 
     public record Name(@NotBlank @Size(min = 2, max = 80) String displayName) {}
     public record Password(@NotBlank String currentPassword,
@@ -42,6 +44,19 @@ public class AccountManagementController {
     public record UsersPage(List<AccountView> users, int page, long total) {}
     public record State(boolean enabled, @NotBlank @Size(max = 500) String reason) {}
     public record Role(@NotBlank @Pattern(regexp = "USER|ADMIN") String role) {}
+    public record Revoke(@NotBlank @Size(max=500) String reason) {}
+    @GetMapping("/api/admin/users/page")
+    public AdminQueryService.Page page(@RequestParam(defaultValue="") String q, @RequestParam(defaultValue="") String role,
+            @RequestParam(required=false) Boolean enabled, @RequestParam(required=false) Boolean verified,
+            @RequestParam(defaultValue="created") String sort, @RequestParam(defaultValue="0") int page) {
+        return queries.users(q,role,enabled,verified,sort,page);
+    }
+    @GetMapping("/api/admin/users/{id}")
+    public AccountView detail(@PathVariable long id) { return AccountView.from(service.adminView(id)); }
+    @PostMapping("/api/admin/users/{id}/revoke-sessions")
+    public void revoke(@AuthenticationPrincipal DictaLabPrincipal admin, @PathVariable long id, @Valid @RequestBody Revoke body) {
+        service.adminRevokeSessions(admin.id(),id,body.reason());
+    }
 
     @PutMapping("/api/account/profile")
     public AuthDtos.CurrentUserResponse profile(@AuthenticationPrincipal DictaLabPrincipal user,

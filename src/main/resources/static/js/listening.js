@@ -13,6 +13,7 @@
     let reviewPlayback = 0;
 
     function leave() {
+        root()?.querySelector("audio")?.pause();
         flushDraft?.();
         flushDraft = null;
         revision++;
@@ -32,7 +33,7 @@
         window.clearTimeout(saveTimer);
         try {
             const data = await bridge().api(path);
-            return current === revision && document.body.dataset.route === "listening" ? data : null;
+            return current === revision && ["listening", "admin-listening"].includes(document.body.dataset.route) ? data : null;
         } catch (error) {
             if (current === revision) {
                 bridge().showToast(error.message, true);
@@ -61,9 +62,12 @@
         if (playing && id !== sessionId) bridge().stopRecordedAudio();
         sessionId = id || null;
         const query = new URLSearchParams(location.search);
+        if (document.body.dataset.route === "admin-listening") {
+            if (bridge().isAdmin()) await admin(query.get("edit"));
+            return;
+        }
         if (!id) {
             if (query.get("view") === "history") await history();
-            else if (query.get("view") === "admin" && bridge().isAdmin()) await admin(query.get("edit"));
             else await catalog();
             return;
         }
@@ -102,8 +106,7 @@
                 </article>`).join("")}</div>`
             : "<p>Chưa có bài nghe hiểu được xuất bản.</p>";
         root().insertAdjacentHTML("beforeend", `
-            <a class="text-button" href="/listening?view=history" id="listening-history">Lịch sử nghe hiểu</a>
-            ${bridge().isAdmin() ? '<a class="text-button" href="/listening?view=admin" id="listening-admin">Quản trị bài nghe</a>' : ""}`);
+            <a class="text-button" href="/listening?view=history" id="listening-history">Lịch sử nghe hiểu</a>`);
         const levelSelect = root().querySelector("#listening-level");
         if (levelSelect) {
             levelSelect.value = new URLSearchParams(location.search).get("level") || "";
@@ -134,7 +137,6 @@
             } catch (error) { bridge().showToast(error.message, true); button.disabled = false; }
         }));
         followLink(root().querySelector("#listening-history"), () => bridge().navigate("listening", {view: "history"}));
-        followLink(root().querySelector("#listening-admin"), () => bridge().navigate("listening", {view: "admin"}));
     }
 
     function contentEditor(content) {
@@ -145,129 +147,152 @@
             <textarea name="facts" rows="6" required>${escape(facts.map(item => item.text).join("\n"))}</textarea></label>
             <div class="listening-editor-questions">${Array.from({length: 8}, (_, index) => {
                 const q = questions[index] || {type: "DETAIL", text: "", options: ["", "", ""], correct: 0, explanation: ""};
-                return `<details class="listening-editor-question" ${index < 5 ? "open" : ""}><summary>Câu hỏi ${index + 1}${index < 5 ? " · bắt buộc" : " · tùy chọn"}</summary>
-                    <label>Nội dung câu hỏi<input name="q${index}text" value="${escape(q.text)}"></label>
+                return `<details class="listening-editor-question" ${index === 0 ? "open" : ""}><summary>Câu hỏi ${index + 1}${index < 5 ? " · bắt buộc" : " · tùy chọn"}</summary>
+                    <label>Nội dung câu hỏi<input name="q${index}text" maxlength="1000" value="${escape(q.text)}"></label>
                     <label>Loại câu hỏi<select name="q${index}type">${["MAIN_IDEA", "DETAIL", "INFERENCE", "SPEAKER_INTENT"]
-                        .map(type => `<option value="${type}" ${q.type === type ? "selected" : ""}>${type}</option>`).join("")}</select></label>
+                        .map(type => `<option value="${type}" ${q.type === type ? "selected" : ""}>${({MAIN_IDEA:"Ý chính",DETAIL:"Chi tiết",INFERENCE:"Suy luận",SPEAKER_INTENT:"Ý định người nói"})[type]}</option>`).join("")}</select></label>
                     ${[0, 1, 2, 3].map(choice => `<label>Lựa chọn ${choice + 1}<input name="q${index}option${choice}"
-                        value="${escape(q.options?.[choice] || "")}"></label>`).join("")}
+                        maxlength="1000" value="${escape(q.options?.[choice] || "")}"></label>`).join("")}
                     <label>Đáp án đúng<select name="q${index}correct">${[0, 1, 2, 3].map(choice => `<option value="${choice}"
                         ${q.correct === choice ? "selected" : ""}>Lựa chọn ${choice + 1}</option>`).join("")}</select></label>
-                    <label>Giải thích<input name="q${index}explanation" value="${escape(q.explanation)}"></label></details>`;
+                    <label>Giải thích<textarea name="q${index}explanation" rows="2" maxlength="2000">${escape(q.explanation)}</textarea></label></details>`;
             }).join("")}</div>`;
     }
 
     function readContent(form) {
+        const invalid=(name,message)=>{
+            if(typeof window!=="undefined" && window.DictaLabAdmin) window.DictaLabAdmin.fieldError(form,name,message);
+            throw new Error(message);
+        };
         const facts = form.elements.namedItem("facts").value.split(/\r?\n/).map(value => value.trim()).filter(Boolean)
             .map((text, index) => ({id: `F${index + 1}`, text}));
+        if(facts.length<4 || facts.length>12) invalid("facts","Cần từ 4 đến 12 ý chính, mỗi dòng một ý.");
         const questions = [];
         for (let index = 0; index < 8; index++) {
             const text = form.elements.namedItem(`q${index}text`).value.trim();
-            if (!text) continue;
-            const options = [0, 1, 2, 3].map(choice => form.elements.namedItem(`q${index}option${choice}`).value.trim())
-                .filter(Boolean);
+            if (!text) { if(index<5) invalid(`q${index}text`,`Câu ${index+1}: vui lòng nhập nội dung câu hỏi.`); continue; }
+            const choices = [0, 1, 2, 3].map(choice => ({index:choice,text:form.elements.namedItem(`q${index}option${choice}`).value.trim()})).filter(choice => choice.text);
+            const options = choices.map(choice=>choice.text);
+            const correct = choices.findIndex(choice => choice.index === Number(form.elements.namedItem(`q${index}correct`).value));
+            if (correct < 0) invalid(`q${index}correct`,`Câu ${index+1}: đáp án đúng đang trỏ vào một lựa chọn trống.`);
+            if(options.length<3) invalid(`q${index}option0`,`Câu ${index+1}: cần ít nhất 3 lựa chọn.`);
+            if(new Set(options.map(value=>value.toLowerCase())).size!==options.length) invalid(`q${index}option0`,`Câu ${index+1}: các lựa chọn không được trùng nhau.`);
+            if(!form.elements.namedItem(`q${index}explanation`).value.trim()) invalid(`q${index}explanation`,`Câu ${index+1}: cần giải thích đáp án.`);
             questions.push({id: `Q${questions.length + 1}`, text,
                 type: form.elements.namedItem(`q${index}type`).value, options,
-                correct: Number(form.elements.namedItem(`q${index}correct`).value),
+                correct,
                 explanation: form.elements.namedItem(`q${index}explanation`).value.trim()});
         }
+        if(!questions.some(q=>q.type==="MAIN_IDEA") || !questions.some(q=>q.type==="DETAIL")) invalid("q0type","Cần ít nhất một câu hỏi ý chính và một câu hỏi chi tiết.");
         return {facts, questions};
     }
 
     async function admin(editId) {
+        const ui=window.DictaLabAdmin, current=++revision;
+        root().querySelector("audio")?.pause();
+        bridge().stopRecordedAudio();
+        const filters=ui.query({q:'',level:'',status:'',lessonId:'',sort:'updated',page:1,edit:editId||'',create:''});
+        root().setAttribute('aria-busy','true');
+        const go=params=>{ if(!ui.canLeave()) return; ui.url(params); admin(params.edit); };
+        const field=(name,label,options,value)=>`<label>${label}<select name="${name}">${options.map(([key,text])=>`<option value="${key}" ${String(key)===String(value)?'selected':''}>${escape(text)}</option>`).join('')}</select></label>`;
+        const states=[['','Tất cả'],['DRAFT','Bản nháp'],['PUBLISHED','Đã xuất bản'],['RETIRED','Đã ngừng']];
+        const reportError=message=>{ const node=root().querySelector('[data-status]'); if(node){node.textContent=message; node.dataset.error='true';} };
+        function links() {
+            root().querySelectorAll('[data-listening-admin-link]').forEach(link=>followLink(link,()=>{
+                if(!ui.canLeave()) return; window.history.pushState({},'',link.href); ui.rememberUrl(); admin(new URL(link.href).searchParams.get('edit'));
+            }));
+        }
         try {
-            const [units, sources] = await Promise.all([
-                loadView("/api/admin/listening/units"), bridge().api("/api/admin/listening/sources")]);
-            if (!units) return;
-            const selected = units.find(unit => String(unit.id) === String(editId));
-            const sourceOptions = sources.map((source, index) => `<option value="${index}">
-                ${escape(source.level)} · ${escape(source.lesson_title)} · ${source.sentence_count} câu</option>`).join("");
-            root().innerHTML = `<h2>Quản trị bài nghe</h2>
-                <a class="text-button" id="listening-back-catalog" href="/listening">← Danh sách bài nghe</a>
-                <form id="listening-create-unit" class="listening-admin-form">
-                    <h3>Tạo bản nháp bằng ShopAIKey</h3>
-                    <label>Chọn bài và audio <select name="source" required>${sourceOptions}</select></label>
-                    <button class="primary-button" type="submit">Tạo bản nháp</button></form>
-                <details class="listening-admin-form"><summary>Tạo thủ công khi AI không sẵn sàng</summary>
-                    <form id="listening-manual-unit"><label>Chọn bài và audio
-                        <select name="source" required>${sourceOptions}</select></label>
-                        <label>Tiêu đề sau khi hoàn thành<input name="title" maxlength="140" required></label>
-                        ${contentEditor()}<button class="primary-button" type="submit">Tạo bản nháp thủ công</button></form></details>
-                <h3>Bài nghe hiện có</h3>
-                <ul>${units.map(unit => `<li>${escape(unit.title)} · ${unit.published ? "Đã xuất bản" : unit.retired ? "Đã ngừng" : "Bản nháp"}
-                    ${unit.published ? `<button class="text-button" type="button" data-copy="${unit.id}">Tạo bản sửa mới</button>
-                        <button class="text-button" type="button" data-retire="${unit.id}">Ngừng phát hành</button>`
-                        : unit.retired ? `<button class="text-button" type="button" data-copy="${unit.id}">Tạo bản sửa mới</button>`
-                        : `<a class="text-button" href="/listening?view=admin&edit=${unit.id}" data-edit="${unit.id}">Duyệt và sửa</a>`}</li>`).join("")}</ul>
-                ${selected && !selected.published && !selected.retired ? `<form id="listening-edit-unit" class="listening-admin-form">
-                    <h3>Duyệt bài #${selected.id}</h3>
-                    <p>${escape(selected.audio_url)}</p>
-                    <label>Tiêu đề <input name="title" maxlength="140" value="${escape(selected.title)}" required></label>
-                    ${contentEditor(JSON.parse(selected.content_json))}
-                    <button class="primary-button" type="submit">Lưu bản nháp</button>
-                    <button class="text-button" id="listening-publish" type="button">Xuất bản</button></form>` : ""}`;
-            followLink(root().querySelector("#listening-back-catalog"), () => bridge().navigate("listening"));
-            bridge().paginateList(root().querySelector("ul"), 10);
-            root().querySelector("#listening-create-unit").addEventListener("submit", async event => {
-                event.preventDefault();
-                const form = event.currentTarget;
-                const button = form.querySelector("button");
-                button.disabled = true;
-                try {
-                    const source = sources[Number(form.elements.namedItem("source").value)];
-                    const unit = await bridge().api("/api/admin/listening/units", {method: "POST", body: {
-                        lessonId: Number(source.lesson_id), audioUrl: source.audio_url,
-                        durationSeconds: Number(source.duration_seconds)}});
-                    await bridge().navigate("listening", {view: "admin", edit: unit.id});
-                } catch (error) { bridge().showToast(error.message, true); button.disabled = false; }
-            });
-            root().querySelector("#listening-manual-unit").addEventListener("submit", async event => {
-                event.preventDefault();
-                const form = event.currentTarget;
-                const source = sources[Number(form.elements.namedItem("source").value)];
-                try {
-                    const unit = await bridge().api("/api/admin/listening/units/manual", {method: "POST", body: {
-                        lessonId: Number(source.lesson_id), audioUrl: source.audio_url,
-                        title: form.elements.namedItem("title").value, content: readContent(form)}});
-                    await bridge().navigate("listening", {view: "admin", edit: unit.id});
-                } catch (error) { bridge().showToast(error.message, true); }
-            });
-            root().querySelectorAll("[data-copy]").forEach(button => button.addEventListener("click", async () => {
-                try {
-                    const unit = await bridge().api(`/api/admin/listening/units/${button.dataset.copy}/copy`, {method: "POST"});
-                    await bridge().navigate("listening", {view: "admin", edit: unit.id});
-                } catch (error) { bridge().showToast(error.message, true); }
-            }));
-            root().querySelectorAll("[data-retire]").forEach(button => button.addEventListener("click", async () => {
-                if (!confirm("Ngừng phát hành bài này cho phiên mới? Kết quả cũ vẫn xem được.")) return;
-                try {
-                    await bridge().api(`/api/admin/listening/units/${button.dataset.retire}/retire`, {method: "PUT"});
-                    await admin();
-                } catch (error) { bridge().showToast(error.message, true); }
-            }));
-            root().querySelectorAll("[data-edit]").forEach(link => followLink(link, () =>
-                bridge().navigate("listening", {view: "admin", edit: link.dataset.edit})));
-            root().querySelector("#listening-edit-unit")?.addEventListener("submit", async event => {
-                event.preventDefault();
-                const form = event.currentTarget;
-                try {
-                    await bridge().api(`/api/admin/listening/units/${selected.id}`, {method: "PUT", body: {
-                        title: form.elements.namedItem("title").value,
-                        content: readContent(form)}});
-                    bridge().showToast("Đã lưu bản nháp.");
-                } catch (error) { bridge().showToast(error.message, true); }
-            });
-            root().querySelector("#listening-publish")?.addEventListener("click", async () => {
-                try {
-                    const form = root().querySelector("#listening-edit-unit");
-                    await bridge().api(`/api/admin/listening/units/${selected.id}`, {method: "PUT", body: {
-                        title: form.elements.namedItem("title").value,
-                        content: readContent(form)}});
-                    await bridge().api(`/api/admin/listening/units/${selected.id}/publication`, {method: "PUT"});
-                    await admin();
-                } catch (error) { bridge().showToast(error.message, true); }
-            });
-        } catch (error) { bridge().showToast(error.message, true); }
+            if(filters.edit) {
+                const [selected,events]=await Promise.all([bridge().api(`/api/admin/listening/units/${encodeURIComponent(filters.edit)}`),bridge().api(`/api/admin/listening/units/${encodeURIComponent(filters.edit)}/events`)]);
+                if(current!==revision || document.body.dataset.route!=='admin-listening') return;
+                const editable=!selected.published && !selected.retired;
+                const back=new URL(location.href); back.searchParams.delete('edit'); back.searchParams.delete('create');
+                root().innerHTML=`<a class="text-button" data-listening-admin-link href="${escape(back.pathname+back.search)}">← Danh sách bài nghe hiểu</a>
+                    <section class="admin-panel"><h2>${editable?'Duyệt bản nháp':'Xem nội dung'} #${selected.id}</h2>
+                    <p>${ui.badge(selected.published?'Đã xuất bản':selected.retired?'Đã ngừng':'Bản nháp',selected.published?'good':'warn')} · Level ${escape(selected.level)} · ${Math.round(selected.duration_seconds)} giây</p>
+                    <audio id="admin-unit-audio" controls preload="metadata" src="${escape(selected.audio_url)}"></audio>
+                    <details><summary>Transcript theo đoạn</summary><ol class="admin-transcript">${selected.transcript.map((sentence,index)=>`<li data-chunk="${index}"><button class="text-button" type="button" data-segment="${index}">${Number(sentence.audio_start_seconds).toFixed(1)}s · Nghe đoạn</button> ${escape(sentence.transcript)}</li>`).join('')}</ol></details>
+                    <form id="listening-edit-unit" class="listening-admin-form" data-admin-dirty="unit-${selected.id}"><fieldset ${editable?'':'disabled'}>
+                    <legend class="sr-only">Thông tin, ý chính và câu hỏi</legend><label>Tiêu đề<input name="title" value="${escape(selected.title)}" maxlength="140" required></label>
+                    <p class="admin-summary">4–12 ý chính, 5–8 câu hỏi; cần có câu hỏi ý chính và chi tiết. Chọn đáp án theo đúng lựa chọn đã nhập.</p>
+                    ${contentEditor(JSON.parse(selected.content_json))}</fieldset>
+                    ${editable?'<div class="admin-actions"><button class="primary-button compact" type="submit">Lưu bản nháp</button><button class="text-button" id="listening-publish" type="button">Xuất bản</button><button class="text-button" data-retire type="button">Bỏ bản nháp</button></div>':`<div class="admin-actions"><button class="primary-button compact" type="button" data-copy>Tạo bản sửa mới</button>${selected.published?'<button class="text-button" type="button" data-retire>Ngừng phát hành</button>':''}</div>`}</form>
+                    <p data-status role="status" aria-live="polite"></p></section><details class="admin-panel"><summary>Nhật ký nội dung</summary>${ui.events(events)}</details>`;
+                const form=root().querySelector('#listening-edit-unit'); ui.track(root()); links();
+                const audio=root().querySelector('audio'); let segmentEnd=null;
+                audio.addEventListener('timeupdate',()=>{
+                    root().querySelectorAll('[data-chunk]').forEach(node=>{
+                        const sentence=selected.transcript[Number(node.dataset.chunk)];
+                        node.classList.toggle('is-current',audio.currentTime>=sentence.audio_start_seconds && audio.currentTime<sentence.audio_end_seconds);
+                    });
+                    if(segmentEnd!==null && audio.currentTime>=segmentEnd) {audio.pause();segmentEnd=null;}
+                });
+                root().querySelectorAll('[data-segment]').forEach(button=>button.addEventListener('click',async()=>{
+                    const sentence=selected.transcript[Number(button.dataset.segment)];
+                    try {
+                        audio.currentTime=sentence.audio_start_seconds;
+                        segmentEnd=sentence.audio_end_seconds;
+                        await audio.play();
+                    } catch(error){segmentEnd=null;reportError(error.message);}
+                }));
+                const save=async()=>{
+                    const body={title:form.elements.title.value,content:readContent(form)};
+                    const result=await bridge().api(`/api/admin/listening/units/${selected.id}`,{method:'PUT',headers:{'X-Edit-Version':selected.edit_version},body});
+                    selected.edit_version=result.edit_version; ui.clean(form);
+                };
+                if(editable) {
+                    form.addEventListener('submit',event=>{ event.preventDefault(); ui.busy(form,async()=>{try {await save(); const status=root().querySelector('[data-status]'); status.textContent='Đã lưu bản nháp.'; delete status.dataset.error;} catch(error){reportError(error.message);} }); });
+                    root().querySelector('#listening-publish').addEventListener('click',()=>ui.busy(form,async()=>{
+                        if(!confirm('Xuất bản bản này? Các bản đã phát hành cùng audio sẽ ngừng dùng cho phiên mới. Lịch sử học vẫn được giữ.')) return;
+                        try {await save(); await bridge().api(`/api/admin/listening/units/${selected.id}/publication`,{method:'PUT',headers:{'X-Edit-Version':selected.edit_version}}); await admin(selected.id);}
+                        catch(error){reportError(error.message);}
+                    }));
+                }
+                root().querySelector('[data-copy]')?.addEventListener('click',()=>ui.busy(form,async()=>{
+                    try {const result=await bridge().api(`/api/admin/listening/units/${selected.id}/copy`,{method:'POST'}); go({...filters,edit:result.id});}
+                    catch(error){reportError(error.message);}
+                }));
+                root().querySelector('[data-retire]')?.addEventListener('click',()=>ui.busy(form,async()=>{
+                    if(!confirm(editable?'Bỏ bản nháp này? Các thay đổi chưa lưu sẽ bị bỏ. Bạn có thể tạo bản nháp khác cho audio này.':'Ngừng phát hành bài cho phiên mới? Lịch sử học vẫn được giữ.')) return;
+                    try {await bridge().api(`/api/admin/listening/units/${selected.id}/retire`,{method:'PUT',headers:{'X-Edit-Version':selected.edit_version}});ui.clean(form);go({...filters,edit:'',create:''});}
+                    catch(error){reportError(error.message);}
+                }));
+                return;
+            }
+            const [result,sources]=await Promise.all([bridge().api(`/api/admin/listening/units/page?${new URLSearchParams({...filters,page:Number(filters.page)-1})}`),bridge().api('/api/admin/listening/sources')]);
+            if(current!==revision || document.body.dataset.route!=='admin-listening') return;
+            ui.url({...filters,page:result.page+1},true);
+            const sourceOptions=sources.map((source,index)=>`<option value="${index}">#${index+1} · ${escape(source.level)} · ${escape(source.lesson_title)} · ${escape(source.audio_url.split('/').pop())} · ${source.sentence_count} câu</option>`).join('');
+            const sourceLessons=[...new Map(sources.map(source=>[source.lesson_id,source.lesson_title])).entries()];
+            const createUrl=new URL(location.href);createUrl.searchParams.set('create','1');
+            root().innerHTML=`<div class="admin-actions"><a class="primary-button compact" data-listening-admin-link href="${escape(createUrl.pathname+createUrl.search)}">+ Bài nghe hiểu</a><a href="/listening" class="text-button">Mở trang học viên →</a></div>
+                ${filters.create?`<section class="admin-panel"><h2>Tạo bài nghe hiểu</h2><form id="listening-create-unit" class="listening-admin-form"><label>Chọn bài và audio<select name="source" required>${sourceOptions}</select></label><button type="submit" class="primary-button compact" ${sources.length?'':'disabled'}>Tạo bản nháp bằng AI</button></form>
+                ${sources.length?'':'<p>Chưa có audio phù hợp. Cần bài đã xuất bản với ít nhất 5 câu có mốc thời gian.</p>'}
+                <details><summary>Tạo thủ công</summary><form id="listening-manual-unit" class="listening-admin-form" data-admin-dirty="manual-unit"><label>Chọn bài và audio<select name="source" required>${sourceOptions}</select></label><label>Tiêu đề<input name="title" maxlength="140" required></label><p>4–12 ý chính và 5–8 câu hỏi; cần câu hỏi ý chính và chi tiết.</p>${contentEditor()}<button class="primary-button compact" type="submit" ${sources.length?'':'disabled'}>Tạo bản nháp thủ công</button></form></details><p data-status role="status"></p></section>`:''}
+                <form class="admin-toolbar" id="listening-admin-filters"><label>Tìm tên hoặc ID<input type="search" name="q" value="${escape(filters.q)}" maxlength="160"></label>
+                ${field('level','Level',[['','Tất cả'],...['A1','A2','B1','B2'].map(value=>[value,value])],filters.level)}${field('status','Trạng thái',states,filters.status)}
+                ${field('lessonId','Bài nguồn',[['','Tất cả'],...sourceLessons],filters.lessonId)}${field('sort','Sắp xếp',[['updated','Mới nhất trước'],['title','Tên A–Z']],filters.sort)}
+                <div class="admin-actions"><button class="primary-button compact" type="submit">Áp dụng</button><button class="text-button" type="button" data-clear>Xóa lọc</button></div></form>
+                <p class="admin-summary">${result.total} bài phù hợp</p>${result.items.length?`<div class="admin-table-wrap"><table class="admin-table"><caption class="sr-only">Bài nghe hiểu</caption><thead><tr><th scope="col">Bài nghe hiểu</th><th scope="col">Level</th><th scope="col">Trạng thái</th><th scope="col">Audio</th><th scope="col">Thao tác</th></tr></thead><tbody>${result.items.map(unit=>{
+                    const url=new URL(location.href);url.searchParams.set('edit',unit.id);url.searchParams.delete('create');
+                    return `<tr><td><strong>${escape(unit.title)}</strong><small>#${unit.id} · ${escape(unit.lesson_title)}</small></td><td data-label="Level">${escape(unit.level)}</td><td data-label="Trạng thái">${ui.badge(unit.published?'Đã xuất bản':unit.retired?'Đã ngừng':'Bản nháp',unit.published?'good':unit.retired?'muted':'warn')}</td><td data-label="Audio">${Math.round(unit.duration_seconds)} giây</td><td><a class="text-button" data-listening-admin-link href="${escape(url.pathname+url.search)}" aria-label="Xem bài ${escape(unit.title)}">${!unit.published&&!unit.retired?'Duyệt và sửa':'Xem nội dung'} →</a></td></tr>`;
+                }).join('')}</tbody></table></div>`:'<p class="admin-empty">Không có bài phù hợp. Hãy đổi bộ lọc hoặc tạo bài mới.</p>'}${ui.pager(result)}${filters.create?'':'<p data-status role="status"></p>'}`;
+            links(); ui.track(root());
+            const filterForm=root().querySelector('#listening-admin-filters');
+            filterForm.addEventListener('submit',event=>{event.preventDefault();go({...Object.fromEntries(new FormData(filterForm)),page:1});});
+            filterForm.querySelector('[data-clear]').addEventListener('click',()=>go({page:1}));
+            root().querySelectorAll('[data-page]').forEach(button=>button.addEventListener('click',()=>go({...filters,page:button.dataset.page})));
+            const create=async(form,manual)=>{
+                const source=sources[Number(form.elements.source.value)];
+                if(!source) throw new Error('Chưa có nguồn audio phù hợp.');
+                const body=manual?{lessonId:Number(source.lesson_id),audioUrl:source.audio_url,title:form.elements.title.value,content:readContent(form)}:{lessonId:Number(source.lesson_id),audioUrl:source.audio_url,durationSeconds:Number(source.duration_seconds)};
+                const result=await bridge().api(manual?'/api/admin/listening/units/manual':'/api/admin/listening/units',{method:'POST',body});
+                ui.clean(form);go({...filters,create:'',edit:result.id});
+            };
+            root().querySelectorAll('#listening-create-unit,#listening-manual-unit').forEach(form=>form.addEventListener('submit',event=>{event.preventDefault();ui.busy(form,async()=>{try{await create(form,form.id==='listening-manual-unit');}catch(error){reportError(error.message);}});}));
+        } catch(error) { if(current===revision && document.body.dataset.route==='admin-listening') ui.failure(root(),error.message,()=>admin(filters.edit)); }
+        finally { if(current===revision) root().setAttribute('aria-busy','false'); }
     }
 
     function renderStage(state) {

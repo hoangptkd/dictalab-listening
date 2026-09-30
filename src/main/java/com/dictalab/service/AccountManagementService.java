@@ -205,6 +205,13 @@ public class AccountManagementService {
                 WHERE a.subject_id=? ORDER BY a.id DESC LIMIT 100
                 """, id);
     }
+    public AppUser adminView(long id) { return require(id); }
+    @Transactional
+    public void adminRevokeSessions(long actor, long id, String reason) {
+        if (actor == id) throw new ResponseStatusException(HttpStatus.CONFLICT, "Dùng mục bảo vệ tài khoản để đăng xuất các phiên của chính bạn.");
+        require(id).revokeSessions(Instant.now());
+        audit(actor,id,"REVOKE_SESSIONS",reason);
+    }
 
     @Transactional
     public AppUser setEnabled(long actor, long id, boolean enabled, String reason) {

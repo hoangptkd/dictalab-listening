@@ -107,9 +107,6 @@
                     id="room-nav-link">
                 Luyện cùng bạn
             </a>
-            <a id="admin-nav-link" class="nav-link" href="/admin/lessons?page=1" data-route="admin" data-mobile-label="Quản trị" hidden>
-                Quản trị nội dung
-            </a>
             <a class="nav-link" href="/support" data-route="support" data-mobile-label="Hỗ trợ">Hỗ trợ</a>
         </nav>
 
@@ -121,6 +118,7 @@
             <div class="account-copy">
                 <a id="account-link" href="/account" data-route="account" aria-label="Tài khoản"><strong id="account-name">Người học</strong></a>
                 <small id="account-email"></small>
+                <a id="admin-nav-link" class="admin-entry-link" href="/admin" hidden>Trang quản trị ↗</a>
             </div>
             <button id="logout-button" class="logout-button" type="button">Đăng xuất</button>
         </div>
@@ -134,14 +132,6 @@
         <section id="support-view" class="view" hidden aria-labelledby="support-heading">
             <div class="lesson-browser account-page"><p class="section-index">Trợ giúp</p>
                 <h1 id="support-heading">Chúng tôi có thể giúp gì?</h1><div id="support-content" aria-live="polite"></div></div>
-        </section>
-        <section id="admin-users-view" class="view" hidden aria-labelledby="admin-users-heading">
-            <div class="lesson-browser account-page"><p class="section-index">Quản trị</p>
-                <h1 id="admin-users-heading">Người dùng.</h1><div id="admin-users-content" aria-live="polite"></div></div>
-        </section>
-        <section id="admin-support-view" class="view" hidden aria-labelledby="admin-support-heading">
-            <div class="lesson-browser account-page"><p class="section-index">Quản trị</p>
-                <h1 id="admin-support-heading">Yêu cầu hỗ trợ.</h1><div id="admin-support-content" aria-live="polite"></div></div>
         </section>
         <section id="listening-view" class="view" hidden aria-labelledby="listening-heading">
             <div class="lesson-browser listening-browser">
@@ -320,15 +310,50 @@
         </section>
 
         <section id="result-view" class="view" hidden aria-labelledby="result-heading">
+            <header class="coach-hero">
+                <div>
+                    <p class="eyebrow">Dictation complete · AI Coach</p>
+                    <h1 id="result-heading">Nghe rõ hơn.<br><em>Từng chút một.</em></h1>
+                    <p id="coach-lesson"></p>
+                    <p id="result-message"></p>
+                </div>
+                <div class="coach-listening-score">
+                    <strong id="coach-accuracy">—</strong>
+                    <span>từ đúng ngay lần nhập đầu</span>
+                    <small>Trong bài này, có thể đã dùng nghe lại hoặc gợi ý.</small>
+                </div>
+            </header>
+            <div id="coach-panel" class="coach-panel">
+                <p id="coach-status" role="status">Đang chọn điểm cần luyện…</p>
+                <div id="coach-insights"></div>
+                <section id="coach-practice" class="coach-practice" aria-label="Luyện điểm yếu" hidden></section>
+                <section class="smart-review" aria-labelledby="smart-review-heading">
+                    <div class="coach-section-heading">
+                        <div><p class="section-index">Ôn đúng chỗ</p><h2 id="smart-review-heading">Smart Review</h2></div>
+                        <p id="smart-review-count"></p>
+                    </div>
+                    <div id="smart-review-items"></div>
+                </section>
+                <details id="coach-error-bank" class="coach-bank">
+                    <summary>Error Bank · lỗi đã lưu</summary>
+                    <p>Ôn lại những lỗi bạn đã chọn từ các buổi học. Hiển thị tối đa 100 lỗi gần nhất.</p>
+                    <div id="coach-bank-items"></div>
+                </details>
+            </div>
+            <nav class="coach-navigation" aria-label="Sau buổi luyện">
+                <a class="text-button" href="/catalog?level=A1&page=1" data-route="catalog">Chọn bài tiếp theo →</a>
+                <a class="text-button" href="/history?level=all&page=1" data-route="history">Lịch sử luyện</a>
+                <a class="text-button" href="/dashboard" data-route="dashboard">Xem tiến bộ</a>
+            </nav>
+            <details id="result-technical" class="result-technical">
+            <summary>Phân tích chi tiết <span>Điểm số, trợ giúp và toàn bộ câu</span></summary>
             <div class="result-layout">
                 <div class="result-score-card">
-                    <p class="eyebrow">Lesson complete</p>
+                    <p class="eyebrow">Điểm tổng hợp</p>
                     <div class="score-orbit">
                         <strong id="result-score">0</strong>
                         <span>/ 100</span>
                     </div>
-                    <h1 id="result-heading">Bạn đã nghe xong.</h1>
-                    <p id="result-message"></p>
                     <a class="primary-button" href="/dashboard" data-route="dashboard">
                         Xem tiến bộ <span aria-hidden="true">→</span>
                     </a>
@@ -404,7 +429,7 @@
                     <div class="analysis-export-heading">
                         <div>
                             <p class="section-index">Mang dữ liệu đi phân tích</p>
-                            <h3 id="analysis-export-heading">Báo cáo dành cho ChatGPT</h3>
+                            <h3 id="analysis-export-heading">Xuất dữ liệu buổi luyện</h3>
                             <p>Gồm level, nguồn audio, tốc độ ước tính, transcript, đáp án nhập đầu tiên,
                                 số lần thử, replay, thời gian và loại gợi ý.</p>
                         </div>
@@ -419,6 +444,7 @@
                     </details>
                 </section>
             </section>
+            </details>
         </section>
 
         <section id="dashboard-view" class="view" hidden aria-labelledby="dashboard-heading">
@@ -509,143 +535,6 @@
                 <a class="primary-button" href="/catalog?level=A1&page=1" data-route="catalog">
                     Bắt đầu luyện nghe <span aria-hidden="true">→</span>
                 </a>
-            </div>
-        </section>
-
-        <section id="admin-view" class="view admin-view" hidden aria-labelledby="admin-heading">
-            <header class="admin-hero">
-                <div>
-                    <p class="eyebrow">Content studio · không cần deploy lại</p>
-                    <h1 id="admin-heading">Tạo bài nghe.<br><em>Xuất bản ngay.</em></h1>
-                </div>
-                <p>
-                    Audio tải lên được giữ trong thư mục riêng trên máy chủ. Bản cập nhật ứng dụng
-                    không ghi đè nội dung này.
-                </p>
-            </header>
-
-            <div class="admin-workspace">
-                <aside class="admin-library" aria-labelledby="admin-library-heading">
-                    <div class="admin-library-heading">
-                        <div>
-                            <p class="section-index">Thư viện</p>
-                            <h2 id="admin-library-heading">Các bài nghe</h2>
-                        </div>
-                        <a id="admin-new-lesson" class="primary-button compact" href="/admin/lessons/new">+ Bài mới</a>
-                    </div>
-                    <label class="admin-search">
-                        <span class="sr-only">Tìm bài theo tên, mã hoặc level</span>
-                        <input id="admin-lesson-search" type="search" placeholder="Tìm bài, level, chủ đề…">
-                    </label>
-                    <div id="admin-lesson-list" class="admin-lesson-list" aria-live="polite"></div>
-                </aside>
-
-                <section class="admin-editor" aria-labelledby="admin-editor-heading">
-                    <div id="admin-empty-state" class="admin-empty-state">
-                        <span aria-hidden="true">＋</span>
-                        <h2 id="admin-editor-heading">Chọn một bài hoặc tạo bài mới</h2>
-                        <p>Mỗi câu có transcript riêng và một file audio người thật.</p>
-                    </div>
-
-                    <div id="admin-editor-content" hidden>
-                        <div class="admin-editor-heading">
-                            <div>
-                                <p id="admin-editor-kicker" class="section-index">Bản nháp</p>
-                                <h2 id="admin-editor-title">Thông tin bài nghe</h2>
-                            </div>
-                            <span id="admin-publication-badge" class="publication-badge">Bản nháp</span>
-                        </div>
-
-                        <div id="admin-lock-notice" class="admin-notice" role="status" hidden></div>
-
-                        <form id="admin-lesson-form" class="admin-form">
-                            <div class="admin-form-grid">
-                                <label>Mã bài
-                                    <input name="slug" type="text" maxlength="80" required
-                                           pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-                                           placeholder="vd: a1-ordering-coffee">
-                                    <small>Chữ thường, số và dấu gạch ngang; không đổi sau khi tạo.</small>
-                                </label>
-                                <label>Tên bài
-                                    <input name="title" type="text" maxlength="140" required
-                                           placeholder="Ordering coffee">
-                                </label>
-                                <label>Level
-                                    <select name="level" required>
-                                        <option value="A1">A1</option><option value="A2">A2</option>
-                                        <option value="B1">B1</option><option value="B2">B2</option>
-                                    </select>
-                                </label>
-                                <label>Chủ đề
-                                    <input name="topic" type="text" maxlength="60" required placeholder="Everyday life">
-                                </label>
-                                <label>Thời lượng ước tính (phút)
-                                    <input name="estimatedMinutes" type="number" min="1" max="120" value="5" required>
-                                </label>
-                                <label>Thứ tự hiển thị
-                                    <input name="displayOrder" type="number" min="1" value="100" required>
-                                </label>
-                                <label>Số người nói
-                                    <input name="speakerCount" type="number" min="0" max="10" value="0" required>
-                                    <small>Dùng 0 khi chưa xác định.</small>
-                                </label>
-                                <label>Giọng / vùng nói
-                                    <input name="accentProfile" type="text" maxlength="120"
-                                           placeholder="vd: US, UK, mixed">
-                                </label>
-                                <label>Độ khó từ vựng (1–5)
-                                    <input name="vocabularyDifficulty" type="number" min="1" max="5" value="1" required>
-                                </label>
-                                <label>Độ khó ngữ pháp (1–5)
-                                    <input name="grammarDifficulty" type="number" min="1" max="5" value="1" required>
-                                </label>
-                                <label>Độ khó câu (1–5)
-                                    <input name="sentenceDifficulty" type="number" min="1" max="5" value="1" required>
-                                </label>
-                                <label class="admin-field-wide">Mô tả
-                                    <textarea name="description" maxlength="500" rows="3" required
-                                              placeholder="Người học sẽ luyện nghe nội dung gì?"></textarea>
-                                    <small>Metadata độ khó được dùng cho ước lượng năng lực; thay đổi sẽ hủy trạng thái hiệu chỉnh cũ.</small>
-                                </label>
-                            </div>
-                            <div class="admin-form-actions">
-                                <a id="admin-cancel-create" class="text-button" href="/admin/lessons?page=1" hidden>Hủy tạo bài</a>
-                                <button class="primary-button" type="submit">Lưu thông tin</button>
-                            </div>
-                        </form>
-
-                        <section id="admin-sentence-section" class="admin-sentence-section" aria-labelledby="admin-sentences-heading">
-                            <div class="admin-section-heading">
-                                <div>
-                                    <p class="section-index">Transcript + audio</p>
-                                    <h3 id="admin-sentences-heading">Các câu trong bài</h3>
-                                </div>
-                                <span id="admin-sentence-count">0 câu</span>
-                            </div>
-                            <p class="admin-help">
-                                Nên dùng audio MP3, M4A hoặc WAV ngắn, chỉ chứa đúng một câu. Giới hạn 25 MB/file.
-                            </p>
-                            <form id="admin-add-sentence-form" class="admin-add-sentence">
-                                <label>
-                                    <span>Thêm transcript của câu tiếp theo</span>
-                                    <textarea name="transcript" rows="2" maxlength="1000" required
-                                              placeholder="Type the exact sentence spoken in the audio."></textarea>
-                                </label>
-                                <button class="primary-button compact" type="submit">+ Thêm câu</button>
-                            </form>
-                            <div id="admin-sentence-list" class="admin-sentence-list"></div>
-                        </section>
-
-                        <footer class="admin-publish-bar">
-                            <div>
-                                <strong id="admin-publish-title">Chưa hiển thị với người học</strong>
-                                <p id="admin-publish-help">Thêm audio cho mọi câu để có thể xuất bản.</p>
-                            </div>
-                            <button id="admin-publication-button" class="primary-button dark" type="button">Xuất bản bài</button>
-                        </footer>
-                        <p id="admin-status" class="admin-status" role="status" aria-live="polite"></p>
-                    </div>
-                </section>
             </div>
         </section>
 
@@ -804,6 +693,7 @@
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <script src="/js/app.js" defer></script>
+<script src="/js/coach.js" defer></script>
 <script src="/js/listening.js" defer></script>
 <script src="/js/account.js" defer></script>
 </body>

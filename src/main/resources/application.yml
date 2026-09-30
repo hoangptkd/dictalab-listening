@@ -53,6 +53,12 @@ management:
         include: health,info
 
 dictalab:
+  coach:
+    enabled: ${DICTALAB_COACH_ENABLED:false}
+    url: ${DICTALAB_COACH_URL:http://127.0.0.1:3000/v1/chat/completions}
+    model: ${DICTALAB_COACH_MODEL:chatgpt-web}
+    api-key: ${DICTALAB_COACH_API_KEY:}
+    timeout: ${DICTALAB_COACH_TIMEOUT:75s}
   public-url: ${DICTALAB_PUBLIC_URL:http://localhost:18081}
   mail-from: ${DICTALAB_MAIL_FROM:}
   shopaikey:

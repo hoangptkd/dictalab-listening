@@ -37,7 +37,7 @@ MVP web luyện nghe chép chính tả tiếng Anh theo CEFR A1–B2. Người h
 
 ## Chạy local với PostgreSQL
 
-Yêu cầu Java 17+, Maven 3.9+, PowerShell 7 và Docker Desktop. Lần đầu tiên, sao chép `.env.example`
+Yêu cầu Java 17+, Maven 3.9+, PowerShell 7 và Docker Desktop (hoặc cluster PostgreSQL native đã có). Lần đầu tiên, sao chép `.env.example`
 thành `.env` rồi đổi `POSTGRES_PASSWORD`. File `.env` đã được Git bỏ qua.
 
 ```powershell
@@ -49,6 +49,9 @@ pwsh -File .\scripts\run-local.ps1
 Script khởi động PostgreSQL trong Docker ở cổng cố định `15433`, chờ database sẵn sàng rồi chạy
 Spring Boot ở [http://localhost:18081](http://localhost:18081). Health check ở
 [http://localhost:18081/actuator/health](http://localhost:18081/actuator/health).
+
+Nếu dùng cluster native tại `data/postgres-local`, đặt `DICTALAB_PG_CTL` trong `.env` tới
+file `pg_ctl.exe`. Script chỉ khởi động cluster sẵn có, không tạo lại hoặc xóa database.
 
 Hai cổng local được cố định trong `.env`: web `18081` và PostgreSQL `15433`. Script không tự đổi
 sang cổng khác; nếu một cổng bị chương trình khác chiếm, nó sẽ dừng và báo rõ cổng đang xung đột.
@@ -132,12 +135,16 @@ powershell.exe -ExecutionPolicy Bypass -File C:\DictaLab\staging\configure-admin
   -AdminEmails "email-cua-ban@example.com"
 ```
 
-Sau đó đăng xuất và đăng nhập lại. Thanh điều hướng sẽ có mục **Quản trị nội dung**. Có thể khai báo
+Sau đó đăng xuất và đăng nhập lại. Mở **Trang quản trị** bên cạnh tài khoản hoặc truy cập `/admin`. Có thể khai báo
 nhiều email bằng dấu phẩy. Script cũng cố định thư mục audio tại `C:\DictaLab\media` và khởi động lại service.
+
+Khu vực `/admin` dùng trang HTML và menu riêng: Bài nghe, Nghe hiểu, Người dùng, Yêu cầu hỗ trợ.
+Server yêu cầu quyền ADMIN cho mọi đường dẫn quản trị, kể cả `/admin.html`; khách được chuyển
+về đăng nhập và người dùng thường nhận trang 403. Phiên đăng nhập và API được tái sử dụng.
 
 Quy trình thêm một bài:
 
-1. Chọn **Quản trị nội dung → Bài mới**, nhập level, tên, chủ đề và mô tả.
+1. Chọn **Trang quản trị → Bài nghe → Bài mới**, nhập level, tên, chủ đề và mô tả.
 2. Thêm transcript chính xác cho từng câu.
 3. Tải MP3/M4A/WAV người thật tương ứng với từng câu rồi bấm **Nghe thử**.
 4. Sắp xếp câu và bấm **Xuất bản bài**. Người học thấy bài ngay, không cần deploy lại.
@@ -193,6 +200,82 @@ Không lưu thông tin đăng nhập database vào source code.
 5. Với từ sai, chọn “biết nhưng lỡ” hoặc “từ mới”.
 6. Nếu đã mở một từ hoặc cả câu, nghe lại trọn câu rồi mới được chuyển tiếp.
 7. Hoàn thành lesson để xem kết quả, dashboard và bài được đề xuất.
+
+## AI Coach sau Dictation
+
+Trang kết quả hiển thị độ đúng lần nhập đầu, tối đa 3 điểm cần luyện, 1 nhận xét tiến bộ và
+tối đa 3 hành động (một hành động chính). Smart Review chọn tối đa 12 lỗi thật; bài có ít lỗi
+sẽ hiển thị ít hơn. Ưu tiên từ lặp lại, từ biết nhưng nghe lỡ, contractions, số và dấu hiệu cần
+kiểm tra về weak forms/âm cuối. Chính tả và tên riêng có ưu tiên thấp hơn. Các dấu hiệu âm học
+là giả thuyết từ đáp án, không phải phân tích trực tiếp tín hiệu audio.
+
+Người học có thể nghe lại đoạn audio gốc, luyện điền từ tối đa 3 lỗi cùng nhóm, hoặc lưu lỗi
+vào Error Bank theo tài khoản. Lượt ôn không thay đổi điểm Dictation. Toàn bộ câu, telemetry,
+ước lượng năng lực và xuất dữ liệu nằm trong **Phân tích chi tiết**, mặc định đóng.
+
+Backend kết nối [chatgpt-api-web](https://github.com/MrBalourd/chatgpt-api-web) qua
+`POST /v1/chat/completions`. Chạy bridge theo README của dự án và đăng nhập ChatGPT trong
+Chrome của bridge trước; cấu hình sau áp dụng trên **máy chạy backend DictaLab**:
+
+```env
+DICTALAB_COACH_ENABLED=true
+DICTALAB_COACH_URL=http://127.0.0.1:3000/v1/chat/completions
+DICTALAB_COACH_MODEL=chatgpt-web
+DICTALAB_COACH_TIMEOUT=75s
+DICTALAB_COACH_API_KEY=
+```
+
+Để chạy cả DictaLab và bridge trên Windows (cần Node.js 18.18+, Git, Chrome):
+
+```powershell
+pwsh -File .\scripts\run-local.ps1 -WithCoach
+```
+
+Script tải bridge vào thư mục Git bỏ qua `data/chatgpt-api-web` nếu chưa có, cài dependencies,
+áp dụng `scripts/chatgpt-web-compat.patch` cho giao diện ChatGPT hiện tại rồi chạy bridge tại
+`127.0.0.1:3000`, Chrome CDP tại `127.0.0.1:9223`. Đăng nhập ChatGPT trong Chrome vừa mở;
+profile lưu ở `data/chatgpt-api-web/data/chrome-profile` để dùng lại. Không đưa profile vào Git.
+Nếu Chrome ở vị trí khác, đặt `DICTALAB_COACH_CHROME_PATH` trong `.env`.
+Log bridge ở `data/chatgpt-api-web/bridge.out.log` và `bridge.err.log`.
+Đây là bridge dùng tài khoản ChatGPT trên web; khi giao diện ChatGPT thay đổi, bản vá có thể cần cập nhật.
+
+Kiểm tra thực tế sau khi đăng nhập (tạo tài khoản QA riêng và một bài hoàn thành có lỗi giả lập):
+
+```powershell
+pwsh -File .\scripts\check-coach-local.ps1
+```
+
+Check yêu cầu `source=AI`, giới hạn insight/action/review, lưu báo cáo và xác nhận điểm không đổi.
+Tài khoản QA tồn tại trong database local; script không thay đổi điểm của tài khoản đang dùng.
+
+Nếu bridge chạy trên máy khác, đặt URL tới kết nối riêng có bảo vệ; `127.0.0.1` luôn là máy
+backend, không phải máy người học. Khóa tùy chọn chỉ dùng khi proxy trước bridge có xác thực.
+
+Kết quả được lưu trước khi gọi AI. Frontend lấy gợi ý deterministic bằng
+`GET /api/v1/practice-sessions/{id}/coach`, sau đó gọi `POST` cùng địa chỉ để bổ sung AI.
+Bridge không hỗ trợ JSON Schema enforcement: prompt yêu cầu JSON, backend parse nghiêm ngặt,
+kiểm tra số lượng/độ dài, pattern và evidence IDs; phản hồi free-text hoặc sai schema bị loại.
+Không gửi cookie, email, tên tài khoản hoặc lịch sử hội thoại; chỉ gửi level, điểm lần đầu,
+nhận xét tiến bộ và tối đa 40 lỗi/ngữ cảnh. Mỗi yêu cầu dùng hội thoại bridge mới.
+
+AI chọn ưu tiên và đề xuất bài ôn; backend vẫn tính điểm và xác định bằng chứng. Nhận xét tiến bộ
+so với tối đa 5 bài mới cùng cấp độ, học riêng và hoàn thành trước phiên đang xem; cần ít nhất
+2 bài để so sánh. Bài học lại/học chung được ghi rõ chưa thể so sánh. Phản hồi AI hợp lệ được
+lưu một lần cho mỗi phiên; bridge lỗi/timeout/đang bận thì giữ gợi ý deterministic và cho thử lại.
+`DICTALAB_COACH_ENABLED=false` tắt việc gửi dữ liệu sang AI nhưng vẫn dùng Smart Review/Error Bank.
+
+Migration V21 chỉ thêm bảng `dictation_coach_reports` và `dictation_error_bank`; không cập nhật
+điểm hoặc transcript cũ. Trên PostgreSQL 18, đây là thay đổi cộng thêm; triển khai cần theo dõi
+lock khi tạo foreign key. Nếu migration gặp lock kéo dài, dừng đợt deploy và thử lại sau khi
+xử lý transaction giữ lock; không sửa checksum migration đã áp dụng. Bản ứng dụng cũ có thể
+bỏ qua hai bảng này khi rollback. Kiểm tra sau deploy bằng phiên đã hoàn thành và thao tác lưu lỗi.
+
+Kiểm thử phần Coach:
+
+```powershell
+mvn '-Dtest=CoachAnalysisTest,ChatGptWebCoachClientTest,CoachServiceIntegrationTest,PracticeServiceIntegrationTest' test
+node --test src/test/js/coach.test.cjs
+```
 
 ## Cách tính điểm
 
@@ -259,8 +342,7 @@ sau khi hoàn thành assessment. Nếu lượt nghe bị gián đoạn, người
 phiên mới; lượt đã gián đoạn không có báo cáo. Báo cáo dùng lượt 1 làm chỉ số chính, hiển thị điểm
 hiểu/nhớ theo lượt, mức thay đổi và độ chính xác theo loại câu hỏi.
 
-Một bài A1 mẫu được tạo bởi migration. Quản trị viên mở **Quản trị bài nghe** trong màn hình
-Listening, chọn audio đã căn mốc để ShopAIKey tạo bản nháp hoặc nhập thủ công, sau đó duyệt/sửa
+Một bài A1 mẫu được tạo bởi migration. Quản trị viên mở **Trang quản trị → Nghe hiểu** tại `/admin/listening`, chọn audio đã căn mốc để ShopAIKey tạo bản nháp hoặc nhập thủ công, sau đó duyệt/sửa
 facts, câu hỏi, đáp án và giải thích trước khi xuất bản. Đặt `SHOPAIKEY_API_KEY` trên máy chủ;
 có thể đổi `SHOPAIKEY_MODEL` và `SHOPAIKEY_URL`. Nếu chưa có khóa, phần câu hỏi vẫn chấm được,
 còn recall hiển thị là chưa chấm. Bản nháp cần audio hội thoại và mốc thời gian câu đã có trong

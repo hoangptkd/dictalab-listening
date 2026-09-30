@@ -125,21 +125,54 @@ class SpaRoutingTest {
     void adminLessonsListPageReturnsOkForAdmin() throws Exception {
         mockMvc.perform(get("/admin/lessons")
                         .with(user(DictaLabPrincipal.from(adminUser))))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(forwardedUrl("/admin.html"));
     }
 
     @Test
     void adminNewLessonPageReturnsOkForAdmin() throws Exception {
         mockMvc.perform(get("/admin/lessons/new")
                         .with(user(DictaLabPrincipal.from(adminUser))))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(forwardedUrl("/admin.html"));
     }
 
     @Test
     void adminLessonDetailPageReturnsOkForAdmin() throws Exception {
         mockMvc.perform(get("/admin/lessons/1")
                         .with(user(DictaLabPrincipal.from(adminUser))))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(forwardedUrl("/admin.html"));
+    }
+
+    @Test
+    void adminPagesAndDocumentRequireAdminRole() throws Exception {
+        for (String path : new String[]{"/admin", "/admin/", "/admin.html", "/admin/lessons",
+                "/admin/lessons/new", "/admin/lessons/1", "/admin/users", "/admin/support", "/admin/listening"}) {
+            mockMvc.perform(get(path)).andExpect(status().isFound())
+                    .andExpect(redirectedUrl("/login?next=" + java.net.URLEncoder.encode(
+                            path, java.nio.charset.StandardCharsets.UTF_8)));
+            mockMvc.perform(get(path).with(user(DictaLabPrincipal.from(user))))
+                    .andExpect(status().isForbidden()).andExpect(forwardedUrl("/error/403.html"));
+        }
+        mockMvc.perform(get("/admin/lessons/42?page=3"))
+                .andExpect(redirectedUrl("/login?next=%2Fadmin%2Flessons%2F42%3Fpage%3D3"));
+    }
+
+    @Test
+    void adminCanLoadSeparateDocumentAndAccountRoutes() throws Exception {
+        mockMvc.perform(get("/admin").with(user(DictaLabPrincipal.from(adminUser))))
+                .andExpect(redirectedUrl("/admin/lessons"));
+        for (String path : new String[]{"/admin/users", "/admin/support", "/admin/listening"}) {
+            mockMvc.perform(get(path).with(user(DictaLabPrincipal.from(adminUser))))
+                    .andExpect(status().isOk()).andExpect(forwardedUrl("/admin.html"));
+        }
+        mockMvc.perform(get("/admin.html").with(user(DictaLabPrincipal.from(adminUser))))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-area=\"admin\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("id=\"catalog-view\""))));
+        mockMvc.perform(get("/index.html"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("id=\"admin-view\""))));
     }
 
     // ── Unauthenticated access to SPA routes ──────────────────────────────

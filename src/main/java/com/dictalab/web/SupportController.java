@@ -2,6 +2,7 @@ package com.dictalab.web;
 
 import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.ListeningComprehensionService;
+import com.dictalab.service.AdminQueryService;
 import com.dictalab.room.RoomRegistry;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -27,12 +28,14 @@ public class SupportController {
     private final ListeningComprehensionService listening;
     private final ObjectMapper json;
     private final RoomRegistry rooms;
+    private final AdminQueryService queries;
     public SupportController(JdbcTemplate db, ListeningComprehensionService listening, ObjectMapper json,
-                             RoomRegistry rooms) {
+                             RoomRegistry rooms, AdminQueryService queries) {
         this.db = db;
         this.listening = listening;
         this.json = json;
         this.rooms = rooms;
+        this.queries=queries;
     }
 
     public record Ticket(@NotBlank @Pattern(regexp = "AUDIO|TRANSCRIPT|SCORE|ACCOUNT_DELETE|OTHER") String category,
@@ -41,8 +44,30 @@ public class SupportController {
                          @Pattern(regexp = "LISTENING|DICTATION") String referenceType,
                          @Size(max = 64) String referenceId) {}
     public record Resolution(@NotBlank @Pattern(regexp = "OPEN|IN_PROGRESS|RESOLVED") String status,
-                             @Size(max = 1000) String adminNote) {}
+                             @Size(max = 1000) String adminNote, Long version) {}
     public record TicketPage(List<Map<String, Object>> tickets, int page, boolean hasMore) {}
+    @GetMapping("/api/admin/support/tickets/page")
+    public AdminQueryService.Page page(@RequestParam(defaultValue="") String q, @RequestParam(defaultValue="OPEN") String status,
+            @RequestParam(defaultValue="") String category, @RequestParam(defaultValue="") String referenceType,
+            @RequestParam(defaultValue="") String from, @RequestParam(defaultValue="") String to,
+            @RequestParam(defaultValue="oldest") String sort, @RequestParam(defaultValue="0") int page) {
+        return queries.tickets(q,status,category,referenceType,from,to,sort,page);
+    }
+    @GetMapping("/api/admin/support/tickets/{id}")
+    public Map<String,Object> detail(@PathVariable long id) {
+        var rows=AdminQueryService.lower(db.queryForList("SELECT t.*,u.email FROM support_tickets t JOIN app_users u ON u.id=t.user_id WHERE t.id=?",id));
+        if(rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        var result=rows.get(0);
+        result.put("events",queries.events("TICKET",id));
+        Object reference=result.get("reference_id");
+        if (reference != null) {
+            var links="LISTENING".equals(result.get("reference_type"))
+                    ? db.queryForList("SELECT unit_id AS content_id FROM listening_sessions WHERE id=? AND user_id=?",reference,result.get("user_id"))
+                    : db.queryForList("SELECT lesson_id AS content_id FROM practice_sessions WHERE id=? AND user_id=?",reference,result.get("user_id"));
+            if(!links.isEmpty()) result.put("content_id",links.get(0).get("content_id"));
+        }
+        return result;
+    }
 
     @PostMapping("/api/support/tickets")
     public Map<String, Object> create(@AuthenticationPrincipal DictaLabPrincipal user,
@@ -114,11 +139,18 @@ public class SupportController {
     }
 
     @PutMapping("/api/admin/support/tickets/{id}")
+    @Transactional
     public void resolve(@AuthenticationPrincipal DictaLabPrincipal admin, @PathVariable long id,
                         @Valid @RequestBody Resolution resolution) {
-        if (db.update("UPDATE support_tickets SET status=?,admin_note=?,updated_at=? WHERE id=?",
-                resolution.status(), resolution.adminNote(), Instant.now(), id) != 1)
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        var old=AdminQueryService.lower(db.queryForList("SELECT * FROM support_tickets WHERE id=? FOR UPDATE",id));
+        if(old.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        if(resolution.version()!=null && ((Number)old.get(0).get("edit_version")).longValue()!=resolution.version())
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"Yêu cầu đã được sửa ở nơi khác. Giữ phản hồi đang nhập và tải lại bản mới.");
+        if (queries.events("TICKET",id).isEmpty() && old.get(0).get("admin_note") instanceof String note && !note.isBlank())
+            queries.event(null,"TICKET",id,"PREVIOUS_RESPONSE",note);
+        db.update("UPDATE support_tickets SET status=?,admin_note=?,updated_at=?,edit_version=edit_version+1 WHERE id=?",
+                resolution.status(), resolution.adminNote(), Instant.now(), id);
+        queries.event(admin.id(),"TICKET",id,resolution.status(),resolution.adminNote());
         db.update("INSERT INTO account_audit(actor_id,action,detail) VALUES (?,?,?)",
                 admin.id(), "SUPPORT_TICKET_UPDATE", "Ticket #" + id + ": " + resolution.status());
     }
@@ -186,6 +218,7 @@ public class SupportController {
         db.update("DELETE FROM practice_sessions WHERE user_id=?", userId);
         db.update("DELETE FROM audio_exposure_events WHERE user_id=?", userId);
         db.update("DELETE FROM account_tokens WHERE user_id=?", userId);
+        db.update("DELETE FROM admin_events WHERE object_type='TICKET' AND object_id IN (SELECT id FROM support_tickets WHERE user_id=?)", userId);
         db.update("DELETE FROM support_tickets WHERE user_id=?", userId);
         db.update("UPDATE account_audit SET actor_id=NULL WHERE actor_id=?", userId);
         db.update("DELETE FROM account_audit WHERE subject_id=?", userId);
