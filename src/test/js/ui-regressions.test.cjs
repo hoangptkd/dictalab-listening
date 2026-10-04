@@ -6,14 +6,252 @@ const vm = require('node:vm');
 const read = name => fs.readFileSync(path.resolve(__dirname, '../../main/resources/static/js', name), 'utf8');
 const html = fs.readFileSync(path.resolve(__dirname, '../../main/resources/static/index.html'), 'utf8');
 
+test('password toggles keep values and form behavior intact and affect only their own field', () => {
+    const buttons = [], inputs = ['currentPassword', 'newPassword'].map(name => ({
+        name, type: 'password', value: 'unchanged-secret', form: {id: 'account-password-form'},
+        closest(selector) { return selector === 'label' ? this.label : this.wrapper; },
+        label: {textContent: 'Mật khẩu', before(wrapper) { this.wrapper = wrapper; }}
+    }));
+    const document = {createElement(tag) {
+        if (tag === 'div') return {append(node) {
+            const input = inputs.find(input => input.label === node);
+            if (input) input.wrapper = this;
+        }};
+        const button = {attrs: {}, setAttribute(name, value) { this.attrs[name] = value; },
+            addEventListener(_event, handler) { this.click = handler; }};
+        buttons.push(button); return button;
+    }};
+    const window = {};
+    vm.runInNewContext(read('account.js'), {window, document});
+    const root = {querySelectorAll: () => inputs};
+    window.DictaLabAccount.enhancePasswords(root);
+    window.DictaLabAccount.enhancePasswords(root);
+    assert.equal(buttons.length, 2, 'repeated rendering cannot duplicate controls');
+    assert.equal(buttons[0].type, 'button');
+    assert.equal(buttons[0].attrs['aria-controls'], inputs[0].id);
+    assert.notEqual(inputs[0].id, inputs[1].id);
+    buttons[0].click();
+    assert.equal(inputs[0].type, 'text');
+    assert.equal(inputs[1].type, 'password');
+    assert.equal(buttons[0].attrs['aria-pressed'], 'true');
+    buttons[0].click();
+    assert.equal(inputs[0].type, 'password');
+    assert.equal(buttons[0].attrs['aria-pressed'], 'false');
+    assert.equal(inputs[0].value, 'unchanged-secret');
+});
+
+test('support selects valid linked categories and ignores unknown or inherited properties', async () => {
+    for (const category of ['ACCOUNT_DELETE', 'OTHER', 'invalid', 'toString']) {
+        const select = {value: 'AUDIO', addEventListener() {}, closest: () => ({after() {}})};
+        const root = {addEventListener() {}, querySelector(selector) {
+            return selector === '[name="category"]' ? select : selector === '#support-form' ? root : {addEventListener() {}};
+        }};
+        const window = {DictaLabListeningBridge: {api: async () => ({tickets: [], hasMore: false})}};
+        vm.runInNewContext(read('account.js'), {window, document: {querySelector: () => root, createElement: () => ({})},
+            location: {search: `?category=${category}`}, URLSearchParams});
+        await window.DictaLabAccount.show('support');
+        assert.equal(select.value, ['ACCOUNT_DELETE', 'OTHER'].includes(category) ? category : 'AUDIO');
+        assert.match(root.innerHTML, /Phản hồi và trạng thái xử lý/);
+    }
+});
+
+test('dashboard compares the previous session of the same level and links newest sessions first', () => {
+    const welcome = {}, recent = {};
+    const source = read('app.js').match(/    function renderDashboardActivity\([\s\S]*?\n    }\n/)[0];
+    const render = vm.runInNewContext(`${source}\nrenderDashboardActivity`, {
+        document: {querySelector: selector => selector === '#dashboard-welcome' ? welcome : recent},
+        formatPercent: String, escapeHtml: String, escapeAttribute: String,
+        router: {toPath: (_route, params) => `/history/${params.sessionId}`}
+    });
+    const points = [
+        {sessionId: 'a', level: 'A1', firstAttemptAccuracy: 50},
+        {sessionId: 'b', level: 'B1', firstAttemptAccuracy: 90},
+        {sessionId: 'c', level: 'A1', firstAttemptAccuracy: 65}
+    ].map(point => ({...point, lessonTitle: 'Lesson', date: '2026-10-03'}));
+    render(points);
+    assert.match(welcome.textContent, /Tăng 15 điểm phần trăm/);
+    assert.ok(recent.innerHTML.indexOf('/history/c') < recent.innerHTML.indexOf('/history/b'));
+    render([points[0], {...points[2], firstAttemptAccuracy: 50}]);
+    assert.match(welcome.textContent, /Không đổi/);
+    render([points[0], points[1]]);
+    assert.match(welcome.textContent, /Chưa có buổi trước cùng trình độ/);
+    render([]);
+    assert.match(welcome.textContent, /Chưa có buổi/);
+    assert.match(recent.innerHTML, /Chọn bài luyện đầu tiên/);
+});
+
+test('reset request consumes the login email once and handles unavailable storage', () => {
+    for (const unavailable of [false, true]) {
+        const input = {value: '', focus() {}}, removed = [];
+        const panel = {querySelectorAll: () => [], querySelector: selector => selector.includes('email') || selector === 'input'
+            ? input : {addEventListener() {}}};
+        const window = {};
+        vm.runInNewContext(read('account.js'), {window, URLSearchParams, location: {search: ''},
+            document: {querySelector: selector => selector === '#account-public-actions' ? panel : {}},
+            sessionStorage: {getItem() { if (unavailable) throw new Error('blocked'); return 'learner@test.local'; },
+                removeItem: key => removed.push(key)}
+        });
+        window.DictaLabAccount.showPublic('reset-password');
+        assert.equal(input.value, unavailable ? '' : 'learner@test.local');
+        assert.deepEqual(removed, unavailable ? [] : ['dictalab-reset-email']);
+    }
+});
+
+test('dashboard load failure has persistent feedback and can be retried', async () => {
+    const panel = {}, view = {setAttribute(name, value) { this[name] = value; }};
+    let fail = true, rendered = 0;
+    const source = read('app.js').match(/    async function refreshDashboard\([\s\S]*?\n    }\n/)[0];
+    const refresh = vm.runInNewContext(`${source}\nrefreshDashboard`, {
+        document: {querySelector: selector => selector === '#dashboard-load-error' ? panel : view},
+        api: async () => { if (fail) throw new Error('Offline'); return {}; },
+        renderDashboard: () => rendered++, showToast() {}
+    });
+    await refresh(false);
+    assert.equal(panel.hidden, false);
+    assert.equal(view['aria-busy'], 'false');
+    fail = false;
+    await refresh(true);
+    assert.equal(panel.hidden, true);
+    assert.equal(rendered, 1);
+});
+
+test('admin usage preserves its period control, keyboard focus and retry after errors', async () => {
+    let fail = true, focus = 0, created = 0;
+    const result = {}, select = {value: '30', focus() { focus++; }, addEventListener() {}};
+    const retry = {addEventListener(_event, handler) { this.click = handler; }};
+    const root = {isConnected: true, contains: () => true, setAttribute() {},
+        querySelector: selector => selector === 'select' ? (created ? select : null)
+            : selector === 'button' ? retry : result,
+        set innerHTML(_value) { created++; }};
+    const requests = [];
+    const source = read('account.js').match(/    async function usage\([\s\S]*?\n    }\n/)[0];
+    const usage = vm.runInNewContext(`${source}\nusage`, {
+        document: {activeElement: select}, escape: String, encodeURIComponent,
+        bridge: () => ({api: async url => {
+            requests.push(url);
+            if (fail) throw new Error('Offline');
+            return {from: '2026-10-01', to: '2026-10-03'};
+        }})
+    });
+    await usage(root, 7);
+    assert.match(result.innerHTML, /Offline/);
+    assert.equal(select.disabled, false);
+    fail = false;
+    await retry.click();
+    assert.match(result.innerHTML, /usage\/export\?days=7/);
+    await usage(root, 90);
+    assert.equal(select.value, '90');
+    assert.equal(created, 1);
+    assert.equal(focus, 3);
+    assert.deepEqual(requests, ['/api/admin/usage?days=7', '/api/admin/usage?days=7', '/api/admin/usage?days=90']);
+});
+
+test('opening a support link preserves deletion category and existing lesson references', async () => {
+    const source = read('app.js').match(/    async function resolveUrlAndNavigate\([\s\S]*?\n    }\n/)[0];
+    for (const search of ['?category=ACCOUNT_DELETE', '?type=LISTENING&id=reference', '']) {
+        let replaced = false, rendered = false;
+        const resolve = vm.runInNewContext(`${source}\nresolveUrlAndNavigate`, {
+            isAdminArea: false, state: {}, router: {replace() { replaced = true; }}, _showView() {},
+            window: {DictaLabAccount: {show: async () => { rendered = true; }}}
+        });
+        await resolve({route: 'support', params: {}, query: new URLSearchParams(search)}, false);
+        assert.equal(replaced, search === '');
+        assert.equal(rendered, true);
+    }
+});
+
+test('dashboard labels dates from each session and places the next lesson before lifetime totals', () => {
+    const app = read('app.js');
+    const chart = {setAttribute() {}};
+    const source = app.match(/    function renderTrend\([\s\S]*?\n    }\n/)[0];
+    const render = vm.runInNewContext(`${source}\nrenderTrend`, {
+        elements: {trendChart: chart}, escapeAttribute: String, escapeHtml: String
+    });
+    render([{date: '2026-10-03', level: 'B1', lessonTitle: 'Bài 1', firstAttemptAccuracy: 50, finalAccuracy: 80}]);
+    assert.match(chart.innerHTML, /<time datetime="2026-10-03">03\/10<\/time>/);
+    const dashboard = html.slice(html.indexOf('<section id="dashboard-view"'), html.indexOf('<section id="history-view"'));
+    assert.ok(dashboard.indexOf('id="recommendation-card"') < dashboard.indexOf('id="dashboard-summary"'));
+    assert.match(dashboard, /Tổng hợp toàn bộ thời gian/);
+});
+
+test('mobile overflow navigation preserves links and synchronizes disclosure state', () => {
+    assert.match(html, /id="mobile-nav-menu"[^>]+popover="auto"/);
+    assert.match(html, /popovertarget="mobile-nav-menu"/);
+    const menuHtml = html.match(/<div id="mobile-nav-menu"[\s\S]*?<\/div>/)[0];
+    for (const route of ['history', 'room', 'support']) {
+        assert.match(menuHtml, new RegExp(`<a[^>]+href="[^"]+"[^>]+data-route="${route}"`));
+    }
+    const attributes = {};
+    let onToggle, onResize, closed = 0;
+    const more = {setAttribute: (name, value) => { attributes[name] = value; }};
+    const menu = {hidePopover() { closed++; }, addEventListener(_type, handler) { onToggle = handler; }};
+    const elements = {};
+    const source = read('app.js').match(/    function bindMobileNavigation\([\s\S]*?\n    }\n/)[0];
+    const bind = vm.runInNewContext(`${source}\nbindMobileNavigation`, {
+        elements, document: {querySelector: selector => selector === '#mobile-nav-more' ? more : menu},
+        window: {matchMedia: query => {
+            assert.equal(query, '(min-width: 761px)');
+            return {addEventListener(_type, handler) { onResize = handler; }};
+        }}
+    });
+    bind();
+    onToggle({newState: 'open'}); assert.equal(attributes['aria-expanded'], 'true');
+    onToggle({newState: 'closed'}); assert.equal(attributes['aria-expanded'], 'false');
+    onResize({matches: false}); assert.equal(closed, 0);
+    onResize({matches: true}); assert.equal(closed, 1);
+});
+
+test('public account instructions match reset request, reset completion and email verification', () => {
+    for (const [route, search, expected] of [
+        ['reset-password', '', 'Nhập email tài khoản để nhận liên kết đặt lại mật khẩu.'],
+        ['reset-password', '?token=test', 'Nhập mật khẩu mới để bảo vệ tài khoản của bạn.'],
+        ['verify-email', '', 'Kiểm tra liên kết xác nhận email của bạn.']
+    ]) {
+        const nodes = new Map();
+        const panel = {hidden: true, querySelectorAll: () => [], querySelector: () => ({addEventListener() {}, focus() {}})};
+        const document = {querySelector: selector => {
+            if (selector === '#account-public-actions') return panel;
+            if (!nodes.has(selector)) nodes.set(selector, {});
+            return nodes.get(selector);
+        }};
+        const window = {};
+        vm.runInNewContext(read('account.js'), {window, document, location: {search}, URLSearchParams});
+        window.DictaLabAccount.showPublic(route);
+        assert.equal(nodes.get('#auth-subtitle').textContent, expected);
+        assert.equal(panel.hidden, false);
+        assert.equal(nodes.get('#forgot-password-link').hidden, true);
+    }
+});
+
 test('page navigation uses real links so browser link actions remain available', () => {
-    for (const route of ['catalog', 'listening', 'history', 'dashboard', 'room']) {
+    for (const route of ['catalog', 'listening', 'conversation', 'history', 'dashboard', 'room']) {
         assert.match(html, new RegExp(`<a[^>]+data-route="${route}"`));
     }
     assert.doesNotMatch(html, /<button[^>]+data-route=/);
     assert.match(html, /<a[^>]+id="admin-nav-link"[^>]+href="\/admin"/);
     assert.match(read('app.js'), /<a class="history-card" href=/);
     assert.match(read('listening.js'), /<a class="text-button" href="\/listening\?view=history"/);
+});
+
+test('conversation navigation opens and loads the conversation view and session', async () => {
+    const app = read('app.js');
+    const start = app.indexOf('    const router = {');
+    const end = app.indexOf('\n    function paginateList', start);
+    const router = vm.runInNewContext(`${app.slice(start, end)}\nrouter`, {URLSearchParams});
+    assert.equal(router.parse('/conversation/session', '').params.sessionId, 'session');
+    assert.equal(router.toPath('conversation', {sessionId: 'session'}), '/conversation/session');
+    const target = {id: 'conversation-view'}, catalog = {id: 'catalog-view'};
+    const document = {body: {dataset: {route: 'catalog'}}, querySelector: selector => selector === '#conversation-view' ? target : {focus() {}}};
+    const showSource = app.match(/    function _showView\([\s\S]*?\n    }\n/)[0];
+    const show = vm.runInNewContext(`${showSource}\n_showView`, {isAdminArea: false, state: {}, document,
+        elements: {views: [target, catalog], navLinks: []}, window: {scrollTo() {}}, roomPrepareStudyAudio() {}});
+    let opened;
+    const navigateSource = app.match(/    async function navigate\([\s\S]*?\n    }\n/)[0];
+    const navigate = vm.runInNewContext(`${navigateSource}\nnavigate`, {state: {}, document, _showView: show,
+        resolveUrlAndNavigate: async mapped => { opened = mapped; show(mapped.route); }});
+    await navigate('conversation', {sessionId: 'session'});
+    assert.equal(opened.route, 'conversation'); assert.equal(opened.params.sessionId, 'session');
+    assert.equal(document.body.dataset.route, 'conversation'); assert.equal(target.hidden, false); assert.equal(catalog.hidden, true);
 });
 
 function paginationHarness(page, total, filtered = []) {

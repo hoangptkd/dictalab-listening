@@ -1,6 +1,7 @@
 package com.dictalab.web;
 
 import com.dictalab.dto.ApiDtos;
+import com.dictalab.domain.CefrLevel;
 import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.HistoryService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -8,9 +9,8 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/history")
@@ -24,8 +24,11 @@ public class HistoryController {
     }
 
     @GetMapping
-    public List<ApiDtos.HistoryEntry> list(@AuthenticationPrincipal DictaLabPrincipal principal) {
-        return historyService.list(principal.id());
+    public ApiDtos.HistoryPage list(@AuthenticationPrincipal DictaLabPrincipal principal,
+                                    @RequestParam(required = false) CefrLevel level,
+                                    @RequestParam(defaultValue = "0") int page,
+                                    @RequestParam(defaultValue = "10") int size) {
+        return historyService.list(principal.id(), level, page, size);
     }
 
     @GetMapping("/{sessionId}")

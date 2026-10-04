@@ -23,7 +23,7 @@ import java.util.List;
 
 /**
  * REST controller cho tính năng "Luyện cùng bạn".
- * Tất cả endpoint yêu cầu xác thực; userId lấy từ session (không từ request body).
+ * Tất cả endpoint yêu cầu xác thực; userId lấy từ principal đã xác minh JWT.
  */
 @RestController
 @RequestMapping("/api/v1/rooms")
@@ -33,6 +33,7 @@ public class RoomController {
 
     private final RoomRegistry registry;
     private final PracticeService practiceService;
+    private final RoomWebSocketHandler sockets;
 
     @Value("${server.servlet.context-path:}")
     private String contextPath;
@@ -49,9 +50,10 @@ public class RoomController {
     @Value("${dictalab.room.allowed-origins:http://localhost:18081}")
     private String allowedOriginsConfig;
 
-    public RoomController(RoomRegistry registry, PracticeService practiceService) {
+    public RoomController(RoomRegistry registry, PracticeService practiceService, RoomWebSocketHandler sockets) {
         this.registry = registry;
         this.practiceService = practiceService;
+        this.sockets=sockets;
     }
 
     // ------------------------------------------------------------------ endpoints
@@ -100,6 +102,7 @@ public class RoomController {
         }
         try {
             practiceService.startShared(principal.id(), roomId, request.lessonId());
+            sockets.roomChanged(roomId);
             return buildRoomState(room, principal.id());
         } catch (RuntimeException error) {
             registry.resetLesson(roomId, request.lessonId());
@@ -126,6 +129,7 @@ public class RoomController {
                 || !registry.markReady(roomId, principal.id(), room.getLessonPosition())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn chưa hoàn thành câu hiện tại.");
         }
+        sockets.roomChanged(roomId);
         return buildRoomState(room, principal.id());
     }
 
@@ -136,6 +140,7 @@ public class RoomController {
         if (!registry.advanceLesson(roomId, principal.id())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ chủ phòng được chuyển câu khi cả hai sẵn sàng.");
         }
+        sockets.roomChanged(roomId);
         return buildRoomState(room, principal.id());
     }
 
@@ -173,6 +178,7 @@ public class RoomController {
             @AuthenticationPrincipal DictaLabPrincipal principal) {
 
         RoomRegistry.JoinResult result = registry.joinRoom(roomId, principal.id(), principal.displayName());
+        if(result==RoomRegistry.JoinResult.OK)sockets.roomChanged(roomId);
         return switch (result) {
             case OK -> new RoomDtos.JoinResponse(roomId, "PENDING_APPROVAL",
                     "Yêu cầu của bạn đã được gửi. Vui lòng chờ chủ phòng chấp nhận.");
@@ -200,6 +206,7 @@ public class RoomController {
             case OK -> {
                 CallRoom room = registry.findById(roomId)
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Phòng không tồn tại."));
+                sockets.roomChanged(roomId);
                 yield buildRoomState(room, principal.id());
             }
             case NOT_FOUND -> throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Phòng không tồn tại.");
@@ -217,6 +224,7 @@ public class RoomController {
             @AuthenticationPrincipal DictaLabPrincipal principal) {
 
         RoomRegistry.RejectResult result = registry.rejectGuest(roomId, principal.id());
+        if(result==RoomRegistry.RejectResult.OK)sockets.roomChanged(roomId);
         return switch (result) {
             case OK -> new RoomDtos.ApproveRejectResponse(roomId, "WAITING_GUEST", "Đã từ chối yêu cầu tham gia.");
             case NOT_FOUND -> throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Phòng không tồn tại.");
@@ -236,7 +244,7 @@ public class RoomController {
 
         RoomRegistry.LeaveResult result = registry.leaveRoom(roomId, principal.id());
         switch (result) {
-            case OK, HOST_LEFT -> {} // thành công
+            case OK, HOST_LEFT -> sockets.roomChanged(roomId);
             case NOT_FOUND -> throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Phòng không tồn tại.");
             case NOT_MEMBER -> throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không phải thành viên phòng này.");
         }
@@ -287,7 +295,8 @@ public class RoomController {
                 String username = timestamp + ":" + principal.id();
                 String credential = computeTurnCredential(username, turnSecret);
                 servers.add(new RoomDtos.IceConfigResponse.IceServer(
-                        List.of(turnUrl), username, credential));
+                        java.util.Arrays.stream(turnUrl.split(",")).map(String::trim)
+                                .filter(value -> !value.isEmpty()).toList(), username, credential));
             } catch (Exception e) {
                 log.warn("Không tạo được TURN credential cho user {}: {}", principal.id(), e.getMessage());
                 // Không ném lỗi — fallback về STUN only
@@ -311,6 +320,7 @@ public class RoomController {
                 room.isHost(userId) ? room.getInviteCode() : null,
                 room.getLessonId(), room.getLessonPosition(), room.getLessonSentenceCount(),
                 room.isHostReady(), room.isGuestReady(), room.peerDrafts(userId), room.peerDraftSequence(userId),
+                registry.playbackState(room.getRoomId()),
                 room.getCallStartedAt(), Instant.now());
     }
 
@@ -334,7 +344,7 @@ public class RoomController {
     }
 
     /**
-     * Tính TURN credential theo RFC 5766 short-term credential mechanism.
+     * TURN REST time-limited credentials using the server's shared secret.
      * username = "<timestamp>:<userId>", credential = HMAC-SHA1(username, secret).
      */
     private String computeTurnCredential(String username, String secret) throws Exception {

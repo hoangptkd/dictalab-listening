@@ -69,7 +69,8 @@ class HistoryIntegrationTest {
         mockMvc.perform(get("/api/v1/history")
                         .with(user(DictaLabPrincipal.from(userA))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(0)));
+                .andExpect(jsonPath("$.items", hasSize(0)))
+                .andExpect(jsonPath("$.totalElements").value(0));
     }
 
     @Test
@@ -80,14 +81,15 @@ class HistoryIntegrationTest {
         mockMvc.perform(get("/api/v1/history")
                         .with(user(DictaLabPrincipal.from(userA))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0].sessionId").value(sessionId))
-                .andExpect(jsonPath("$[0].lessonId").value(1))
-                .andExpect(jsonPath("$[0].lessonTitle").value("Morning at the Market"))
-                .andExpect(jsonPath("$[0].level").value("A1"))
-                .andExpect(jsonPath("$[0].overallScore").isNumber())
-                .andExpect(jsonPath("$[0].firstExposure").value(true))
-                .andExpect(jsonPath("$[0].completedAt").isNotEmpty());
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].sessionId").value(sessionId))
+                .andExpect(jsonPath("$.items[0].lessonId").value(1))
+                .andExpect(jsonPath("$.items[0].lessonTitle").value("Morning at the Market"))
+                .andExpect(jsonPath("$.items[0].level").value("A1"))
+                .andExpect(jsonPath("$.items[0].overallScore").isNumber())
+                .andExpect(jsonPath("$.items[0].firstExposure").value(true))
+                .andExpect(jsonPath("$.items[0].completedAt").isNotEmpty());
 
         // 2. Check history detail for userA
         mockMvc.perform(get("/api/v1/history/" + sessionId)
@@ -110,7 +112,7 @@ class HistoryIntegrationTest {
         mockMvc.perform(get("/api/v1/history")
                         .with(user(DictaLabPrincipal.from(userB))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(0)));
+                .andExpect(jsonPath("$.items", hasSize(0)));
 
         // User B cannot access User A's session detail
         mockMvc.perform(get("/api/v1/history/" + userASessionId)

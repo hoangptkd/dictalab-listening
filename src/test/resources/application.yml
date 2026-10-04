@@ -1,3 +1,15 @@
+management:
+  otlp:
+    metrics:
+      export:
+        enabled: false
+  logging:
+    export:
+      otlp:
+        enabled: false
+  tracing:
+    export:
+      enabled: false
 spring:
   datasource:
     url: jdbc:h2:mem:dictalabtest;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
@@ -12,6 +24,15 @@ spring:
     enabled: true
 
 dictalab:
+  auth:
+    signing-key: dGVzdC1vbmx5LWRpY3RhbGFiLXNpZ25pbmcta2V5LTMyaGFyYWN0ZXJz
+    cookie-secure: false
+  email:
+    dispatch-delay-ms: 600000
+  listening:
+    dispatch-delay-ms: 600000
+  rate-limit:
+    enabled: false
   assessment:
     minimum-unseen-lessons: 5
     maximum-unseen-lessons: 10

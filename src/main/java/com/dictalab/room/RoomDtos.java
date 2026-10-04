@@ -34,6 +34,10 @@ public final class RoomDtos {
 
     public record SelectLessonRequest(@Positive long lessonId) {}
 
+    public record PlaybackState(long version, long sequence, int position, int replayCount, double speed,
+                                Instant startsAt, boolean hostAudioReady, boolean guestAudioReady,
+                                boolean playing) {}
+
     /** Trả về sau khi host approve/reject. */
     public record ApproveRejectResponse(
             String roomId,
@@ -70,6 +74,7 @@ public final class RoomDtos {
             boolean guestReady,
             List<String> peerDrafts,
             long peerDraftSequence,
+            PlaybackState playback,
             Instant callStartedAt,
             Instant serverNow
     ) {

@@ -1,0 +1,9 @@
+apiVersion: 1
+providers:
+  - name: DictaLab
+    folder: DictaLab
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 60
+    options:
+      path: ${DICTALAB_GRAFANA_DASHBOARDS}

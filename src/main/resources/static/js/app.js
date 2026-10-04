@@ -36,6 +36,7 @@
             if (s0 === "admin" && (s1 === "users" || s1 === "support")) return { route: `admin-${s1}`, params: {}, query: q };
             if (s0 === "catalog")              return { route: "catalog",  params: { level: q.get("level") || "A1", page }, query: q };
             if (s0 === "listening")            return { route: "listening", params: { sessionId: s1 || null, page, level: q.get("level") || "", view: q.get("view") || "", edit: q.get("edit") || "" }, query: q };
+            if (s0 === "conversation")         return { route: "conversation", params: { sessionId: s1 || null }, query: q };
             if (s0 === "dashboard")            return { route: "dashboard", params: {}, query: q };
             if (s0 === "practice" && s1)       return { route: "practice", params: { sessionId: s1 }, query: q };
             if (s0 === "history" && !s1)       return { route: "history",  params: { level: q.get("level") || "all", page }, query: q };
@@ -62,6 +63,7 @@
                 case "admin-listening": return `/admin/listening?page=${encodeURIComponent(params.page || 1)}${params.edit ? `&edit=${encodeURIComponent(params.edit)}` : ""}`;
                 case "admin-support": return "/admin/support";
                 case "catalog":     return `/catalog?level=${encodeURIComponent(params.level || "A1")}&page=${encodeURIComponent(params.page || 1)}`;
+                case "conversation": return params.sessionId ? `/conversation/${encodeURIComponent(params.sessionId)}` : "/conversation";
                 case "listening": {
                     if (params.sessionId) {
                         const query = params.view ? `?view=${encodeURIComponent(params.view)}` : "";
@@ -158,6 +160,8 @@
         adminSelectedLesson: null,
         adminEditingNew: false,
         historySessions: [],
+        historyPage: null,
+        historyLoadGeneration: 0,
         historyFilter: "all",
         historyViewingSession: false,
         // --- Room (Luyện cùng bạn) ---
@@ -188,6 +192,12 @@
         roomCallTimer: null,
         roomCallReadySent: false,
         roomStudy: null,
+        roomPlayback: null,
+        roomPlaybackSeen: 0,
+        roomAudioEnabled: false,
+        roomAudioPreparedKey: null,
+        roomAudioPreparingKey: null,
+        roomAudioClockOffset: null,
         roomStudySyncing: false,
         roomSharedSessionId: null,
         roomSharedCompleted: false,
@@ -225,7 +235,7 @@
         logoutButton: document.querySelector("#logout-button"),
         views: [...document.querySelectorAll(".view")],
         routeButtons: [...document.querySelectorAll("[data-route]")],
-        navLinks: [...document.querySelectorAll(".nav-link")],
+        navLinks: [...document.querySelectorAll(".nav-link[data-route]")],
         levelTabs: document.querySelector("#level-tabs"),
         levelDescription: document.querySelector("#level-description"),
         lessonGrid: document.querySelector("#lesson-grid"),
@@ -241,11 +251,18 @@
         playbackSpeed: document.querySelector("#playback-speed"),
         listeningConsole: document.querySelector(".listening-console"),
         replayCount: document.querySelector("#replay-count"),
+        replayCountLabel: document.querySelector("#replay-count-label"),
+        roomEnableStudyAudio: document.querySelector("#room-enable-study-audio"),
+        roomStudyAudioStatus: document.querySelector("#room-study-audio-status"),
         sentenceTimer: document.querySelector("#sentence-timer"),
         hintCount: document.querySelector("#hint-count"),
         speechSupportNote: document.querySelector("#speech-support-note"),
         wordCompletion: document.querySelector("#word-completion"),
         wordSlots: document.querySelector("#word-slots"),
+        dictationCopyText: document.querySelector("#dictation-copy-text"),
+        copyDictationSelection: document.querySelector("#copy-dictation-selection"),
+        copyDictationAll: document.querySelector("#copy-dictation-all"),
+        dictationCopyStatus: document.querySelector("#dictation-copy-status"),
         dictationForm: document.querySelector("#dictation-form"),
         hintLetter: document.querySelector("#hint-letter"),
         hintWord: document.querySelector("#hint-word"),
@@ -376,6 +393,14 @@
                 return;
             }
             state.currentUser = await api("/api/auth/me", {redirectOnUnauthorized: false});
+            const next = new URLSearchParams(location.search).get("next");
+            if (next?.startsWith("/")) {
+                const target = new URL(next, location.origin);
+                if (target.origin === location.origin && target.pathname.startsWith("/admin")) {
+                    location.replace(target.pathname + target.search);
+                    return;
+                }
+            }
             await enterApplication();
         } catch (error) {
             if (isAdminArea) {
@@ -402,6 +427,7 @@
 
     function bindEvents() {
         elements.logoutButton.addEventListener("click", logout);
+        bindMobileNavigation();
         elements.accountLink = document.querySelector("#account-link");
         elements.routeButtons.forEach(link => {
             link.addEventListener("click", event => {
@@ -409,6 +435,7 @@
                     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                     event.preventDefault();
                 }
+                elements.mobileNavMenu?.hidePopover?.();
                 navigate(link.dataset.route);
             });
         });
@@ -416,6 +443,7 @@
             bindAdminEvents();
             return;
         }
+        window.DictaLabAccount.enhancePasswords(document);
         elements.loginTab.addEventListener("click", () => switchAuthMode("login"));
         elements.registerTab.addEventListener("click", () => switchAuthMode("register"));
         [elements.loginTab, elements.registerTab].forEach((tab, index, tabs) => {
@@ -429,6 +457,20 @@
         });
         elements.loginForm.addEventListener("submit", event => submitAuth(event, "login"));
         elements.registerForm.addEventListener("submit", event => submitAuth(event, "register"));
+        document.querySelector("#forgot-password-link").addEventListener("click", () => {
+            try { sessionStorage.setItem("dictalab-reset-email", elements.loginForm.elements.email.value.trim()); }
+            catch (_) { /* The reset form remains usable when browser storage is unavailable. */ }
+        });
+        document.querySelector("#dashboard-load-error button").addEventListener("click", async () => {
+            await refreshDashboard(true);
+            if (document.body.dataset.route === "dashboard" && document.querySelector("#dashboard-load-error").hidden)
+                document.querySelector("#main-content").focus();
+        });
+        document.querySelector("#history-load-error button").addEventListener("click", async () => {
+            await loadHistory();
+            if (document.body.dataset.route === "history" && document.querySelector("#history-load-error").hidden)
+                elements.historyLevelTabs.querySelector('[aria-selected="true"]')?.focus();
+        });
         elements.levelTabs.addEventListener("click", event => {
             const button = event.target.closest("[data-level]");
             if (button) {
@@ -455,6 +497,8 @@
         elements.wordSlots.addEventListener("keydown", onWordKeydown);
         elements.wordSlots.addEventListener("focusout", onWordBlur);
         elements.wordSlots.addEventListener("paste", onSentencePaste);
+        elements.copyDictationSelection.addEventListener("click", () => copyDictationText(true));
+        elements.copyDictationAll.addEventListener("click", () => copyDictationText(false));
         elements.hintLetter.addEventListener("click", () => useHint("FIRST_LETTER"));
         elements.hintWord.addEventListener("click", () => useHint("REVEAL_WORD"));
         elements.revealSentence.addEventListener("click", () => useHint("REVEAL_SENTENCE"));
@@ -465,6 +509,10 @@
         elements.historyLevelTabs.addEventListener("click", event => {
             const tab = event.target.closest("[data-history-level]");
             if (tab) selectHistoryLevel(tab.dataset.historyLevel);
+        });
+        elements.historyEmpty.querySelector("button").addEventListener("click", () => {
+            elements.historyLevelTabs.querySelector('[data-history-level="all"]').focus();
+            selectHistoryLevel("all");
         });
         elements.historyList.addEventListener("click", event => {
             const card = event.target.closest("[data-history-session-id]");
@@ -503,6 +551,7 @@
         elements.roomAdvanceSentence.addEventListener("click", roomAdvanceLesson);
         elements.sharedMicButton.addEventListener("click", () => state.roomLocalStream ? roomToggleMic() : roomJoinCall());
         elements.sharedEnableAudio.addEventListener("click", roomEnableAudio);
+        elements.roomEnableStudyAudio.addEventListener("click", roomEnableStudyAudio);
         elements.sharedReconnect.addEventListener("click", roomReconnect);
         elements.roomLeaveBtn.addEventListener("click", roomLeave);
         elements.roomApproveBtn.addEventListener("click", roomApproveGuest);
@@ -644,7 +693,7 @@
                     return;
                 }
                 if (pushHistory) router.push(route);
-                else if (!route.startsWith("admin-") && !(route === "support" && query?.has("id"))) router.replace(route);
+                else if (!route.startsWith("admin-") && !(route === "support" && (query?.has("id") || query?.has("category")))) router.replace(route);
                 _showView(route);
                 await window.DictaLabAccount?.show(route);
                 return;
@@ -654,6 +703,13 @@
                 else router.replace("listening", params);
                 await _showView("listening");
                 await window.DictaLabListening?.show(params.sessionId);
+                return;
+            }
+            case "conversation": {
+                if (pushHistory) router.push("conversation", params);
+                else router.replace("conversation", params);
+                await _showView("conversation");
+                await window.DictaLabConversation?.show(params.sessionId);
                 return;
             }
             case "login":
@@ -869,18 +925,37 @@
      * Hàm nội bộ: chỉ chuyển DOM view (không push history, không load data).
      * Tách riêng để resolveUrlAndNavigate kiểm soát hoàn toàn.
      */
+    function bindMobileNavigation() {
+        elements.mobileNavMore = document.querySelector("#mobile-nav-more");
+        elements.mobileNavMenu = document.querySelector("#mobile-nav-menu");
+        if (!elements.mobileNavMore || !elements.mobileNavMenu?.hidePopover) return;
+        elements.mobileNavMenu.addEventListener("toggle", event => {
+            elements.mobileNavMore.setAttribute("aria-expanded", String(event.newState === "open"));
+        });
+        window.matchMedia("(min-width: 761px)").addEventListener("change", event => {
+            if (event.matches) elements.mobileNavMenu.hidePopover();
+        });
+    }
+
     function _showView(route) {
         // Map route key → view id
         const viewId = {
             catalog: "catalog", practice: "practice", result: "result",
-            history: "history", dashboard: "dashboard", listening: "listening",
+            history: "history", dashboard: "dashboard", listening: "listening", conversation: "conversation",
             room: "room", admin: "admin", account: "account", support: "support",
             "admin-users": "admin-users", "admin-support": "admin-support", "admin-listening": "admin-listening", login: null, register: null
         }[route] || "catalog";
 
         const target = document.querySelector(`#${viewId}-view`);
         if (!target) return;
+        if (state.roomStudy && viewId !== "practice") {
+            roomSendWs({type: "audio-ready", position: state.sentence?.position, ready: false});
+            state.roomAudioPreparedKey = null;
+            stopRecordedAudio();
+            window.speechSynthesis?.cancel();
+        }
         if (document.body.dataset.route === "result" && viewId !== "result") window.DictaLabCoach?.leave();
+        if (document.body.dataset.route === "conversation" && viewId !== "conversation") window.DictaLabConversation?.leave();
         if (isAdminArea) {
             stopRecordedAudio();
             const title = {admin: "Bài nghe", "admin-users": "Người dùng", "admin-support": "Yêu cầu hỗ trợ", "admin-listening": "Nghe hiểu"}[viewId];
@@ -889,6 +964,12 @@
         if (["listening", "admin-listening"].includes(document.body.dataset.route) && viewId !== document.body.dataset.route) window.DictaLabListening?.leave();
         elements.views.forEach(view => view.hidden = view !== target);
         document.body.dataset.route = viewId;
+        if (viewId === "practice") roomPrepareStudyAudio();
+        elements.mobileNavMenu?.hidePopover?.();
+        elements.mobileNavMore?.classList.toggle("is-active", ["history", "room", "support"].includes(viewId));
+        elements.mobileNavMore?.setAttribute("aria-label", {
+            history: "Thêm, đang xem Lịch sử", room: "Thêm, đang xem Luyện cùng bạn", support: "Thêm, đang xem Hỗ trợ"
+        }[viewId] || "Thêm");
         elements.navLinks.forEach(link => {
             const active = link.dataset.route === viewId;
             link.classList.toggle("is-active", active);
@@ -907,8 +988,10 @@
             location.replace(`/login?next=${encodeURIComponent(nextPath || location.pathname + location.search)}`);
             return;
         }
+        elements.mobileNavMenu?.hidePopover?.();
         window.DictaLabCoach?.leave();
         window.DictaLabListening?.leave();
+        window.DictaLabConversation?.leave();
         stopRecordedAudio();
         document.body.dataset.route = "login";
         stopTimer();
@@ -1011,6 +1094,7 @@
         const routeMap = {
             catalog:   { route: "catalog",   params: { level: params.level || state.selectedLevel } },
             listening: { route: "listening", params: { sessionId: params.sessionId || null, level: params.level || "", page: params.page || 1, view: params.view || "", edit: params.edit || "" } },
+            conversation: { route: "conversation", params: { sessionId: params.sessionId || null } },
             history:   { route: "history",   params: { level: params.level || state.historyFilter || "all" } },
             dashboard: { route: "dashboard", params: {} },
             account:   { route: "account", params: {} },
@@ -1237,6 +1321,8 @@
         if (newSentence) {
             state.wordDrafts.clear();
             state.wordAttemptStartedAt.clear();
+            elements.dictationCopyText.value = "";
+            elements.dictationCopyStatus.textContent = "";
         }
         elements.practiceLevel.textContent = state.session.level;
         elements.practiceTitle.textContent = state.session.lessonTitle;
@@ -1248,7 +1334,7 @@
         elements.sentencePosition.textContent = sentence.position;
         elements.sentenceTotal.textContent = sentence.totalSentences;
         elements.sentenceProgress.style.width = `${sentence.position / sentence.totalSentences * 100}%`;
-        elements.replayCount.textContent = sentence.replayCount;
+        elements.replayCount.textContent = shared ? (state.roomPlayback?.replayCount || 0) : sentence.replayCount;
         elements.hintCount.textContent = sentence.hintCount + sentence.revealCount;
         if (newSentence) {
             resetTimer();
@@ -1309,11 +1395,84 @@
         const answerable = words.filter(word => !word.prefilled);
         const resolved = answerable.filter(word => word.correct || word.revealed).length;
         elements.wordCompletion.textContent = `${resolved}/${answerable.length} từ`;
+        refreshDictationCopy();
         roomQueueDraft();
+    }
+
+    function buildVisibleDictationSentence() {
+        return (state.sentence?.words || []).map(word => {
+            const input = elements.wordSlots.querySelector(`input[data-word-index="${word.index}"]`);
+            const revealed = elements.wordSlots.querySelector(`[data-slot-index="${word.index}"] .revealed-word`);
+            const value = (input?.value ?? revealed?.textContent ?? "").trim();
+            return value ? `${word.punctuationBefore || ""}${value}${word.punctuationAfter || ""}` : "";
+        }).filter(Boolean).join(" ");
+    }
+
+    function refreshDictationCopy() {
+        const text = buildVisibleDictationSentence();
+        // Leave selection untouched when a background word check doesn't change the text.
+        if (elements.dictationCopyText.value !== text) {
+            elements.dictationCopyText.value = text;
+            elements.dictationCopyStatus.textContent = "";
+        }
+        elements.copyDictationAll.disabled = !text;
+    }
+
+    async function copyDictationText(selectionOnly) {
+        const field = elements.dictationCopyText;
+        const sourceText = field.value;
+        const sessionId = state.session?.sessionId;
+        const sentenceId = state.sentence?.sentenceId;
+        const route = document.body.dataset.route;
+        const start = selectionOnly ? field.selectionStart : 0;
+        const end = selectionOnly ? field.selectionEnd : field.value.length;
+        const text = field.value.slice(start, end);
+        if (!text.trim()) {
+            elements.dictationCopyStatus.textContent = selectionOnly
+                ? "Hãy bôi chọn từ hoặc cụm từ trong vùng câu bên trên trước."
+                : "Chưa có nội dung để sao chép.";
+            return;
+        }
+        const button = selectionOnly ? elements.copyDictationSelection : elements.copyDictationAll;
+        button.disabled = true;
+        let copied = false;
+        let usedFallback = false;
+        try {
+            if (navigator.clipboard?.writeText && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                copied = true;
+            }
+        } catch (_error) {
+            // HTTP deployments and denied clipboard permission can still use native copy.
+        }
+        // Clipboard permission can finish after the learner edits or leaves this sentence.
+        if (state.session?.sessionId !== sessionId || state.sentence?.sentenceId !== sentenceId
+            || document.body.dataset.route !== route || field.value !== sourceText) {
+            button.disabled = !field.value;
+            return;
+        }
+        try {
+            if (!copied) {
+                usedFallback = true;
+                copied = copyTextWithSelection(text);
+            }
+        } catch (_error) {
+            copied = false;
+        } finally {
+            button.disabled = selectionOnly ? false : !field.value;
+        }
+        if ((usedFallback || !copied) && field.value.slice(start, end) === text) {
+            field.focus({preventScroll: true});
+            field.setSelectionRange(start, end);
+        }
+        elements.dictationCopyStatus.textContent = copied
+            ? (selectionOnly ? "Đã sao chép phần đã chọn." : "Đã sao chép câu đang hiển thị.")
+            : "Không thể sao chép tự động. Nhấn Ctrl+C (Mac: ⌘C) để sao chép phần đã chọn.";
     }
 
     function updatePracticeControls() {
         const sentence = state.sentence;
+        if (!sentence) return;
         const currentWord = sentence.words[state.activeWordIndex];
         const canUseWordHint = sentence.hasListened && !state.speaking && currentWord
             && !currentWord.correct && !currentWord.revealed;
@@ -1326,14 +1485,35 @@
             elements.hintWord.disabled = true;
             elements.revealSentence.disabled = true;
         }
-        elements.replayButton.disabled = state.speaking;
-        elements.playbackSpeed.disabled = state.speaking;
+        const shared = state.roomSharedSessionId === state.session?.sessionId && Boolean(state.roomStudy);
+        const playback = shared ? state.roomPlayback : null;
+        const sharedBusy = Boolean(playback?.playing);
+        if (shared) elements.roomAdvanceSentence.disabled = sharedBusy || !state.roomStudy.hostReady || !state.roomStudy.guestReady;
+        elements.replayButton.disabled = state.speaking || (shared && (!state.roomIsHost || sharedBusy
+            || !playback?.hostAudioReady || !playback?.guestAudioReady || state.roomWs?.readyState !== WebSocket.OPEN));
+        elements.playbackSpeed.disabled = state.speaking || (shared && (!state.roomIsHost || sharedBusy));
+        elements.replayButton.querySelector("strong").textContent = shared ? "Nghe chung" : "Nghe câu";
+        elements.replayCountLabel.textContent = shared ? "Lượt nghe chung" : "Lượt nghe";
+        elements.roomEnableStudyAudio.hidden = !shared || (state.roomAudioEnabled && state.audioContext?.state === "running"
+            && (state.roomIsHost ? playback?.hostAudioReady : playback?.guestAudioReady));
+        elements.roomStudyAudioStatus.hidden = !shared;
+        if (shared) {
+            elements.replayCount.textContent = playback?.replayCount || 0;
+            elements.roomStudyAudioStatus.textContent = !sentence.audioUrl
+                ? "Bài này chưa có file audio để nghe chung. Hãy rời phòng và chọn bài có audio."
+                : !state.roomAudioEnabled || state.audioContext?.state !== "running"
+                ? "Bấm Bật nghe chung một lần để cho phép phát âm thanh."
+                : sharedBusy ? "Đang phát câu cho cả hai."
+                    : !playback?.hostAudioReady || !playback?.guestAudioReady ? "Đang chờ cả hai bật nghe chung và tải audio."
+                        : state.roomIsHost ? "Bấm Nghe chung để cả hai nghe; tốc độ do chủ phòng chọn."
+                            : "Chủ phòng bấm Nghe chung để phát câu cho cả hai.";
+        }
         elements.wordSlots.querySelectorAll("input").forEach(input => {
             const word = sentence.words[Number(input.dataset.wordIndex)];
             input.disabled = !sentence.hasListened || (Boolean(state.roomStudy) && state.roomReady);
             input.readOnly = Boolean(word?.correct);
         });
-        elements.nextSentence.disabled = !sentence.canComplete || state.speaking || (Boolean(state.roomStudy) && state.roomReady);
+        elements.nextSentence.disabled = !sentence.canComplete || state.speaking || sharedBusy || (Boolean(state.roomStudy) && state.roomReady);
         elements.nextSentence.firstChild.textContent = state.roomStudy ? "Sẵn sàng " : "Câu tiếp theo ";
 
         if (!sentence.hasListened) {
@@ -1370,11 +1550,9 @@
         if (!state.wordAttemptStartedAt.has(index)) {
             state.wordAttemptStartedAt.set(index, Date.now());
         }
-        if (input.value) {
-            state.wordDrafts.set(index, input.value);
-        } else {
-            state.wordDrafts.delete(index);
-        }
+        // An empty draft is an intentional deletion, not a missing draft.
+        state.wordDrafts.set(index, input.value);
+        refreshDictationCopy();
         roomQueueDraft();
         input.closest(".word-slot")?.classList.remove("is-wrong");
         input.setAttribute("aria-invalid", "false");
@@ -1567,9 +1745,22 @@
         `).join("");
     }
 
-    async function playSentence() {
+    async function playSentence(sharedPlayback = null) {
         if (!state.sentence || state.speaking) return;
-        const playbackSpeed = state.playbackSpeed;
+        const shared = state.roomSharedSessionId === state.session?.sessionId && Boolean(state.roomStudy);
+        // Click/keyboard handlers pass DOM events, not playback commands.
+        sharedPlayback = sharedPlayback?.startsAt ? sharedPlayback : null;
+        if (shared && !sharedPlayback) {
+            if (!state.roomIsHost || !state.roomPlayback?.hostAudioReady || !state.roomPlayback?.guestAudioReady
+                || state.roomPlayback.playing) return;
+            roomSendWs({type: "lesson-play", position: state.sentence.position,
+                sequence: state.roomPlayback.sequence, speed: state.playbackSpeed});
+            return;
+        }
+        const playbackSpeed = sharedPlayback?.speed || state.playbackSpeed;
+        const sessionId = state.session.sessionId;
+        const sentenceId = state.sentence.sentenceId;
+        const sameSentence = () => state.session?.sessionId === sessionId && state.sentence?.sentenceId === sentenceId;
         const completedBeforePlayback = state.sentence.canComplete;
         const hasRecordedAudio = Boolean(state.sentence.audioUrl);
         if (!hasRecordedAudio && !("speechSynthesis" in window)) {
@@ -1583,30 +1774,45 @@
         elements.listeningConsole.classList.add("is-speaking");
         updatePracticeControls();
         try {
-            state.sentence = await queuePracticeMutation(practicePath("/replay-events"), {
+            if (sharedPlayback && (!hasRecordedAudio || state.audioContext?.state !== "running")) {
+                throw new Error("Chưa sẵn sàng nghe chung. Hãy bấm Bật nghe chung rồi phát lại.");
+            }
+            if (sharedPlayback && Date.now() - sharedPlayback.localStartsAt > 1500) {
+                throw new Error("Mạng phản hồi chậm; nhờ chủ phòng phát lại để cả hai nghe cùng lượt.");
+            }
+            const started = await queuePracticeMutation(practicePath("/replay-events"), {
                 method: "POST",
                 body: {event: "STARTED", playbackSpeed}
             });
+            if (!sameSentence()) throw new DOMException("Sentence changed", "AbortError");
+            state.sentence = started;
             if (!state.sentenceStartedAt) {
                 startTimer();
             }
-            elements.replayCount.textContent = state.sentence.replayCount;
+            elements.replayCount.textContent = shared ? sharedPlayback.replayCount : state.sentence.replayCount;
             updatePracticeControls();
             setPracticeStatus("Đang phát câu. Bạn có thể nhập ngay trong khi nghe.");
             if (hasRecordedAudio) {
+                if (sharedPlayback && Date.now() - sharedPlayback.localStartsAt > 1500) {
+                    throw new Error("Mạng phản hồi chậm; nhờ chủ phòng phát lại để cả hai nghe cùng lượt.");
+                }
                 await playRecordedAudio(
                     state.sentence.audioUrl,
                     state.sentence.audioStartSeconds,
                     state.sentence.audioEndSeconds,
-                    playbackSpeed
+                    playbackSpeed,
+                    sharedPlayback ? Math.max(0, sharedPlayback.localStartsAt - Date.now()) / 1000 : 0
                 );
             } else {
                 await speak(state.sentence.speechText, state.sentence.speechRate * playbackSpeed);
             }
-            state.sentence = await queuePracticeMutation(practicePath("/replay-events"), {
+            if (!sameSentence()) throw new DOMException("Sentence changed", "AbortError");
+            const completed = await queuePracticeMutation(practicePath("/replay-events"), {
                 method: "POST",
                 body: {event: "COMPLETED", playbackSpeed}
             });
+            if (!sameSentence()) throw new DOMException("Sentence changed", "AbortError");
+            state.sentence = completed;
             setPracticeStatus(completedBeforePlayback
                 ? "Đã nghe lại câu hoàn chỉnh. Lượt này không tính vào kết quả."
                 : state.sentence.requiresReplayAfterReveal
@@ -1617,14 +1823,19 @@
             if (error.name !== "AbortError") {
                 setPracticeStatus(error.message, true);
             }
+            if (sharedPlayback) {
+                state.roomAudioPreparedKey = null;
+                roomSendWs({type: "audio-ready", position: sharedPlayback.position, ready: false});
+            }
         } finally {
+            if (sharedPlayback) roomSendWs({type: "lesson-played", position: sharedPlayback.position, sequence: sharedPlayback.sequence});
             state.speaking = false;
             elements.listeningConsole.classList.remove("is-speaking");
             updatePracticeControls();
         }
     }
 
-    async function playRecordedAudio(url, startSeconds, endSeconds, playbackSpeed = 1) {
+    async function playRecordedAudio(url, startSeconds, endSeconds, playbackSpeed = 1, startDelay = 0) {
         stopRecordedAudio();
         const playbackGeneration = ++state.audioPlaybackGeneration;
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -1670,7 +1881,7 @@
                 })
             };
             try {
-                source.start(0, segment.start, segment.duration);
+                source.start(state.audioContext.currentTime + startDelay, segment.start, segment.duration);
             } catch (_error) {
                 finish(() => reject(new Error("Không thể bắt đầu phát file audio của bài nghe.")));
             }
@@ -1688,7 +1899,7 @@
             return cached;
         }
 
-        const pending = fetch(url, {credentials: "same-origin"})
+        const pending = authenticatedFetch(url, {credentials: "same-origin"})
             .then(response => {
                 if (!response.ok) throw new Error(`Audio HTTP ${response.status}`);
                 return response.arrayBuffer();
@@ -2031,7 +2242,13 @@
             const timeout = window.setTimeout(() => finish(0), 7000);
             audio.preload = "metadata";
             audio.onloadedmetadata = () => finish(audio.duration);
-            audio.onerror = () => finish(0);
+            let authRetried = false;
+            audio.onerror = async () => {
+                if (authRetried || settled) {finish(0); return;}
+                authRetried = true;
+                try {await api("/api/auth/me"); if (!settled) audio.load();}
+                catch (_) {finish(0);}
+            };
             audio.src = url;
         });
     }
@@ -2171,12 +2388,17 @@
     }
 
     async function refreshDashboard(showErrors) {
+        const errorPanel = document.querySelector("#dashboard-load-error");
+        const view = document.querySelector("#dashboard-view");
+        errorPanel.hidden = true;
+        view.setAttribute("aria-busy", "true");
         try {
             const dashboard = await api("/api/v1/dashboard");
             renderDashboard(dashboard);
         } catch (error) {
+            errorPanel.hidden = false;
             if (showErrors) showToast(error.message, true);
-        }
+        } finally { view.setAttribute("aria-busy", "false"); }
     }
 
     function renderDashboard(dashboard) {
@@ -2195,6 +2417,7 @@
         `).join("");
 
         renderTrend(dashboard.trend);
+        renderDashboardActivity(dashboard.trend);
         elements.levelProgress.innerHTML = dashboard.byLevel.map(item => `
             <div class="level-row">
                 <strong>${item.level}</strong>
@@ -2211,6 +2434,33 @@
         `;
         renderAssessment(elements.dashboardAssessment, dashboard.assessment);
         renderRecommendation(dashboard.recommendation);
+    }
+
+    function renderDashboardActivity(trend) {
+        const welcome = document.querySelector("#dashboard-welcome");
+        const recent = document.querySelector("#dashboard-recent");
+        const latest = trend.at(-1);
+        if (!latest) {
+            welcome.textContent = "Chưa có buổi chép chính tả cá nhân hoàn thành. Bắt đầu một bài để xem tiến bộ của bạn.";
+            recent.innerHTML = '<p>Buổi học đầu tiên của bạn sẽ xuất hiện ở đây.</p><a class="text-button" href="/catalog?level=A1&page=1">Chọn bài luyện đầu tiên →</a>';
+            return;
+        }
+        const previous = trend.slice(0, -1).reverse().find(point => point.level === latest.level);
+        if (previous) {
+            const change = Math.round((latest.firstAttemptAccuracy - previous.firstAttemptAccuracy) * 10) / 10;
+            welcome.textContent = `Buổi ${latest.level} gần nhất: đúng lần đầu ${formatPercent(latest.firstAttemptAccuracy)}%. `
+                + (change === 0 ? "Không đổi so với buổi trước cùng trình độ."
+                    : `${change > 0 ? "Tăng" : "Giảm"} ${formatPercent(Math.abs(change))} điểm phần trăm so với buổi trước cùng trình độ.`)
+                + " Hai bài có thể khác độ khó; đây là so sánh kết quả từng buổi.";
+        } else {
+            welcome.textContent = `Buổi ${latest.level} gần nhất: đúng lần đầu ${formatPercent(latest.firstAttemptAccuracy)}%. Chưa có buổi trước cùng trình độ trong 8 buổi gần đây để so sánh.`;
+        }
+        recent.innerHTML = `<ul class="dashboard-recent-list">${trend.slice(-3).reverse().map(point => `
+            <li><a href="${router.toPath("result", {sessionId: point.sessionId})}">
+                <strong>${escapeHtml(point.lessonTitle)}</strong>
+                <span>${escapeHtml(point.level)} · <time datetime="${escapeAttribute(point.date)}">${escapeHtml(point.date.split("-").reverse().join("/"))}</time> · Lần đầu ${formatPercent(point.firstAttemptAccuracy)}%</span>
+                <span>Xem lại →</span>
+            </a></li>`).join("")}</ul>`;
     }
 
     function renderAssessment(container, assessment) {
@@ -2292,11 +2542,11 @@
             <div class="trend-group" title="${escapeAttribute(point.lessonTitle)}">
                 <div class="trend-bar first" style="height: ${point.firstAttemptAccuracy}%">
                     <span>${Math.round(point.firstAttemptAccuracy)}</span>
-                    <small class="trend-label">${escapeHtml(point.level)}</small>
                 </div>
                 <div class="trend-bar final" style="height: ${point.finalAccuracy}%">
                     <span>${Math.round(point.finalAccuracy)}</span>
                 </div>
+                <small class="trend-label">${escapeHtml(point.level)}<br><time datetime="${escapeAttribute(point.date)}">${escapeHtml(point.date.split("-").slice(1).reverse().join("/"))}</time></small>
             </div>
         `).join("");
     }
@@ -2796,23 +3046,45 @@
 
     /* ─── History Functions ─── */
 
-    async function loadHistory() {
+    async function loadHistory(requestedPage = new URLSearchParams(window.location.search).get("page"), focusPage = false) {
+        const numericPage = Number(requestedPage);
+        const page = Number.isSafeInteger(numericPage) ? Math.min(100001, Math.max(1, numericPage)) : 1;
+        const level = state.historyFilter;
+        const generation = ++state.historyLoadGeneration;
+        const query = new URLSearchParams({page: page - 1, size: 10});
+        if (level !== "all") query.set("level", level);
+        const focusLevel = document.activeElement?.dataset?.historyLevel;
+        elements.historyList.setAttribute("aria-busy", "true");
+        const errorPanel = document.querySelector("#history-load-error");
+        if (errorPanel) errorPanel.hidden = true;
         try {
-            const sessions = await api("/api/v1/history");
-            if (document.body.dataset.route !== "history") return;
-            state.historySessions = sessions;
+            const result = await api(`/api/v1/history?${query}`);
+            if (generation !== state.historyLoadGeneration || document.body.dataset.route !== "history") return;
+            if (result.totalPages > 0 && result.page >= result.totalPages) {
+                router.replace("history", {level, page: result.totalPages});
+                await loadHistory(result.totalPages, focusPage);
+                return;
+            }
+            state.historySessions = result.items;
+            state.historyPage = result;
+            router.replace("history", {level, page: result.totalPages ? result.page + 1 : 1});
             renderHistoryLevelTabs();
             renderHistoryList();
+            renderHistoryPagination(focusPage);
+            if (focusLevel) elements.historyLevelTabs.querySelector(`[data-history-level="${level}"]`)?.focus();
         } catch (error) {
-            showToast(error.message, true);
+            if (generation === state.historyLoadGeneration && document.body.dataset.route === "history") {
+                elements.historyEmpty.hidden = true;
+                if (errorPanel) errorPanel.hidden = false;
+                showToast(error.message, true);
+            }
+        } finally {
+            if (generation === state.historyLoadGeneration) elements.historyList.setAttribute("aria-busy", "false");
         }
     }
 
     function renderHistoryLevelTabs() {
-        const levels = ["all", ...new Set(state.historySessions.map(s => s.level))];
-        if (!levels.includes(state.historyFilter)) {
-            state.historyFilter = "all";
-        }
+        const levels = ["all", "A1", "A2", "B1", "B2"];
         const levelLabels = { all: "Tất cả", A1: "A1", A2: "A2", B1: "B1", B2: "B2" };
         elements.historyLevelTabs.innerHTML = levels.map(level => `
             <button class="level-tab${level === state.historyFilter ? " is-active" : ""}" type="button"
@@ -2835,28 +3107,33 @@
             if (event.key === "End") nextIndex = tabs.length - 1;
             tabs[nextIndex].focus();
             selectHistoryLevel(tabs[nextIndex].dataset.historyLevel);
-            elements.historyLevelTabs.querySelector(`[data-history-level="${state.historyFilter}"]`)?.focus();
         }));
     }
 
     function selectHistoryLevel(level) {
+        const restoreFocus = Boolean(document.activeElement?.dataset?.historyLevel);
         state.historyFilter = level;
         const historyLink = document.querySelector('a[data-route="history"]');
         if (historyLink) historyLink.href = router.toPath("history", {level, page: 1});
         // Cập nhật URL query param
         router.replace("history", { level });
         renderHistoryLevelTabs();
-        renderHistoryList();
+        if (restoreFocus) elements.historyLevelTabs.querySelector(`[data-history-level="${level}"]`)?.focus();
+        loadHistory(1);
     }
 
     function renderHistoryList() {
-        const filtered = state.historyFilter === "all"
-            ? state.historySessions
-            : state.historySessions.filter(s => s.level === state.historyFilter);
+        const filtered = state.historySessions;
 
         elements.historyEmpty.hidden = filtered.length > 0;
-        elements.historyCount.textContent = filtered.length
-            ? `${filtered.length} buổi luyện`
+        const levelFiltered = state.historyFilter !== "all";
+        elements.historyEmpty.querySelector("p").textContent = levelFiltered
+            ? `Chưa có buổi luyện ở trình độ ${state.historyFilter}. Thử xem tất cả trình độ hoặc bắt đầu một bài mới.`
+            : "Chưa có buổi luyện nào. Hoàn thành bài đầu tiên để bắt đầu nhật ký.";
+        elements.historyEmpty.querySelector("button").hidden = !levelFiltered;
+        elements.historyEmpty.querySelector("a").href = router.toPath("catalog", {level: levelFiltered ? state.historyFilter : "A1", page: 1});
+        elements.historyCount.textContent = state.historyPage.totalElements
+            ? `${state.historyPage.totalElements} buổi luyện`
             : "";
 
         elements.historyList.innerHTML = filtered.map(session => {
@@ -2897,7 +3174,25 @@
                 </a>
             `;
         }).join("");
-        paginateList(elements.historyList, 10);
+    }
+
+    function renderHistoryPagination(focus = false) {
+        if (elements.historyList.nextElementSibling?.matches(".pagination")) elements.historyList.nextElementSibling.remove();
+        const result = state.historyPage;
+        const page = result.page + 1;
+        const nav = document.createElement("nav");
+        nav.className = "pagination";
+        nav.setAttribute("aria-label", "Phân trang lịch sử luyện nghe");
+        nav.hidden = result.totalPages <= 1;
+        nav.innerHTML = `<button type="button" class="text-button" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>← Trang trước</button>
+            <span role="status" tabindex="-1">Trang ${page}/${Math.max(1, result.totalPages)} · ${result.totalElements} buổi luyện</span>
+            <button type="button" class="text-button" data-page="${page + 1}" ${page >= result.totalPages ? "disabled" : ""}>Trang sau →</button>`;
+        elements.historyList.after(nav);
+        nav.querySelectorAll("button").forEach(button => button.addEventListener("click", () => {
+            router.push("history", {level: state.historyFilter, page: button.dataset.page});
+            loadHistory(Number(button.dataset.page), true);
+        }));
+        if (focus && !nav.hidden) nav.querySelector("[role='status']").focus({preventScroll: true});
     }
 
     async function viewHistorySession(sessionId) {
@@ -2935,6 +3230,50 @@
         elements.toast._hideTimer = window.setTimeout(() => elements.toast.hidden = true, 5000);
     }
 
+    let tokenRefreshPromise = null;
+
+    async function refreshAuthentication() {
+        if (tokenRefreshPromise) return tokenRefreshPromise;
+        // Web Locks coordinates refresh rotation across tabs without storing tokens in JavaScript.
+        if (!navigator.locks) {
+            const error = new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+            error.status = 401;
+            throw error;
+        }
+        tokenRefreshPromise = navigator.locks.request("dictalab-token-refresh", async () => {
+            // Another tab/request may already have refreshed while this tab waited for the lock.
+            const probe = await fetch("/api/auth/me", {credentials: "same-origin", cache: "no-store"});
+            if (probe.ok) return;
+            if (probe.status !== 401) {
+                const error = new Error("Không thể kiểm tra phiên đăng nhập. Vui lòng thử lại.");
+                error.status = probe.status;
+                throw error;
+            }
+            const response = await fetch("/api/auth/refresh", {
+                method: "POST", credentials: "same-origin", cache: "no-store",
+                headers: {[state.csrfHeader]: state.csrfToken}, signal: AbortSignal.timeout(10000)
+            });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => null);
+                const error = new Error(payload?.message || "Không thể làm mới phiên đăng nhập.");
+                error.status = response.status;
+                throw error;
+            }
+        });
+        try { return await tokenRefreshPromise; }
+        finally { tokenRefreshPromise = null; }
+    }
+
+    async function authenticatedFetch(path, request, allowRefresh = true) {
+        let response = await fetch(path, request);
+        // Only a rejected authentication response is replayed; never retry network/503 failures.
+        if (response.status === 401 && allowRefresh) {
+            await refreshAuthentication();
+            response = await fetch(path, request);
+        }
+        return response;
+    }
+
     async function api(path, options = {}) {
         const request = {
             method: options.method || "GET",
@@ -2956,7 +3295,17 @@
         if (!["GET", "HEAD", "OPTIONS"].includes(request.method) && state.csrfToken) {
             request.headers[state.csrfHeader] = state.csrfToken;
         }
-        const response = await fetch(path, request);
+        let response;
+        try {
+            const send = () => authenticatedFetch(path, request,
+                !path.startsWith("/api/auth/") || path === "/api/auth/me");
+            response = navigator.locks && ["/api/auth/login", "/api/auth/register", "/api/auth/logout"].includes(path)
+                ? await navigator.locks.request("dictalab-token-refresh", send) : await send();
+        } catch (error) {
+            if (error.status === 401 && options.redirectOnUnauthorized !== false)
+                showAuthScreen("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+            throw error;
+        }
         const contentType = response.headers.get("content-type") || "";
         const payload = contentType.includes("application/json") ? await response.json() : null;
         if (!response.ok) {
@@ -3065,9 +3414,81 @@
         elements.peerPracticeHeading.textContent = `${peerName || "Bạn học"} đang nhập`;
         elements.peerPracticeStatus.textContent = `${state.roomReady ? "Bạn đã sẵn sàng. " : ""}${peerReady ? "Bạn học đã sẵn sàng." : "Đang chờ bạn học hoàn thành."}`;
         elements.roomAdvanceSentence.hidden = !state.roomIsHost;
-        elements.roomAdvanceSentence.disabled = !(room.hostReady && room.guestReady);
+        elements.roomAdvanceSentence.disabled = !(room.hostReady && room.guestReady) || Boolean(state.roomPlayback?.playing);
         roomRenderPeerDrafts(room.peerDrafts);
+        roomApplyPlayback(room.playback, room.serverNow);
+        roomPrepareStudyAudio();
         updatePracticeControls();
+    }
+
+    async function roomEnableStudyAudio() {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return setPracticeStatus("Trình duyệt này không hỗ trợ nghe chung. Hãy dùng Chrome hoặc Edge.", true);
+        try {
+            state.audioContext ||= new AudioContextClass();
+            await state.audioContext.resume();
+            if (state.audioContext.state !== "running") throw new Error("Chưa bật được âm thanh. Hãy bấm Bật nghe chung lại.");
+            state.roomAudioEnabled = true;
+            state.roomAudioPreparedKey = null;
+            await roomPrepareStudyAudio();
+        } catch (error) {
+            setPracticeStatus(error.message, true);
+        }
+        updatePracticeControls();
+    }
+
+    async function roomPrepareStudyAudio() {
+        if (!state.room || !state.roomStudy || !state.sentence || !state.roomAudioEnabled
+            || state.audioContext?.state !== "running" || document.body.dataset.route !== "practice"
+            || state.roomSharedSessionId !== state.session?.sessionId || state.roomWs?.readyState !== WebSocket.OPEN) return;
+        const key = `${state.room.roomId}:${state.sentence.sentenceId}`;
+        if (key === state.roomAudioPreparedKey || key === state.roomAudioPreparingKey) return;
+        const position = state.sentence.position;
+        const audioUrl = state.sentence.audioUrl;
+        if (!audioUrl) {
+            elements.roomStudyAudioStatus.textContent = "Bài này chưa có file audio để nghe chung. Chủ phòng hãy chọn bài có audio.";
+            return;
+        }
+        state.roomAudioPreparingKey = key;
+        try {
+            await loadAudioBuffer(audioUrl);
+            if (`${state.room?.roomId}:${state.sentence?.sentenceId}` !== key
+                || document.body.dataset.route !== "practice" || state.audioContext?.state !== "running") return;
+            if (roomSendWs({type: "audio-ready", position, ready: true})) state.roomAudioPreparedKey = key;
+        } catch (error) {
+            state.roomAudioEnabled = false;
+            setPracticeStatus(error.message, true);
+        } finally {
+            if (state.roomAudioPreparingKey === key) state.roomAudioPreparingKey = null;
+        }
+    }
+
+    function roomApplyPlayback(playback, serverNow) {
+        if (!playback || !state.roomStudy || state.roomSharedSessionId !== state.session?.sessionId
+            || playback.position !== state.sentence?.position
+            || (state.roomPlayback && playback.version < state.roomPlayback.version)) return;
+        state.roomPlayback = playback;
+        if (!state.roomIsHost) {
+            state.playbackSpeed = playback.speed;
+            elements.playbackSpeed.value = String(playback.speed);
+        }
+        elements.replayCount.textContent = playback.replayCount;
+        updatePracticeControls();
+        if (!playback.startsAt || playback.sequence <= state.roomPlaybackSeen) return;
+        state.roomPlaybackSeen = playback.sequence;
+        if (!playback.playing) return; // Reconnect must not replay an already-finished command.
+        const delay = Date.parse(playback.startsAt) - Date.parse(serverNow);
+        if (!Number.isFinite(delay) || delay < -1500 || !state.roomAudioEnabled
+            || state.audioContext?.state !== "running" || document.body.dataset.route !== "practice") {
+            roomSendWs({type: "audio-ready", position: playback.position, ready: false});
+            roomSendWs({type: "lesson-played", position: playback.position, sequence: playback.sequence});
+            state.roomAudioPreparedKey = null;
+            setPracticeStatus("Chưa nghe được lượt chung này. Bật nghe chung và nhờ chủ phòng phát lại.", true);
+            return;
+        }
+        const localStartsAt = state.roomAudioClockOffset == null
+            ? Date.now() + Math.max(0, delay) : Date.parse(playback.startsAt) - state.roomAudioClockOffset;
+        playSentence({...playback, localStartsAt});
     }
 
     async function roomSyncStudy(room) {
@@ -3075,10 +3496,15 @@
         if (state.roomSharedSessionId && !state.roomSharedCompleted
             && state.sentence?.position === room.lessonPosition && state.roomStudy?.lessonPosition === room.lessonPosition
             && state.roomStudy?.hostReady === room.hostReady && state.roomStudy?.guestReady === room.guestReady
-            && JSON.stringify(state.roomStudy?.peerDrafts) === JSON.stringify(room.peerDrafts)) return;
+            && state.roomPlayback?.version === room.playback?.version
+            && JSON.stringify(state.roomStudy?.peerDrafts) === JSON.stringify(room.peerDrafts)) {
+            roomPrepareStudyAudio();
+            return;
+        }
         state.roomStudySyncing = true;
         try {
             roomRenderStudy(room);
+            roomPrepareStudyAudio();
             if (!state.roomSharedSessionId) {
                 const session = await api(`/api/v1/rooms/${encodeURIComponent(state.room.roomId)}/practice`, {method: "POST"});
                 state.roomSharedSessionId = session.sessionId;
@@ -3129,7 +3555,7 @@
             window.clearTimeout(state.roomDraftTimer);
             const words = state.sentence.words.map(word => word.revealed ? "" : (
                 elements.wordSlots.querySelector(`[data-word-index="${word.index}"]`)?.value
-                || state.wordDrafts.get(word.index) || word.userInput || ""
+                ?? state.wordDrafts.get(word.index) ?? word.userInput ?? ""
             ).slice(0, 80));
             roomSendWs({type: "draft", position: state.sentence.position, sequence: ++state.roomDraftSequence, words});
             const room = await api(`/api/v1/rooms/${encodeURIComponent(state.room.roomId)}/ready`, {method: "POST"});
@@ -3160,7 +3586,7 @@
             const words = state.sentence.words.map(word => {
                 if (word.revealed) return "";
                 return elements.wordSlots.querySelector(`[data-word-index="${word.index}"]`)?.value
-                    || state.wordDrafts.get(word.index) || word.userInput || "";
+                    ?? state.wordDrafts.get(word.index) ?? word.userInput ?? "";
             });
             roomSendWs({type: "draft", position: state.sentence.position,
                 sequence: ++state.roomDraftSequence, words: words.map(word => word.slice(0, 80))});
@@ -3401,7 +3827,20 @@
 
     // ---- WebSocket Signaling -------------------------------------------
 
-    function roomConnectWebSocket(roomId) {
+    async function roomConnectWebSocket(roomId) {
+        if (state.roomWsConnecting) return;
+        state.roomWsConnecting = true;
+        try {
+            // Browser WebSocket uses the same HttpOnly access cookie; no token in the URL.
+            await api("/api/auth/me");
+        } catch (error) {
+            roomShowError(error.message, "Thử kết nối lại sau khi phiên đăng nhập khả dụng.");
+            roomUpdateStatus("DISCONNECTED");
+            elements.roomReconnectBtn.hidden = false;
+            elements.sharedReconnect.hidden = false;
+            return;
+        } finally { state.roomWsConnecting = false; }
+        if (!state.room || state.room.roomId !== roomId) return;
         if (state.roomWs && state.roomWs.readyState !== WebSocket.CLOSED) {
             state.roomWs.close();
         }
@@ -3413,10 +3852,13 @@
         ws.addEventListener("open", () => {
             if (ws !== state.roomWs) return;
             state.roomWsReconnectCount = 0;
+            roomWakePolling();
             roomClearError();
             if (state.roomPc) roomSendWs({type: "ready"});
             roomQueueDraft();
             roomSendMicState();
+            state.roomAudioPreparedKey = null;
+            roomPrepareStudyAudio();
             window.clearInterval(state.roomWsHeartbeatTimer);
             state.roomWsHeartbeatTimer = window.setInterval(() => roomSendWs({type: "ping"}), 20000);
         });
@@ -3430,6 +3872,12 @@
 
         ws.addEventListener("close", event => {
             if (ws !== state.roomWs) return;
+            state.roomAudioPreparedKey = null;
+            if (state.roomPlayback) {
+                state.roomPlayback.hostAudioReady = false;
+                state.roomPlayback.guestAudioReady = false;
+            }
+            if (state.roomStudy && state.sentence) updatePracticeControls();
             window.clearInterval(state.roomWsHeartbeatTimer);
             state.roomWsHeartbeatTimer = null;
             if (event.code === 1000 || !state.room) return; // đóng bình thường
@@ -3460,6 +3908,9 @@
 
     function roomHandleWsMessage(msg) {
         switch (msg.type) {
+            case "room-changed":
+                roomWakePolling();
+                break;
             case "peer-joined":
                 roomOnPeerJoined(msg);
                 break;
@@ -3500,6 +3951,9 @@
                 break;
             case "call-started":
                 roomStartCallClock(msg.startedAt, msg.serverNow);
+                break;
+            case "lesson-audio":
+                roomApplyPlayback(msg.playback, msg.serverNow);
                 break;
             case "pong":
                 break; // heartbeat OK
@@ -3607,13 +4061,18 @@
 
     function roomStartPolling(roomId) {
         roomStopPolling();
-        const request = {};
+        const request = {running: false, wake: false};
         state.roomPollingRequest = request;
         const poll = async () => {
             if (!state.room || state.room.roomId !== roomId || state.roomPollingRequest !== request) return;
+            if (request.running) { request.wake = true; return; }
+            request.running = true;
             try {
+                const requestStartedAt = Date.now();
                 const s = await api(`/api/v1/rooms/${encodeURIComponent(roomId)}`);
                 if (!state.room || state.room.roomId !== roomId || state.roomPollingRequest !== request) return;
+                const serverTime = Date.parse(s.serverNow);
+                if (Number.isFinite(serverTime)) state.roomAudioClockOffset = serverTime - (requestStartedAt + Date.now()) / 2;
                 // Nếu host: kiểm tra pending
                 if (state.roomIsHost) {
                     elements.roomApprovalPanel.hidden = !s.pending;
@@ -3656,10 +4115,25 @@
                     roomOnRoomClosed("Phòng không còn tồn tại.");
                     return;
                 }
+            } finally {
+                request.running = false;
+                if (state.roomPollingRequest === request) {
+                    const connected = state.roomWs?.readyState === WebSocket.OPEN;
+                    state.roomPollingTimer = window.setTimeout(poll, request.wake ? 0 : connected ? 15000 : 2500);
+                    request.wake = false;
+                }
             }
-            if (state.roomPollingRequest === request) state.roomPollingTimer = window.setTimeout(poll, 2500);
         };
+        request.poll = poll;
         state.roomPollingTimer = window.setTimeout(poll, 2500);
+    }
+
+    function roomWakePolling() {
+        const request = state.roomPollingRequest;
+        if (!request?.poll) return;
+        window.clearTimeout(state.roomPollingTimer);
+        if (request.running) request.wake = true;
+        else state.roomPollingTimer = window.setTimeout(request.poll, 0);
     }
 
     function roomStopPolling() {
@@ -4113,6 +4587,12 @@
         state.roomPeerMicEnabled = null;
         state.roomStudy = null;
         state.roomSharedSessionId = null;
+        state.roomPlayback = null;
+        state.roomPlaybackSeen = 0;
+        state.roomAudioClockOffset = null;
+        state.roomAudioPreparedKey = null;
+        state.roomAudioPreparingKey = null;
+        stopRecordedAudio();
         state.roomSharedCompleted = false;
         if (sharedSessionId && state.session?.sessionId === sharedSessionId) {
             state.session = null;
@@ -4195,6 +4675,12 @@
         state.roomPeerMicEnabled = null;
         state.roomStudy = null;
         state.roomSharedSessionId = null;
+        state.roomPlayback = null;
+        state.roomPlaybackSeen = 0;
+        state.roomAudioClockOffset = null;
+        state.roomAudioPreparedKey = null;
+        state.roomAudioPreparingKey = null;
+        stopRecordedAudio();
         state.roomSharedCompleted = false;
         if (sharedSessionId && state.session?.sessionId === sharedSessionId) {
             state.session = null;

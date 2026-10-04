@@ -32,6 +32,15 @@ public final class CallRoom {
     private boolean hostCallReady;
     private boolean guestCallReady;
     private Instant callStartedAt;
+    private long playbackSequence;
+    private long playbackVersion;
+    private int sharedReplayCount;
+    private double sharedPlaybackSpeed = 1;
+    private Instant playbackStartsAt;
+    private boolean hostAudioReady;
+    private boolean guestAudioReady;
+    private boolean hostPlaying;
+    private boolean guestPlaying;
 
     private RoomStatus status;
     private final Instant createdAt;
@@ -91,6 +100,69 @@ public final class CallRoom {
     public Instant getHostDisconnectedAt() { return hostDisconnectedAt; }
     public Instant getGuestDisconnectedAt() { return guestDisconnectedAt; }
     public Instant getCallStartedAt() { return callStartedAt; }
+    public RoomDtos.PlaybackState playbackState() {
+        return new RoomDtos.PlaybackState(playbackVersion, playbackSequence, lessonPosition, sharedReplayCount,
+                sharedPlaybackSpeed, playbackStartsAt, hostAudioReady, guestAudioReady, hostPlaying || guestPlaying);
+    }
+
+    public boolean audioReady(long userId, int position, boolean ready) {
+        if (status != RoomStatus.ACTIVE || lessonId == null || position != lessonPosition
+                || position > lessonSentenceCount) return false;
+        if (isHost(userId)) hostAudioReady = ready;
+        else if (isGuest(userId)) guestAudioReady = ready;
+        else return false;
+        playbackVersion++;
+        return true;
+    }
+
+    public boolean playShared(long userId, int position, long expectedSequence, double speed, Instant now) {
+        expirePlayback(now);
+        if (!isHost(userId) || status != RoomStatus.ACTIVE || lessonId == null
+                || position != lessonPosition || position > lessonSentenceCount
+                || expectedSequence != playbackSequence || !hostAudioReady || !guestAudioReady
+                || hostPlaying || guestPlaying || !Double.isFinite(speed)
+                || (speed != 0.75 && speed != 1 && speed != 1.25)) return false;
+        playbackSequence++;
+        playbackVersion++;
+        sharedReplayCount++;
+        sharedPlaybackSpeed = speed;
+        playbackStartsAt = now.plusMillis(750);
+        hostPlaying = true;
+        guestPlaying = true;
+        touch(now);
+        return true;
+    }
+
+    public boolean finishSharedPlayback(long userId, int position, long sequence) {
+        if (position != lessonPosition || sequence != playbackSequence) return false;
+        if (isHost(userId)) hostPlaying = false;
+        else if (isGuest(userId)) guestPlaying = false;
+        else return false;
+        playbackVersion++;
+        return true;
+    }
+
+    private void resetPlayback() {
+        playbackVersion++;
+        sharedReplayCount = 0;
+        playbackStartsAt = null;
+        hostAudioReady = false;
+        guestAudioReady = false;
+        hostPlaying = false;
+        guestPlaying = false;
+    }
+
+    public void expirePlayback(Instant now) {
+        // ponytail: five-minute sentence ceiling prevents a frozen tab locking playback forever.
+        // Use server-owned segment duration if longer sentence audio is introduced.
+        if ((hostPlaying || guestPlaying) && playbackStartsAt != null && now.isAfter(playbackStartsAt.plusSeconds(300))) {
+            hostPlaying = false;
+            guestPlaying = false;
+            hostAudioReady = false;
+            guestAudioReady = false;
+            playbackVersion++;
+        }
+    }
 
     public boolean isHost(long userId) { return hostUserId == userId; }
     public boolean isGuest(long userId) { return guestUserId != null && guestUserId == userId; }
@@ -118,6 +190,7 @@ public final class CallRoom {
     }
 
     public void resetLesson() {
+        resetPlayback();
         lessonId = null;
         lessonPosition = 0;
         lessonSentenceCount = 0;
@@ -137,8 +210,9 @@ public final class CallRoom {
 
     public boolean advanceLesson(long userId) {
         if (!isHost(userId) || status != RoomStatus.ACTIVE || lessonId == null || !hostReady || !guestReady
-                || lessonPosition > lessonSentenceCount) return false;
+                || lessonPosition > lessonSentenceCount || hostPlaying || guestPlaying) return false;
         lessonPosition++;
+        resetPlayback();
         hostReady = false;
         guestReady = false;
         hostDrafts = List.of();
@@ -249,6 +323,9 @@ public final class CallRoom {
     /** Ghi nhận host mất kết nối WS. */
     public void markHostDisconnected(Instant now) {
         if (isClosed()) return;
+        hostAudioReady = false;
+        hostPlaying = false;
+        playbackVersion++;
         this.hostDisconnectedAt = now;
         this.lastActivityAt = now;
     }
@@ -261,6 +338,9 @@ public final class CallRoom {
     /** Ghi nhận guest mất kết nối WS. */
     public void markGuestDisconnected(Instant now) {
         if (isClosed()) return;
+        guestAudioReady = false;
+        guestPlaying = false;
+        playbackVersion++;
         this.guestDisconnectedAt = now;
         this.lastActivityAt = now;
     }

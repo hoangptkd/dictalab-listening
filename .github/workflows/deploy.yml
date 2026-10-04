@@ -1,6 +1,9 @@
 name: Test and deploy to Windows VPS
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
@@ -10,13 +13,28 @@ permissions:
   contents: read
 
 concurrency:
-  group: dictalab-production
+  group: dictalab-${{ github.event_name == 'pull_request' && github.ref || 'production' }}
   cancel-in-progress: false
 
 jobs:
-  test-build-deploy:
+  test-build:
+    strategy:
+      matrix:
+        postgres: ['17.11-alpine', '18.4-alpine']
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_DB: dictalab_test
+          POSTGRES_USER: dictalab_test
+          POSTGRES_PASSWORD: test-only-password
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U dictalab_test -d dictalab_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
 
     steps:
       - name: Check out source code
@@ -38,6 +56,51 @@ jobs:
 
       - name: Run tests and build executable JAR
         run: mvn --batch-mode --no-transfer-progress clean verify
+
+      - name: Save H2 test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h2-test-reports-${{ matrix.postgres }}
+          path: target/surefire-reports/
+
+      - name: Run the integration suite on PostgreSQL with Flyway
+        id: postgres-tests
+        env:
+          TEST_DB_URL: jdbc:postgresql://localhost:${{ job.services.postgres.ports[5432] }}/dictalab_test
+          TEST_DB_USERNAME: dictalab_test
+          TEST_DB_PASSWORD: test-only-password
+        run: mvn --batch-mode --no-transfer-progress -Dspring.profiles.active=postgres-test test
+
+      - name: Save PostgreSQL test reports
+        if: always() && steps.postgres-tests.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-test-reports-${{ matrix.postgres }}
+          path: target/surefire-reports/
+
+      - name: Save verified application
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && matrix.postgres == '17.11-alpine'
+        uses: actions/upload-artifact@v4
+        with:
+          name: application
+          path: target/*.jar
+          if-no-files-found: error
+
+  deploy:
+    needs: test-build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out deployment scripts
+        uses: actions/checkout@v4
+
+      - name: Download verified application
+        uses: actions/download-artifact@v4
+        with:
+          name: application
+          path: target
 
       - name: Select deployment artifact
         shell: bash
@@ -84,6 +147,7 @@ jobs:
             'powershell.exe -NoLogo -NoProfile -NonInteractive -Command "New-Item -ItemType Directory -Force -Path C:\DictaLab\staging | Out-Null"'
           scp "${ssh_options[@]}" dictalab-new.jar scripts/update-windows-vps.ps1 \
             scripts/configure-admin-windows-vps.ps1 scripts/backup-windows-vps.ps1 \
+            scripts/restore-drill-windows-vps.ps1 scripts/readiness-preflight.sql \
             "$VPS_USER@$VPS_HOST:C:/DictaLab/staging/"
 
       - name: Back up production PostgreSQL before migrations

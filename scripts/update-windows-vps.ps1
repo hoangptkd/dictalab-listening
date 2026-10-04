@@ -72,8 +72,39 @@ $newJarInstalled = $false
 try {
     Stop-AppService
 
+    # Apply additive constraints only after a read-only legacy-data preflight.
+    $preflight=Join-Path $PSScriptRoot 'readiness-preflight.sql'
+    $backupScript=Join-Path $PSScriptRoot 'backup-windows-vps.ps1'
+    $restoreScript=Join-Path $PSScriptRoot 'restore-drill-windows-vps.ps1'
+    foreach($path in @($preflight,$backupScript,$restoreScript)){
+        if(-not (Test-Path -LiteralPath $path -PathType Leaf)){throw "Release gate is missing: $path"}
+    }
+    $secrets=Import-Clixml -LiteralPath "$env:ProgramData\DictaLab\database-secrets.xml"
+    $env:PGPASSWORD=$secrets.AppPassword
+    try {
+        $rows=@(& 'C:\DictaLab\postgresql-17\bin\psql.exe' -X -h 127.0.0.1 -U dictalab_app -d dictalab -v ON_ERROR_STOP=1 -At -F '|' -f $preflight)
+        if($LASTEXITCODE -ne 0){throw 'Read-only release preflight failed.'}
+        $checked=0
+        foreach($row in $rows){
+            if($row -match '^([a-z_]+)\|(\d+)$' -and $Matches[1] -ne 'enabled_admins'){
+                $checked++
+                if([long]$Matches[2] -ne 0){throw "Legacy data violates $($Matches[1]); no data was repaired or deleted."}
+            }
+        }
+        if($checked -ne 16){throw 'Preflight did not return all expected invariant checks.'}
+    }finally{Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue}
+    & $backupScript -IncludeMedia
+    & $restoreScript -SmokeArtifact $deployedJar
+
+    $archiveDirectory='C:\DictaLab\backups\artifacts'
+    New-Item -ItemType Directory -Force -Path $archiveDirectory | Out-Null
+    $archiveStamp=Get-Date -Format 'yyyyMMdd-HHmmss-fff'
+    Copy-Item -LiteralPath $deployedJar -Destination (Join-Path $archiveDirectory "dictalab-$archiveStamp.jar")
+    [IO.File]::WriteAllText((Join-Path $archiveDirectory "dictalab-$archiveStamp.sha256"),
+        (Get-FileHash -LiteralPath $deployedJar -Algorithm SHA256).Hash,[Text.UTF8Encoding]::new($false))
+
     if (Test-Path -LiteralPath $previousJar) {
-        Remove-Item -LiteralPath $previousJar -Force
+        Move-Item -LiteralPath $previousJar -Destination (Join-Path $archiveDirectory "dictalab-previous-$archiveStamp.jar")
     }
     Move-Item -LiteralPath $deployedJar -Destination $previousJar
     $currentWasBackedUp = $true
@@ -102,7 +133,7 @@ try {
     }
 
     if ($newJarInstalled -and (Test-Path -LiteralPath $deployedJar)) {
-        Remove-Item -LiteralPath $deployedJar -Force
+        Move-Item -LiteralPath $deployedJar -Destination (Join-Path $archiveDirectory "dictalab-failed-$archiveStamp.jar")
     }
     if ($currentWasBackedUp -and (Test-Path -LiteralPath $previousJar)) {
         Move-Item -LiteralPath $previousJar -Destination $deployedJar -Force
@@ -119,7 +150,7 @@ try {
     }
 
     if ($rollbackHealthy) {
-        throw "Deployment failed and the previous version was restored: $deploymentError"
+        throw "Deployment failed and the previous JAR was restored. Schema was NOT rolled back: $deploymentError"
     }
     throw "Deployment failed and rollback is not healthy. Check C:\DictaLab\logs. Original error: $deploymentError"
 }

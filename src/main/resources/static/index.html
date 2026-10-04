@@ -46,8 +46,9 @@
                 </label>
                 <label>Mật khẩu
                     <input name="password" type="password" autocomplete="current-password"
-                           placeholder="Ít nhất 8 ký tự" required>
+                           placeholder="Nhập mật khẩu của bạn" required>
                 </label>
+                <a id="forgot-password-link" class="text-button" href="/reset-password">Quên mật khẩu?</a>
                 <button class="primary-button auth-submit" type="submit">
                     Vào phòng luyện <span aria-hidden="true">→</span>
                 </button>
@@ -64,16 +65,15 @@
                 </label>
                 <label>Mật khẩu
                     <input name="password" type="password" autocomplete="new-password"
-                           placeholder="Có chữ cái và chữ số" minlength="8" maxlength="72" required>
+                           placeholder="Có chữ cái và chữ số" minlength="8" maxlength="72" aria-describedby="register-password-note" required>
                 </label>
-                <p class="password-note">Từ 8 ký tự, có ít nhất một chữ cái và một chữ số.</p>
+                <p id="register-password-note" class="password-note">Từ 8 ký tự, có ít nhất một chữ cái và một chữ số.</p>
                 <button class="primary-button auth-submit" type="submit">
                     Tạo nhật ký nghe <span aria-hidden="true">→</span>
                 </button>
             </form>
 
             <div id="account-public-actions" hidden></div>
-            <a id="forgot-password-link" class="text-button" href="/reset-password">Quên mật khẩu?</a>
             <p id="auth-status" class="auth-status" role="status" aria-live="polite"></p>
         </div>
     </div>
@@ -97,17 +97,25 @@
             <a class="nav-link" href="/listening" data-route="listening" data-mobile-label="Nghe hiểu">
                 Nghe hiểu
             </a>
-            <a class="nav-link" href="/history?level=all&page=1" data-route="history" data-mobile-label="Lịch sử">
+            <a class="nav-link" href="/conversation" data-route="conversation" data-mobile-label="Hội thoại">Hội thoại AI</a>
+            <a class="nav-link mobile-nav-secondary" href="/history?level=all&page=1" data-route="history" data-mobile-label="Lịch sử">
                 Lịch sử
             </a>
             <a class="nav-link" href="/dashboard" data-route="dashboard" data-mobile-label="Tiến bộ">
                 Tiến bộ
             </a>
-            <a class="nav-link" href="/rooms" data-route="room" data-mobile-label="Cùng bạn"
+            <a class="nav-link mobile-nav-secondary" href="/rooms" data-route="room" data-mobile-label="Cùng bạn"
                     id="room-nav-link">
                 Luyện cùng bạn
             </a>
-            <a class="nav-link" href="/support" data-route="support" data-mobile-label="Hỗ trợ">Hỗ trợ</a>
+            <a class="nav-link mobile-nav-secondary" href="/support" data-route="support" data-mobile-label="Hỗ trợ">Hỗ trợ</a>
+            <button id="mobile-nav-more" class="nav-link mobile-nav-more" type="button"
+                    popovertarget="mobile-nav-menu" aria-expanded="false" aria-controls="mobile-nav-menu">Thêm</button>
+            <div id="mobile-nav-menu" class="mobile-nav-menu" popover="auto" aria-label="Điều hướng bổ sung">
+                <a class="nav-link" href="/history?level=all&page=1" data-route="history" autofocus>Lịch sử</a>
+                <a class="nav-link" href="/rooms" data-route="room">Luyện cùng bạn</a>
+                <a class="nav-link" href="/support" data-route="support">Hỗ trợ</a>
+            </div>
         </nav>
 
         <div class="account-cluster">
@@ -118,7 +126,7 @@
             <div class="account-copy">
                 <a id="account-link" href="/account" data-route="account" aria-label="Tài khoản"><strong id="account-name">Người học</strong></a>
                 <small id="account-email"></small>
-                <a id="admin-nav-link" class="admin-entry-link" href="/admin" hidden>Trang quản trị ↗</a>
+                <a id="admin-nav-link" class="admin-entry-link" href="/admin" aria-label="Trang quản trị" hidden><span class="admin-entry-desktop">Trang </span>quản trị ↗</a>
             </div>
             <button id="logout-button" class="logout-button" type="button">Đăng xuất</button>
         </div>
@@ -132,6 +140,14 @@
         <section id="support-view" class="view" hidden aria-labelledby="support-heading">
             <div class="lesson-browser account-page"><p class="section-index">Trợ giúp</p>
                 <h1 id="support-heading">Chúng tôi có thể giúp gì?</h1><div id="support-content" aria-live="polite"></div></div>
+        </section>
+        <section id="conversation-view" class="view" hidden aria-labelledby="conversation-heading">
+            <div class="lesson-browser conversation-browser">
+                <p class="section-index">AI Listening Conversation · V1</p>
+                <h1 id="conversation-heading">Nghe để hiểu.<br><em>Trả lời theo cách của bạn.</em></h1>
+                <p class="conversation-intro">AI nói tiếng Anh. Bạn gõ điều mình hiểu bằng tiếng Việt. Không cần dịch từng từ.</p>
+                <div id="conversation-content"></div>
+            </div>
         </section>
         <section id="listening-view" class="view" hidden aria-labelledby="listening-heading">
             <div class="lesson-browser listening-browser">
@@ -237,9 +253,11 @@
                         </label>
                         <p id="replay-help" class="sr-only">Phát toàn bộ câu tiếng Anh hiện tại.</p>
                     </div>
+                    <button id="room-enable-study-audio" class="text-button" type="button" aria-describedby="room-study-audio-status" hidden>Bật nghe chung</button>
+                    <p id="room-study-audio-status" class="support-note" role="status" aria-live="polite" hidden></p>
 
                     <div class="listening-stats" role="group" aria-label="Thống kê câu hiện tại">
-                        <div><span>Lượt nghe</span><strong id="replay-count">0</strong></div>
+                        <div><span id="replay-count-label">Lượt nghe</span><strong id="replay-count" aria-live="polite">0</strong></div>
                         <div><span>Thời gian</span><strong id="sentence-timer">00:00</strong></div>
                         <div><span>Trợ giúp</span><strong id="hint-count">0</strong></div>
                     </div>
@@ -269,6 +287,19 @@
                     <form id="dictation-form" novalidate>
                         <div id="word-slots" class="word-slots" role="group"
                              aria-describedby="dictation-instructions"></div>
+
+                        <details class="dictation-copy">
+                            <summary>Sao chép câu đang hiển thị</summary>
+                            <p id="dictation-copy-help" class="field-help">Sao chép các từ đang hiện trong phần Chép chính tả, gồm từ bạn nhập và đáp án đã mở. Bỏ qua ô trống. Bôi chọn từ hoặc cụm từ bên dưới để sao chép riêng.</p>
+                            <label for="dictation-copy-text" class="sr-only">Nội dung câu đang hiển thị để sao chép</label>
+                            <textarea id="dictation-copy-text" rows="3" readonly spellcheck="false"
+                                      aria-describedby="dictation-copy-help"></textarea>
+                            <div class="dictation-copy-actions">
+                                <button id="copy-dictation-selection" class="text-button" type="button">Sao chép phần đã chọn</button>
+                                <button id="copy-dictation-all" class="text-button" type="button" disabled>Sao chép cả câu</button>
+                            </div>
+                            <p id="dictation-copy-status" class="field-help" role="status" aria-live="polite"></p>
+                        </details>
 
                         <div class="hint-toolbar" role="group" aria-label="Các mức gợi ý">
                             <button id="hint-letter" class="hint-button" type="button">
@@ -454,12 +485,27 @@
                     <h1 id="dashboard-heading">Đôi tai đang<br><em>tiến bộ thế nào?</em></h1>
                 </div>
                 <p>
-                    Đường màu cam là first-attempt accuracy — tín hiệu quan trọng nhất. Đường xanh cho thấy
+                    Cột màu cam là first-attempt accuracy — tín hiệu quan trọng nhất. Cột xanh cho thấy
                     mức chính xác cuối cùng sau khi bạn đã sửa lỗi.
                 </p>
             </div>
 
-            <div id="dashboard-summary" class="summary-grid" aria-live="polite"></div>
+            <aside id="recommendation-card" class="recommendation-card" aria-labelledby="recommendation-heading">
+                <p class="section-index">Bài tiếp theo</p>
+                <span id="recommendation-level" class="recommendation-level">A1</span>
+                <h2 id="recommendation-heading">Đang phân tích…</h2>
+                <p id="recommendation-reason"></p>
+                <button id="start-recommendation" class="primary-button dark" type="button" disabled>
+                    Luyện bài này <span aria-hidden="true">→</span>
+                </button>
+            </aside>
+            <p id="dashboard-welcome" class="dashboard-period" role="status"></p>
+            <div id="dashboard-load-error" class="dashboard-period" role="alert" hidden>
+                <p>Không tải được tiến bộ. Kiểm tra kết nối rồi thử lại. Dữ liệu đang hiển thị có thể chưa cập nhật.</p>
+                <button class="text-button" type="button">Thử lại</button>
+            </div>
+            <p id="dashboard-period" class="dashboard-period">Tổng hợp toàn bộ thời gian · Các buổi luyện chép chính tả cá nhân đã hoàn thành</p>
+            <div id="dashboard-summary" class="summary-grid" aria-describedby="dashboard-period" aria-live="polite"></div>
 
             <div class="dashboard-grid">
                 <section id="dashboard-assessment" class="assessment-card dashboard-assessment"
@@ -477,16 +523,6 @@
                     </div>
                     <div id="trend-chart" class="trend-chart"></div>
                 </section>
-
-                <aside id="recommendation-card" class="recommendation-card" aria-labelledby="recommendation-heading">
-                    <p class="section-index">Bài tiếp theo</p>
-                    <span id="recommendation-level" class="recommendation-level">A1</span>
-                    <h2 id="recommendation-heading">Đang phân tích…</h2>
-                    <p id="recommendation-reason"></p>
-                    <button id="start-recommendation" class="primary-button dark" type="button" disabled>
-                        Luyện bài này <span aria-hidden="true">→</span>
-                    </button>
-                </aside>
 
                 <section class="level-card" aria-labelledby="level-progress-heading">
                     <div class="card-heading">
@@ -506,6 +542,11 @@
                         </div>
                     </div>
                     <div id="error-breakdown" class="error-breakdown"></div>
+                </section>
+                <section class="chart-card" aria-labelledby="dashboard-recent-heading">
+                    <p class="section-index">Hoạt động gần đây · Chép chính tả cá nhân</p>
+                    <h2 id="dashboard-recent-heading">Các buổi vừa hoàn thành</h2>
+                    <div id="dashboard-recent"></div>
                 </section>
             </div>
         </section>
@@ -530,9 +571,14 @@
                 <p id="history-count" class="history-count"></p>
             </div>
             <div id="history-list" class="history-list"></div>
+            <div id="history-load-error" class="history-empty" role="alert" hidden>
+                <p>Không tải được lịch sử. Kiểm tra kết nối rồi thử lại.</p>
+                <button class="text-button" type="button">Thử lại</button>
+            </div>
             <div id="history-empty" class="history-empty" hidden>
                 <p>Chưa có buổi luyện nào.</p>
-                <a class="primary-button" href="/catalog?level=A1&page=1" data-route="catalog">
+                <button class="text-button" type="button" hidden>Xem tất cả trình độ</button>
+                <a class="primary-button" href="/catalog?level=A1&page=1">
                     Bắt đầu luyện nghe <span aria-hidden="true">→</span>
                 </a>
             </div>
@@ -695,6 +741,7 @@
 <script src="/js/app.js" defer></script>
 <script src="/js/coach.js" defer></script>
 <script src="/js/listening.js" defer></script>
+<script src="/js/conversation.js" defer></script>
 <script src="/js/account.js" defer></script>
 </body>
 </html>

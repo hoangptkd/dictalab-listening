@@ -15,8 +15,15 @@ public record DictaLabPrincipal(
         String passwordHash,
         String role,
         boolean enabled,
-        long authVersion
+        long authVersion,
+        String tokenSessionId,
+        java.time.Instant tokenExpiresAt
 ) implements UserDetails {
+
+    public DictaLabPrincipal(Long id, String email, String displayName, String passwordHash,
+                             String role, boolean enabled, long authVersion) {
+        this(id, email, displayName, passwordHash, role, enabled, authVersion, null, null);
+    }
 
     public DictaLabPrincipal(Long id, String email, String displayName, String passwordHash,
                              String role, boolean enabled) {

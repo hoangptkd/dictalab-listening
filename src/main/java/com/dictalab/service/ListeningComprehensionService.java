@@ -8,6 +8,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,12 +34,42 @@ public class ListeningComprehensionService {
     private final JdbcTemplate db;
     private final ObjectMapper json;
     private final ShopAiKeyClient ai;
+    private final TransactionTemplate transaction;
+    private final java.util.concurrent.ThreadPoolExecutor gradeWorkers;
+    private final io.micrometer.observation.ObservationRegistry observations;
+    private final org.springframework.beans.factory.ObjectProvider<ListeningGradingQueue> gradingQueueProvider;
 
-    public ListeningComprehensionService(JdbcTemplate db, ObjectMapper json, ShopAiKeyClient ai) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public ListeningComprehensionService(JdbcTemplate db, ObjectMapper json, ShopAiKeyClient ai,
+                                        PlatformTransactionManager manager,
+                                        @org.springframework.beans.factory.annotation.Value("${dictalab.listening.workers:2}") int workers,
+                                         io.micrometer.core.instrument.MeterRegistry metrics,
+                                         io.micrometer.observation.ObservationRegistry observations,
+                                         org.springframework.beans.factory.ObjectProvider<ListeningGradingQueue> gradingQueue) {
         this.db = db;
         this.json = json;
         this.ai = ai;
+        this.transaction = new TransactionTemplate(manager);
+        if(workers<1 || workers>32)throw new IllegalArgumentException("Invalid grading worker budget");
+        gradeWorkers=new java.util.concurrent.ThreadPoolExecutor(workers,workers,0,java.util.concurrent.TimeUnit.SECONDS,
+                new java.util.concurrent.SynchronousQueue<>(),new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
+        metrics.gauge("dictalab.listening.active",gradeWorkers,java.util.concurrent.ThreadPoolExecutor::getActiveCount);
+        this.observations=observations;
+        this.gradingQueueProvider=gradingQueue;
     }
+    public ListeningComprehensionService(JdbcTemplate db, ObjectMapper json, ShopAiKeyClient ai,
+                                         PlatformTransactionManager manager, int workers,
+                                         io.micrometer.core.instrument.MeterRegistry metrics,
+                                         io.micrometer.observation.ObservationRegistry observations) {
+        this(db,json,ai,manager,workers,metrics,observations,
+                (org.springframework.beans.factory.ObjectProvider<ListeningGradingQueue>) null);
+    }
+    public ListeningComprehensionService(JdbcTemplate db,ObjectMapper json,ShopAiKeyClient ai,PlatformTransactionManager manager){
+        this(db,json,ai,manager,2,new io.micrometer.core.instrument.simple.SimpleMeterRegistry(),io.micrometer.observation.ObservationRegistry.NOOP,
+                (org.springframework.beans.factory.ObjectProvider<ListeningGradingQueue>) null);
+    }
+    @jakarta.annotation.PreDestroy
+    public void stopWorkers(){gradeWorkers.shutdownNow();}
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> units(Long userId) {
@@ -61,6 +94,7 @@ public class ListeningComprehensionService {
     @Transactional
     public Map<String, Object> start(Long userId, long unitId, String mode, boolean heardBefore) {
         if (!List.of("ONE_PASS", "TWO_PASS").contains(mode)) bad("Chế độ nghe không hợp lệ.");
+        db.queryForObject("SELECT id FROM app_users WHERE id=? FOR UPDATE",Long.class,userId);
         Map<String, Object> unit = unit(unitId, true);
         Number prior = db.queryForObject("""
                 SELECT (SELECT COUNT(*) FROM practice_sessions WHERE user_id=? AND lesson_id IN
@@ -99,6 +133,9 @@ public class ListeningComprehensionService {
         result.put("firstExposure", session.get("first_exposure"));
         result.put("durationSeconds", unit.get("duration_seconds"));
         result.put("gradingStatus", attempt.get("grading_status"));
+        String lastError=(String)attempt.get("grading_last_error");
+        if(lastError!=null && lastError.matches("[A-Za-z0-9_]{1,32}:[a-f0-9-]{36}"))
+            result.put("gradingErrorId",lastError.substring(lastError.indexOf(':')+1));
         if ("READY".equals(stage)) result.put("audioUrl", unit.get("audio_url"));
         if ("PLAYING".equals(stage)) {
             result.put("audioUrl", unit.get("audio_url"));
@@ -262,7 +299,7 @@ public class ListeningComprehensionService {
         if (!ai.configured()) bad("AI chưa được cấu hình.");
         if (db.update("""
                 UPDATE listening_passes SET grading_status='PENDING',grading_attempts=0,
-                    grading_retry_count=grading_retry_count+1,next_grading_at=NULL
+                    grading_retry_count=grading_retry_count+1,next_grading_at=NULL,grading_publish_after=NULL
                 WHERE session_id=? AND pass_number=? AND grading_status='FAILED' AND grading_retry_count<2
                 """, id, passNumber) != 1) bad("Không thể yêu cầu chấm lại lượt này.");
         return state(userId, id);
@@ -395,18 +432,53 @@ public class ListeningComprehensionService {
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> history(Long userId) {
-        return lowerKeys(db.queryForList("""
+        return historyPage(userId,0,100).items();
+    }
+
+    public record HistoryPage(List<Map<String,Object>> items,int page,int size,long total) {}
+
+    @Transactional(readOnly=true)
+    public HistoryPage historyPage(Long userId,int page,int size) {
+        if(page<0 || page>100000 || size<1 || size>100)
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,"Trang không hợp lệ.");
+        Long total=db.queryForObject("SELECT COUNT(*) FROM listening_sessions WHERE user_id=?",Long.class,userId);
+        return new HistoryPage(
+        lowerKeys(db.queryForList("""
                 SELECT s.id, CASE WHEN s.stage='COMPLETE' THEN u.title ELSE 'Bài nghe ' || u.level || ' · ' || u.id END AS title,
                        u.level, s.mode, s.stage, s.first_exposure, s.started_at,
                        p.comprehension_score, p.recall_score, p.grading_status
                 FROM listening_sessions s JOIN listening_units u ON u.id=s.unit_id
                 JOIN listening_passes p ON p.session_id=s.id AND p.pass_number=1
-                WHERE s.user_id=? ORDER BY s.started_at DESC
-                """, userId));
+                WHERE s.user_id=? ORDER BY s.started_at DESC,s.id DESC LIMIT ? OFFSET ?
+                """, userId,size,(long)page*size)),page,size,total==null?0:total);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Map<String, Object> createUnit(long lessonId, String audioUrl, double durationSeconds) {
+        DraftSource source = transaction.execute(status -> draftSource(lessonId, audioUrl, durationSeconds));
+        JsonNode content = ai.completeJson("""
+                Create a listening comprehension assessment. Return JSON only with facts and questions.
+                facts: 4 to 12 objects {id F1..., text} with independent semantic facts.
+                questions: 5 to 8 objects {id Q1..., type MAIN_IDEA/DETAIL/INFERENCE/SPEAKER_INTENT,
+                text in Vietnamese, options array of 3 or 4 Vietnamese strings, correct zero-based index,
+                explanation in Vietnamese}. Ground everything in the numbered transcript.
+                Make all distractors plausible; vary the position of the correct answer.
+                """, source.transcript());
+        validateContent(content);
+        return transaction.execute(status -> {
+            DraftSource current = draftSource(lessonId, audioUrl, durationSeconds);
+            if (!source.equals(current)) bad("Nguồn bài đã thay đổi. Vui lòng tạo lại bản nháp.");
+            db.update("""
+                    INSERT INTO listening_units(lesson_id,audio_url,title,level,duration_seconds,content_json,published)
+                    VALUES (?,?,?,?,?,?,FALSE)
+                    """, lessonId, audioUrl, "Bài nghe " + source.level(), source.level(), durationSeconds, stringify(content));
+            return latestUnit(lessonId, audioUrl);
+        });
+    }
+
+    private record DraftSource(String level, String transcript) {}
+
+    private DraftSource draftSource(long lessonId, String audioUrl, double durationSeconds) {
         ensureNoDraft(lessonId, audioUrl);
         if (!Double.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 3600)
             bad("Thời lượng audio không hợp lệ.");
@@ -431,21 +503,7 @@ public class ListeningComprehensionService {
         if (Math.abs(lastEnd - durationSeconds) > 1) bad("Thời lượng không khớp với mốc kết thúc audio.");
         String transcript = sentences.stream().map(row -> row.get("id") + ": " + row.get("transcript"))
                 .reduce("", (a, b) -> a + "\n" + b);
-        JsonNode content = ai.completeJson("""
-                Create a listening comprehension assessment. Return JSON only with facts and questions.
-                facts: 4 to 12 objects {id F1..., text} with independent semantic facts.
-                questions: 5 to 8 objects {id Q1..., type MAIN_IDEA/DETAIL/INFERENCE/SPEAKER_INTENT,
-                text in Vietnamese, options array of 3 or 4 Vietnamese strings, correct zero-based index,
-                explanation in Vietnamese}. Ground everything in the numbered transcript.
-                Make all distractors plausible; vary the position of the correct answer.
-                """, transcript);
-        validateContent(content);
-        db.update("""
-                INSERT INTO listening_units(lesson_id,audio_url,title,level,duration_seconds,content_json,published)
-                VALUES (?,?,?,?,?,?,FALSE)
-                """, lessonId, audioUrl, "Bài nghe " + lesson.get("level"), lesson.get("level"),
-                durationSeconds, stringify(content));
-        return latestUnit(lessonId, audioUrl);
+        return new DraftSource((String) lesson.get("level"), stringify(sentences) + "\n" + transcript);
     }
 
     @Transactional(readOnly = true)
@@ -561,29 +619,107 @@ public class ListeningComprehensionService {
         return lowerKeys(unit(unitId, false));
     }
 
-    @Scheduled(fixedDelay = 5000)
+    @Scheduled(initialDelayString="${dictalab.listening.dispatch-delay-ms:1000}",
+            fixedDelayString="${dictalab.listening.dispatch-delay-ms:1000}")
+    public void dispatchGrades(){
+        ListeningGradingQueue gradingQueue=gradingQueueProvider==null?null:gradingQueueProvider.getIfAvailable();
+        if(gradingQueue!=null){
+            for(var row:pendingGrades(gradeWorkers.getMaximumPoolSize())){
+                String id=(String)row.get("session_id");int pass=number(row,"pass_number");
+                int revision=number(row,"grading_retry_count"),attempt=number(row,"grading_attempts");
+                // Claim only publication metadata. Never hold a DB transaction over broker IO.
+                if(db.update("""
+                        UPDATE listening_passes SET grading_publish_after=?
+                        WHERE session_id=? AND pass_number=? AND grading_status='PENDING'
+                        AND grading_retry_count=? AND grading_attempts=?
+                        AND (grading_publish_after IS NULL OR grading_publish_after<=?)
+                        """,now().plusSeconds(15),id,pass,revision,attempt,now())!=1)continue;
+                try{
+                    gradingQueue.publish(id,pass,revision,attempt);
+                    db.update("""
+                            UPDATE listening_passes SET grading_publish_after=?
+                            WHERE session_id=? AND pass_number=? AND grading_status='PENDING'
+                            AND grading_retry_count=? AND grading_attempts=?
+                            """,now().plusSeconds(60),id,pass,revision,attempt);
+                }
+                catch(RuntimeException unavailable){log.warn("Listening grading queue unavailable; pending job will be retried");break;}
+            }
+            return;
+        }
+        int free=gradeWorkers.getMaximumPoolSize()-gradeWorkers.getActiveCount();
+        if(free<=0)return;
+        for(var row:pendingGrades(free)){
+            try{gradeWorkers.execute(()->grade(row));}
+            catch(java.util.concurrent.RejectedExecutionException saturated){break;}
+        }
+    }
+
+    // Also used by deterministic operational/tests checks, without starting an interval loop.
     public void gradePending() {
-        List<Map<String, Object>> pending = db.queryForList("""
-                SELECT p.session_id,p.pass_number,p.recall_text,u.content_json
+        for(var row:pendingGrades(2))grade(row);
+    }
+    public void gradeQueued(String sessionId, int passNumber, int revision, int attempt) {
+        var rows=db.queryForList("""
+                SELECT p.session_id,p.pass_number,p.recall_text,u.content_json,p.grading_retry_count,p.grading_attempts
                 FROM listening_passes p JOIN listening_sessions s ON s.id=p.session_id
                 JOIN listening_units u ON u.id=s.unit_id
-                WHERE (p.grading_status='PENDING' AND (p.next_grading_at IS NULL OR p.next_grading_at<=?))
-                   OR (p.grading_status='RUNNING' AND p.grading_started_at<?)
-                ORDER BY s.started_at LIMIT 2
-                """, now(), now().minusSeconds(120));
-        for (Map<String, Object> row : pending) grade(row);
+                WHERE p.session_id=? AND p.pass_number=? AND p.grading_status='PENDING'
+                AND p.grading_retry_count=? AND p.grading_attempts=?
+                AND (p.next_grading_at IS NULL OR p.next_grading_at<=?)
+                """,sessionId,passNumber,revision,attempt,now());
+        if(!rows.isEmpty())grade(rows.get(0));
+    }
+    private List<Map<String,Object>> pendingGrades(int limit){
+        // A lost worker may already have incurred an AI charge. Preserve recall for explicit retry,
+        // but do not automatically submit a second billable request with an unknown first outcome.
+        db.update("""
+                UPDATE listening_passes SET grading_status='FAILED',grading_lease=NULL,grading_started_at=NULL,
+                    grading_last_error='OUTCOME_UNKNOWN'
+                WHERE grading_status='RUNNING' AND grading_started_at<? AND recall_text IS NOT NULL AND TRIM(recall_text)<>''
+                """,now().minusSeconds(120));
+        // Empty recall is deterministic: it is safe to recover without another provider charge.
+        db.update("""
+                UPDATE listening_passes SET grading_status=CASE WHEN grading_attempts<3 THEN 'PENDING' ELSE 'FAILED' END,
+                    grading_lease=NULL,grading_started_at=NULL,grading_publish_after=NULL
+                WHERE grading_status='RUNNING' AND grading_started_at<? AND (recall_text IS NULL OR TRIM(recall_text)='')
+                """,now().minusSeconds(120));
+        return db.queryForList("""
+                SELECT p.session_id,p.pass_number,p.recall_text,u.content_json,p.grading_retry_count,p.grading_attempts
+                FROM listening_passes p JOIN listening_sessions s ON s.id=p.session_id
+                JOIN listening_units u ON u.id=s.unit_id
+                WHERE p.grading_status='PENDING' AND (p.next_grading_at IS NULL OR p.next_grading_at<=?)
+                AND (?=FALSE OR p.grading_publish_after IS NULL OR p.grading_publish_after<=?)
+                ORDER BY s.started_at,p.session_id,p.pass_number LIMIT ?
+                """, now(),gradingQueueProvider!=null && gradingQueueProvider.getIfAvailable()!=null,now(),limit);
     }
 
     private void grade(Map<String, Object> row) {
+        try(var context=org.slf4j.MDC.putCloseable("jobId",row.get("session_id")+"/"+row.get("pass_number"))){
+            io.micrometer.observation.Observation.createNotStarted("dictalab.listening.job",observations)
+                    .observe(()->gradeWork(row));
+        }
+    }
+    private void gradeWork(Map<String,Object> row){
         String id = (String) row.get("session_id");
         int pass = number(row, "pass_number");
+        String lease = UUID.randomUUID().toString();
         if (db.update("""
                 UPDATE listening_passes SET grading_status='RUNNING',grading_attempts=grading_attempts+1,
-                    grading_started_at=?,next_grading_at=NULL
-                WHERE session_id=? AND pass_number=? AND
+                    grading_started_at=?,next_grading_at=NULL,grading_lease=?,grading_last_error=NULL
+                WHERE session_id=? AND pass_number=? AND grading_attempts<3
+                    AND grading_retry_count=? AND grading_attempts=? AND
                     ((grading_status='PENDING' AND (next_grading_at IS NULL OR next_grading_at<=?))
                     OR (grading_status='RUNNING' AND grading_started_at<?))
-                """, now(), id, pass, now(), now().minusSeconds(120)) != 1) return;
+                """, now(), lease, id, pass, number(row,"grading_retry_count"),number(row,"grading_attempts"),
+                now(), now().minusSeconds(120)) != 1) {
+            db.update("""
+                    UPDATE listening_passes SET grading_status='FAILED',grading_lease=NULL,grading_started_at=NULL,
+                        grading_last_error='RETRY_EXHAUSTED'
+                    WHERE session_id=? AND pass_number=? AND grading_status='RUNNING'
+                        AND grading_started_at<? AND grading_attempts>=3
+                    """, id, pass, now().minusSeconds(120));
+            return;
+        }
         try {
             JsonNode facts = parse((String) row.get("content_json")).path("facts");
             String recall = (String) row.get("recall_text");
@@ -606,20 +742,30 @@ public class ListeningComprehensionService {
             double score = scoreRecall(facts, result);
             db.update("""
                     UPDATE listening_passes SET grading_status='COMPLETED',recall_result_json=?,recall_score=?,
-                        grading_model=?,grading_rubric_version='RECALL_V1'
-                    WHERE session_id=? AND pass_number=? AND grading_status='RUNNING'
+                        grading_model=?,grading_rubric_version='RECALL_V1',grading_lease=NULL,grading_started_at=NULL
+                    WHERE session_id=? AND pass_number=? AND grading_status='RUNNING' AND grading_lease=? AND grading_started_at>?
                     """, stringify(result), score, recall == null || recall.isBlank() ? "DETERMINISTIC" : ai.model(),
-                    id, pass);
+                    id, pass, lease, now().minusSeconds(120));
         } catch (RuntimeException exception) {
-            log.warn("Listening recall grading failed for session {} pass {}: {}", id, pass, exception.toString());
+            var job = observations.getCurrentObservation();
+            if (job != null) job.error(new IllegalStateException("Listening grading failed"));
+            String errorId=UUID.randomUUID().toString();
+            String errorType=exception.getClass().getSimpleName();
+            if(errorType.length()>32)errorType=errorType.substring(0,32);
+            log.warn("Listening recall grading failed, pass={}, errorType={}, errorId={}", pass, errorType,errorId);
             Integer attempts = db.queryForObject("SELECT grading_attempts FROM listening_passes WHERE session_id=? AND pass_number=?",
                     Integer.class, id, pass);
-            boolean failed = attempts != null && attempts >= 3;
+            boolean safeRetry=exception instanceof ProviderGuard.Unavailable;
+            boolean failed = !safeRetry || (attempts != null && attempts >= 3);
+            long retryFloor=safeRetry ? ((ProviderGuard.Unavailable)exception).retryAfter() : 0;
             db.update("""
-                    UPDATE listening_passes SET grading_status=?,next_grading_at=?,grading_started_at=NULL
-                    WHERE session_id=? AND pass_number=? AND grading_status='RUNNING'
+                    UPDATE listening_passes SET grading_status=?,next_grading_at=?,grading_started_at=NULL,grading_publish_after=NULL,
+                        grading_lease=NULL,grading_last_error=?
+                    WHERE session_id=? AND pass_number=? AND grading_status='RUNNING' AND grading_lease=? AND grading_started_at>?
                     """, failed ? "FAILED" : "PENDING",
-                    failed ? null : now().plusSeconds(30L * (1L << Math.max(0, (attempts == null ? 1 : attempts) - 1))), id, pass);
+                    failed ? null : now().plusSeconds(Math.max(retryFloor,30L * (1L << Math.max(0, (attempts == null ? 1 : attempts) - 1)))
+                            + ThreadLocalRandom.current().nextLong(6)),
+                    errorType+":"+errorId, id, pass, lease, now().minusSeconds(120));
         }
     }
 

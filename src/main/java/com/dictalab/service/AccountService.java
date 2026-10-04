@@ -49,7 +49,11 @@ public class AccountService {
                 passwordEncoder.encode(request.password()),
                 now
         );
-        user = userRepository.save(user);
+        try {
+            user = userRepository.saveAndFlush(user);
+        } catch (org.springframework.dao.DataIntegrityViolationException duplicate) {
+            throw new EmailAlreadyExistsException("Email đã được sử dụng.");
+        }
         Authentication authentication = authenticate(email, request.password());
         user.recordLogin(now);
         return new AuthenticatedAccount(user, authentication);

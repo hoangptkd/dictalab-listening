@@ -86,7 +86,7 @@ public class PracticeService {
 
     @Transactional
     public ApiDtos.PracticeStartResponse start(Long userId, ApiDtos.StartSessionRequest request) {
-        AppUser user = userRepository.findById(userId)
+        AppUser user = userRepository.lockById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản."));
         Lesson lesson = lessonRepository.findById(request.lessonId())
                 .filter(Lesson::isActive)
@@ -138,6 +138,8 @@ public class PracticeService {
 
     @Transactional
     public ApiDtos.PracticeStartResponse startShared(Long userId, String roomId, Long lessonId) {
+        userRepository.lockById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản."));
         PracticeSession existing = sessionRepository.findFirstByUserIdAndRoomIdOrderByStartedAtDesc(userId, roomId)
                 .orElse(null);
         if (existing != null) {
@@ -544,7 +546,10 @@ public class PracticeService {
     }
 
     private PracticeSession getSession(Long userId, String sessionId) {
-        return sessionRepository.findByIdAndUserId(sessionId, userId)
+        boolean readOnly = org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+        // A write locks the aggregate even when only child word/sentence rows change.
+        return (readOnly ? sessionRepository.findByIdAndUserId(sessionId, userId)
+                : sessionRepository.lockOwned(sessionId, userId))
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phiên luyện tập."));
     }
 

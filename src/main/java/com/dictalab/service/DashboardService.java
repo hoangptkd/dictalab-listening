@@ -1,16 +1,18 @@
 package com.dictalab.service;
 
 import com.dictalab.domain.CefrLevel;
-import com.dictalab.domain.PracticeSession;
 import com.dictalab.domain.SessionStatus;
 import com.dictalab.dto.ApiDtos;
 import com.dictalab.repository.PracticeSessionRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.ZoneId;
 import java.util.Arrays;
-import java.util.List;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
 
 @Service
 @Transactional(readOnly = true)
@@ -29,19 +31,23 @@ public class DashboardService {
     }
 
     public ApiDtos.DashboardResponse dashboard(Long userId) {
-        List<PracticeSession> sessions = sessionRepository
-                .findByUserIdAndStatusAndRoomIdIsNullOrderByCompletedAtAsc(userId, SessionStatus.COMPLETED);
+        var totals = sessionRepository.dashboardTotals(userId, SessionStatus.COMPLETED);
+        long count = totals.stream().mapToLong(PracticeSessionRepository.LevelTotals::getCompletedLessons).sum();
+        long seconds = totals.stream().mapToLong(PracticeSessionRepository.LevelTotals::getPracticeSeconds).sum();
+        var summary = new ApiDtos.DashboardSummary(
+                Math.toIntExact(count), Math.toIntExact(Math.round(seconds / 60.0)),
+                average(totals.stream().mapToDouble(PracticeSessionRepository.LevelTotals::getFirstAccuracySum).sum(), count),
+                average(totals.stream().mapToDouble(PracticeSessionRepository.LevelTotals::getFinalAccuracySum).sum(), count),
+                average(totals.stream().mapToDouble(PracticeSessionRepository.LevelTotals::getScoreSum).sum(), count));
 
-        ApiDtos.DashboardSummary summary = new ApiDtos.DashboardSummary(
-                sessions.size(),
-                (int) Math.round(sessions.stream().mapToInt(PracticeSession::getTotalPracticeSeconds).sum() / 60.0),
-                average(sessions, Metric.FIRST),
-                average(sessions, Metric.FINAL),
-                average(sessions, Metric.SCORE)
-        );
-
-        List<ApiDtos.TrendPoint> trend = sessions.stream()
+        // The UI displays eight points; lifetime totals above still include every solo session.
+        var recent = new ArrayList<>(sessionRepository
+                .findByUserIdAndStatusAndRoomIdIsNullOrderByCompletedAtDescIdDesc(
+                        userId, SessionStatus.COMPLETED, PageRequest.of(0, 8)));
+        Collections.reverse(recent);
+        var trend = recent.stream()
                 .map(session -> new ApiDtos.TrendPoint(
+                        session.getId(),
                         session.getCompletedAt().atZone(ZoneId.systemDefault()).toLocalDate(),
                         session.getLesson().getLevel(),
                         session.getLesson().getTitle(),
@@ -51,23 +57,21 @@ public class DashboardService {
                 ))
                 .toList();
 
-        List<ApiDtos.LevelProgress> byLevel = Arrays.stream(CefrLevel.values())
+        var totalsByLevel = new EnumMap<CefrLevel, PracticeSessionRepository.LevelTotals>(CefrLevel.class);
+        totals.forEach(total -> totalsByLevel.put(total.getLevel(), total));
+        var byLevel = Arrays.stream(CefrLevel.values())
                 .map(level -> {
-                    List<PracticeSession> levelSessions = sessions.stream()
-                            .filter(session -> session.getLesson().getLevel() == level)
-                            .toList();
-                    return new ApiDtos.LevelProgress(
-                            level,
-                            levelSessions.size(),
-                            average(levelSessions, Metric.FIRST),
-                            average(levelSessions, Metric.SCORE)
-                    );
+                    var total = totalsByLevel.get(level);
+                    return total == null ? new ApiDtos.LevelProgress(level, 0, 0, 0)
+                            : new ApiDtos.LevelProgress(level, Math.toIntExact(total.getCompletedLessons()),
+                                    average(total.getFirstAccuracySum(), total.getCompletedLessons()),
+                                    average(total.getScoreSum(), total.getCompletedLessons()));
                 })
                 .toList();
 
         ApiDtos.ErrorBreakdown errors = new ApiDtos.ErrorBreakdown(
-                sessions.stream().mapToInt(PracticeSession::getKnownMissedCount).sum(),
-                sessions.stream().mapToInt(PracticeSession::getUnknownCount).sum()
+                Math.toIntExact(totals.stream().mapToLong(PracticeSessionRepository.LevelTotals::getKnownMissed).sum()),
+                Math.toIntExact(totals.stream().mapToLong(PracticeSessionRepository.LevelTotals::getUnknownWords).sum())
         );
         return new ApiDtos.DashboardResponse(
                 summary, trend, byLevel, errors, recommendationService.recommend(userId),
@@ -75,21 +79,7 @@ public class DashboardService {
         );
     }
 
-    private double average(List<PracticeSession> sessions, Metric metric) {
-        if (sessions.isEmpty()) {
-            return 0;
-        }
-        double value = sessions.stream().mapToDouble(session -> switch (metric) {
-            case FIRST -> session.getFirstAttemptAccuracy();
-            case FINAL -> session.getFinalAccuracy();
-            case SCORE -> session.getOverallScore();
-        }).average().orElse(0);
-        return Math.round(value * 10.0) / 10.0;
-    }
-
-    private enum Metric {
-        FIRST,
-        FINAL,
-        SCORE
+    private double average(double sum, long count) {
+        return count == 0 ? 0 : Math.round(sum / count * 10.0) / 10.0;
     }
 }

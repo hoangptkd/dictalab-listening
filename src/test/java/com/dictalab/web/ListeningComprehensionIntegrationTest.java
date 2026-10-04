@@ -109,7 +109,7 @@ class ListeningComprehensionIntegrationTest {
                     .andReturn().getResponse().getContentAsString()).path("playbackToken").asText();
             mvc.perform(post(path + "/play").with(user(learner)).with(csrf())).andExpect(status().isConflict());
             db.update("UPDATE listening_passes SET playback_started_at=? WHERE session_id=? AND pass_number=?",
-                    Instant.now().minusSeconds(120), id, pass);
+                    java.sql.Timestamp.from(Instant.now().minusSeconds(120)), id, pass);
             mvc.perform(post(path + "/play/complete").with(user(learner)).with(csrf())
                     .contentType(MediaType.APPLICATION_JSON).content("{\"token\":\"" + token + "\"}"))
                     .andExpect(status().isOk()).andExpect(jsonPath("$.stage").value("RECALL"));
@@ -253,7 +253,7 @@ class ListeningComprehensionIntegrationTest {
             if (!submitFinished.await(10, TimeUnit.SECONDS)) throw new AssertionError("Submission timed out");
             return snapshot;
         }).when(draftDb).queryForMap("SELECT * FROM listening_sessions WHERE id=? AND user_id=?", id, owner.getId());
-        var draftService = new ListeningComprehensionService(draftDb, json, ai);
+        var draftService = new ListeningComprehensionService(draftDb, json, ai, transactions);
         var executor = Executors.newSingleThreadExecutor();
         try {
             var draft = executor.submit(() -> new TransactionTemplate(transactions).execute(status -> {

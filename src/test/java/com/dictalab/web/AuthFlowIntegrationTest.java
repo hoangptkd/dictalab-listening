@@ -1,6 +1,9 @@
 package com.dictalab.web;
 
-import jakarta.servlet.http.HttpSession;
+import com.dictalab.security.RedisTokenStore;
+import com.dictalab.security.JwtTokenService;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,6 +21,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class AuthFlowIntegrationTest {
+    // Broker-free regression suite; JwtRedisIntegrationTest covers the actual store and rotation.
+    @MockitoBean RedisTokenStore tokenStore;
+
+    @BeforeEach void allowIssuedSession() {
+        org.mockito.BDDMockito.given(tokenStore.active(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong())).willReturn(true);
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -30,7 +40,7 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
-    void registerCreatesAuthenticatedSessionAndPrivateDashboard() throws Exception {
+    void registerCreatesJwtCookiesAndPrivateDashboardWithoutHttpSession() throws Exception {
         MvcResult registration = mockMvc.perform(post("/api/auth/register")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -46,8 +56,13 @@ class AuthFlowIntegrationTest {
                 .andExpect(jsonPath("$.email").value("new-user@dictalab.local"))
                 .andReturn();
 
-        HttpSession session = registration.getRequest().getSession(false);
-        mockMvc.perform(get("/api/v1/dashboard").session((org.springframework.mock.web.MockHttpSession) session))
+        org.assertj.core.api.Assertions.assertThat(registration.getRequest().getSession(false)).isNull();
+        var access = registration.getResponse().getCookie(JwtTokenService.ACCESS_COOKIE);
+        org.assertj.core.api.Assertions.assertThat(access).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(access.isHttpOnly()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(registration.getResponse().getCookie(JwtTokenService.REFRESH_COOKIE).getPath())
+                .isEqualTo("/api/auth");
+        mockMvc.perform(get("/api/v1/dashboard").cookie(access))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.summary.completedLessons").value(0));
     }

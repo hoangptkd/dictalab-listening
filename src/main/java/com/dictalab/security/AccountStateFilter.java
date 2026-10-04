@@ -27,7 +27,6 @@ public class AccountStateFilter extends OncePerRequestFilter {
                         && current.getEmail().equals(user.email()) && current.getRole().equals(user.role()))
                 .isEmpty()) {
             SecurityContextHolder.clearContext();
-            if (request.getSession(false) != null) request.getSession(false).invalidate();
         }
         chain.doFilter(request, response);
     }

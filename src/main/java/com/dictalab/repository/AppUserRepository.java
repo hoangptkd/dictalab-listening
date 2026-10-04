@@ -15,6 +15,10 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 
     boolean existsByEmail(String email);
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from AppUser u where u.id = :id")
+    Optional<AppUser> lockById(@Param("id") Long id);
+
     @Query("""
             SELECT u FROM AppUser u WHERE
                 (LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%'))

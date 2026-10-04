@@ -185,7 +185,8 @@ $serviceEnvironment = @(
     "DB_PASSWORD=$($secrets.AppPassword)",
     "PORT=18081",
     "SESSION_COOKIE_SECURE=false",
-    "DICTALAB_MEDIA_ROOT=$mediaDir"
+    "DICTALAB_MEDIA_ROOT=$mediaDir",
+    "BACKUP_SUCCESS_MARKER=C:\DictaLab\backups\backup-success.json"
 )
 if (-not [string]::IsNullOrWhiteSpace($AdminEmails)) {
     $serviceEnvironment += "DICTALAB_ADMIN_EMAILS=$AdminEmails"

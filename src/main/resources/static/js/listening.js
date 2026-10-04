@@ -67,7 +67,7 @@
             return;
         }
         if (!id) {
-            if (query.get("view") === "history") await history();
+            if (query.get("view") === "history") await history(Number(query.get("page") || 0));
             else await catalog();
             return;
         }
@@ -221,6 +221,14 @@
                     <p data-status role="status" aria-live="polite"></p></section><details class="admin-panel"><summary>Nhật ký nội dung</summary>${ui.events(events)}</details>`;
                 const form=root().querySelector('#listening-edit-unit'); ui.track(root()); links();
                 const audio=root().querySelector('audio'); let segmentEnd=null;
+                let audioAuthRetried=false;
+                audio.addEventListener('loadedmetadata',()=>{audioAuthRetried=false;});
+                audio.addEventListener('error',async()=>{
+                    if(audioAuthRetried || current!==revision) return;
+                    audioAuthRetried=true;
+                    try {await bridge().api('/api/auth/me'); if(current===revision) audio.load();}
+                    catch(error) {reportError(error.message);}
+                });
                 audio.addEventListener('timeupdate',()=>{
                     root().querySelectorAll('[data-chunk]').forEach(node=>{
                         const sentence=selected.transcript[Number(node.dataset.chunk)];
@@ -231,6 +239,7 @@
                 root().querySelectorAll('[data-segment]').forEach(button=>button.addEventListener('click',async()=>{
                     const sentence=selected.transcript[Number(button.dataset.segment)];
                     try {
+                        await bridge().api('/api/auth/me');
                         audio.currentTime=sentence.audio_start_seconds;
                         segmentEnd=sentence.audio_end_seconds;
                         await audio.play();
@@ -603,16 +612,23 @@
         }
     }
 
-    async function history() {
-        const items = await loadView("/api/v1/listening/history");
-        if (!items) return;
+    async function history(page = 0) {
+        page = Number.isSafeInteger(page) && page >= 0 ? page : 0;
+        const result = await loadView(`/api/v1/listening/history/page?page=${page}&size=10`);
+        if (!result) return;
+        const items = result.items;
         root().innerHTML = `<h2>Lịch sử nghe hiểu</h2>
             <a class="text-button" id="listening-back-catalog" href="/listening">← Chọn bài</a>
             <div id="listening-history-list">${items.length ? items.map(item => `<article class="listening-card"><h3>${escape(item.title)}</h3>
                 <p>${escape(item.mode)} · ${escape(item.stage)} · Hiểu lần đầu: ${item.comprehension_score == null ? "—" : Number(item.comprehension_score).toFixed(1) + "%"}</p>
                 <a class="text-button" href="/listening/${encodeURIComponent(item.id)}" data-session="${escape(item.id)}">Mở bài</a></article>`).join("")
-            : "<p>Chưa có bài nghe hiểu.</p>"}</div>`;
-        bridge().paginateList(root().querySelector("#listening-history-list"), 10);
+            : "<p>Trang này chưa có bài nghe hiểu.</p>"}</div>
+            <nav aria-label="Phân trang lịch sử nghe hiểu"><button type="button" id="listening-history-prev" ${page === 0 ? "disabled" : ""}>Trang trước</button>
+            <span role="status">Trang ${page + 1} · ${result.total} bài</span>
+            <button type="button" id="listening-history-next" ${(page + 1) * result.size >= result.total ? "disabled" : ""}>Trang sau</button></nav>`;
+        for (const [id, target] of [["listening-history-prev", page - 1], ["listening-history-next", page + 1]]) {
+            root().querySelector(`#${id}`).addEventListener("click", () => bridge().navigate("listening", {view: "history", page: target}));
+        }
         followLink(root().querySelector("#listening-back-catalog"), () => bridge().navigate("listening"));
         root().querySelectorAll("[data-session]").forEach(link => followLink(link, () =>
             bridge().navigate("listening", {sessionId: link.dataset.session})));

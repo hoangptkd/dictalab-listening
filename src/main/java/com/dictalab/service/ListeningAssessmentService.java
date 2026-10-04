@@ -14,10 +14,10 @@ import com.dictalab.repository.SentenceAttemptRepository;
 import com.dictalab.repository.WordAttemptEventRepository;
 import com.dictalab.repository.WordAttemptRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -149,20 +149,8 @@ public class ListeningAssessmentService {
     }
 
     private List<PracticeSession> selectEvidence(Long userId) {
-        List<PracticeSession> completed = new ArrayList<>(sessionRepository
-                .findByUserIdAndStatusAndRoomIdIsNullOrderByCompletedAtAsc(userId, SessionStatus.COMPLETED));
-        Collections.reverse(completed);
-        List<PracticeSession> evidence = new ArrayList<>();
-        Set<Long> lessonIds = new HashSet<>();
-        for (PracticeSession session : completed) {
-            if (session.isFirstExposure() && lessonIds.add(session.getLesson().getId())) {
-                evidence.add(session);
-                if (evidence.size() == properties.maximumUnseenLessons()) {
-                    break;
-                }
-            }
-        }
-        return evidence;
+        return sessionRepository.assessmentEvidence(userId, SessionStatus.COMPLETED,
+                PageRequest.of(0, properties.maximumUnseenLessons()));
     }
 
     private void addSentenceSignal(Signal signal, SentenceAttempt sentenceAttempt,

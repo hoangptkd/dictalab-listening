@@ -32,6 +32,14 @@ public class PreviewVocabularyService {
                 )).toList();
     }
 
+    public java.util.Map<Long,List<ApiDtos.PreviewWord>> wordsForLessons(java.util.Collection<Long> ids) {
+        java.util.Map<Long,List<ApiDtos.PreviewWord>> result=new java.util.HashMap<>();
+        if(!ids.isEmpty()) previewWordRepository.findForLessons(ids).forEach(word ->
+                result.computeIfAbsent(word.lessonKey(), ignored -> new java.util.ArrayList<>()).add(
+                        new ApiDtos.PreviewWord(word.getWord(),word.getAudioStartSeconds(),word.getAudioEndSeconds(),word.isProperName())));
+        return result;
+    }
+
     public Set<String> normalizedWordsFor(Lesson lesson) {
         return wordsFor(lesson).stream().flatMap(word -> tokenizer.words(word.word()).stream())
                 .map(tokenizer::normalize).collect(Collectors.toSet());

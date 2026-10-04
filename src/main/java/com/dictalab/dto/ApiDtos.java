@@ -228,6 +228,7 @@ public final class ApiDtos {
     }
 
     public record TrendPoint(
+            String sessionId,
             LocalDate date,
             CefrLevel level,
             String lessonTitle,
@@ -305,6 +306,9 @@ public final class ApiDtos {
             Recommendation recommendation,
             ListeningAssessment assessment
     ) {
+    }
+
+    public record HistoryPage(List<HistoryEntry> items, int page, int size, long totalElements, int totalPages) {
     }
 
     public record HistoryEntry(

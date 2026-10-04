@@ -59,18 +59,25 @@ public class CatalogService {
                     userId, level, SessionStatus.COMPLETED
             ));
         }
-        return lessonRepository.findByLevelAndActiveTrueOrderByDisplayOrder(level).stream()
-                .filter(lesson -> administrator || !lesson.isPersonalContent())
+        var lessons=lessonRepository.findByLevelAndActiveTrueOrderByDisplayOrder(level).stream()
+                .filter(lesson -> administrator || !lesson.isPersonalContent()).toList();
+        var ids=lessons.stream().map(Lesson::getId).toList();
+        Map<Long,LessonSentenceRepository.Summary> summaries=new HashMap<>();
+        if(!ids.isEmpty()) sentenceRepository.summaries(ids).forEach(s -> summaries.put(s.getLessonId(),s));
+        var preview=previewVocabularyService.wordsForLessons(ids);
+        return lessons.stream()
                 .map(lesson -> toSummary(
                         lesson,
                         activeSessions.get(lesson.getId()),
-                        completedLessonIds.contains(lesson.getId())
+                        completedLessonIds.contains(lesson.getId()),
+                        summaries.get(lesson.getId()),preview.getOrDefault(lesson.getId(),List.of())
                 ))
                 .toList();
     }
 
-    private ApiDtos.LessonSummary toSummary(Lesson lesson, PracticeSession activeSession, boolean completed) {
-        int sentenceCount = Math.toIntExact(sentenceRepository.countByLessonId(lesson.getId()));
+    private ApiDtos.LessonSummary toSummary(Lesson lesson, PracticeSession activeSession, boolean completed,
+                                           LessonSentenceRepository.Summary summary,List<ApiDtos.PreviewWord> preview) {
+        int sentenceCount = summary==null ? 0 : Math.toIntExact(summary.getSentenceCount());
         int completedSentences = activeSession == null
                 ? (completed ? sentenceCount : 0)
                 : Math.max(0, Math.min(sentenceCount, activeSession.getCurrentSentencePosition() - 1));
@@ -89,9 +96,8 @@ public class CatalogService {
                 progressPercent,
                 activeSession != null,
                 completed,
-                sentenceRepository.findByLessonIdAndPosition(lesson.getId(), 1)
-                        .map(com.dictalab.domain.LessonSentence::getAudioUrl).orElse(null),
-                previewVocabularyService.wordsFor(lesson)
+                summary==null ? null : summary.getAudioUrl(),
+                preview
         );
     }
 }

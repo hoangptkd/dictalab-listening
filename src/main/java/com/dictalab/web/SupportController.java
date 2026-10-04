@@ -19,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Map;
 
@@ -89,7 +90,7 @@ public class SupportController {
             }
         }
         Integer recent = db.queryForObject("SELECT COUNT(*) FROM support_tickets WHERE user_id=? AND created_at>?",
-                Integer.class, user.id(), Instant.now().minusSeconds(3600));
+                Integer.class, user.id(), Timestamp.from(Instant.now().minusSeconds(3600)));
         if (recent != null && recent >= 5) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Vui lòng thử lại sau.");
         Map<String, Object> values = new java.util.HashMap<>();
         values.put("user_id", user.id());
@@ -149,7 +150,7 @@ public class SupportController {
         if (queries.events("TICKET",id).isEmpty() && old.get(0).get("admin_note") instanceof String note && !note.isBlank())
             queries.event(null,"TICKET",id,"PREVIOUS_RESPONSE",note);
         db.update("UPDATE support_tickets SET status=?,admin_note=?,updated_at=?,edit_version=edit_version+1 WHERE id=?",
-                resolution.status(), resolution.adminNote(), Instant.now(), id);
+                resolution.status(), resolution.adminNote(), Timestamp.from(Instant.now()), id);
         queries.event(admin.id(),"TICKET",id,resolution.status(),resolution.adminNote());
         db.update("INSERT INTO account_audit(actor_id,action,detail) VALUES (?,?,?)",
                 admin.id(), "SUPPORT_TICKET_UPDATE", "Ticket #" + id + ": " + resolution.status());

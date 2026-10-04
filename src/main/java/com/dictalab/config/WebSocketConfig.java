@@ -6,14 +6,12 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
-import org.springframework.web.socket.server.support.HttpSessionHandshakeInterceptor;
 
 import java.util.Arrays;
 
 /**
  * Cấu hình WebSocket — đăng ký RoomWebSocketHandler tại /ws/room/{roomId}.
- * HttpSessionHandshakeInterceptor propagates Spring Security context sang WS session
- * để handler có thể truy cập Authentication.
+ * Principal từ JWT cookie của HTTP handshake được chuyển sang kết nối WebSocket.
  */
 @Configuration
 @EnableWebSocket
@@ -36,7 +34,6 @@ public class WebSocketConfig implements WebSocketConfigurer {
                 .toArray(String[]::new);
 
         registry.addHandler(roomWebSocketHandler, "/ws/room/{roomId}")
-                .addInterceptors(new HttpSessionHandshakeInterceptor())
                 .setAllowedOriginPatterns(origins);
     }
 }

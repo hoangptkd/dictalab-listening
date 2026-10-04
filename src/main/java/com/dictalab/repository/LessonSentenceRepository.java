@@ -13,4 +13,17 @@ public interface LessonSentenceRepository extends JpaRepository<LessonSentence, 
     Optional<LessonSentence> findByLessonIdAndPosition(Long lessonId, int position);
 
     long countByLessonId(Long lessonId);
+
+    interface Summary {
+        Long getLessonId();
+        long getSentenceCount();
+        String getAudioUrl();
+    }
+
+    @org.springframework.data.jpa.repository.Query("""
+            select s.lesson.id as lessonId, count(s) as sentenceCount,
+                   max(case when s.position=1 then s.audioUrl else null end) as audioUrl
+            from LessonSentence s where s.lesson.id in :ids group by s.lesson.id
+            """)
+    List<Summary> summaries(@org.springframework.data.repository.query.Param("ids") java.util.Collection<Long> ids);
 }

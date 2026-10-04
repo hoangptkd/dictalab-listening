@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -26,6 +27,32 @@ import org.slf4j.LoggerFactory;
 @RestControllerAdvice
 public class ApiExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
+    @ExceptionHandler({org.springframework.transaction.CannotCreateTransactionException.class,
+            org.springframework.jdbc.CannotGetJdbcConnectionException.class,
+            com.dictalab.security.RedisTokenStore.Unavailable.class})
+    public ResponseEntity<ApiDtos.ApiError> databaseUnavailable(Exception failure, HttpServletRequest request) {
+        String errorId = UUID.randomUUID().toString();
+        // Connection errors may carry database URLs or credentials; log only the type and correlation ID.
+        log.warn("Database unavailable, errorId={}, errorType={}", errorId, failure.getClass().getSimpleName());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).header("Retry-After", "3")
+                .body(new ApiDtos.ApiError(503, "Hệ thống đang bận. Vui lòng chờ và thử lại.",
+                        request.getRequestURI(), Instant.now(), errorId));
+    }
+
+    @ExceptionHandler(com.dictalab.service.ProviderGuard.Unavailable.class)
+    public ResponseEntity<ApiDtos.ApiError> providerBusy(com.dictalab.service.ProviderGuard.Unavailable failure,
+                                                       HttpServletRequest request){
+        return ResponseEntity.status(503).header("Retry-After",Integer.toString(failure.retryAfter()))
+                .body(new ApiDtos.ApiError(503,failure.getMessage(),request.getRequestURI(),Instant.now(),null));
+    }
+
+    @ExceptionHandler({org.springframework.dao.DataIntegrityViolationException.class,
+            org.springframework.orm.ObjectOptimisticLockingFailureException.class,
+            org.springframework.dao.PessimisticLockingFailureException.class})
+    public ResponseEntity<ApiDtos.ApiError> concurrentWrite(Exception failure,HttpServletRequest request){
+        return error(HttpStatus.CONFLICT,"Dữ liệu đã thay đổi hoặc thao tác bị trùng. Vui lòng tải lại.",request);
+    }
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiDtos.ApiError> notFound(ResourceNotFoundException exception,
@@ -75,7 +102,9 @@ public class ApiExceptionHandler {
         return error(HttpStatus.PAYLOAD_TOO_LARGE, "File audio vượt quá giới hạn cho phép.", request);
     }
 
-    @ExceptionHandler({MethodArgumentNotValidException.class, ConstraintViolationException.class})
+    @ExceptionHandler({MethodArgumentNotValidException.class, ConstraintViolationException.class,
+            MethodArgumentTypeMismatchException.class,
+            org.springframework.http.converter.HttpMessageNotReadableException.class})
     public ResponseEntity<ApiDtos.ApiError> validation(Exception exception, HttpServletRequest request) {
         String message = exception instanceof MethodArgumentNotValidException validationException
                 ? validationException.getBindingResult().getFieldErrors().stream()
