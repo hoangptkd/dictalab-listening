@@ -3,7 +3,8 @@ param(
     [string]$ExpectedSha256 = "",
     [string]$ServiceName = "DictaLab",
     [string]$HealthUrl = "http://127.0.0.1:18082/actuator/health",
-    [int]$HealthTimeoutSeconds = 180
+    [int]$HealthTimeoutSeconds = 180,
+    [ValidateRange(512,16384)][int]$MinimumReleaseMemoryMiB = 1000
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,8 +70,22 @@ if (-not (Test-Path -LiteralPath $deployedJar -PathType Leaf)) {
 $currentWasBackedUp = $false
 $newJarInstalled = $false
 
+# The stopped app's memory can be reused by the isolated restore JVM. Do not stop
+# a healthy production service when shared-host memory cannot cover that release gate.
+$serviceInfo = Get-CimInstance Win32_Service | Where-Object Name -eq $ServiceName
+$appBytes = (Get-CimInstance Win32_Process | Where-Object {
+    $_.ParentProcessId -eq $serviceInfo.ProcessId -and $_.Name -eq 'java.exe'
+} | Measure-Object WorkingSetSize -Sum).Sum
+$availableMiB = (Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1024
+if (($availableMiB + $appBytes / 1MB) -lt $MinimumReleaseMemoryMiB) {
+    throw 'Insufficient release memory; production was not stopped. Free shared-host RAM before retrying.'
+}
+
 try {
     Stop-AppService
+    if ((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1024 -lt $MinimumReleaseMemoryMiB) {
+        throw 'Shared-host RAM dropped below the release budget after stopping the app.'
+    }
 
     # Apply additive constraints only after a read-only legacy-data preflight.
     $preflight=Join-Path $PSScriptRoot 'readiness-preflight.sql'
@@ -94,7 +109,7 @@ try {
         if($checked -ne 16){throw 'Preflight did not return all expected invariant checks.'}
     }finally{Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue}
     & $backupScript -IncludeMedia
-    & $restoreScript -SmokeArtifact $deployedJar
+    & $restoreScript -SmokeArtifact $ArtifactPath -CompatibilityArtifact $deployedJar
 
     $archiveDirectory='C:\DictaLab\backups\artifacts'
     New-Item -ItemType Directory -Force -Path $archiveDirectory | Out-Null

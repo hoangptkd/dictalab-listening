@@ -146,3 +146,37 @@ cấu hình JWT; WSL/LxssManager ở trạng thái StopPending. Không thay JAR,
 cài thêm dịch vụ hoặc khởi động lại VPS trong lượt kiểm tra này. Cần quyết định hạ tầng Redis
 production trước khi phát hành JWT; không dùng bản Redis Windows không được hỗ trợ hoặc
 bỏ kiểm tra phiên để vượt qua điều kiện này. Các ứng dụng khác trên VPS được giữ hoạt động.
+
+## Redis cloud đã cấu hình — 04/10/2026
+
+Đã chuyển phương án hạ tầng sang Redis cloud do người dùng cung cấp, không dùng WSL hoặc
+Memurai. Java 17 trên VPS xác minh chứng chỉ TLS 1.3, AUTH/PING và Lua/hash/index/TTL đạt.
+Redis 7.2.15 có giới hạn 200 MiB, `noeviction`, 0 key bị eviction tại lần kiểm tra; AOF đang tắt.
+Chưa xác minh lịch snapshot hoặc cam kết độ bền của nhà cung cấp. Không phục hồi snapshot
+token cũ để khôi phục các phiên đã thu hồi. Quota này không chứng minh đủ bộ nhớ cho mọi
+giới hạn phiên/rotation mặc định; cần theo dõi memory và 503 trước khi mở rộng.
+
+`scripts/configure-redis-cloud-vps.ps1` đọc URL từ SecureString DPAPI tại
+`C:\ProgramData\DictaLab\auth\redis-url.xml`, giữ cấu hình cũ và tạo khóa JWT production riêng.
+`-CheckOnly` kiểm tra cấu hình mà không ghi. Thư mục auth giới hạn Administrators/SYSTEM;
+URL và khóa không nằm trong Git. Script đã áp dụng môi trường dịch vụ: TLS Redis, JWT cookie
+Secure, Redis rate limit, timeout Redis 2 giây/connect 3 giây; RabbitMQ giữ tắt.
+Các biến môi trường không thuộc phạm vi thay đổi đã được đối chiếu và giữ nguyên.
+
+Đây mới là **cấu hình chờ phát hành**, chưa kích hoạt JWT trên website. Artifact candidate
+SHA256 `B169C885275FDD2AE53D9F8A2A1A0866F36D3B690B80716BCE032A5A36C2C041`
+đã upload; 24 migration đã áp dụng khớp byte với JAR production hiện tại. 16 kiểm tra dữ liệu
+trước phát hành đều có 0 lỗi. Production vẫn Running/UP, JAR `E39A4210…`, schema V24.
+
+VPS chỉ còn 73 MiB RAM khả dụng ở mẫu cuối; MoreLogin chiếm hơn 2 GiB. Chưa dừng ứng dụng
+hoặc các ứng dụng khác. Release guard mới yêu cầu ít nhất 1.000 MiB dự kiến sau khi dừng
+DictaLab, rồi kiểm tra lại sau khi dừng. Nhánh chặn đã được thực chạy với ngưỡng thử 16.384 MiB
+trên VPS 7 GiB: từ chối trước khi dừng, production vẫn UP và checksum JAR giữ nguyên.
+Đang cần quyết định của người dùng về việc tạm đóng MoreLogin để tiếp tục phát hành.
+
+Restore drill mới dành riêng Redis database 15 và khóa JWT ngẫu nhiên khác production;
+đã kiểm tra database 15 trống và khả năng SELECT trước khi dùng. Không dùng database này
+cho ứng dụng khác. Drill đăng xuất token thử trước cleanup, chạy candidate rồi JAR cũ trên
+cùng DB PostgreSQL đã migrate; log mỗi artifact được giữ riêng. Quy trình này chưa được
+thực chạy sau sửa vì thiếu RAM, không tính syntax check là restore/rollout thành công.
+Frontend kiểm thử lại 93/93 đạt; cú pháp PowerShell và UTF-8 của script đạt.
