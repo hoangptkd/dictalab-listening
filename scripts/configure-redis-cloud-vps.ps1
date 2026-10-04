@@ -25,6 +25,10 @@ try {
         $uri.Query -or $uri.Fragment -or $uri.AbsolutePath -notin @('', '/', '/0')) {
         throw 'A TLS Redis URL using database zero is required.'
     }
+    # Spring's URL parser requires an explicit port even for the Redis default.
+    $redisUri = New-Object UriBuilder($uri)
+    if ($redisUri.Port -lt 0) { $redisUri.Port = 6379 }
+    $redisUrl = $redisUri.Uri.AbsoluteUri
     $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey(
         'SYSTEM\CurrentControlSet\Services\DictaLab\Parameters', -not $CheckOnly)
     if (-not $key) { throw 'DictaLab NSSM configuration is missing.' }

@@ -92,6 +92,7 @@ SELECT 'RESTORE_UNVALIDATED_CONSTRAINTS=' || count(*) FROM pg_constraint WHERE c
             finally{[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer);$secure.Dispose()}
             try{$redisUri=New-Object UriBuilder($url)}catch{throw 'Invalid cloud Redis URL in the protected secret file.'}
             if($redisUri.Scheme -ne 'rediss'){throw 'Restore smoke requires verified TLS for cloud Redis.'}
+            if($redisUri.Port -lt 0){$redisUri.Port=6379}
             # Database 15 is reserved for restore drills; check it is empty before invoking this script.
             $redisUri.Path='/15';$env:REDIS_URL=$redisUri.Uri.AbsoluteUri;$url=$null
             $env:SPRING_DATA_REDIS_TIMEOUT='2s';$env:SPRING_DATA_REDIS_CONNECT_TIMEOUT='3s'

@@ -163,20 +163,68 @@ URL và khóa không nằm trong Git. Script đã áp dụng môi trường dị
 Secure, Redis rate limit, timeout Redis 2 giây/connect 3 giây; RabbitMQ giữ tắt.
 Các biến môi trường không thuộc phạm vi thay đổi đã được đối chiếu và giữ nguyên.
 
-Đây mới là **cấu hình chờ phát hành**, chưa kích hoạt JWT trên website. Artifact candidate
+Ở bước chuẩn bị, đây là **cấu hình chờ phát hành**, chưa kích hoạt JWT trên website. Artifact candidate
 SHA256 `B169C885275FDD2AE53D9F8A2A1A0866F36D3B690B80716BCE032A5A36C2C041`
 đã upload; 24 migration đã áp dụng khớp byte với JAR production hiện tại. 16 kiểm tra dữ liệu
 trước phát hành đều có 0 lỗi. Production vẫn Running/UP, JAR `E39A4210…`, schema V24.
 
-VPS chỉ còn 73 MiB RAM khả dụng ở mẫu cuối; MoreLogin chiếm hơn 2 GiB. Chưa dừng ứng dụng
+VPS chỉ còn 73 MiB RAM khả dụng ở mẫu kiểm tra trước; MoreLogin chiếm hơn 2 GiB. Chưa dừng ứng dụng
 hoặc các ứng dụng khác. Release guard mới yêu cầu ít nhất 1.000 MiB dự kiến sau khi dừng
 DictaLab, rồi kiểm tra lại sau khi dừng. Nhánh chặn đã được thực chạy với ngưỡng thử 16.384 MiB
 trên VPS 7 GiB: từ chối trước khi dừng, production vẫn UP và checksum JAR giữ nguyên.
-Đang cần quyết định của người dùng về việc tạm đóng MoreLogin để tiếp tục phát hành.
+Người dùng sau đó đồng ý tạm đóng MoreLogin nếu cần để tiếp tục phát hành.
 
 Restore drill mới dành riêng Redis database 15 và khóa JWT ngẫu nhiên khác production;
 đã kiểm tra database 15 trống và khả năng SELECT trước khi dùng. Không dùng database này
 cho ứng dụng khác. Drill đăng xuất token thử trước cleanup, chạy candidate rồi JAR cũ trên
-cùng DB PostgreSQL đã migrate; log mỗi artifact được giữ riêng. Quy trình này chưa được
-thực chạy sau sửa vì thiếu RAM, không tính syntax check là restore/rollout thành công.
+cùng DB PostgreSQL đã migrate; log mỗi artifact được giữ riêng. Tại bước chuẩn bị, quy trình
+chưa được thực chạy sau sửa vì thiếu RAM; kết quả thực chạy được ghi bên dưới.
 Frontend kiểm thử lại 93/93 đạt; cú pháp PowerShell và UTF-8 của script đạt.
+
+## Đã triển khai production — 04/10/2026
+
+RAM phục hồi lên khoảng 2,3 GiB trước phát hành, nên không cần đóng MoreLogin. Sau phát hành
+còn khoảng 2,0 GiB. MoreLogin vẫn có 8 tiến trình; WebLens và BilingualBackend vẫn Running.
+Không tắt hoặc khởi động lại VPS, không dùng WSL và không cài Memurai.
+
+Lần thử đầu bị chặn trong restore drill: Spring Boot 4.1.1/Lettuce nhận cổng `-1` khi URL
+`rediss` không ghi cổng, dẫn đến `redisConnectionFactory: Port out of range: -1`.
+Production tự khôi phục JAR cũ và health UP; schema production chưa thay đổi trong lần thử này.
+Đã sửa script cấu hình và restore để thêm cổng mặc định 6379 nếu thiếu, giữ nguyên cổng
+được chỉ định. Không đổi endpoint, mật khẩu, khóa JWT hoặc cấu hình bảo mật. Cú pháp,
+kiểm tra cổng mặc định/cổng riêng và UTF-8 đều đạt. Restore drill thực chạy lại đạt.
+
+- Sao lưu nhất quán khi ứng dụng dừng: `dictalab-20261004-111359-004.dump`, 7.187.309 byte;
+  SHA256 `D0DD6A74E4C16C5F3553EA3A6AB0A6975C656B39AE696412F7E139178EF0BB6C`.
+  Cả 3 media có checksum hợp lệ và 3 tham chiếu DB/media được xác minh.
+- Restore drill `dictalab_restore_20261004111401` đạt trong 121,65 giây. Candidate và
+  JAR cũ đều đăng ký, tải catalog, bắt đầu luyện tập và đăng xuất thành công trên cùng
+  PostgreSQL đã migrate V25. Logs mỗi artifact được giữ trong `C:\DictaLab\backups`.
+- Production đã chạy JAR SHA256
+  `B169C885275FDD2AE53D9F8A2A1A0866F36D3B690B80716BCE032A5A36C2C041`;
+  DictaLab/HTTPS/PostgreSQL Running, health localhost và HTTPS công khai UP.
+- Schema V25, 0 migration lỗi, 0 FK không hợp lệ. Giữ nguyên 7 tài khoản và 37 phiên
+  luyện tập sau khi dọn tài khoản thử. Không còn DB restore hoặc JVM restore tạm.
+- Smoke trực tiếp qua HTTPS công khai đạt: route riêng từ chối khách, cookie access/refresh
+  HttpOnly/Secure/SameSite=Lax, access 600 giây, refresh đổi token cùng phiên. Redis thực
+  giữ đúng SHA-256 của refresh mới, TTL dương, rotation=1 và index rate limit có dữ liệu.
+  Logout xóa key phiên Redis và access cũ bị từ chối 401. Chỉ tài khoản thử có email UUID
+  riêng do lượt kiểm tra này tạo được xóa; không tạo/xóa dữ liệu luyện tập production.
+- Redis database 15 trống sau drill; không FLUSH hoặc xóa key của ứng dụng khác.
+  Biến môi trường không thuộc phạm vi thay đổi được đối chiếu với bản sao trước cấu hình
+  và giữ nguyên. Redis rate limit đã bật; RabbitMQ vẫn tắt vì chưa được provision.
+- Frontend chạy lại 93/93 đạt. Không sửa mã backend hoặc đóng gói lại JAR sau bản đã có
+  195 backend test đạt/21 optional skipped; thay đổi bổ sung chỉ là script và tài liệu.
+
+Website: `https://160.191.244.27:18443/`. Người dùng có phiên JSESSIONID cũ cần đăng nhập lại.
+Access mặc định 10 phút, refresh hạn tuyệt đối 7 ngày. Redis cloud vẫn 200 MiB/noeviction,
+0 eviction tại hậu kiểm; AOF tắt và lịch snapshot nhà cung cấp chưa xác minh.
+Mất trạng thái Redis sẽ yêu cầu đăng nhập lại; không khôi phục token đã thu hồi từ snapshot.
+
+Kiểm tra có thể chạy lại: `scripts/update-windows-vps.ps1` đã chứa gate khôi phục/candidate/
+compatibility. Smoke và hậu kiểm của lượt phát hành được giữ tại
+`target/redis-cloud-release/production-auth-smoke.ps1`, `postdeploy-check.ps1` và
+`RedisCloudProbe.java`; bản chạy trên VPS ở `C:\DictaLab\staging\redis-cloud`.
+Smoke chỉ đọc secret DPAPI trên VPS, không chứa mật khẩu/token production trong source/log.
+Source và cập nhật vận hành được push nhánh `codex/jwt-redis-production`; chưa merge `main`
+để tránh kích hoạt thêm một lượt deploy tự động không cần thiết.
