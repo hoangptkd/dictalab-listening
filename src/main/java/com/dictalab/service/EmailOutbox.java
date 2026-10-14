@@ -22,6 +22,7 @@ public class EmailOutbox {
     private final JdbcTemplate db;
     private final ObjectProvider<JavaMailSender> mail;
     private final String from;
+    private final IdleDispatch dispatch = new IdleDispatch();
 
     public EmailOutbox(JdbcTemplate db, ObjectProvider<JavaMailSender> mail,
                        @Value("${dictalab.mail-from:}") String from) {
@@ -30,23 +31,36 @@ public class EmailOutbox {
 
     @Scheduled(initialDelayString="${dictalab.email.dispatch-delay-ms:1000}",
             fixedDelayString="${dictalab.email.dispatch-delay-ms:1000}")
-    public void deliver() {
+    public void dispatch() {
+        long ticket = dispatch.begin();
+        if (ticket < 0) return;
+        dispatch.complete(ticket, deliver(dispatch.sweepDue()));
+    }
+
+    void wakeAfterCommit() { dispatch.wakeAfterCommit(); }
+
+    public void deliver() { deliver(true); }
+
+    private boolean deliver(boolean recover) {
         // Never send an expired/consumed token; delete sensitive links after expiry.
+        if (recover) {
         db.update("""
                 UPDATE email_outbox SET status='FAILED',body='',lease_id=NULL,locked_until=NULL,last_error='TOKEN_EXPIRED'
                 WHERE status IN ('PENDING','RUNNING') AND token_hash IN
                     (SELECT token_hash FROM account_tokens WHERE expires_at<=? OR used_at IS NOT NULL)
                 """, ts(Instant.now()));
-        if (mail.getIfAvailable()==null || from.isBlank()) return;
         db.update("""
                 UPDATE email_outbox SET status='FAILED',body='',lease_id=NULL,locked_until=NULL,last_error='RETRY_EXHAUSTED'
                 WHERE status='RUNNING' AND locked_until<? AND attempts>=5
                 """, ts(Instant.now()));
-        for (var job : db.queryForList("""
+        }
+        if (mail.getIfAvailable()==null || from.isBlank()) return false;
+        var jobs = db.queryForList("""
                 SELECT id FROM email_outbox WHERE attempts<5 AND
                     ((status='PENDING' AND available_at<=?) OR (status='RUNNING' AND locked_until<?))
                 ORDER BY available_at,id LIMIT 5
-                """, ts(Instant.now()),ts(Instant.now()))) {
+                """, ts(Instant.now()),ts(Instant.now()));
+        for (var job : jobs) {
             String id=(String)job.get("id"), lease=UUID.randomUUID().toString();
             if(db.update("""
                     UPDATE email_outbox SET status='RUNNING',attempts=attempts+1,lease_id=?,locked_until=?
@@ -55,7 +69,9 @@ public class EmailOutbox {
             var claims=db.queryForList("""
                     SELECT recipient,subject,body,attempts FROM email_outbox
                     WHERE id=? AND status='RUNNING' AND lease_id=? AND locked_until>?
-                    """,id,lease,ts(Instant.now()));
+                    AND EXISTS (SELECT 1 FROM account_tokens t WHERE t.token_hash=email_outbox.token_hash
+                        AND t.used_at IS NULL AND t.expires_at>?)
+                    """,id,lease,ts(Instant.now()),ts(Instant.now()));
             if(claims.isEmpty()) continue;
             var claimed=claims.get(0);
             try {
@@ -82,6 +98,7 @@ public class EmailOutbox {
                         failure.getClass().getSimpleName(),terminal,id,lease,ts(Instant.now()));
             }
         }
+        return !jobs.isEmpty();
     }
     private static Timestamp ts(Instant instant){return Timestamp.from(instant);}
 }

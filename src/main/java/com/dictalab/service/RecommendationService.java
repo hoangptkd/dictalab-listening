@@ -32,7 +32,11 @@ public class RecommendationService {
         List<PracticeSession> completed = sessionRepository
                 .findByUserIdAndStatusAndRoomIdIsNullOrderByCompletedAtDescIdDesc(
                         userId, SessionStatus.COMPLETED, PageRequest.of(0, 1));
-        if (completed.isEmpty()) {
+        return recommend(userId, completed.isEmpty() ? null : completed.get(0));
+    }
+
+    ApiDtos.Recommendation recommend(Long userId, PracticeSession latest) {
+        if (latest == null) {
             return lessonRepository.findByLevelAndActiveTrueOrderByDisplayOrder(CefrLevel.A1).stream()
                     .findFirst()
                     .map(lesson -> toRecommendation(
@@ -42,7 +46,6 @@ public class RecommendationService {
                     .orElse(null);
         }
 
-        PracticeSession latest = completed.get(0);
         CefrLevel currentLevel = latest.getLesson().getLevel();
         List<PracticeSession> recentAtLevel = sessionRepository
                 .findByUserIdAndStatusAndRoomIdIsNullAndLessonLevelOrderByCompletedAtDescIdDesc(

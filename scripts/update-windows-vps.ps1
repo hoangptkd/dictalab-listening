@@ -81,6 +81,11 @@ if (($availableMiB + $appBytes / 1MB) -lt $MinimumReleaseMemoryMiB) {
     throw 'Insufficient release memory; production was not stopped. Free shared-host RAM before retrying.'
 }
 
+$restoreScript=Join-Path $PSScriptRoot 'restore-drill-windows-vps.ps1'
+if(-not (Test-Path -LiteralPath $restoreScript -PathType Leaf)){throw 'Restore gate is missing.'}
+& $restoreScript -CheckS3Only
+& $restoreScript -CheckRedisOnly
+
 try {
     Stop-AppService
     if ((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1024 -lt $MinimumReleaseMemoryMiB) {

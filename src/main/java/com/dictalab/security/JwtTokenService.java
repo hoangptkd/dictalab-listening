@@ -44,6 +44,8 @@ public class JwtTokenService {
     private final Duration accessLifetime;
     private final Duration refreshLifetime;
     private final boolean secure;
+    private final io.micrometer.core.instrument.Timer accountRead;
+    private final io.micrometer.core.instrument.Timer sessionCheck;
     private final SecureRandom random = new SecureRandom();
 
     public JwtTokenService(RedisTokenStore sessions, AppUserRepository users,
@@ -54,12 +56,15 @@ public class JwtTokenService {
             @Value("${dictalab.auth.issuer:dictalab}") String issuer,
             @Value("${dictalab.auth.access-lifetime:10m}") Duration accessLifetime,
             @Value("${dictalab.auth.refresh-lifetime:7d}") Duration refreshLifetime,
-            @Value("${dictalab.auth.cookie-secure:true}") boolean secure) {
+            @Value("${dictalab.auth.cookie-secure:true}") boolean secure,
+            io.micrometer.core.instrument.MeterRegistry metrics) {
         if (accessLifetime.isNegative() || accessLifetime.isZero() || accessLifetime.compareTo(Duration.ofHours(1)) > 0
                 || refreshLifetime.compareTo(accessLifetime) <= 0 || refreshLifetime.compareTo(Duration.ofDays(30)) > 0)
             throw new IllegalArgumentException("Invalid token lifetimes");
         this.sessions = sessions; this.users = users; this.issuer = issuer; this.keyId = keyId;
         this.accessLifetime = accessLifetime; this.refreshLifetime = refreshLifetime; this.secure = secure;
+        accountRead = metrics.timer("dictalab.auth.lookup", "store", "postgres");
+        sessionCheck = metrics.timer("dictalab.auth.lookup", "store", "redis");
         byte[] secret = secret(signingKey);
         if (issuer.isBlank() || keyId.isBlank() || !previousKey.isBlank() && keyId.equals(previousKeyId))
             throw new IllegalArgumentException("Invalid JWT issuer or key IDs");
@@ -104,13 +109,21 @@ public class JwtTokenService {
             long userId = Long.parseLong(jwt.getSubject());
             long version = ((Number) jwt.getClaim("ver")).longValue();
             String sid = canonicalSid(jwt.getClaimAsString("sid"));
+            if (!sessionCheck.record(() -> sessions.active(sid, userId, version))) throw unauthorized();
             var user = currentUser(userId, version);
-            if (!sessions.active(sid, userId, version)) throw unauthorized();
             var principal = new DictaLabPrincipal(userId, user.getEmail(), user.getDisplayName(), "",
                     user.getRole(), true, version, sid, jwt.getExpiresAt());
-            return UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.getAuthorities());
+            return new AccountCheckedAuthentication(principal);
         } catch (IllegalArgumentException | ClassCastException | NullPointerException malformed) {
             throw unauthorized();
+        }
+    }
+
+    // Only the JWT converter can create this token, after Redis and current account checks.
+    // SecurityConfig stores it in RequestAttributeSecurityContextRepository, never in an HTTP session.
+    static final class AccountCheckedAuthentication extends UsernamePasswordAuthenticationToken {
+        private AccountCheckedAuthentication(DictaLabPrincipal principal) {
+            super(principal, null, principal.getAuthorities());
         }
     }
 
@@ -118,7 +131,7 @@ public class JwtTokenService {
         String sid = UUID.randomUUID().toString();
         Instant expires = Instant.now().plus(refreshLifetime);
         String refresh = sid + "." + randomSecret();
-        String access = access(user, sid);
+        String access = access(user.getId(), user.getAuthVersion(), sid);
         sessions.create(sid, user.getId(), user.getAuthVersion(), hash(refresh), expires);
         cookies(response, access, refresh, expires);
     }
@@ -138,7 +151,7 @@ public class JwtTokenService {
         Instant expires = Instant.ofEpochSecond(Long.parseLong((String)saved.get("expires")));
         if (!expires.isAfter(Instant.now())) throw unauthorized();
         String next = sid + "." + randomSecret();
-        String access = access(user, sid);
+        String access = access(user.getId(), user.getAuthVersion(), sid);
         sessions.rotate(sid, user.getId(), user.getAuthVersion(), hash(refresh), hash(next));
         cookies(response, access, next, expires);
     }
@@ -163,16 +176,16 @@ public class JwtTokenService {
                 && sessions.active(user.tokenSessionId(), user.id(), user.authVersion());
     }
 
-    private AppUser currentUser(long id, long version) {
-        return users.findById(id).filter(user -> user.isEnabled() && user.getAuthVersion() == version)
+    private AppUserRepository.AuthenticationState currentUser(long id, long version) {
+        return accountRead.record(() -> users.authenticationState(id)).filter(user -> user.isEnabled() && user.getAuthVersion() == version)
                 .orElseThrow(JwtTokenService::unauthorized);
     }
 
-    private String access(AppUser user, String sid) {
+    private String access(long userId, long version, String sid) {
         Instant now = Instant.now();
         var claims = JwtClaimsSet.builder().issuer(issuer).audience(List.of("dictalab-web"))
-                .subject(Long.toString(user.getId())).issuedAt(now).expiresAt(now.plus(accessLifetime))
-                .id(UUID.randomUUID().toString()).claim("sid", sid).claim("ver", user.getAuthVersion()).claim("type", "access").build();
+                .subject(Long.toString(userId)).issuedAt(now).expiresAt(now.plus(accessLifetime))
+                .id(UUID.randomUUID().toString()).claim("sid", sid).claim("ver", version).claim("type", "access").build();
         return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).keyId(keyId).build(), claims)).getTokenValue();
     }
 

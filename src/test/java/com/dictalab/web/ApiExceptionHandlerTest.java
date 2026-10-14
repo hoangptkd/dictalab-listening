@@ -16,7 +16,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class ApiExceptionHandlerTest {
     @ParameterizedTest
-    @CsvSource({"transaction,503", "connection,503", "constraint,409"})
+    @CsvSource({"transaction,503", "connection,503", "constraint,409", "statement-timeout,503",
+            "transaction-timeout,503", "lock-timeout,409", "deadlock,409"})
     void databaseFailureHasExplicitStatusWithoutLeakingDetails(String kind, int expected) throws Exception {
         var result = MockMvcBuilders.standaloneSetup(new InputController())
                 .setControllerAdvice(new ApiExceptionHandler()).build()
@@ -48,6 +49,10 @@ class ApiExceptionHandlerTest {
             switch (kind) {
                 case "transaction" -> throw new org.springframework.transaction.CannotCreateTransactionException("private-db-detail");
                 case "connection" -> throw new org.springframework.jdbc.CannotGetJdbcConnectionException("private-db-detail");
+                case "statement-timeout" -> throw new org.springframework.dao.QueryTimeoutException("private-db-detail");
+                case "transaction-timeout" -> throw new org.springframework.transaction.TransactionTimedOutException("private-db-detail");
+                case "lock-timeout" -> throw new org.springframework.dao.CannotAcquireLockException("private-db-detail");
+                case "deadlock" -> throw new org.springframework.dao.PessimisticLockingFailureException("private-db-detail");
                 default -> throw new org.springframework.dao.DataIntegrityViolationException("private-db-detail");
             }
         }

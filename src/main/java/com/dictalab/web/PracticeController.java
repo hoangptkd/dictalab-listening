@@ -3,6 +3,8 @@ package com.dictalab.web;
 import com.dictalab.dto.ApiDtos;
 import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.PracticeService;
+import com.dictalab.service.PracticeSubmissions;
+import org.springframework.web.bind.annotation.RequestHeader;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;
@@ -20,9 +22,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class PracticeController {
 
     private final PracticeService practiceService;
+    private final PracticeSubmissions submissions;
 
-    public PracticeController(PracticeService practiceService) {
+    public PracticeController(PracticeService practiceService, PracticeSubmissions submissions) {
         this.practiceService = practiceService;
+        this.submissions = submissions;
     }
 
     @PostMapping
@@ -44,8 +48,10 @@ public class PracticeController {
             @AuthenticationPrincipal DictaLabPrincipal principal,
             @PathVariable String sessionId,
             @PathVariable Long sentenceId,
-            @Valid @RequestBody ApiDtos.ReplayRequest request) {
-        return practiceService.replay(principal.id(), sessionId, sentenceId, request);
+            @Valid @RequestBody ApiDtos.ReplayRequest request,
+            @RequestHeader(value="Idempotency-Key", required=false) String key) {
+        return submissions.execute(principal.id(), sessionId, key, sentenceId + "/replay", request,
+                ApiDtos.SentenceState.class, () -> practiceService.replay(principal.id(), sessionId, sentenceId, request));
     }
 
     @PostMapping("/{sessionId}/sentences/{sentenceId}/words/{wordIndex}/checks")
@@ -54,8 +60,10 @@ public class PracticeController {
             @PathVariable String sessionId,
             @PathVariable Long sentenceId,
             @PathVariable @Min(0) int wordIndex,
-            @Valid @RequestBody ApiDtos.CheckWordRequest request) {
-        return practiceService.checkWord(principal.id(), sessionId, sentenceId, wordIndex, request);
+            @Valid @RequestBody ApiDtos.CheckWordRequest request,
+            @RequestHeader(value="Idempotency-Key", required=false) String key) {
+        return submissions.execute(principal.id(), sessionId, key, sentenceId + "/checks/" + wordIndex, request,
+                ApiDtos.SentenceState.class, () -> practiceService.checkWord(principal.id(), sessionId, sentenceId, wordIndex, request));
     }
 
     @PostMapping("/{sessionId}/sentences/{sentenceId}/hints")
@@ -63,8 +71,10 @@ public class PracticeController {
             @AuthenticationPrincipal DictaLabPrincipal principal,
             @PathVariable String sessionId,
             @PathVariable Long sentenceId,
-            @Valid @RequestBody ApiDtos.HintRequest request) {
-        return practiceService.useHint(principal.id(), sessionId, sentenceId, request);
+            @Valid @RequestBody ApiDtos.HintRequest request,
+            @RequestHeader(value="Idempotency-Key", required=false) String key) {
+        return submissions.execute(principal.id(), sessionId, key, sentenceId + "/hints", request,
+                ApiDtos.SentenceState.class, () -> practiceService.useHint(principal.id(), sessionId, sentenceId, request));
     }
 
     @PostMapping("/{sessionId}/sentences/{sentenceId}/classifications")
@@ -72,8 +82,10 @@ public class PracticeController {
             @AuthenticationPrincipal DictaLabPrincipal principal,
             @PathVariable String sessionId,
             @PathVariable Long sentenceId,
-            @Valid @RequestBody ApiDtos.ClassifyWordRequest request) {
-        return practiceService.classifyWord(principal.id(), sessionId, sentenceId, request);
+            @Valid @RequestBody ApiDtos.ClassifyWordRequest request,
+            @RequestHeader(value="Idempotency-Key", required=false) String key) {
+        return submissions.execute(principal.id(), sessionId, key, sentenceId + "/classify", request,
+                ApiDtos.SentenceState.class, () -> practiceService.classifyWord(principal.id(), sessionId, sentenceId, request));
     }
 
     @PostMapping("/{sessionId}/sentences/{sentenceId}/complete")
@@ -81,7 +93,9 @@ public class PracticeController {
             @AuthenticationPrincipal DictaLabPrincipal principal,
             @PathVariable String sessionId,
             @PathVariable Long sentenceId,
-            @Valid @RequestBody ApiDtos.CompleteSentenceRequest request) {
-        return practiceService.completeSentence(principal.id(), sessionId, sentenceId, request);
+            @Valid @RequestBody ApiDtos.CompleteSentenceRequest request,
+            @RequestHeader(value="Idempotency-Key", required=false) String key) {
+        return submissions.execute(principal.id(), sessionId, key, sentenceId + "/complete", request,
+                ApiDtos.CompleteSentenceResponse.class, () -> practiceService.completeSentence(principal.id(), sessionId, sentenceId, request));
     }
 }

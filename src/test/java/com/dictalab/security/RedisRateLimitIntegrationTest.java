@@ -25,7 +25,8 @@ class RedisRateLimitIntegrationTest {
     private static final String INDEX="{dictalab-rate}:v1:index";
 
     @BeforeEach void connect() {
-        var configuration=new RedisStandaloneConfiguration("127.0.0.1",Integer.parseInt(System.getenv("TEST_REDIS_PORT")));
+        var configuration=new RedisStandaloneConfiguration(System.getProperty("TEST_REDIS_HOST", "127.0.0.1"),
+                Integer.parseInt(System.getProperty("TEST_REDIS_PORT", System.getenv("TEST_REDIS_PORT"))));
         configuration.setDatabase(15);
         connection=new LettuceConnectionFactory(configuration);connection.afterPropertiesSet();connection.start();
         redis=new StringRedisTemplate(connection);redis.afterPropertiesSet();

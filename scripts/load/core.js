@@ -23,6 +23,35 @@ if(mode==='reads' || mode==='arrival' || mode==='mixed'){
 }
 if(mode==='arrival')options.thresholds.dropped_iterations=[`count<${Math.max(1,Number(__ENV.RATE||10)*seconds*0.01)}`];
 export function setup(){return setupAuth();}
+export function readJourney(token){
+  const request=client(token);
+  const level=['A1','A2','B1','B2'][(__VU+__ITER)%4];
+  request('GET',`/api/v1/catalog/lessons?level=${level}`,null,'catalog',b=>Array.isArray(b));
+  request('GET',`/api/v1/history?page=${__ITER%3}&size=10`,null,'history',b=>Array.isArray(b.items));
+  request('GET','/api/v1/dashboard',null,'dashboard',b=>typeof b==='object');
+}
+export function dictationJourney(token){
+  const request=client(token);
+  const level=['A1','A2','B1','B2'][(__VU+__ITER)%4];
+  const lessons=request('GET',`/api/v1/catalog/lessons?level=${level}`,null,'catalog',b=>Array.isArray(b)&&b.length>0);
+  const practice=request('POST','/api/v1/practice-sessions',{lessonId:lessons[__ITER%lessons.length].id},'start',b=>!!b.sessionId && !!b.sentence);
+  const resumed=request('GET',`/api/v1/practice-sessions/${practice.sessionId}`,null,'resume',b=>b.sessionId===practice.sessionId);
+  const state=resumed.sentence;
+  const path=`/api/v1/practice-sessions/${practice.sessionId}/sentences/${state.sentenceId}`;
+  request('POST',path+'/replay-events',{event:'STARTED',playbackSpeed:1},'play',b=>b.hasListened===true
+    || (b.canComplete===true && b.words?.length>0 && b.words.every(w=>w.prefilled===true)));
+  sleep(Number(__ENV.PLAYBACK_SECONDS||3));
+  const word=state.words.find(w=>!w.prefilled);
+  if(word){
+    request('POST',path+`/words/${word.index}/checks`,{answer:'fixture',responseTimeMs:1000},'check',b=>Array.isArray(b.words));
+    request('POST',path+'/hints',{type:'REVEAL_SENTENCE'},'hint',b=>b.requiresReplayAfterReveal===true);
+    request('POST',path+'/replay-events',{event:'STARTED',playbackSpeed:1},'replay-start',b=>b.hasListened===true);
+    sleep(Number(__ENV.PLAYBACK_SECONDS||3));
+    request('POST',path+'/replay-events',{event:'COMPLETED',playbackSpeed:1},'replay-complete',b=>b.canComplete===true);
+  }
+  request('POST',path+'/complete',{timeSpentSeconds:6},'complete',b=>typeof b.lessonCompleted==='boolean');
+  request('GET','/api/v1/history?page=0&size=10',null,'history',b=>Array.isArray(b.items));
+}
 export default function(tokens){
   const token=tokens[__VU-1];
   if(!token)fail('Missing distinct VU session');
@@ -37,7 +66,8 @@ export default function(tokens){
     const lessons=get('/api/v1/catalog/lessons?level=A1','catalog',b=>Array.isArray(b)&&b.length>0);
     const practice=post('/api/v1/practice-sessions',{lessonId:lessons[0].id},'start',b=>!!b.sessionId && !!b.sentence);
     const path=`/api/v1/practice-sessions/${practice.sessionId}/sentences/${practice.sentence.sentenceId}`;
-    post(path+'/replay-events',{event:'STARTED',playbackSpeed:1},'play',b=>b.hasListened===true);
+    post(path+'/replay-events',{event:'STARTED',playbackSpeed:1},'play',b=>b.hasListened===true
+      || (b.canComplete===true && b.words?.length>0 && b.words.every(w=>w.prefilled===true)));
     sleep(Number(__ENV.PLAYBACK_SECONDS||3));
     const word=practice.sentence.words.find(w=>!w.prefilled);
     if(word){

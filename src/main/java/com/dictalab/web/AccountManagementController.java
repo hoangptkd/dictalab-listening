@@ -31,13 +31,11 @@ public class AccountManagementController {
 
     public record Name(@NotBlank @Size(min = 2, max = 80) String displayName) {}
     public record Password(@NotBlank String currentPassword,
-                           @NotBlank @Size(min = 8, max = 72)
-                           @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d).+$") String newPassword) {}
+                           @com.dictalab.dto.PasswordPolicy String newPassword) {}
     public record EmailRequest(@NotBlank @Email @Size(max = 160) String email) {}
     public record EmailChange(@NotBlank @Email @Size(max = 160) String email, @NotBlank String password) {}
     public record TokenRequest(@NotBlank @Size(max = 128) String token) {}
-    public record Reset(@NotBlank @Size(max = 128) String token, @NotBlank @Size(min = 8, max = 72)
-                        @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d).+$") String password) {}
+    public record Reset(@NotBlank @Size(max = 128) String token, @com.dictalab.dto.PasswordPolicy String password) {}
     public record AccountView(long id, String email, String displayName, String role,
                               boolean enabled, boolean emailVerified, java.time.Instant createdAt,
                               java.time.Instant lastLoginAt) {

@@ -74,7 +74,8 @@ public class DashboardService {
                 Math.toIntExact(totals.stream().mapToLong(PracticeSessionRepository.LevelTotals::getUnknownWords).sum())
         );
         return new ApiDtos.DashboardResponse(
-                summary, trend, byLevel, errors, recommendationService.recommend(userId),
+                summary, trend, byLevel, errors, recommendationService.recommend(userId,
+                        recent.isEmpty() ? null : recent.get(recent.size() - 1)),
                 assessmentService.assess(userId)
         );
     }

@@ -39,19 +39,20 @@
 
     function renderCatalog(data) {
         root().innerHTML = `<div class="conversation-setup">
+            <section class="conversation-card conversation-start">
             <div class="conversation-note"><span class="section-index">01 / Chọn một cuộc gặp</span>
                 <h2>Bốn nhiệm vụ nhỏ.<br>Một bước tiến rõ ràng.</h2>
                 <p>Nghe, trả lời, nhận phản hồi. Cuối phiên, thử một câu mới với thông tin khác để biết mình đã hiểu đến đâu.</p>
                 <p>Transcript và bản dịch chỉ mở khi bạn cần. Chưa có trả lời bằng giọng nói.</p></div>
-            <form id="conversation-setup-form" class="conversation-card">
+            <form id="conversation-setup-form">
                 <label for="conversation-scenario">Bạn muốn luyện tình huống nào?</label>
                 <select id="conversation-scenario" name="scenario">${Object.entries(data.scenarios).map(([id, label]) => `<option value="${escape(id)}">${escape(label)}</option>`).join("")}</select>
                 <label for="conversation-level">Độ khó</label>
                 <select id="conversation-level" name="difficulty"><option value="A1">A1 · Hai chi tiết, một thay đổi nhỏ</option><option value="A2">A2 · Nối chi tiết, phân biệt thông tin</option><option value="B1">B1 · Hiểu điều kiện, lý do và đổi kế hoạch</option></select>
                 <p id="conversation-status" role="status">${data.enabled ? "Khoảng 5–8 phút · Gõ tiếng Việt" : "Hội thoại AI chưa được bật trên máy chủ."}</p>
                 <button class="primary-button" ${data.enabled ? "" : "disabled"}>Bắt đầu nghe →</button>
-            </form></div>
-            ${data.sessions.length ? `<section class="conversation-recent"><h2>Tiếp tục phiên gần đây</h2><ul>${data.sessions.map(item => `<li><a href="/conversation/${escape(item.id)}">${escape(data.scenarios[item.scenario])} · ${escape(item.difficulty)} <span>Tiếp tục →</span></a></li>`).join("")}</ul></section>` : ""}`;
+            </form></section>
+            <section class="conversation-card conversation-recent"><h2>Phiên gần đây</h2>${data.sessions.length ? `<ul>${data.sessions.map(item => `<li><a href="/conversation/${escape(item.id)}">${escape(data.scenarios[item.scenario])} · ${escape(item.difficulty)} <span>${item.completed ? "✓ Đã hoàn thành · Xem kết quả" : "Đang học · Tiếp tục"} →</span></a></li>`).join("")}</ul>` : '<p>Chưa có phiên hội thoại. Chọn tình huống để bắt đầu nghe.</p>'}</section></div>`;
         root().querySelector("#conversation-scenario").value = selection.scenario;
         root().querySelector("#conversation-level").value = selection.difficulty;
         root().querySelector("form").addEventListener("submit", async event => {
@@ -78,13 +79,13 @@
     function render() {
         const turn = current(), attempts = turn?.attempts || [], pending = attempts.at(-1) && !attempts.at(-1).evaluation;
         if (pending) draft = attempts.at(-1).answerVi;
-        root().innerHTML = `<div class="conversation-session-header"><a href="/conversation" id="conversation-back">← Chọn tình huống</a>
-            <span>${escape(session.scenarioVi)} · ${escape(session.difficulty)}</span></div>
+        root().innerHTML = `<div class="conversation-session-layout"><aside class="conversation-card conversation-context"><p class="section-index">Cuộc gặp đang luyện</p><h2>${escape(session.scenarioVi)}</h2><p>${escape(session.difficulty)} · Bốn nhiệm vụ nghe và phản hồi</p><p>Nghe trọn câu, nắm ý chính và gõ điều mình hiểu bằng tiếng Việt. Mở transcript hoặc bản dịch khi cần.</p><a href="/conversation" id="conversation-back">← Chọn tình huống</a></aside><div class="conversation-session-main"><div class="conversation-session-header">
+            <div><span>${escape(session.scenarioVi)} · ${escape(session.difficulty)}</span>
+            ${!session.completed ? `<h2 id="conversation-task">${escape(turn?.prompt.taskVi || "Sẵn sàng cho câu nghe đầu tiên?")}</h2>` : ""}</div></div>
             <div class="conversation-progress" role="group" aria-label="Tiến độ phiên">${[1, 2, 3, 4].map(n => `<span class="${n <= session.turnNumber ? "is-current" : ""}">${n === 4 ? "Kiểm tra lại" : `Nhiệm vụ ${n}`}</span>`).join("")}</div>
             ${session.completed ? summary(session.summary) : `<div class="conversation-workspace">
                 <section class="conversation-card conversation-listen" aria-labelledby="conversation-task">
                     <p class="section-index">${session.turnNumber === 4 ? "Câu mới / Kiểm tra lại" : `Nhiệm vụ ${session.turnNumber || 1} / 4`}</p>
-                    <h2 id="conversation-task">${escape(turn?.prompt.taskVi || "Sẵn sàng cho câu nghe đầu tiên?")}</h2>
                     ${turn ? `<p>${escape(turn.prompt.questionVi)}</p>
                         <div class="conversation-audio-mark" aria-hidden="true">▂ ▅ ▃ ▇ ▄ ▆ ▂ ▅ ▃</div>
                         <button type="button" class="primary-button" data-action="play">${turn.plays ? "Nghe lại" : "Nghe câu này"} ▶</button>
@@ -108,7 +109,7 @@
                         : turn ? `<p>${attempts.length >= 3 ? "Đã đủ ba lượt phản hồi. Bạn có thể nghe lại hoặc mở hỗ trợ trước khi tiếp tục." : "Bạn đã nắm được các ý của nhiệm vụ này."}</p><button type="button" class="primary-button" data-action="next">${session.turnNumber === 3 ? "Thử câu mới để kiểm tra lại →" : "Nhiệm vụ tiếp theo →"}</button>`
                         : "<p>Bắt đầu bằng việc nghe. AI sẽ phản hồi sau khi bạn gửi ý hiểu.</p>"}
                 </section></div>`}
-            <p id="conversation-status" role="status">${escape(message)}</p>`;
+            <p id="conversation-status" role="status">${escape(message)}</p></div></div>`;
         root().querySelector("#conversation-back").addEventListener("click", event => { event.preventDefault(); bridge().navigate("conversation"); });
         root().querySelectorAll("[data-action]").forEach(button => button.addEventListener("click", () => action(button.dataset.action)));
         const textarea = root().querySelector("textarea");
@@ -185,15 +186,41 @@
         }
         if (token !== revision || playbackToken !== playbackRevision) return;
         const slow = kind === "slow", variant = kind === "clarify" ? "clarify" : "original";
-        const data = await mutate(() => post("play", {turnNumber: session.turnNumber, variant, slow}), "Đang chuẩn bị giọng nói…");
+        const input = {turnNumber: session.turnNumber, variant, slow};
+        let data = await mutate(() => post("play", input), "Đang chuẩn bị giọng nói…");
         if (!data || token !== revision || playbackToken !== playbackRevision) return;
         try {
+            if (!data.audioUrl) {
+                root().querySelector("#conversation-status").textContent = "Giọng nói đang được chuẩn bị. Bạn vẫn có thể nhập câu trả lời.";
+                data = await waitForAudio(data.audioStatus, input, token, playbackToken);
+                if (!data || token !== revision || playbackToken !== playbackRevision) return;
+            }
             root().querySelector("#conversation-status").textContent = slow ? "Đang nghe chậm · 0,8×" : "Đang phát tiếng Anh…";
             await bridge().playRecordedAudio(data.audioUrl, 0, null, slow ? 0.8 : 1);
             if (token === revision && playbackToken === playbackRevision) root().querySelector("#conversation-status").textContent = "Bạn có thể nghe lại hoặc gửi điều mình hiểu.";
         } catch (error) {
             if (token === revision && playbackToken === playbackRevision && error.name !== "AbortError") root().querySelector("#conversation-status").textContent = error.message;
         }
+    }
+
+    async function waitForAudio(status, input, token, playbackToken) {
+        for (let attempt = 0; attempt < 90; attempt++) {
+            if (!["PENDING", "RUNNING"].includes(status)) {
+                throw new Error(status === "EXHAUSTED" ? "Đã hết lượt thử tạo giọng nói cho câu này. Bạn có thể mở hỗ trợ hoặc tiếp tục phiên khác."
+                    : status === "BUSY" ? "Hàng đợi giọng nói đang đầy. Hãy thử nghe lại sau."
+                    : "Chưa tạo được giọng nói. Hệ thống không tự gọi lại; hãy bấm nghe để chủ động thử lại.");
+            }
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            if (token !== revision || playbackToken !== playbackRevision) return null;
+            const result = await bridge().api(`${path("audio-status")}?turnNumber=${input.turnNumber}&variant=${encodeURIComponent(input.variant)}`);
+            if (token !== revision || playbackToken !== playbackRevision) return null;
+            status = result.status;
+            if (status === "READY") {
+                // Record playback/support only once audio exists, not once per status poll.
+                return mutate(() => post("play", input), "Giọng nói đã sẵn sàng…");
+            }
+        }
+        throw new Error("Giọng nói vẫn đang chờ. Hãy bấm nghe lại sau; công việc đã được lưu.");
     }
 
     window.DictaLabConversation = {show, leave};

@@ -37,7 +37,7 @@ public final class ProviderGuard {
         long now=System.nanoTime();
         if(openUntil>now || probe || !permits.tryAcquire()){
             metrics.counter("dictalab.provider.rejected","provider",provider).increment();
-            throw new Unavailable("Dịch vụ đang bận. Vui lòng thử lại sau.",5);
+            throw new Unavailable("Dịch vụ đang bận. Vui lòng thử lại sau.",5,true);
         }
         boolean recovery=openUntil!=0;
         if(recovery) probe=true;
@@ -80,8 +80,12 @@ public final class ProviderGuard {
 
     public static final class Unavailable extends IllegalStateException {
         private final int retryAfter;
-        public Unavailable(String message,int retryAfter){super(message);this.retryAfter=retryAfter;}
+        private final boolean retrySafe;
+        public Unavailable(String message,int retryAfter){this(message,retryAfter,false);}
+        // True only when this process rejected admission before any provider request was sent.
+        Unavailable(String message,int retryAfter,boolean retrySafe){super(message);this.retryAfter=retryAfter;this.retrySafe=retrySafe;}
         public int retryAfter(){return retryAfter;}
+        public boolean retrySafe(){return retrySafe;}
     }
 
     // A Retry-After longer than our automatic retry budget is not shortened: require manual retry.

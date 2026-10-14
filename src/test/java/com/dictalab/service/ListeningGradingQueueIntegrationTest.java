@@ -30,8 +30,8 @@ class ListeningGradingQueueIntegrationTest {
     private static final String EXCHANGE="dictalab.test."+UUID.randomUUID();
     private static final String QUEUE=EXCHANGE+".grade",DLQ=QUEUE+".dlq";
     @DynamicPropertySource static void properties(DynamicPropertyRegistry properties) {
-        properties.add("spring.rabbitmq.host",()->"127.0.0.1");
-        properties.add("spring.rabbitmq.port",()->System.getenv("TEST_RABBITMQ_PORT"));
+        properties.add("spring.rabbitmq.host",()->System.getProperty("spring.rabbitmq.host", "127.0.0.1"));
+        properties.add("spring.rabbitmq.port",()->System.getProperty("spring.rabbitmq.port", System.getenv("TEST_RABBITMQ_PORT")));
         properties.add("dictalab.listening.queue.exchange",()->EXCHANGE);
         properties.add("dictalab.listening.queue.name",()->QUEUE);
         properties.add("dictalab.listening.queue.dead-letter-queue",()->DLQ);
@@ -50,7 +50,8 @@ class ListeningGradingQueueIntegrationTest {
     private final List<Long> users=new ArrayList<>();
 
     @BeforeEach void declare() {
-        assertThat(db.queryForObject("SELECT current_database()",String.class)).isEqualTo("dictalab_messaging_test");
+        assertThat(db.queryForObject("SELECT current_database()",String.class))
+                .isEqualTo(Boolean.getBoolean("dictalab.testcontainers") ? "dictalab_test" : "dictalab_messaging_test");
         listeners.stop();
         // Declares durable queues even while the consumers are stopped for deterministic assertions.
         admin.initialize();
@@ -152,8 +153,12 @@ class ListeningGradingQueueIntegrationTest {
         String id=prepare("saved recall");submit(id);
         db.update("UPDATE listening_passes SET grading_status='RUNNING',grading_attempts=1,grading_started_at=?,grading_lease=? WHERE session_id=?",
                 java.sql.Timestamp.from(java.time.Instant.now().minusSeconds(130)),UUID.randomUUID().toString(),id);
-        queue.consume(id+"/1/0/0");service.dispatchGrades();
-        assertThat(status(id)).isEqualTo("FAILED");
+        queue.consume(id+"/1/0/0");
+        // Recovery is a periodic sweep; polling must still recover without a local enqueue wakeup.
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(35))
+                .pollInterval(java.time.Duration.ofMillis(250)).untilAsserted(() -> {
+                    service.dispatchGrades(); assertThat(status(id)).isEqualTo("FAILED");
+                });
         assertThat(db.queryForObject("SELECT grading_last_error FROM listening_passes WHERE session_id=?",String.class,id)).isEqualTo("OUTCOME_UNKNOWN");
         assertThat(db.queryForObject("SELECT recall_text FROM listening_passes WHERE session_id=?",String.class,id)).isEqualTo("saved recall");
         then(ai).should(never()).completeJson(anyString(),anyString());
@@ -163,5 +168,32 @@ class ListeningGradingQueueIntegrationTest {
         var dead=rabbit.receive(DLQ,10000);assertThat(dead).isNotNull();
         assertThat(new String(dead.getBody(),java.nio.charset.StandardCharsets.UTF_8)).isEqualTo("malformed");
         assertThatNoException().isThrownBy(()->queue.consume(UUID.randomUUID()+"/1/0/0"));
+    }
+
+    @Test void providerResponseWithUncertainSideEffectIsNotAutomaticallyRetried() {
+        given(ai.configured()).willReturn(true);
+        given(ai.completeJson(anyString(), anyString())).willThrow(new ProviderGuard.Unavailable("HTTP outcome uncertain", 30));
+        String id=prepare("saved recall"); submit(id); queue.consume(id+"/1/0/0");
+        assertThat(status(id)).isEqualTo("FAILED");
+        assertThat(db.queryForObject("SELECT next_grading_at FROM listening_passes WHERE session_id=?", java.sql.Timestamp.class, id)).isNull();
+        queue.consume(id+"/1/0/0"); service.dispatchGrades();
+        then(ai).should(times(1)).completeJson(anyString(), anyString());
+    }
+
+    @Test void admissionRejectionRetriesWithBoundedBackoffAndAttemptBudget() {
+        given(ai.configured()).willReturn(true);
+        given(ai.completeJson(anyString(), anyString())).willThrow(new ProviderGuard.Unavailable("Before HTTP", 45, true));
+        String id=prepare("saved recall"); submit(id); queue.consume(id+"/1/0/0");
+        assertThat(status(id)).isEqualTo("PENDING");
+        assertThat(db.queryForObject("SELECT next_grading_at>CURRENT_TIMESTAMP + INTERVAL '40' SECOND FROM listening_passes WHERE session_id=?", Boolean.class,id)).isTrue();
+        queue.consume(id+"/1/0/1");
+        then(ai).should(times(1)).completeJson(anyString(), anyString());
+        for(int attempt=1;attempt<3;attempt++) {
+            db.update("UPDATE listening_passes SET next_grading_at=NULL WHERE session_id=?", id);
+            queue.consume(id+"/1/0/"+attempt);
+        }
+        assertThat(status(id)).isEqualTo("FAILED");
+        assertThat(db.queryForObject("SELECT grading_attempts FROM listening_passes WHERE session_id=?",Integer.class,id)).isEqualTo(3);
+        then(ai).should(times(3)).completeJson(anyString(), anyString());
     }
 }

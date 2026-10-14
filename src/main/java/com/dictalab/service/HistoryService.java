@@ -62,12 +62,20 @@ public class HistoryService {
     }
 
     public ApiDtos.LessonResult detail(Long userId, String sessionId) {
+        return detail(userId, sessionId, true);
+    }
+
+    public ApiDtos.LessonResult detailForCoach(Long userId, String sessionId) {
+        return detail(userId, sessionId, false);
+    }
+
+    private ApiDtos.LessonResult detail(Long userId, String sessionId, boolean includeAssessment) {
         PracticeSession session = sessionRepository.findByIdAndUserId(sessionId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phiên luyện tập."));
         if (session.getStatus() != SessionStatus.COMPLETED) {
             throw new ResourceNotFoundException("Phiên luyện tập này chưa hoàn thành.");
         }
-        return buildResult(session);
+        return buildResult(session, includeAssessment);
     }
 
     private ApiDtos.HistoryEntry toHistoryEntry(PracticeSession session) {
@@ -88,7 +96,7 @@ public class HistoryService {
         );
     }
 
-    private ApiDtos.LessonResult buildResult(PracticeSession session) {
+    private ApiDtos.LessonResult buildResult(PracticeSession session, boolean includeAssessment) {
         List<SentenceAttempt> attempts = sentenceAttemptRepository
                 .findByPracticeSessionIdOrderBySentencePositionAsc(session.getId());
 
@@ -112,6 +120,6 @@ public class HistoryService {
         }
 
         ApiDtos.LessonReview review = practiceService.toLessonReview(session, totalWords, sentenceReviews);
-        return practiceService.toResult(session, review);
+        return practiceService.toResult(session, review, includeAssessment);
     }
 }

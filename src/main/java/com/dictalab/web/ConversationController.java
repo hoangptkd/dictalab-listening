@@ -48,6 +48,10 @@ public class ConversationController {
     @PostMapping("/sessions/{id}/play") public ObjectNode play(@AuthenticationPrincipal DictaLabPrincipal user, @PathVariable UUID id, @Valid @RequestBody Play input) {
         return service.play(user.id(), id.toString(), input.turnNumber(), input.variant(), input.slow());
     }
+    @GetMapping("/sessions/{id}/audio-status") public Map<String,String> audioStatus(@AuthenticationPrincipal DictaLabPrincipal user,
+            @PathVariable UUID id, @RequestParam int turnNumber, @RequestParam String variant) {
+        return service.audioStatus(user.id(), id.toString(), turnNumber, variant);
+    }
     @GetMapping("/sessions/{id}/audio/{turn}/{variant}") public ResponseEntity<byte[]> audio(@AuthenticationPrincipal DictaLabPrincipal user,
             @PathVariable UUID id, @PathVariable int turn, @PathVariable String variant) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).contentType(MediaType.parseMediaType("audio/wav"))

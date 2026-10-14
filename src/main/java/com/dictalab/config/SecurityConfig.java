@@ -3,6 +3,7 @@ package com.dictalab.config;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -13,7 +14,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.context.NullSecurityContextRepository;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import com.dictalab.security.JwtTokenService;
@@ -22,10 +23,18 @@ import com.dictalab.security.RequestRateLimitFilter;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfException;
+import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.config.ObjectPostProcessor;
 
 @Configuration
-@EnableScheduling
 public class SecurityConfig {
+    // A restored snapshot must not dispatch mail/jobs or reclaim leases while being verified.
+    @Configuration(proxyBeanMethods = false)
+    @Profile("!restore-smoke")
+    @EnableScheduling
+    static class BackgroundScheduling {}
+
     @Bean
     public FilterRegistrationBean<AccountStateFilter> accountStateFilterRegistration(AccountStateFilter filter) {
         FilterRegistrationBean<AccountStateFilter> registration = new FilterRegistrationBean<>(filter);
@@ -49,7 +58,8 @@ public class SecurityConfig {
 
     @Bean
     public SecurityContextRepository securityContextRepository() {
-        return new NullSecurityContextRepository();
+        // JWT authentication is saved only for this request, not treated as a new login by session management.
+        return new RequestAttributeSecurityContextRepository();
     }
 
     @Bean
@@ -72,12 +82,19 @@ public class SecurityConfig {
         return http
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .requestCache(AbstractHttpConfigurer::disable)
+                .headers(headers -> headers
+                        .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; frame-src https://accounts.google.com/gsi/; img-src 'self' data:; font-src 'self'; connect-src 'self' https: wss:; media-src 'self' https: blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"))
+                        .referrerPolicy(policy -> policy.policy(org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                        .addHeaderWriter(new org.springframework.security.web.header.writers.StaticHeadersWriter(
+                                "Cross-Origin-Opener-Policy", "same-origin-allow-popups"))
+                        .permissionsPolicyHeader(policy -> policy.policy("camera=(), microphone=(self), geolocation=()")))
                 .oauth2ResourceServer(resource -> resource
                         .bearerTokenResolver(request -> {
                             String path = request.getRequestURI().substring(request.getContextPath().length());
                             // Public auth endpoints must work when an expired access cookie is still present.
                             if (path.startsWith("/api/auth/") && !path.equals("/api/auth/me")) return null;
                             if (!path.startsWith("/api/") && !path.startsWith("/admin")
+                                    && !path.startsWith("/media/")
                                     && !path.startsWith("/private-media/") && !path.startsWith("/ws/")) return null;
                             try { return JwtTokenService.cookie(request, JwtTokenService.ACCESS_COOKIE); }
                             catch (org.springframework.web.server.ResponseStatusException invalid) {
@@ -93,7 +110,14 @@ public class SecurityConfig {
                         .authenticationEntryPoint((request, response, exception) -> authenticationRequired(request, response)))
                 .addFilterAfter(accountStateFilter, BearerTokenAuthenticationFilter.class)
                 .addFilterAfter(rateLimitFilter, AccountStateFilter.class)
-                .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository))
+                .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository)
+                        .withObjectPostProcessor(new ObjectPostProcessor<CsrfFilter>() {
+                            @Override public <O extends CsrfFilter> O postProcess(O filter) {
+                                // Cookie JWTs must not inherit Resource Server's bearer-token CSRF exemption.
+                                filter.setRequireCsrfProtectionMatcher(CsrfFilter.DEFAULT_CSRF_MATCHER);
+                                return filter;
+                            }
+                        }))
                 .securityContext(context -> context.securityContextRepository(contextRepository))
                 .authorizeHttpRequests(auth -> auth
                         // Source files include answers/transcripts and must never be served by the static handler.
@@ -106,10 +130,13 @@ public class SecurityConfig {
                         }).denyAll()
                         // Static resources
                         .requestMatchers("/", "/index.html", "/css/**", "/js/**", "/images/**", "/audio/**",
-                                "/favicon.ico", "/favicon.svg").permitAll()
+                                "/favicon.ico", "/favicon.svg", "/policies.html", "/privacy", "/terms", "/help").permitAll()
+                        .requestMatchers(HttpMethod.GET,"/api/public/info").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/catalog/levels", "/api/v1/catalog/lessons", "/api/v1/library").permitAll()
                         // Auth API
-                        .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/auth/csrf", "/api/auth/google/config").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login",
+                                "/api/auth/google", "/api/auth/google/challenge",
                                 "/api/auth/password-reset/request", "/api/auth/password-reset/complete",
                                 "/api/auth/email/confirm", "/api/auth/email/change/confirm",
                                 "/api/auth/refresh", "/api/auth/logout").permitAll()
@@ -148,6 +175,13 @@ public class SecurityConfig {
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, exception) -> authenticationRequired(request, response))
                         .accessDeniedHandler((request, response, exception) -> {
+                            if (exception instanceof CsrfException) {
+                                // Only pre-controller CSRF rejections are safe for the client to replay.
+                                response.setHeader("X-CSRF-Error", "1");
+                                writeError(response, HttpServletResponse.SC_FORBIDDEN,
+                                        "Thông tin bảo vệ yêu cầu đã thay đổi. Vui lòng thử lại.");
+                                return;
+                            }
                             if (isAdminPage(request)) {
                                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                                 request.getRequestDispatcher("/error/403.html").forward(request, response);

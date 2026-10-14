@@ -1,5 +1,29 @@
 # Bounded capacity checks
 
+## Practice UX: 50 VU preparation (2026-10-14)
+
+See [the practice UX plan](../../docs/practice-ux-test-plan-2026-10-14.md) for the 50-case matrix,
+the input-race regressions, and the isolated `practice-ux.js` workload.
+The local runner supports `-PracticeUX -Seconds 30` (1-VU smoke) and `-PracticeUX -Seconds 930`
+(gradual ramp to 50 VUs, 10-minute plateau, recovery). It retains existing resource guards,
+creates synthetic accounts in a new capacity database and requires dedicated empty Redis.
+The smoke and 50-VU profiles have passed on the isolated local environment. Input-race fixes,
+the latest rerun and remaining coverage limits are recorded in the
+[fix report](../../artifacts/practice-fix-20261014/report.md). HTTP VUs do not test browser typing,
+IME or VPS capacity.
+
+## Evidence campaign (2026-10-04)
+
+The new `evidence.js` suite is separate from the historical 80/20 benchmarks below.
+Read [the evidence runbook](../../docs/reliability-evidence-runbook.md) before using it.
+Current long-run targets are proposals, not achieved results. Do not run against production or bypass a resource guard.
+`run-capacity-check.ps1` now requires a runtime manifest for this suite, retains compressed raw points,
+checks observed window/peak VUs, reconciles started/finished/completed journeys and workload totals,
+rejects malformed consumed metrics, and records repeated management snapshots.
+Window/peak maxima alone do not prove sustained concurrency; accounting is necessary, not sufficient.
+The 99.9% journey SLO remains unchanged: accounted failures within that limit are allowed.
+Real AI is blocked until an enforced financial/call budget exists; the old `-AckProviderCalls` flag alone is insufficient.
+
 Use only the isolated `dictalab_capacity` database and synthetic `capacity-N@loadtest.local` accounts.
 Never share a real learner session or seed into production. Each VU has its own login, cookie and CSRF token.
 
@@ -26,7 +50,7 @@ stop the recognized app, wait for its driver/watchdog to exit, export logs/resou
 ./scripts/run-capacity-check.ps1 -Module core -Mode reads -Users 50 -Seconds 900 -Label new-soak
 ./scripts/run-capacity-check.ps1 -Module core -Mode mixed -Users 50 -Seconds 120 -Label mixed
 ./scripts/run-capacity-check.ps1 -Module listening -Users 1 -Seconds 180 -Label listening-smoke
-./scripts/run-capacity-check.ps1 -Module conversation -Users 1 -Seconds 600 -AckProviderCalls -Label ai-smoke
+# Historical real-AI command is intentionally blocked; an acknowledgement is not a budget.
 ```
 
 Increase one bounded step at a time; stop at a failed threshold and investigate. Restore the same heap, pool,

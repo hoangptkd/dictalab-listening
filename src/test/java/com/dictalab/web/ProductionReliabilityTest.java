@@ -232,7 +232,7 @@ class ProductionReliabilityTest {
         }
     }
 
-    @Test void listeningRetriesOnlyDefinitivePreDispatchRejectionAndHonorsRetryAfter(){
+    @Test void listeningDoesNotAutomaticallyRetryAnUncertainProviderResponse(){
         var owner=user();Long unit=db.queryForObject("SELECT id FROM listening_units WHERE published=TRUE ORDER BY id LIMIT 1",Long.class);
         String id=(String)listening.start(owner.getId(),unit,"ONE_PASS",false).get("sessionId");
         db.update("UPDATE listening_passes SET grading_status='PENDING',recall_text='fixture' WHERE session_id=?",id);
@@ -240,9 +240,9 @@ class ProductionReliabilityTest {
         Instant before=Instant.now();
         try{
             listening.gradePending();listening.gradePending();
-            assertThat(db.queryForObject("SELECT grading_status FROM listening_passes WHERE session_id=?",String.class,id)).isEqualTo("PENDING");
+            assertThat(db.queryForObject("SELECT grading_status FROM listening_passes WHERE session_id=?",String.class,id)).isEqualTo("FAILED");
             assertThat(db.queryForObject("SELECT grading_attempts FROM listening_passes WHERE session_id=?",Integer.class,id)).isEqualTo(1);
-            assertThat(db.queryForObject("SELECT next_grading_at FROM listening_passes WHERE session_id=?",java.sql.Timestamp.class,id).toInstant()).isAfterOrEqualTo(before.plusSeconds(120));
+            assertThat(db.queryForObject("SELECT next_grading_at FROM listening_passes WHERE session_id=?",java.sql.Timestamp.class,id)).isNull();
         }finally{db.update("UPDATE listening_passes SET grading_status='FAILED' WHERE session_id=?",id);}
     }
 

@@ -3,14 +3,135 @@ param(
     [string]$BackupDirectory = 'C:\DictaLab\backups',
     [string]$SmokeArtifact = '',
     [string]$CompatibilityArtifact = '',
-    [ValidateRange(30,300)][int]$SmokeTimeoutSeconds = 180
+    [ValidateRange(30,300)][int]$SmokeTimeoutSeconds = 180,
+    [switch]$CheckRedisOnly,
+    [switch]$CheckS3Only
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+function New-RestoreSmokeConfiguration {
+    param([string]$DatabaseUrl,[string]$DatabaseUser,[string]$DatabasePassword,
+        [string]$RedisUrl,[string]$SigningKey,[string]$MediaRoot,[int]$Port=18284,[int]$ManagementPort=18285)
+    # JSON wins over inherited direct Spring environment properties; secrets never enter command-line arguments.
+    @{
+        spring=@{
+            datasource=@{
+                url=$DatabaseUrl;username=$DatabaseUser;password=$DatabasePassword;'driver-class-name'='org.postgresql.Driver'
+                hikari=@{'jdbc-url'=$DatabaseUrl;username=$DatabaseUser;password=$DatabasePassword;'driver-class-name'='org.postgresql.Driver';'maximum-pool-size'=3;'minimum-idle'=0}
+            }
+            data=@{redis=@{url=$RedisUrl;username='';password='';timeout='2s';'connect-timeout'='3s'}}
+            mail=@{host=''}
+            profiles=@{active='restore-smoke'}
+            config=@{location='classpath:/application.yml';'additional-location'='';import=''}
+        }
+        server=@{address='127.0.0.1';port=$Port}
+        management=@{
+            server=@{address='127.0.0.1';port=$ManagementPort}
+            health=@{rabbit=@{enabled=$false};mail=@{enabled=$false};redis=@{enabled=$false}}
+            tracing=@{export=@{otlp=@{enabled=$false}}}
+            otlp=@{metrics=@{export=@{enabled=$false}}}
+            logging=@{export=@{otlp=@{enabled=$false}}}
+        }
+        dictalab=@{
+            auth=@{'signing-key'=$SigningKey;'previous-signing-key'='';'key-id'='restore';'cookie-secure'=$false}
+            media=@{root=$MediaRoot;s3=@{enabled=$false;'cleanup-enabled'=$false}}
+            ai=@{queue=@{enabled=$false}}
+            listening=@{queue=@{enabled=$false}}
+            coach=@{enabled=$false}
+            conversation=@{enabled=$false;'cartesia-api-key'=''}
+            shopaikey=@{'api-key'=''}
+            'mail-from'=''
+            'personal-content'=@{enabled=$false}
+        }
+    } | ConvertTo-Json -Depth 8 -Compress
+}
+
+function Get-S3RecoveryGateSql {
+    # This gate only rejects unsupported recovery; it never treats URL/catalog metadata as an object backup.
+    @'
+SET statement_timeout = '15s';
+SET lock_timeout = '3s';
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+DO $s3_recovery$
+DECLARE
+    external_references bigint;
+    pending_objects bigint;
+BEGIN
+    SELECT (SELECT count(*) FROM public.lesson_sentences WHERE audio_url LIKE '/media/s3/%')
+         + (SELECT count(*) FROM public.listening_units WHERE audio_url LIKE '/media/s3/%') INTO external_references;
+    -- Pre-V27 databases have no catalog; legacy references must still block the release.
+    IF to_regclass('public.s3_media_lifecycle') IS NOT NULL THEN
+        EXECUTE 'SELECT count(*) FROM public.s3_media_lifecycle WHERE status IS DISTINCT FROM ''DELETED''' INTO pending_objects;
+        external_references := external_references + pending_objects;
+    END IF;
+    IF external_references > 0 THEN
+        RAISE EXCEPTION 'External S3 dependencies require a separately verified object recovery gate';
+    END IF;
+END;
+$s3_recovery$;
+SELECT 'RESTORE_S3_DEPENDENCIES_NONE';
+COMMIT;
+'@
+}
+
+function Assert-S3RecoverySupported {
+    param([string]$Psql,[string]$DatabaseName,[string]$DatabaseUser)
+    try {
+        $output=@(& $Psql -X -q -h 127.0.0.1 -U $DatabaseUser -d $DatabaseName -v ON_ERROR_STOP=1 -tAc (Get-S3RecoveryGateSql) 2>&1)
+        if($LASTEXITCODE -ne 0 -or $output.Count -ne 1 -or $output[0].ToString().Trim() -cne 'RESTORE_S3_DEPENDENCIES_NONE') {
+            throw 'S3 check was not accepted.'
+        }
+    } catch {
+        throw 'S3 recovery gate failed: external object recovery is unsupported or the read-only check could not be verified. Production was not repaired; no S3 objects were accessed.'
+    }
+    Write-Output 'RESTORE_S3_DEPENDENCIES_NONE'
+}
+
+function Get-VerifiedRestoreRedisUrl {
+    $previousRestore=[Environment]::GetEnvironmentVariable('RESTORE_REDIS_URL')
+    $previousProduction=[Environment]::GetEnvironmentVariable('REDIS_URL')
+    $previousJvmOptions=@{}
+    foreach($name in @('JAVA_TOOL_OPTIONS','JDK_JAVA_OPTIONS','_JAVA_OPTIONS')) {
+        $previousJvmOptions[$name]=[Environment]::GetEnvironmentVariable($name)
+        [Environment]::SetEnvironmentVariable($name,$null)
+    }
+    try {
+        foreach($entry in @(@{Name='RESTORE_REDIS_URL';File='restore-redis-url.xml'},@{Name='REDIS_URL';File='redis-url.xml'})) {
+            $secretPath=Join-Path $env:ProgramData ('DictaLab\auth\'+$entry.File)
+            if(($entry.Name -eq 'REDIS_URL' -or -not $env:RESTORE_REDIS_URL) -and (Test-Path -LiteralPath $secretPath)) {
+                $secure=Import-Clixml -LiteralPath $secretPath
+                $pointer=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+                try {[Environment]::SetEnvironmentVariable($entry.Name,[Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer))}
+                finally {[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer);$secure.Dispose()}
+            }
+        }
+        if(-not $env:RESTORE_REDIS_URL){throw 'Dedicated RESTORE_REDIS_URL or protected restore-redis-url.xml is required.'}
+        $checker=Join-Path $PSScriptRoot 'RedisIsolationCheck.class'
+        if(-not (Test-Path -LiteralPath $checker -PathType Leaf)){throw 'Compiled Redis isolation checker is missing.'}
+        & 'C:\Program Files\Eclipse Adoptium\jre-17.0.20.101-hotspot\bin\java.exe' -cp $PSScriptRoot RedisIsolationCheck --restore | ForEach-Object {Write-Host $_}
+        if($LASTEXITCODE -ne 0){throw 'Restore Redis isolation preflight failed; nothing was flushed or repaired.'}
+        return $env:RESTORE_REDIS_URL
+    } finally {
+        [Environment]::SetEnvironmentVariable('RESTORE_REDIS_URL',$previousRestore)
+        [Environment]::SetEnvironmentVariable('REDIS_URL',$previousProduction)
+        foreach($name in $previousJvmOptions.Keys){[Environment]::SetEnvironmentVariable($name,$previousJvmOptions[$name])}
+    }
+}
+
+if($CheckRedisOnly){$null=Get-VerifiedRestoreRedisUrl;Write-Output 'RESTORE_REDIS_PREFLIGHT_OK';return}
 if ($DatabaseName -ne 'dictalab') { throw 'Only the DictaLab source database is supported.' }
 $postgresBin = 'C:\DictaLab\postgresql-17\bin'
 $psql = Join-Path $postgresBin 'psql.exe'
 $secrets = Import-Clixml -LiteralPath (Join-Path $env:ProgramData 'DictaLab\database-secrets.xml')
+if($CheckS3Only){
+    $previousPassword=[Environment]::GetEnvironmentVariable('PGPASSWORD')
+    try {
+        $env:PGPASSWORD=$secrets.AppPassword
+        Assert-S3RecoverySupported -Psql $psql -DatabaseName $DatabaseName -DatabaseUser 'dictalab_app'
+    } finally {[Environment]::SetEnvironmentVariable('PGPASSWORD',$previousPassword)}
+    return
+}
 $restoreName = 'dictalab_restore_' + (Get-Date -Format 'yyyyMMddHHmmss')
 if ($restoreName -notmatch '^dictalab_restore_\d{14}$') { throw 'Invalid isolated restore target.' }
 $backup = Get-ChildItem -LiteralPath $BackupDirectory -Filter 'dictalab-*.dump' |
@@ -21,7 +142,10 @@ $restoredMedia=$null
 $smoke=$null
 $browser=$null
 $authEnvironment=@{}
-foreach($name in @('REDIS_URL','JWT_SIGNING_KEY','JWT_COOKIE_SECURE','SPRING_DATA_REDIS_TIMEOUT','SPRING_DATA_REDIS_CONNECT_TIMEOUT')){
+foreach($name in @('REDIS_URL','JWT_SIGNING_KEY','JWT_COOKIE_SECURE','SPRING_DATA_REDIS_TIMEOUT','SPRING_DATA_REDIS_CONNECT_TIMEOUT',
+        'SPRING_APPLICATION_JSON','DB_URL','DB_USERNAME','DB_PASSWORD','PORT','MANAGEMENT_PORT','DB_POOL_SIZE','SESSION_COOKIE_SECURE',
+        'DICTALAB_MEDIA_ROOT','DICTALAB_COACH_ENABLED','DICTALAB_CONVERSATION_ENABLED','DICTALAB_PERSONAL_CONTENT_ENABLED','SMTP_HOST','PGPASSWORD',
+        'JAVA_TOOL_OPTIONS','JDK_JAVA_OPTIONS','_JAVA_OPTIONS')){
     $authEnvironment[$name]=[Environment]::GetEnvironmentVariable($name)
 }
 $manifestPath=[IO.Path]::ChangeExtension($backup.FullName,'manifest.json')
@@ -32,6 +156,8 @@ if(Test-Path -LiteralPath $manifestPath){
 $watch = [Diagnostics.Stopwatch]::StartNew()
 $env:PGPASSWORD = $secrets.PostgresPassword
 try {
+    $restoreRedisUrl=$null
+    if($SmokeArtifact -or $CompatibilityArtifact){$restoreRedisUrl=Get-VerifiedRestoreRedisUrl}
     & (Join-Path $postgresBin 'createdb.exe') -h 127.0.0.1 -U postgres -O dictalab_app $restoreName
     if ($LASTEXITCODE -ne 0) { throw 'Could not create the isolated restore database.' }
     $created = $true
@@ -50,6 +176,10 @@ SELECT 'RESTORE_UNVALIDATED_CONSTRAINTS=' || count(*) FROM pg_constraint WHERE c
     $verification | Write-Output
     foreach($name in @('RESTORE_INVALID_FK','RESTORE_UNVALIDATED_CONSTRAINTS')){
         if($verification -notcontains ($name+'=0')){throw "Restored database failed $name."}
+    }
+    if($SmokeArtifact -or $CompatibilityArtifact){
+        # Recheck the quiescent snapshot; a live preflight alone cannot fence writes committed before service stop.
+        Assert-S3RecoverySupported -Psql $psql -DatabaseName $restoreName -DatabaseUser 'postgres'
     }
     if($manifest -and $manifest.MediaSnapshot){
         $snapshotRoot=(Resolve-Path -LiteralPath $BackupDirectory).Path.TrimEnd('\')+'\'
@@ -70,11 +200,17 @@ SELECT 'RESTORE_UNVALIDATED_CONSTRAINTS=' || count(*) FROM pg_constraint WHERE c
         $references=@(& $psql -X -h 127.0.0.1 -U postgres -d $restoreName -v ON_ERROR_STOP=1 -tAc "SELECT audio_url FROM lesson_sentences WHERE audio_url LIKE '/media/%' UNION SELECT audio_url FROM listening_units WHERE audio_url LIKE '/media/%'")
         if($LASTEXITCODE -ne 0){throw 'Could not inspect restored media references.'}
         foreach($url in $references){
+            # S3 URLs are stable application references, not files in the local snapshot.
+            # Bucket objects and the service credential need a separate recovery plan.
+            if ($url -match '^/media/s3/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(mp3|m4a|wav)$') {
+                continue
+            }
             $path=[IO.Path]::GetFullPath((Join-Path $restoredMedia $url.Substring(7)))
             if(-not $path.StartsWith($mediaRoot,[StringComparison]::OrdinalIgnoreCase) -or
                 -not (Test-Path -LiteralPath $path -PathType Leaf)){throw 'Restored DB references missing or unsafe managed media.'}
         }
         Write-Output "RESTORE_MEDIA_REFERENCES_OK=$($references.Count)"
+        Write-Output "RESTORE_S3_REFERENCES_EXTERNAL=$(@($references | Where-Object {$_ -like '/media/s3/*'}).Count)"
     }
     foreach($testedArtifact in @($SmokeArtifact,$CompatibilityArtifact) | Where-Object {$_}){
         if(-not (Test-Path -LiteralPath $testedArtifact -PathType Leaf)){throw 'Restore smoke artifact is missing.'}
@@ -84,19 +220,7 @@ SELECT 'RESTORE_UNVALIDATED_CONSTRAINTS=' || count(*) FROM pg_constraint WHERE c
             New-Item -ItemType Directory -Path $restoredMedia | Out-Null
         }
         # Never share production JWT signing keys or token keys with the restored application.
-        $redisSecret='C:\ProgramData\DictaLab\auth\redis-url.xml'
-        if(Test-Path -LiteralPath $redisSecret){
-            $secure=Import-Clixml -LiteralPath $redisSecret
-            $pointer=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-            try{$url=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)}
-            finally{[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer);$secure.Dispose()}
-            try{$redisUri=New-Object UriBuilder($url)}catch{throw 'Invalid cloud Redis URL in the protected secret file.'}
-            if($redisUri.Scheme -ne 'rediss'){throw 'Restore smoke requires verified TLS for cloud Redis.'}
-            if($redisUri.Port -lt 0){$redisUri.Port=6379}
-            # Database 15 is reserved for restore drills; check it is empty before invoking this script.
-            $redisUri.Path='/15';$env:REDIS_URL=$redisUri.Uri.AbsoluteUri;$url=$null
-            $env:SPRING_DATA_REDIS_TIMEOUT='2s';$env:SPRING_DATA_REDIS_CONNECT_TIMEOUT='3s'
-        }
+        $env:REDIS_URL=$restoreRedisUrl
         $jwtBytes=New-Object byte[] 64
         $rng=[Security.Cryptography.RandomNumberGenerator]::Create()
         try{$rng.GetBytes($jwtBytes)}finally{$rng.Dispose()}
@@ -108,9 +232,16 @@ SELECT 'RESTORE_UNVALIDATED_CONSTRAINTS=' || count(*) FROM pg_constraint WHERE c
         $env:SESSION_COOKIE_SECURE='false';$env:DICTALAB_MEDIA_ROOT=$restoredMedia
         $env:DICTALAB_COACH_ENABLED='false';$env:DICTALAB_CONVERSATION_ENABLED='false'
         $env:DICTALAB_PERSONAL_CONTENT_ENABLED='false';$env:SMTP_HOST=''
+        $env:SPRING_APPLICATION_JSON=New-RestoreSmokeConfiguration -DatabaseUrl $env:DB_URL -DatabaseUser $env:DB_USERNAME `
+            -DatabasePassword $env:DB_PASSWORD -RedisUrl $restoreRedisUrl -SigningKey $env:JWT_SIGNING_KEY -MediaRoot $restoredMedia
+        foreach($name in @('JAVA_TOOL_OPTIONS','JDK_JAVA_OPTIONS','_JAVA_OPTIONS')){[Environment]::SetEnvironmentVariable($name,$null)}
         $smokeLabel=$restoreName+'-'+(Get-FileHash -LiteralPath $testedArtifact -Algorithm SHA256).Hash.Substring(0,12)
         $smoke=Start-Process -FilePath 'C:\Program Files\Eclipse Adoptium\jre-17.0.20.101-hotspot\bin\java.exe' `
-            -WindowStyle Hidden -PassThru -WorkingDirectory $BackupDirectory -ArgumentList @('-Xms128m','-Xmx256m','-jar',('"'+$testedArtifact+'"'),'--server.address=127.0.0.1',('--logging.file.name='+$smokeLabel+'.log')) `
+            -WindowStyle Hidden -PassThru -WorkingDirectory $BackupDirectory -ArgumentList @('-Xms128m','-Xmx256m','-jar',('"'+$testedArtifact+'"'),'--server.address=127.0.0.1',('--logging.file.name='+$smokeLabel+'.log'),
+                '--dictalab.media.s3.enabled=false','--dictalab.media.s3.cleanup-enabled=false',
+                '--dictalab.ai.queue.enabled=false','--dictalab.listening.queue.enabled=false',
+                '--dictalab.shopaikey.api-key=','--dictalab.conversation.cartesia-api-key=',
+                '--dictalab.auth.previous-signing-key=','--dictalab.mail-from=') `
             -RedirectStandardOutput (Join-Path $BackupDirectory ($smokeLabel+'.stdout.log')) `
             -RedirectStandardError (Join-Path $BackupDirectory ($smokeLabel+'.stderr.log'))
         $null=$smoke.Handle
@@ -147,9 +278,11 @@ SELECT 'RESTORE_UNVALIDATED_CONSTRAINTS=' || count(*) FROM pg_constraint WHERE c
     if($LASTEXITCODE -ne 0){throw 'Could not verify the final restored schema.'}
     $watch.Stop()
     Write-Output "RESTORE_OK=$restoreName"
+    Write-Output 'RESTORE_EXTERNAL_S3_VERIFIED=FALSE'
     Write-Output "RESTORE_SECONDS=$([math]::Round($watch.Elapsed.TotalSeconds,2))"
     Write-Output "BACKUP_SHA256=$((Get-FileHash -LiteralPath $backup.FullName -Algorithm SHA256).Hash)"
 } finally {
+    try {
     if($browser -and $smoke -and -not $smoke.HasExited){
         try{
             $csrf=Invoke-RestMethod 'http://127.0.0.1:18284/api/auth/csrf' -WebSession $browser -TimeoutSec 5
@@ -157,20 +290,14 @@ SELECT 'RESTORE_UNVALIDATED_CONSTRAINTS=' || count(*) FROM pg_constraint WHERE c
             Invoke-WebRequest 'http://127.0.0.1:18284/api/auth/logout' -UseBasicParsing -WebSession $browser `
                 -Headers $logoutHeaders -Method Post -TimeoutSec 5 | Out-Null
             Write-Output 'RESTORE_AUTH_LOGOUT_OK'
-        }catch{Write-Warning 'Restore logout failed; inspect the isolated Redis database 15 before the next drill.'}
+        }catch{Write-Warning 'Restore logout failed; inspect the dedicated restore Redis before the next drill.'}
     }
     if($smoke -and -not $smoke.HasExited){Stop-Process -Id $smoke.Id;$null=$smoke.WaitForExit(10000)}
-    foreach($name in $authEnvironment.Keys){[Environment]::SetEnvironmentVariable($name,$authEnvironment[$name])}
-    foreach($name in @('DB_URL','DB_USERNAME','DB_PASSWORD','PORT','MANAGEMENT_PORT','DB_POOL_SIZE','SESSION_COOKIE_SECURE',
-            'DICTALAB_MEDIA_ROOT','DICTALAB_COACH_ENABLED','DICTALAB_CONVERSATION_ENABLED','DICTALAB_PERSONAL_CONTENT_ENABLED','SMTP_HOST')){
-        Remove-Item "Env:$name" -ErrorAction SilentlyContinue
-    }
     if ($created) {
         # Drop only the exact temporary database created by this invocation.
         & (Join-Path $postgresBin 'dropdb.exe') -h 127.0.0.1 -U postgres $restoreName
         if ($LASTEXITCODE -ne 0) { Write-Warning "Temporary database retained: $restoreName" }
     }
-    Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
     if($restoredMedia){
         $resolved=[IO.Path]::GetFullPath($restoredMedia)
         $expectedRoot=(Resolve-Path -LiteralPath $BackupDirectory).Path.TrimEnd('\')+'\'
@@ -178,5 +305,8 @@ SELECT 'RESTORE_UNVALIDATED_CONSTRAINTS=' || count(*) FROM pg_constraint WHERE c
             [IO.Path]::GetFileName($resolved) -match '^dictalab_restore_\d{14}\.media$'){
             Remove-Item -LiteralPath $resolved -Recurse -Force
         }
+    }
+    } finally {
+        foreach($name in $authEnvironment.Keys){[Environment]::SetEnvironmentVariable($name,$authEnvironment[$name])}
     }
 }

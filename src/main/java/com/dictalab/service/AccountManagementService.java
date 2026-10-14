@@ -16,6 +16,9 @@ import org.springframework.mail.MailException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
@@ -43,13 +46,15 @@ public class AccountManagementService {
     private final String smtpHost;
     private final AdminProperties adminProperties;
     private final SecureRandom random = new SecureRandom();
+    private final TransactionTemplate transaction;
+    private final EmailOutbox outbox;
 
     public AccountManagementService(AppUserRepository users, JdbcTemplate db, PasswordEncoder passwords,
                                     ObjectProvider<JavaMailSender> mail,
                                     @Value("${dictalab.public-url:http://localhost:18081}") String publicUrl,
                                     @Value("${dictalab.mail-from:}") String mailFrom,
                                     @Value("${spring.mail.host:}") String smtpHost,
-                                    AdminProperties adminProperties) {
+                                    AdminProperties adminProperties, PlatformTransactionManager manager, EmailOutbox outbox) {
         this.users = users;
         this.db = db;
         this.passwords = passwords;
@@ -58,6 +63,8 @@ public class AccountManagementService {
         this.mailFrom = mailFrom;
         this.smtpHost = smtpHost;
         this.adminProperties = adminProperties;
+        this.transaction = new TransactionTemplate(manager);
+        this.outbox = outbox;
     }
 
     @Transactional
@@ -67,13 +74,17 @@ public class AccountManagementService {
         return user;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void changePassword(long id, String oldPassword, String newPassword) {
-        AppUser user = require(id);
-        if (!passwords.matches(oldPassword, user.getPasswordHash()))
+        AppUser snapshot = require(id);
+        if (!passwords.matches(oldPassword, snapshot.getPasswordHash()))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mật khẩu hiện tại không đúng.");
-        user.changePassword(passwords.encode(newPassword), Instant.now());
-        audit(id, id, "CHANGE_PASSWORD", null);
+        String encoded = passwords.encode(newPassword);
+        transaction.executeWithoutResult(status -> {
+            AppUser user = requireUnchanged(snapshot);
+            user.changePassword(encoded, Instant.now());
+            audit(id, id, "CHANGE_PASSWORD", null);
+        });
     }
 
     @Transactional
@@ -101,15 +112,18 @@ public class AccountManagementService {
         if (!user.isEmailVerified()) sendToken(user, "VERIFY_EMAIL", null, ip);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void requestEmailChange(long id, String newEmail, String password, String ip) {
-        AppUser user = require(id);
+        AppUser snapshot = require(id);
         String target = normalize(newEmail);
-        if (!passwords.matches(password, user.getPasswordHash()))
+        if (!passwords.matches(password, snapshot.getPasswordHash()))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mật khẩu không đúng.");
-        if (target.equals(user.getEmail()) || users.existsByEmail(target))
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email đã được sử dụng.");
-        sendToken(user, "CHANGE_EMAIL", target, ip);
+        transaction.executeWithoutResult(status -> {
+            AppUser user = requireUnchanged(snapshot);
+            if (target.equals(user.getEmail()) || users.existsByEmail(target))
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Email đã được sử dụng.");
+            sendToken(user, "CHANGE_EMAIL", target, ip);
+        });
     }
 
     private void sendToken(AppUser user, String purpose, String targetEmail, String ip) {
@@ -147,16 +161,23 @@ public class AccountManagementService {
                 VALUES (?,?,?,?,?,?)
                 """, java.util.UUID.randomUUID().toString(), hash(token), recipient,
                 message.getSubject(), message.getText(), Timestamp.from(now));
+        outbox.wakeAfterCommit();
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void consumeToken(String token, String purpose, String newPassword) {
-        List<Map<String, Object>> rows = db.queryForList("""
+        // Close JDBC's synchronization-bound connection before BCrypt, including NOT_SUPPORTED scopes.
+        List<Map<String, Object>> rows = transaction.execute(status -> db.queryForList("""
                 SELECT user_id,target_email FROM account_tokens
                 WHERE token_hash=? AND purpose=? AND used_at IS NULL AND expires_at>?
-                """, hash(token), purpose, Timestamp.from(Instant.now()));
+                """, hash(token), purpose, Timestamp.from(Instant.now())));
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Liên kết đã hết hạn hoặc không hợp lệ.");
         Map<String, Object> row = rows.get(0);
+        String encoded = "RESET_PASSWORD".equals(purpose) ? passwords.encode(newPassword) : null;
+        transaction.executeWithoutResult(status -> consumeToken(token, purpose, encoded, row));
+    }
+
+    private void consumeToken(String token, String purpose, String encoded, Map<String, Object> row) {
         // Consistent user -> token lock order also serializes two different tokens for the same account.
         AppUser user = users.lockById(((Number)row.get("user_id")).longValue())
                 .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Không tìm thấy tài khoản."));
@@ -176,7 +197,7 @@ public class AccountManagementService {
                 user.revokeSessions(Instant.now());
             }
         }
-        else if ("RESET_PASSWORD".equals(purpose)) user.changePassword(passwords.encode(newPassword), Instant.now());
+        else if ("RESET_PASSWORD".equals(purpose)) user.changePassword(encoded, Instant.now());
         else throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         db.update("UPDATE account_tokens SET used_at=? WHERE user_id=? AND purpose=? AND used_at IS NULL",
                 Timestamp.from(Instant.now()), user.getId(), purpose);
@@ -242,7 +263,18 @@ public class AccountManagementService {
     }
 
     private AppUser require(long id) {
-        return users.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tài khoản."));
+        boolean writing = org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
+                && !org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+        return (writing ? users.lockById(id) : users.findById(id))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tài khoản."));
+    }
+
+    private AppUser requireUnchanged(AppUser snapshot) {
+        AppUser user = require(snapshot.getId());
+        if (!user.isEnabled() || user.getAuthVersion() != snapshot.getAuthVersion()
+                || !user.getPasswordHash().equals(snapshot.getPasswordHash()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Tài khoản đã thay đổi. Vui lòng thử lại.");
+        return user;
     }
 
     private void lockAdminPolicy() {

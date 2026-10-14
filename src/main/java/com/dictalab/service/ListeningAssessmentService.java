@@ -69,12 +69,10 @@ public class ListeningAssessmentService {
             wordsBySentence.computeIfAbsent(word.getSentenceAttempt().getId(), ignored -> new ArrayList<>()).add(word);
         }
         Map<String, Signal> signals = new HashMap<>();
-        Map<Long, Set<String>> previewWordsByLesson = new HashMap<>();
+        Map<Long, Set<String>> previewWordsByLesson = previewVocabularyService.normalizedWordsForLessons(
+                evidence.stream().map(session -> session.getLesson().getId()).distinct().toList());
         for (PracticeSession session : evidence) {
             signals.put(session.getId(), new Signal());
-            previewWordsByLesson.computeIfAbsent(session.getLesson().getId(), lessonId ->
-                    previewVocabularyService.normalizedWordsFor(session.getLesson())
-            );
         }
         for (SentenceAttempt sentenceAttempt : sentenceAttempts) {
             Signal signal = signals.get(sentenceAttempt.getPracticeSession().getId());

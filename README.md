@@ -1,6 +1,6 @@
 # DictaLab — English Listening Dictation
 
-Tài liệu toàn bộ hệ thống cập nhật 02/10/2026: [Current system reference](docs/current-system-reference.md). Có thể tải riêng file này lên ChatGPT để cung cấp ngữ cảnh về chức năng, công nghệ, thuật toán, API, dữ liệu và vận hành hiện tại.
+Tài liệu toàn bộ hệ thống cập nhật 08/10/2026: [Current system reference](docs/current-system-reference.md). Có thể tải riêng file này lên ChatGPT để cung cấp ngữ cảnh về chức năng, công nghệ, thuật toán, API, dữ liệu và vận hành hiện tại. Tài liệu phân biệt mã local với các mốc triển khai đã ghi nhận, kèm prompt và các câu hỏi để chọn hướng phát triển tiếp.
 
 MVP web luyện nghe chép chính tả tiếng Anh theo CEFR A1–B2. Người học nghe từng câu, điền từng từ vào ô có độ dài tương ứng, nhận phản hồi ngay và theo dõi khả năng nghe thực tế qua chỉ số **first-attempt accuracy**.
 
@@ -143,7 +143,8 @@ DICTALAB_ALLOWED_ORIGINS=https://your-domain.com,https://www.your-domain.com
 Nội dung do quản trị viên tạo được lưu tách khỏi JAR:
 
 - thông tin bài và transcript nằm trong PostgreSQL;
-- audio tải lên nằm tại `DICTALAB_MEDIA_ROOT` (production khuyến nghị `C:\DictaLab\media`);
+- audio tải lên mặc định nằm tại `DICTALAB_MEDIA_ROOT` (production khuyến nghị `C:\DictaLab\media`);
+  có thể bật S3 riêng tư cho upload mới, giữ audio cũ trên ổ đĩa: [cấu hình S3 audio](docs/s3-audio.md);
 - bài mới bắt đầu là **bản nháp** và chỉ xuất hiện với người học sau khi đủ audio rồi bấm **Xuất bản bài**;
 - thay JAR hoặc chạy workflow deploy không xóa PostgreSQL và thư mục media.
 

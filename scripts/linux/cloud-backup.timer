@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily DictaLab Neon database backup
+
+[Timer]
+OnCalendar=*-*-* 20:15:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+Unit=cloud-backup.service
+
+[Install]
+WantedBy=timers.target

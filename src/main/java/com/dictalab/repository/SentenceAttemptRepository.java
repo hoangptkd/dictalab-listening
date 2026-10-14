@@ -13,7 +13,14 @@ public interface SentenceAttemptRepository extends JpaRepository<SentenceAttempt
 
     Optional<SentenceAttempt> findByPracticeSessionIdAndSentenceId(String practiceSessionId, Long sentenceId);
 
-    List<SentenceAttempt> findByPracticeSessionIdOrderBySentencePositionAsc(String practiceSessionId);
+    @Query("""
+            select attempt from SentenceAttempt attempt
+            join fetch attempt.sentence sentence
+            where attempt.practiceSession.id = :practiceSessionId
+            order by sentence.position asc
+            """)
+    List<SentenceAttempt> findByPracticeSessionIdOrderBySentencePositionAsc(
+            @Param("practiceSessionId") String practiceSessionId);
 
     @Query("""
             select attempt from SentenceAttempt attempt

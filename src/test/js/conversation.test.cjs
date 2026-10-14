@@ -10,7 +10,7 @@ function state(answer, evaluation) {
         turns: [{prompt: {taskVi: 'Nghe giờ hẹn', questionVi: '<script>alert(1)</script>'}, done: false,
             attempts: answer ? [{requestId: 'saved-request', answerVi: answer, ...(evaluation ? {evaluation} : {})}] : []}]};
 }
-function harness(api) {
+function harness(api, timers = {setTimeout}) {
     const nodes = new Map();
     const node = selector => {
         if (!nodes.has(selector)) nodes.set(selector, {value: '', dataset: {}, textContent: '', disabled: false, listeners: {},
@@ -31,7 +31,7 @@ function harness(api) {
     let stopped = 0, played = 0;
     const window = {DictaLabListeningBridge: {api, currentUser: () => ({id: 1}), navigate() {},
         stopRecordedAudio() { stopped++; }, async playRecordedAudio() { played++; }}};
-    vm.runInNewContext(source, {window, document: {querySelector: () => root}, crypto: {randomUUID: () => 'new-request'}});
+    vm.runInNewContext(source, {window, document: {querySelector: () => root}, crypto: {randomUUID: () => 'new-request'}, ...timers});
     return {module: window.DictaLabConversation, root, node, stopped: () => stopped, played: () => played};
 }
 test('navigation ignores a late response and stops conversation audio', async () => {
@@ -79,4 +79,48 @@ test('Stop cancels playback while the server is still preparing audio', async ()
     await h.node('stop').listeners.click();
     resolve({...state(), audioUrl: '/private.wav'}); await playing;
     assert.equal(h.played(), 0);
+});
+
+test('queued audio uses read-only status polling and counts playback only when ready', async () => {
+    const requests = [];
+    let plays = 0;
+    const h = harness(async (url, options) => {
+        requests.push({url, options});
+        if (options) return ++plays === 1 ? {...state(), audioStatus: 'PENDING'} : {...state(), audioUrl: '/private.wav'};
+        if (url.includes('audio-status')) return {status: 'READY'};
+        return state();
+    }, {setTimeout: done => setImmediate(done)});
+    await h.module.show('session');
+    await h.node('play').listeners.click();
+    assert.equal(h.played(), 1);
+    assert.equal(plays, 2);
+    assert.equal(requests.filter(r => r.url.includes('audio-status')).length, 1);
+    assert.equal(requests.find(r => r.url.includes('audio-status')).options, undefined);
+});
+
+test('Stop while waiting in RabbitMQ cancels polling and never autoplays', async () => {
+    let wake;
+    const requests = [];
+    const h = harness(async (url, options) => {
+        requests.push(url); return options ? {...state(), audioStatus: 'PENDING'} : state();
+    }, {setTimeout: done => {wake = done;}});
+    await h.module.show('session');
+    const pending = h.node('play').listeners.click();
+    await new Promise(done => setImmediate(done));
+    await h.node('stop').listeners.click();
+    wake(); await pending;
+    assert.equal(h.played(), 0);
+    assert.equal(requests.some(url => url.includes('audio-status')), false);
+});
+
+test('failed queued audio does not automatically submit a paid retry', async () => {
+    let posts = 0;
+    const h = harness(async (_url, options) => {
+        if (options) {posts++; return {...state(), audioStatus: 'EXHAUSTED'};}
+        return state();
+    });
+    await h.module.show('session');
+    await h.node('play').listeners.click();
+    assert.equal(posts, 1); assert.equal(h.played(), 0);
+    assert.match(h.node('#conversation-status').textContent, /hết lượt thử/);
 });

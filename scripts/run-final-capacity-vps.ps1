@@ -8,7 +8,7 @@ try {
     if($RequireLowBackgroundLoad){
         if(Get-Process k6 -ErrorAction SilentlyContinue){throw 'A generator is still running; no overlapping load is permitted.'}
         $preflight=Join-Path $root "low-load-preflight-$stamp.csv"
-        & (Join-Path $root 'monitor-capacity-vps.ps1') -Seconds 60 -Output $preflight
+        & (Join-Path $root 'monitor-capacity-vps.ps1') -Seconds 70 -Output $preflight
         $samples=@(Import-Csv -LiteralPath $preflight)
         $averageCPU=($samples|Measure-Object CPUPercent -Average).Average
         $peakCPU=($samples|Measure-Object CPUPercent -Maximum).Maximum

@@ -9,19 +9,19 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="stylesheet" href="/css/app.css">
     <link rel="stylesheet" href="/css/admin.css">
+    <link rel="stylesheet" href="/css/fonts.css">
+    <link rel="stylesheet" href="/css/fidelity.css">
+    <link rel="stylesheet" href="/css/library.css">
 </head>
 <body data-area="admin">
-<a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
+<nav aria-label="Truy cập nhanh"><a class="skip-link" href="#main-content">Bỏ qua điều hướng</a></nav>
 <div id="admin-loading" class="admin-loading" role="status">Đang mở trang quản trị…</div>
 <div id="app-shell" class="admin-shell" hidden>
     <aside class="admin-sidebar" aria-label="Khu vực quản trị">
-        <a class="brand" href="/admin" aria-label="Trang chủ quản trị DictaLab">
-            <span class="brand-mark" aria-hidden="true">D</span>
-            <span><strong>DictaLab</strong><small>Trang quản trị</small></span>
-        </a>
         <p class="section-index">Quản lý</p>
         <nav class="admin-navigation" aria-label="Điều hướng quản trị">
             <a class="nav-link" href="/admin/lessons?page=1" data-route="admin">Bài nghe</a>
+            <a class="nav-link" href="/admin/lessons?library=1#library-management">Độ khó và nhóm bài</a>
             <a class="nav-link" href="/admin/listening" data-route="admin-listening">Nghe hiểu</a>
             <a class="nav-link" href="/admin/users" data-route="admin-users">Người dùng</a>
             <a class="nav-link" href="/admin/support" data-route="admin-support">Yêu cầu hỗ trợ</a>
@@ -30,6 +30,10 @@
     </aside>
     <div class="admin-main">
         <header class="admin-topbar">
+            <a class="brand" href="/admin" aria-label="Trang chủ quản trị DictaLab">
+                <span class="brand-mark" aria-hidden="true">D</span>
+                <span><strong>DictaLab</strong><small>Trang quản trị</small></span>
+            </a>
             <span class="publication-badge is-published">Quản trị viên</span>
             <div class="account-cluster">
                 <div class="account-copy">
@@ -56,6 +60,7 @@
                 <h1 id="admin-support-heading">Yêu cầu hỗ trợ.</h1><div id="admin-support-content" aria-live="polite"></div></div>
         </section>
         <section id="admin-view" class="view admin-view" hidden aria-labelledby="admin-heading">
+            <details id="library-management" class="admin-panel library-management"><summary>Quản lý mức độ khó, nhóm bài và metadata</summary><div id="library-admin-content"></div></details>
             <header class="admin-hero">
                 <div>
                     <p class="eyebrow">Nội dung học tập</p>
@@ -110,6 +115,7 @@
                         <div id="admin-lock-notice" class="admin-notice" role="status" hidden></div>
 
                         <form id="admin-lesson-form" class="admin-form" data-admin-dirty="lesson">
+                            <fieldset class="admin-metadata"><legend>Thông tin bài học</legend>
                             <div class="admin-form-grid">
                                 <label>Mã bài
                                     <input name="slug" type="text" maxlength="80" required
@@ -144,6 +150,10 @@
                                     <input name="accentProfile" type="text" maxlength="120"
                                            placeholder="vd: US, UK, mixed">
                                 </label>
+                            </div>
+                            </fieldset>
+                            <fieldset class="admin-metadata"><legend>Độ khó và mô tả</legend>
+                            <div class="admin-form-grid">
                                 <label>Độ khó từ vựng (1–5)
                                     <input name="vocabularyDifficulty" type="number" min="1" max="5" value="1" required>
                                 </label>
@@ -159,6 +169,7 @@
                                     <small>Metadata độ khó được dùng cho ước lượng năng lực; thay đổi sẽ hủy trạng thái hiệu chỉnh cũ.</small>
                                 </label>
                             </div>
+                            </fieldset>
                             <div class="admin-form-actions">
                                 <a id="admin-cancel-create" class="text-button" href="/admin/lessons?page=1" hidden>Hủy tạo bài</a>
                                 <button class="primary-button" type="submit">Lưu thông tin</button>
@@ -208,6 +219,7 @@
 <noscript><p>Vui lòng bật JavaScript để sử dụng trang quản trị.</p></noscript>
 <script src="/js/admin-ui.js" defer></script>
 <script src="/js/app.js" defer></script>
+<script src="/js/library.js" defer></script>
 <script src="/js/listening.js" defer></script>
 <script src="/js/account.js" defer></script>
 </body>

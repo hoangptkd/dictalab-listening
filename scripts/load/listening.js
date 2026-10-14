@@ -6,10 +6,14 @@ const gradingTime = new Trend('grading_elapsed_ms', true);
 export const options = journeyOptions(Number(__ENV.P95_MS || 1000));
 export function setup() { return setupAuth(); }
 export default function(tokens) {
-    const request = client(tokens[__VU - 1]);
+    listeningJourney(tokens[__VU - 1]);
+    completed.add(1);
+}
+export function listeningJourney(token) {
+    const request = client(token);
     const units = request('GET', '/api/v1/listening/units', null, 'listening-units', b => Array.isArray(b) && b.length > 0);
     let state = request('POST', '/api/v1/listening/sessions', {
-        unitId: Number(__ENV.UNIT_ID || units[0].id), mode: 'ONE_PASS', heardBefore: true,
+        unitId: Number(__ENV.UNIT_ID || units[(__VU + __ITER) % units.length].id), mode: 'ONE_PASS', heardBefore: true,
     }, 'listening-start', b => !!b.sessionId && b.stage === 'READY');
     const path = `/api/v1/listening/sessions/${state.sessionId}`;
     state = request('POST', path + '/play', {}, 'listening-play', b => b.stage === 'PLAYING' && !!b.playbackToken);
@@ -33,5 +37,4 @@ export default function(tokens) {
     request('POST', path + '/finish-after-pass-1', {}, 'listening-finish', b => b.stage === 'COMPLETE');
     request('GET', path + '/report', null, 'listening-report', b => !!b.sessionId);
     request('GET', '/api/v1/listening/history/page?page=0&size=10', null, 'listening-history', b => Array.isArray(b.items));
-    completed.add(1);
 }

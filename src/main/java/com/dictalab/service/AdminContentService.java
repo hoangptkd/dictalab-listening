@@ -33,28 +33,38 @@ public class AdminContentService {
     private final PracticeSessionRepository sessionRepository;
     private final MediaStorageService mediaStorage;
     private final JdbcTemplate jdbcTemplate;
+    private final S3MediaLifecycle s3Lifecycle;
+    private final org.springframework.transaction.support.TransactionTemplate transaction;
+    private final AdminQueryService queries;
     private final Clock clock = Clock.systemUTC();
 
     public AdminContentService(LessonRepository lessonRepository,
                                LessonSentenceRepository sentenceRepository,
                                PracticeSessionRepository sessionRepository,
                                MediaStorageService mediaStorage,
-                               JdbcTemplate jdbcTemplate) {
+                               JdbcTemplate jdbcTemplate, S3MediaLifecycle s3Lifecycle,
+                               org.springframework.transaction.PlatformTransactionManager manager, AdminQueryService queries) {
         this.lessonRepository = lessonRepository;
         this.sentenceRepository = sentenceRepository;
         this.sessionRepository = sessionRepository;
         this.mediaStorage = mediaStorage;
         this.jdbcTemplate = jdbcTemplate;
+        this.s3Lifecycle = s3Lifecycle;
+        this.transaction = new org.springframework.transaction.support.TransactionTemplate(manager);
+        this.queries = queries;
     }
 
     public List<AdminDtos.LessonListItem> listLessons() {
-        return lessonRepository.findAllByOrderByUpdatedAtDesc().stream()
-                .map(lesson -> new AdminDtos.LessonListItem(
-                        lesson.getId(), lesson.getSlug(), lesson.getTitle(), lesson.getLevel(), lesson.getTopic(),
-                        lesson.getDisplayOrder(), lesson.isActive(), lesson.getContentOrigin(),
-                        contentLocked(lesson.getId()),
-                        Math.toIntExact(sentenceRepository.countByLessonId(lesson.getId())), lesson.getUpdatedAt()
-                )).toList();
+        return jdbcTemplate.query("""
+                SELECT l.id,l.slug,l.title,l.level,l.topic,l.display_order,l.active,l.content_origin,l.updated_at,
+                    (SELECT COUNT(*) FROM lesson_sentences s WHERE s.lesson_id=l.id) AS sentence_count,
+                    (EXISTS(SELECT 1 FROM practice_sessions p WHERE p.lesson_id=l.id) OR
+                     EXISTS(SELECT 1 FROM listening_units u WHERE u.lesson_id=l.id)) AS content_locked
+                FROM lessons l ORDER BY l.updated_at DESC
+                """, (rs, n) -> new AdminDtos.LessonListItem(rs.getLong("id"), rs.getString("slug"),
+                rs.getString("title"), com.dictalab.domain.CefrLevel.valueOf(rs.getString("level")), rs.getString("topic"),
+                rs.getInt("display_order"), rs.getBoolean("active"), rs.getString("content_origin"),
+                rs.getBoolean("content_locked"), Math.toIntExact(rs.getLong("sentence_count")), rs.getTimestamp("updated_at").toInstant()));
     }
 
     public AdminDtos.LessonResponse lesson(Long lessonId) {
@@ -73,7 +83,10 @@ public class AdminContentService {
             LessonSentence sentence=new LessonSentence(copied,source.getPosition(),source.getTranscript(),source.getSpeechRate());
             sentence.update(source.getTranscript(),source.getSpeechRate(),source.getAudioStartSeconds(),source.getAudioEndSeconds());
             // Keep audio identity for exposure tracking; uploads always create a new file.
-            if(source.getAudioUrl()!=null) sentence.attachAudio(source.getAudioUrl());
+            if(source.getAudioUrl()!=null) {
+                s3Lifecycle.retain(source.getAudioUrl());
+                sentence.attachAudio(source.getAudioUrl());
+            }
             sentenceRepository.save(sentence);
         }
         sentenceRepository.flush(); return toResponse(copied);
@@ -170,14 +183,40 @@ public class AdminContentService {
         return toResponse(lesson);
     }
 
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public AdminDtos.LessonResponse uploadAudio(Long lessonId, Long sentenceId, MultipartFile file) {
+        return uploadAudio(lessonId, sentenceId, file, null, null);
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    public AdminDtos.LessonResponse uploadAudio(Long lessonId, Long sentenceId, MultipartFile file, String revision, Long actorId) {
+        transaction.executeWithoutResult(tx -> {
+            queries.verifyLesson(lessonId, revision);
+            ensureContentEditable(requireLesson(lessonId)); requireSentence(lessonId, sentenceId);
+        });
+        MediaStorageService.StoredMedia stored = mediaStorage.storeAudio(file);
+        try {
+            return transaction.execute(tx -> {
+                queries.verifyLesson(lessonId, revision);
+                var result = attachUploadedAudio(lessonId, sentenceId, stored);
+                if (actorId != null) queries.event(actorId,"LESSON",lessonId,"UPLOAD_AUDIO","Câu #"+sentenceId);
+                return result;
+            });
+        } catch (RuntimeException failure) {
+            if (!s3Lifecycle.managed(stored.publicUrl())) deleteMediaQuietly(stored.publicUrl());
+            // S3 intent remains durable even if the attach transaction or the process dies.
+            throw failure;
+        }
+    }
+
+    private AdminDtos.LessonResponse attachUploadedAudio(Long lessonId, Long sentenceId, MediaStorageService.StoredMedia stored) {
+        jdbcTemplate.queryForList("SELECT id FROM lessons WHERE id=? FOR UPDATE", lessonId);
         Lesson lesson = requireLesson(lessonId);
         ensureContentEditable(lesson);
         LessonSentence sentence = requireSentence(lessonId, sentenceId);
-        MediaStorageService.StoredMedia stored = mediaStorage.storeAudio(file);
         String previousUrl = sentence.getAudioUrl();
         manageFilesAfterTransaction(previousUrl, stored.publicUrl());
+        s3Lifecycle.retain(stored.publicUrl());
         sentence.attachAudio(stored.publicUrl());
         lesson.setPublished(false, Instant.now(clock));
         sentenceRepository.saveAndFlush(sentence);
@@ -282,31 +321,36 @@ public class AdminContentService {
                 "SELECT COUNT(*) FROM listening_units WHERE lesson_id=?", Integer.class, lesson.getId());
         if (listening != null && listening > 0)
             throw new ContentManagementException("Bài đã được dùng làm nguồn nghe hiểu. Hãy tạo bài học mới.");
+        if (jdbcTemplate.queryForObject("SELECT COUNT(*) FROM listening_review_attempts r JOIN lesson_sentences s ON s.id=r.sentence_id WHERE s.lesson_id=?",
+                Integer.class,lesson.getId()) > 0)
+            throw new ContentManagementException("Bài đã dùng cho ôn nghe. Hãy tạo bài mới để giữ nguyên bằng chứng học tập.");
     }
 
     private boolean contentLocked(Long lessonId) {
         return sessionRepository.existsByLessonId(lessonId) || Boolean.TRUE.equals(jdbcTemplate.queryForObject(
-                "SELECT EXISTS(SELECT 1 FROM listening_units WHERE lesson_id=?)", Boolean.class, lessonId));
+                "SELECT EXISTS(SELECT 1 FROM listening_units WHERE lesson_id=?) OR EXISTS(SELECT 1 FROM listening_review_attempts r JOIN lesson_sentences s ON s.id=r.sentence_id WHERE s.lesson_id=?)", Boolean.class, lessonId, lessonId));
     }
 
     private void manageFilesAfterTransaction(String previousUrl, String newUrl) {
+        s3Lifecycle.release(previousUrl);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCompletion(int status) {
                 if (status == TransactionSynchronization.STATUS_COMMITTED) {
-                    deleteMediaQuietly(previousUrl);
+                    if (!s3Lifecycle.managed(previousUrl)) deleteMediaQuietly(previousUrl);
                 } else {
-                    deleteMediaQuietly(newUrl);
+                    if (!s3Lifecycle.managed(newUrl)) deleteMediaQuietly(newUrl);
                 }
             }
         });
     }
 
     private void deleteFileAfterCommit(String audioUrl) {
+        s3Lifecycle.release(audioUrl);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                deleteMediaQuietly(audioUrl);
+                if (!s3Lifecycle.managed(audioUrl)) deleteMediaQuietly(audioUrl);
             }
         });
     }

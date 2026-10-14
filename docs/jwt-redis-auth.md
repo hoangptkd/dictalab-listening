@@ -47,6 +47,11 @@ bằng tài khoản vừa tạo thay vì đăng ký lại.
 ## Frontend, quản trị và Room
 
 Frontend tự refresh khi nhận 401, chỉ gửi lại yêu cầu bị từ chối xác thực một lần.
+Khi CSRF không còn khớp cookie, máy chủ trả 403 kèm `X-CSRF-Error: 1` trước khi chạy
+nghiệp vụ. Frontend lấy CSRF mới và thử lại một lần; áp dụng cả cho yêu cầu refresh.
+Thao tác tiếp tục trên màn hình hiện tại, giữ nội dung đang làm khi refresh còn hợp lệ.
+Không tự refresh hoặc gửi lại lỗi 403 thiếu quyền thật. JWT trong cookie vẫn bắt buộc
+kiểm tra CSRF cho thao tác ghi, không dùng ngoại lệ CSRF mặc định dành cho bearer token.
 Không gửi lại thao tác ghi sau lỗi mạng hoặc 503. Web Locks phối hợp refresh, login/register/logout
 giữa các tab; không lưu access/refresh token trong localStorage/sessionStorage hoặc URL.
 Yêu cầu trình duyệt có Web Locks trong secure context (HTTPS hoặc localhost). Trình duyệt cũ
@@ -228,3 +233,25 @@ compatibility. Smoke và hậu kiểm của lượt phát hành được giữ t
 Smoke chỉ đọc secret DPAPI trên VPS, không chứa mật khẩu/token production trong source/log.
 Source và cập nhật vận hành được push nhánh `codex/jwt-redis-production`; chưa merge `main`
 để tránh kích hoạt thêm một lượt deploy tự động không cần thiết.
+
+## Phát hành sửa duy trì thao tác — 04/10/2026
+
+Đã triển khai bản phục hồi JWT/CSRF lên `https://160.191.244.27:18443/`.
+JAR production có SHA-256 `FAF3EF2DEDE7D192512C727DCA4E02F1CE4EB4DCD63D0633EF58991CFA872652`.
+Bản đã qua 102 kiểm thử frontend và 198 kiểm thử backend; 31 kiểm thử tùy chọn bỏ qua.
+Checksum byte JavaScript qua HTTPS khớp source đã kiểm thử. Dịch vụ Running,
+health nội bộ và HTTPS đều UP; cấu hình dịch vụ và khóa JWT được giữ nguyên.
+
+Đã sao lưu nhất quán DB/media vào `C:\DictaLab\backups\dictalab-20261004-171719-412.dump`
+và snapshot media cùng tên. Khôi phục thử thành công; cả JAR mới và JAR trước đều
+đăng nhập và tạo phiên luyện tập được trên bản sao. JAR trước được giữ tại
+`C:\DictaLab\app\dictalab.previous.jar`.
+
+Kiểm tra HTTPS với tài khoản thử riêng xác nhận: cookie JWT vẫn yêu cầu CSRF;
+thiếu quyền thật trả 403 không có dấu phục hồi CSRF; giả lập hết access cookie và
+CSRF cũ vẫn refresh được rồi lưu thao tác chờ. Logout thành công, tài khoản thử
+đã dọn. Hậu kiểm: schema V25, 7 tài khoản, 39 phiên luyện tập, 0 migration lỗi,
+0 khóa ngoại hỏng, 0 database phục hồi còn lại; Redis database 15 trống.
+Kịch bản smoke local: `target/session-recovery/production-session-recovery-smoke.ps1`.
+Log kích hoạt VPS: `C:\DictaLab\staging\jwt-session-20261004-88599e3d\activation.log`.
+Tab đã mở trước khi phát hành cần tải lại mã trang một lần để dùng luồng mới.

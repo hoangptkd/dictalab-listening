@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -36,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {"spring.jpa.properties.hibernate.generate_statistics=true",
+        "spring.jpa.properties.hibernate.session_factory.statement_inspector=com.dictalab.web.BackendReadIntegrationTest$WordLookupInspector",
         "logging.level.org.hibernate.orm=ERROR"})
 @AutoConfigureMockMvc
 class BackendReadIntegrationTest {
@@ -46,6 +48,19 @@ class BackendReadIntegrationTest {
     @Autowired PracticeSessionRepository sessions;
     @Autowired DashboardService dashboard;
     @Autowired RecommendationService recommendations;
+    @Autowired com.dictalab.repository.SentenceAttemptRepository sentenceAttempts;
+    @Autowired com.dictalab.repository.WordAttemptRepository words;
+    @Autowired com.dictalab.service.PracticeService practice;
+
+    public static class WordLookupInspector implements org.hibernate.resource.jdbc.spi.StatementInspector {
+        static final ThreadLocal<Integer> selects = ThreadLocal.withInitial(() -> 0);
+        @Override public String inspect(String sql) {
+            String normalized = sql.stripLeading().toLowerCase(java.util.Locale.ROOT);
+            if (normalized.startsWith("select") && normalized.contains("from word_attempts "))
+                selects.set(selects.get() + 1);
+            return sql;
+        }
+    }
 
     AppUser owner;
     AppUser other;
@@ -103,6 +118,99 @@ class BackendReadIntegrationTest {
             mvc.perform(get("/api/v1/history?" + query).with(user(DictaLabPrincipal.from(owner))))
                     .andExpect(status().isBadRequest());
         }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {4, 32})
+    void fullRevealUsesBoundedWordLookupsAndPreservesExistingEvidence(int wordCount) {
+        new TransactionTemplate(transactions).executeWithoutResult(status -> {
+            em.persist(new com.dictalab.domain.LessonSentence(a1, 1, "Anna " + "word ".repeat(wordCount), 1));
+            em.persist(new com.dictalab.domain.LessonPreviewWord(a1, 1, "Anna", null, null, true));
+            em.flush(); em.clear();
+        });
+        var started = practice.start(owner.getId(), new com.dictalab.dto.ApiDtos.StartSessionRequest(a1.getId()));
+        long sentence = started.sentence().sentenceId();
+        practice.replay(owner.getId(), started.sessionId(), sentence,
+                new com.dictalab.dto.ApiDtos.ReplayRequest(com.dictalab.domain.ReplayEventType.STARTED));
+        practice.checkWord(owner.getId(), started.sessionId(), sentence, 1,
+                new com.dictalab.dto.ApiDtos.CheckWordRequest("wrong"));
+        practice.useHint(owner.getId(), started.sessionId(), sentence,
+                new com.dictalab.dto.ApiDtos.HintRequest(com.dictalab.domain.HintType.FIRST_LETTER, 1));
+        practice.useHint(owner.getId(), started.sessionId(), sentence,
+                new com.dictalab.dto.ApiDtos.HintRequest(com.dictalab.domain.HintType.REVEAL_WORD, 2));
+
+        var beforeRollback = practice.current(owner.getId(), started.sessionId()).sentence();
+        assertThatThrownBy(() -> new TransactionTemplate(transactions).executeWithoutResult(status -> {
+            practice.useHint(owner.getId(), started.sessionId(), sentence,
+                    new com.dictalab.dto.ApiDtos.HintRequest(com.dictalab.domain.HintType.REVEAL_SENTENCE, null));
+            em.flush(); em.clear();
+            throw new IllegalStateException("Injected full-reveal rollback");
+        })).isInstanceOf(IllegalStateException.class).hasMessage("Injected full-reveal rollback");
+        assertThat(practice.current(owner.getId(), started.sessionId()).sentence()).isEqualTo(beforeRollback);
+        new TransactionTemplate(transactions).executeWithoutResult(status -> {
+            em.clear();
+            var attempt = sentenceAttempts.findByPracticeSessionIdAndSentenceId(started.sessionId(), sentence).orElseThrow();
+            assertThat(words.findBySentenceAttemptIdOrderByWordIndex(attempt.getId())).hasSize(2);
+            assertThat(sessions.findById(started.sessionId()).orElseThrow().getRevealCount()).isZero();
+            em.flush(); em.clear();
+        });
+
+        WordLookupInspector.selects.set(0);
+        var revealed = practice.useHint(owner.getId(), started.sessionId(), sentence,
+                new com.dictalab.dto.ApiDtos.HintRequest(com.dictalab.domain.HintType.REVEAL_SENTENCE, null));
+        int firstLookups = WordLookupInspector.selects.get();
+        assertThat(revealed.words()).hasSize(wordCount + 1);
+        assertThat(revealed.words().get(0).prefilled()).isTrue();
+        assertThat(revealed.words().subList(1, wordCount + 1)).allSatisfy(word -> assertThat(word.revealed()).isTrue());
+        assertThat(revealed.requiresReplayAfterReveal()).isTrue();
+        assertThat(revealed.canComplete()).isFalse();
+        WordLookupInspector.selects.set(0);
+        var repeated = practice.useHint(owner.getId(), started.sessionId(), sentence,
+                new com.dictalab.dto.ApiDtos.HintRequest(com.dictalab.domain.HintType.REVEAL_SENTENCE, null));
+        int repeatLookups = WordLookupInspector.selects.get();
+        assertThat(repeated).isEqualTo(revealed);
+
+        new TransactionTemplate(transactions).executeWithoutResult(status -> {
+            em.clear();
+            var attempt = sentenceAttempts.findByPracticeSessionIdAndSentenceId(started.sessionId(), sentence).orElseThrow();
+            var saved = words.findBySentenceAttemptIdOrderByWordIndex(attempt.getId());
+            assertThat(saved).hasSize(wordCount).noneMatch(word -> word.getWordIndex() == 0);
+            assertThat(saved.get(0).getAttemptCount()).isEqualTo(1);
+            assertThat(saved.get(0).getFirstAnswer()).isEqualTo("wrong");
+            assertThat(saved.get(0).getFirstAttemptCorrect()).isFalse();
+            assertThat(saved.get(0).hasFirstLetterHint()).isTrue();
+            assertThat(saved.get(1).getRevealType()).isEqualTo(com.dictalab.domain.HintType.REVEAL_WORD);
+            var session = sessions.findById(started.sessionId()).orElseThrow();
+            assertThat(session.getRevealCount()).isEqualTo(1);
+            assertThat(session.getHintCount()).isEqualTo(2);
+            assertThat(session.getTotalReplays()).isEqualTo(1);
+            em.flush(); em.clear();
+        });
+        System.out.println("HINT_WORD_LOOKUP_SELECTS words=" + wordCount + " first=" + firstLookups + " repeat=" + repeatLookups);
+        assertThat(firstLookups).as("Word lookup SELECTs, excluding INSERT/UPDATE").isEqualTo(2);
+        assertThat(repeatLookups).isEqualTo(2);
+    }
+
+    @Test
+    void resultSentencesLoadTheirTranscriptInOneQueryRegardlessOfSentenceCount() {
+        String id=new TransactionTemplate(transactions).execute(status -> {
+            var session=completed(owner,a1,time,60,80,90,85,false,null);
+            for(int i=1;i<=20;i++) {
+                var sentence=new com.dictalab.domain.LessonSentence(a1,i,"Sentence "+i,1);
+                em.persist(sentence);
+                em.persist(new com.dictalab.domain.SentenceAttempt(session,sentence,time));
+            }
+            em.flush();em.clear();return session.getId();
+        });
+        var statistics=emf.unwrap(SessionFactory.class).getStatistics();
+        statistics.clear();
+        var transcripts=new TransactionTemplate(transactions).execute(status -> {
+            em.clear();
+            return sentenceAttempts.findByPracticeSessionIdOrderBySentencePositionAsc(id).stream()
+                    .map(attempt->attempt.getSentence().getTranscript()).toList();
+        });
+        assertThat(transcripts).hasSize(20).startsWith("Sentence 1","Sentence 2").endsWith("Sentence 20");
+        assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
     }
 
     @Test

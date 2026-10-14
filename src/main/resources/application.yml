@@ -10,6 +10,8 @@ spring:
       maximum-pool-size: ${DB_POOL_SIZE:10}
       connection-timeout: ${DB_POOL_WAIT_MS:3000}
       validation-timeout: 1000
+      # Bounds SQL/lock waits (not just pool acquisition). PostgreSQL sessions, including Flyway.
+      connection-init-sql: ${DB_SESSION_INIT_SQL:SET statement_timeout=15000; SET lock_timeout=3000; SET idle_in_transaction_session_timeout=60000}
   data:
     redis:
       url: ${REDIS_URL:}
@@ -50,6 +52,8 @@ spring:
     scheduling:
       pool:
         size: 4
+  lifecycle:
+    timeout-per-shutdown-phase: 75s
   servlet:
     multipart:
       max-file-size: 25MB
@@ -141,7 +145,29 @@ management:
         include: health,info,prometheus,metrics
 
 dictalab:
+  learning:
+    enabled: ${DICTALAB_LEARNING_ENABLED:false}
+    queue-enabled: ${DICTALAB_LEARNING_QUEUE_ENABLED:false}
+    dispatch-delay-ms: 5000
+    index-delay-ms: 10000
+  ai:
+    budget:
+      enabled: ${AI_BUDGET_ENABLED:true}
+      global-microusd: ${AI_GLOBAL_DAILY_MICROUSD:5000000}
+      user-microusd: ${AI_USER_DAILY_MICROUSD:2000000}
+      llm-reservation-microusd: ${AI_LLM_RESERVATION_MICROUSD:50000}
+      tts-reservation-microusd: ${AI_TTS_RESERVATION_MICROUSD:50000}
+      global-calls: ${AI_GLOBAL_DAILY_CALLS:100}
+      user-calls: ${AI_USER_DAILY_CALLS:40}
+    queue:
+      enabled: ${DICTALAB_AI_QUEUE_ENABLED:false}
+      exchange: ${DICTALAB_AI_EXCHANGE:dictalab.ai.jobs}
+      audio-queue: ${DICTALAB_AUDIO_QUEUE:dictalab.conversation.audio}
+      coach-queue: ${DICTALAB_COACH_QUEUE:dictalab.coach.reports}
+      audio-workers: ${DICTALAB_AUDIO_WORKERS:2}
+      coach-workers: ${DICTALAB_COACH_WORKERS:1}
   auth:
+    google-client-id: ${GOOGLE_CLIENT_ID:}
     signing-key: ${JWT_SIGNING_KEY:}
     previous-signing-key: ${JWT_PREVIOUS_SIGNING_KEY:}
     key-id: ${JWT_KEY_ID:1}
@@ -185,8 +211,11 @@ dictalab:
   coach:
     enabled: ${DICTALAB_COACH_ENABLED:false}
   public-url: ${DICTALAB_PUBLIC_URL:http://localhost:18081}
+  support-email: ${DICTALAB_SUPPORT_EMAIL:}
   mail-from: ${DICTALAB_MAIL_FROM:}
   shopaikey:
+    assessment-timeout-seconds: ${AI_ASSESSMENT_TIMEOUT_SECONDS:25}
+    generation-timeout-seconds: ${AI_GENERATION_TIMEOUT_SECONDS:25}
     concurrency: ${AI_CONCURRENCY:8}
     api-key: ${SHOPAIKEY_API_KEY:}
     model: ${SHOPAIKEY_MODEL:claude-sonnet-4-5}
@@ -199,6 +228,14 @@ dictalab:
   media:
     root: ${DICTALAB_MEDIA_ROOT:./data/media}
     max-file-size: 25MB
+    s3:
+      enabled: ${DICTALAB_MEDIA_S3_ENABLED:false}
+      bucket: ${DICTALAB_MEDIA_S3_BUCKET:}
+      region: ${DICTALAB_MEDIA_S3_REGION:}
+      prefix: ${DICTALAB_MEDIA_S3_PREFIX:dictalab/audio/}
+      signed-url-duration: ${DICTALAB_MEDIA_S3_SIGNED_URL_DURATION:30m}
+      cleanup-enabled: ${DICTALAB_MEDIA_S3_CLEANUP_ENABLED:false}
+      cleanup-retention-days: ${DICTALAB_MEDIA_S3_CLEANUP_RETENTION_DAYS:7}
   personal-content:
     enabled: ${DICTALAB_PERSONAL_CONTENT_ENABLED:false}
     root: ${DICTALAB_PERSONAL_CONTENT_ROOT:./data/personal-content}

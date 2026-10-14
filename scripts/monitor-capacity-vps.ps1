@@ -1,4 +1,4 @@
-param([ValidateRange(10,3600)][int]$Seconds=180,[int]$CapacityPid=0,
+param([ValidateRange(10,14400)][int]$Seconds=180,[int]$CapacityPid=0,
     [string]$Output='C:\DictaLab\capacity\resources.csv',[switch]$StopAtEnd)
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
@@ -52,6 +52,7 @@ try{
                     }
                 }
                 [IO.File]::WriteAllText(($Output+'.prometheus'),$scrape,[Text.UTF8Encoding]::new($false))
+                [IO.File]::AppendAllText(($Output+'.prometheus.series'),("# sampled_at="+(Get-Date).ToString('o')+"`n"+$scrape+"`n"),[Text.UTF8Encoding]::new($false))
             }catch { $metricValues=@{} }
         }
         $samples.Add([pscustomobject]@{Time=(Get-Date).ToString('o');CPUPercent=$cpu.PercentProcessorTime;

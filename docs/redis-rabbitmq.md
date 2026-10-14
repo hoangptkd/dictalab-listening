@@ -4,11 +4,11 @@
 
 Redis quản lý phiên JWT access/refresh token (xem [JWT/Redis](jwt-redis-auth.md)) và lưu token bucket
 cho các nhóm auth, AI và upload; các backend dùng chung ngân sách nếu nối
-cùng Redis database. RabbitMQ phân phối việc chấm nhớ ý Listening. PostgreSQL giữ đáp án, số lần
+cùng Redis database. RabbitMQ phân phối việc chấm nhớ ý Listening, tạo audio hội thoại và báo cáo Coach. PostgreSQL giữ đáp án, số lần
 thử, quyền sở hữu, lease và kết quả. Thuật toán chấm điểm giữ nguyên.
 
-HTTP session đã được thay bằng JWT và phiên token Redis. Room, email, TTS và Coach chưa chuyển
-sang hạ tầng dùng chung. Room routing/state và media vẫn cần thiết kế riêng khi chạy nhiều backend.
+HTTP session đã được thay bằng JWT và phiên token Redis. Email tiếp tục dùng outbox database hiện có.
+Room routing/state và media vẫn cần thiết kế riêng khi chạy nhiều backend.
 
 ## Chạy local
 
@@ -31,6 +31,9 @@ DICTALAB_RATE_LIMIT_BACKEND=redis
 REDIS_HOST=localhost
 REDIS_PORT=16379
 DICTALAB_LISTENING_QUEUE_ENABLED=true
+DICTALAB_AI_QUEUE_ENABLED=true
+DICTALAB_AUDIO_WORKERS=2
+DICTALAB_COACH_WORKERS=1
 RABBITMQ_HOST=localhost
 RABBITMQ_PORT=15672
 RABBITMQ_USER=<backend account>
@@ -79,11 +82,53 @@ DLQ dành cho message không hợp lệ/lỗi xử lý ngoài trạng thái nghi
 không tự đưa toàn bộ đáp án lên broker. Lỗi DB giữ việc PENDING để dispatcher đối soát/gửi lại.
 Không replay mù DLQ: xác minh trạng thái và revision hiện tại trước khi yêu cầu xử lý lại.
 
+## RabbitMQ audio hội thoại và Coach
+
+Bật `DICTALAB_AI_QUEUE_ENABLED=true` sau khi broker hoạt động. `run-local.ps1 -WithMessaging`
+bật cả Listening và AI queue; không tự bật tính năng Coach/hội thoại nếu chưa có cấu hình provider.
+Mặc định production vẫn tắt, không tự cài broker hoặc đổi cấu hình VPS.
+
+Migration V26 tạo bảng `ai_background_jobs` và `ai_job_limits`, không sửa điểm, history hay audio cũ.
+Job tham chiếu phiên bằng FK, xóa cùng phiên; broker chỉ nhận UUID job, không nhận audio, transcript,
+đáp án, user ID hay khóa provider. Audio hội thoại vẫn lưu PostgreSQL; S3 upload hiện có giữ nguyên.
+
+- Tạo audio và Coach trả trạng thái chờ ngay, không đợi provider trong HTTP request.
+  UI đọc trạng thái, ngừng chờ khi rời trang/Dừng; không tự gửi lại POST tính phí.
+  Coach vẫn hiển thị gợi ý cơ bản để luyện ngay. Lượt nghe/hỗ trợ chỉ ghi khi audio đã sẵn sàng.
+- Dispatcher gửi persistent message, mandatory và đợi publisher confirm. Pending job sống qua restart,
+  lỗi broker, queue đầy hoặc mất message; quyền gửi hết hạn sau 15 giây, gửi lại sau 30 giây nếu chưa nhận.
+- Worker claim job trong transaction ngắn rồi gọi provider bên ngoài transaction. Audio kiểm tra hash
+  câu nghe trước khi gọi TTS và kiểm tra state trước khi lưu; Coach tái sử dụng kiểm tra ownership,
+  báo cáo cache và kiểm chứng đầu ra hiện có. ACK sau khi trạng thái cuối đã lưu.
+- Trần chung qua database: mặc định 2 audio, 1 Coach đang xử lý, tối đa 1.000 pending/running job
+  mỗi loại. Các instance phải dùng cùng cấu hình worker; thay giới hạn có kiểm soát khi restart.
+  Giới hạn này chỉ dành cho hai luồng nền, không thay quota tổng của mọi lời gọi AI trong hệ thống.
+- Lease 180 giây, dài hơn timeout provider hiện có. Worker mất lease chuyển `UNKNOWN`, không tự gọi
+  provider lại. Lỗi đã biết cũng cần retry chủ động, tối đa 3 lần gọi cho mỗi công việc (1 + 2 retry).
+  Retry đổi UUID job để message cũ không kích hoạt lần thử mới. Audio đã tạo thành công rồi bị purge
+  có thể tạo lại với ngân sách mới; không áp điều này cho công việc thất bại.
+- ProviderGuard hết slot/circuit mở trước khi gửi HTTP: hoãn 5 giây, không tiêu lượt gọi, đổi job ID.
+  Không áp retry tự động này cho timeout, phản hồi lỗi/429 hay kết quả gọi provider không rõ.
+
+Exchange mặc định `dictalab.ai.jobs`; hai queue `dictalab.conversation.audio` và
+`dictalab.coach.reports`, mỗi queue có `.dlq`. Queue durable, prefetch 1, tối đa 1.000 message;
+work queue từ chối publish khi đầy. Rabbit health được kiểm tra cả khi chỉ bật AI queue.
+Tên có thể đổi qua `DICTALAB_AI_EXCHANGE`, `DICTALAB_AUDIO_QUEUE`, `DICTALAB_COACH_QUEUE`.
+
+Tăng worker chỉ khi có tài nguyên và hạn mức provider. RabbitMQ hấp thụ tải đột biến,
+không tự tăng CPU/RAM hay tốc độ provider. Theo dõi tuổi/depth queue và thời gian tạo kết quả trước
+khi tăng worker; không replay DLQ hoặc tự reset `UNKNOWN`/attempts để tránh gọi tính phí trùng.
+
+Khi tắt AI queue để quay lui, dừng consumer và đối soát job RUNNING/UNKNOWN trước; giữ bảng, queue
+và volume. Chế độ cũ không drain job AI đang pending; chỉ xử lý khi người dùng chủ động yêu cầu lại.
+Không chạy cùng lúc backend bật/tắt AI queue cho cùng phiên vì chế độ cũ không dùng shared budget.
+
 ## Giám sát
 
 Metrics hiện có `dictalab.jobs`, `dictalab.jobs.oldest.seconds` tiếp tục đo tuổi việc qua PostgreSQL.
 Metrics mới: `dictalab.rate_limit.redis_failures`, `dictalab.listening.queue.published`,
 `publish_failures`, `consumed`, `invalid`. Meter label không chứa user/session/IP/đáp án.
+AI queue có `dictalab.ai.jobs.pending`, `dictalab.ai.queue.published`, `publish_failures`, `completed`.
 Xem queue depth và unacked qua trang quản trị RabbitMQ trên loopback.
 
 Health Redis luôn tham gia vì xác thực JWT phụ thuộc Redis; health RabbitMQ bật khi bật queue.
@@ -99,6 +144,8 @@ Script tạo project Compose ngẫu nhiên, PostgreSQL/Redis/RabbitMQ riêng và
 Kiểm thử dùng AI giả lập, không gọi provider tính phí. Bao gồm ngân sách Redis giữa hai instance,
 TTL/trần số actor, lỗi Redis, lỗi nghiệp vụ phía sau filter, transaction rollback, message trùng/cũ,
 gửi không có tuyến, phục hồi quyền gửi, worker có outcome không rõ, DLQ và phiên đã xóa.
+AI queue bổ sung kiểm tra trả kết quả chờ, chống gọi TTS/Coach trùng, giới hạn chung giữa worker,
+retry chủ động có giới hạn, audio cũ đã purge, hash câu nghe và message chỉ gồm ID.
 Sau chạy, chỉ xóa container/volume dữ liệu thử của project đó. Báo cáo giữ ở
 `target/messaging-test-<UUID>/surefire-reports`; không xóa chứng cứ thử tải khác.
 
@@ -107,6 +154,8 @@ Sau chạy, chỉ xóa container/volume dữ liệu thử của project đó. B�
 Migration V25 cần lock ALTER TABLE dù chỉ thêm metadata. Giả định PostgreSQL 17/18 và triển khai
 trong maintenance window; không cam kết lock-free hoặc zero downtime khi chưa biết tải/kích thước DB.
 Kiểm thử migration trên DB sao, có backup và theo dõi lock wait trước production.
+V26 chỉ tạo bảng/index mới nhưng FK vẫn cần lock ngắn trên bảng phiên; không cam kết zero downtime.
+Quay lui giữ schema V26, không xóa bảng hoặc sửa checksum migration đã áp dụng.
 
 Để quay lại chế độ cũ:
 

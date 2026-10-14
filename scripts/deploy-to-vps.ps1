@@ -72,9 +72,12 @@ try {
     $backupScriptLocal = Join-Path $projectRoot "scripts\backup-windows-vps.ps1"
     $restoreScriptLocal = Join-Path $projectRoot "scripts\restore-drill-windows-vps.ps1"
     $preflightLocal = Join-Path $projectRoot "scripts\readiness-preflight.sql"
+    & javac --release 17 -d $buildDirectory (Join-Path $projectRoot 'scripts\load\RedisIsolationCheck.java')
+    if ($LASTEXITCODE -ne 0) { throw 'Redis restore checker compilation failed.' }
+    $redisCheckerLocal = Join-Path $buildDirectory 'RedisIsolationCheck.class'
 
     $remoteDestination = "${VpsUser}@${VpsHost}:C:/DictaLab/staging/"
-    & scp @sshCommonArgs $stagingJarLocal $updateScriptLocal $configScriptLocal $backupScriptLocal $restoreScriptLocal $preflightLocal $remoteDestination
+    & scp @sshCommonArgs $stagingJarLocal $updateScriptLocal $configScriptLocal $backupScriptLocal $restoreScriptLocal $preflightLocal $redisCheckerLocal $remoteDestination
     if ($LASTEXITCODE -ne 0) {
         throw "Upload file len VPS that bai qua scp (exit code $LASTEXITCODE)."
     }

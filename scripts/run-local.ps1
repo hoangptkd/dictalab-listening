@@ -52,6 +52,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Redis/RabbitMQ khong khoi dong thanh cong.' }
         $env:DICTALAB_RATE_LIMIT_BACKEND = 'redis'
         $env:DICTALAB_LISTENING_QUEUE_ENABLED = 'true'
+        $env:DICTALAB_AI_QUEUE_ENABLED = 'true'
         if ([string]::IsNullOrWhiteSpace($env:REDIS_URL)) {
             $redisPort = if ($env:REDIS_PORT) { $env:REDIS_PORT } else { '16379' }
             $env:REDIS_URL = "redis://localhost:$redisPort"
@@ -62,12 +63,14 @@ try {
             $rabbitPassword = [Uri]::EscapeDataString($env:RABBITMQ_PASSWORD)
             $env:RABBITMQ_URL = "amqp://${rabbitUser}:${rabbitPassword}@localhost:$rabbitPort"
         }
-        Write-Host 'Redis rate limit va RabbitMQ Listening grading da bat.'
+        Write-Host 'Redis rate limit va RabbitMQ Listening, audio, Coach da bat.'
     }
     elseif ([string]::IsNullOrWhiteSpace($env:REDIS_URL) -and
             ([string]::IsNullOrWhiteSpace($env:REDIS_HOST) -or $env:REDIS_HOST -in @('localhost','127.0.0.1'))) {
         docker compose --profile messaging up -d --wait --wait-timeout 60 redis
         if ($LASTEXITCODE -ne 0) { throw 'Redis cho JWT authentication khong khoi dong thanh cong.' }
+        $redisPort = if ($env:REDIS_PORT) { $env:REDIS_PORT } else { '16379' }
+        $env:REDIS_URL = "redis://localhost:$redisPort"
         Write-Host 'Redis JWT authentication da bat.'
     }
 

@@ -69,9 +69,12 @@
                 <button class="primary-button" type="submit">Đặt mật khẩu mới</button></form>
             <a class="text-button" href="/login">Về đăng nhập</a>` : `
             <form id="reset-request" class="auth-form"><label>Email tài khoản
-                <input name="email" type="email" maxlength="160" autocomplete="email" required></label>
+                <input name="email" type="email" maxlength="160" autocomplete="email" placeholder="ban@example.com" aria-describedby="reset-request-help" required></label>
+                <small id="reset-request-help">Kiểm tra cả thư mục Spam/Hộp thư rác sau khi gửi yêu cầu.</small>
                 <button class="primary-button" type="submit">Gửi liên kết đặt lại</button></form>
-            <a class="text-button" href="/login">Về đăng nhập</a>`;
+            <div class="reset-guidance"><p><strong>Bảo mật &amp; thời hạn:</strong> Liên kết đặt lại có thời hạn theo quy định của hệ thống. Mở liên kết trong email để tạo mật khẩu mới.</p>
+            <p>Nếu không tìm thấy email, bạn có thể thử lại sau vài phút hoặc liên hệ <a href="/help">bộ phận hỗ trợ</a>.</p></div>
+            <div class="reset-links"><a class="text-button" href="/login">← Về đăng nhập</a><a href="/register">Tạo nhật ký nghe →</a></div>`;
         enhancePasswords(panel);
         if (route === "reset-password" && !token) {
             try {
@@ -120,23 +123,23 @@
         const user = await bridge().refreshUser();
         const root = document.querySelector("#account-content");
         root.innerHTML = `<p class="account-lead">${escape(user.email)} · ${user.emailVerified ? "Email đã xác minh" : "Email chưa xác minh"}</p>
-            <div class="account-grid">
+            <div class="account-grid"><div class="account-column">
             <form id="account-name-form" class="account-panel"><h2>Thông tin cá nhân</h2>
                 <label>Tên hiển thị<input name="displayName" minlength="2" maxlength="80" value="${escape(user.displayName)}" required></label>
                 <button class="primary-button" type="submit" disabled>Lưu tên</button>
                 <small>Thay đổi tên hiển thị để lưu.</small></form>
+            <form id="account-email-form" class="account-panel"><h2>Đổi email</h2>
+                <label>Email mới<input name="email" type="email" maxlength="160" required></label>
+                <label>Mật khẩu hiện tại<input name="password" type="password" autocomplete="current-password" required></label>
+                <button class="primary-button" type="submit">Gửi liên kết xác nhận</button></form></div><div class="account-column">
             <form id="account-password-form" class="account-panel"><h2>Mật khẩu</h2>
                 <label>Mật khẩu hiện tại<input name="currentPassword" type="password" autocomplete="current-password" required></label>
                 <label>Mật khẩu mới<input name="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72" aria-describedby="account-password-note" required></label>
                 <p id="account-password-note">Từ 8 ký tự, có chữ cái và chữ số.</p><button class="primary-button" type="submit">Đổi mật khẩu</button></form>
-            <form id="account-email-form" class="account-panel"><h2>Đổi email</h2>
-                <label>Email mới<input name="email" type="email" maxlength="160" required></label>
-                <label>Mật khẩu hiện tại<input name="password" type="password" autocomplete="current-password" required></label>
-                <button class="primary-button" type="submit">Gửi liên kết xác nhận</button></form>
-            <div class="account-panel"><h2>Bảo vệ tài khoản</h2>
+            <div class="account-panel account-danger"><h2>Bảo vệ tài khoản</h2><div class="account-danger-actions">
                 ${user.emailVerified ? "" : '<button id="account-verify" class="text-button" type="button">Gửi email xác minh</button>'}
                 <button id="account-logout-all" class="text-button" type="button">Đăng xuất mọi thiết bị</button>
-                <a class="text-button" href="/support?category=ACCOUNT_DELETE">Yêu cầu xóa tài khoản hoặc dữ liệu</a></div></div>
+                <a class="text-button" href="/support?category=ACCOUNT_DELETE">Yêu cầu xóa tài khoản hoặc dữ liệu</a></div></div></div></div>
             <p data-status role="status" aria-live="polite"></p>
             ${user.role === "ADMIN" ? '<p><a href="/admin/users">Quản lý người dùng</a> · <a href="/admin/support">Xử lý hỗ trợ</a></p>' : ""}`;
         enhancePasswords(root);
@@ -181,7 +184,7 @@
         const reference = new URLSearchParams(location.search);
         const referenceType = ["LISTENING", "DICTATION"].includes(reference.get("type")) ? reference.get("type") : null;
         const referenceId = referenceType && /^[0-9a-f-]{36}$/i.test(reference.get("id") || "") ? reference.get("id") : null;
-        root.innerHTML = `<div class="account-grid"><form id="support-form" class="account-panel"><h2>Báo vấn đề</h2>
+        root.innerHTML = `<div class="support-layout"><form id="support-form" class="account-panel"><h2>Báo vấn đề</h2>
             <p>Phản hồi và trạng thái xử lý xuất hiện trong “Yêu cầu của bạn” trên trang này. Hiện chưa có thời hạn phản hồi cố định; bạn có thể quay lại để kiểm tra.</p>
             ${referenceId ? `<p>Báo vấn đề cho bài ${escape(referenceId)}.</p>
                 <input type="hidden" name="referenceType" value="${escape(referenceType)}">
@@ -192,9 +195,10 @@
             <label>Tiêu đề<input name="subject" maxlength="160" required></label>
             <label>Mô tả<textarea name="description" maxlength="3000" rows="5" required></textarea></label>
             <button class="primary-button" type="submit">Gửi yêu cầu</button></form>
-            <div class="account-panel"><h2>Yêu cầu của bạn</h2>${items.length ? `<ul>${items.map(item => `
-                <li><strong>#${item.ID ?? item.id} · ${escape(item.SUBJECT ?? item.subject)}</strong><br>
-                ${escape(item.STATUS ?? item.status)} · ${escape(item.ADMIN_NOTE ?? item.admin_note ?? "Chưa có phản hồi")}</li>`).join("")}</ul>`
+            <div class="account-panel support-history"><h2>Yêu cầu của bạn</h2>${items.length ? `<ul>${items.map(item => `
+                <li><div class="support-ticket-meta"><span>#${item.ID ?? item.id}${item.CATEGORY ?? item.category ? ` · ${escape(categories[item.CATEGORY ?? item.category] || item.CATEGORY || item.category)}` : ""}</span>
+                <span class="support-ticket-status">${escape(ticketStates[item.STATUS ?? item.status] ?? item.STATUS ?? item.status)}</span></div>
+                <strong>${escape(item.SUBJECT ?? item.subject)}</strong><p>${escape(item.ADMIN_NOTE ?? item.admin_note ?? "Chưa có phản hồi")}</p></li>`).join("")}</ul>`
                 : page === 0 ? "<p>Bạn chưa gửi yêu cầu nào. Điền biểu mẫu để báo vấn đề hoặc yêu cầu hỗ trợ.</p>" : "<p>Trang này chưa có yêu cầu. Chọn Trang trước để xem các yêu cầu đã gửi.</p>"}
                 <div class="account-pager"><button id="support-prev" type="button" class="text-button" ${page === 0 ? "disabled" : ""}>Trang trước</button>
                     <button id="support-next" type="button" class="text-button" ${result.hasMore ? "" : "disabled"}>Trang sau</button></div></div></div>
@@ -292,13 +296,27 @@
         const filter=ui.query({q:"",role:"",enabled:"",verified:"",sort:"created",page:1,user:""});
         root.setAttribute("aria-busy","true");
         try {
+            const result=await bridge().api(`/api/admin/users/page?${new URLSearchParams({...filter,page:Number(filter.page)-1})}`);
+            if(request!==adminRequest || document.body.dataset.route!=="admin-users") return;
+            ui.url({...filter,page:result.page+1},true);
+            root.innerHTML=`<form data-filters class="admin-toolbar"><label>Tìm email hoặc tên<input name="q" maxlength="160" value="${escape(filter.q)}" type="search"></label>
+                <label>Vai trò<select name="role">${selectOptions({USER:'Học viên',ADMIN:'Quản trị viên'},filter.role)}</select></label>
+                <label>Trạng thái<select name="enabled">${selectOptions({true:'Hoạt động',false:'Đã khóa'},filter.enabled)}</select></label>
+                <label>Xác minh email<select name="verified">${selectOptions({true:'Đã xác minh',false:'Chưa xác minh'},filter.verified)}</select></label>
+                <label>Sắp xếp<select name="sort">${selectOptions({created:'Đăng ký mới nhất',login:'Đăng nhập gần nhất',name:'Tên A–Z'},filter.sort,false)}</select></label>
+                <div class="admin-actions"><button class="primary-button compact" type="submit">Áp dụng</button><button class="text-button" type="button" data-clear>Xóa lọc</button></div></form>
+                <details class="admin-usage-summary" open><summary>Tổng quan sử dụng</summary><section id="admin-usage" class="account-panel" aria-label="Tổng quan sử dụng"></section></details>
+                <div class="admin-records"><section class="admin-master"><p class="admin-summary">${result.total} tài khoản phù hợp</p>${result.items.length?`<div class="admin-table-wrap"><table class="admin-table"><caption class="sr-only">Danh sách người dùng</caption><thead><tr><th scope="col">Người dùng</th><th scope="col">Vai trò</th><th scope="col">Trạng thái</th><th scope="col">Đăng ký</th><th scope="col">Thao tác</th></tr></thead><tbody>${result.items.map(user=>`<tr class="${String(user.id)===String(filter.user)?'is-selected':''}">
+                <td><strong>${escape(user.display_name)}</strong><small>${escape(user.email)}</small></td><td data-label="Vai trò">${user.role==='ADMIN'?'Quản trị viên':'Học viên'}</td>
+                <td data-label="Trạng thái">${ui.badge(user.enabled?'Hoạt động':'Đã khóa',user.enabled?'good':'warn')}<small>${user.email_verified?'Email đã xác minh':'Email chưa xác minh'}</small></td>
+                <td data-label="Đăng ký">${ui.stamp(user.created_at)}</td><td><a class="text-button" data-detail href="${escape(detailUrl('user',user.id))}" aria-label="Quản lý ${escape(user.email)}">Quản lý →</a></td></tr>`).join('')}</tbody></table></div>`:'<p class="admin-empty">Không có tài khoản phù hợp. Hãy đổi điều kiện hoặc xóa bộ lọc.</p>'}${ui.pager(result)}</section><aside class="admin-detail" aria-label="Chi tiết người dùng"><div class="admin-empty">Chọn người dùng để xem hồ sơ và các thao tác quản trị.</div></aside></div><p data-status role="status" aria-live="polite"></p>`;
             if(filter.user) {
                 const [user,events]=await Promise.all([bridge().api(`/api/admin/users/${encodeURIComponent(filter.user)}`),bridge().api(`/api/admin/users/${encodeURIComponent(filter.user)}/audit`)]);
                 const related=await bridge().api(`/api/admin/support/tickets/page?status=&sort=newest&q=${encodeURIComponent(user.email)}`);
                 const relatedItems=related.items.filter(item=>Number(item.user_id)===Number(user.id));
                 if(request!==adminRequest || document.body.dataset.route!=="admin-users") return;
                 const self=Number(user.id)===Number(bridge().currentUser().id);
-                root.innerHTML=`<a class="text-button" data-detail href="${escape(listUrl('user'))}">← Danh sách người dùng</a>
+                root.querySelector(".admin-detail").innerHTML=`<a class="text-button" data-detail href="${escape(listUrl('user'))}">← Danh sách người dùng</a>
                     <section class="admin-panel"><h2>${escape(user.displayName)}</h2><dl class="admin-detail-grid">
                     <div><dt>Email</dt><dd>${escape(user.email)}</dd></div><div><dt>Mã tài khoản</dt><dd>#${user.id}</dd></div>
                     <div><dt>Vai trò</dt><dd>${ui.badge(user.role==='ADMIN'?'Quản trị viên':'Học viên')}</dd></div>
@@ -312,7 +330,9 @@
                     ${self?'<p class="admin-summary">Đây là tài khoản của bạn. Quản lý mật khẩu và phiên tại trang tài khoản.</p>':''}</section>
                     <section class="admin-panel"><h2>Nhật ký tài khoản</h2>${ui.events(events.map(item=>({action:item.ACTION??item.action,actor_email:item.ACTOR_EMAIL??item.actor_email,detail:item.DETAIL??item.detail,created_at:item.CREATED_AT??item.created_at})))}</section>
                     <section class="admin-panel"><h2>Yêu cầu hỗ trợ gần đây</h2>${relatedItems.length?relatedItems.map(item=>`<p><a href="/admin/support?ticket=${item.id}">#${item.id} · ${escape(item.subject)}</a> · ${escape(ticketStates[item.status])}</p>`).join(''):'<p>Không có yêu cầu trong kết quả gần đây.</p>'}<a class="text-button" href="/admin/support?sort=newest&q=${encodeURIComponent(user.email)}">Tìm toàn bộ yêu cầu theo email →</a></section><p data-status role="status"></p>`;
-                adminFilters(root,{},users);
+
+                root.querySelector(".admin-detail h2").setAttribute("tabindex", "-1");
+                root.querySelector(".admin-detail h2").focus({preventScroll: true});
                 root.querySelectorAll("[data-user-action]").forEach(button=>button.addEventListener("click",()=>ui.busy(root,async()=>{
                     try {
                         const action=button.dataset.userAction;
@@ -331,23 +351,10 @@
                         await users(); status(root,'Đã hoàn thành thao tác.');
                     } catch(error) { status(root,error.message,true); }
                 })));
-                return;
             }
-            const result=await bridge().api(`/api/admin/users/page?${new URLSearchParams({...filter,page:Number(filter.page)-1})}`);
-            if(request!==adminRequest || document.body.dataset.route!=="admin-users") return;
-            ui.url({...filter,page:result.page+1},true);
-            root.innerHTML=`<section id="admin-usage" class="account-panel" aria-label="Tổng quan sử dụng"></section>
-                <form data-filters class="admin-toolbar"><label>Tìm email hoặc tên<input name="q" maxlength="160" value="${escape(filter.q)}" type="search"></label>
-                <label>Vai trò<select name="role">${selectOptions({USER:'Học viên',ADMIN:'Quản trị viên'},filter.role)}</select></label>
-                <label>Trạng thái<select name="enabled">${selectOptions({true:'Hoạt động',false:'Đã khóa'},filter.enabled)}</select></label>
-                <label>Xác minh email<select name="verified">${selectOptions({true:'Đã xác minh',false:'Chưa xác minh'},filter.verified)}</select></label>
-                <label>Sắp xếp<select name="sort">${selectOptions({created:'Đăng ký mới nhất',login:'Đăng nhập gần nhất',name:'Tên A–Z'},filter.sort,false)}</select></label>
-                <div class="admin-actions"><button class="primary-button compact" type="submit">Áp dụng</button><button class="text-button" type="button" data-clear>Xóa lọc</button></div></form>
-                <p class="admin-summary">${result.total} tài khoản phù hợp</p>${result.items.length?`<div class="admin-table-wrap"><table class="admin-table"><caption class="sr-only">Danh sách người dùng</caption><thead><tr><th scope="col">Người dùng</th><th scope="col">Vai trò</th><th scope="col">Trạng thái</th><th scope="col">Đăng ký</th><th scope="col">Thao tác</th></tr></thead><tbody>${result.items.map(user=>`<tr>
-                <td><strong>${escape(user.display_name)}</strong><small>${escape(user.email)}</small></td><td data-label="Vai trò">${user.role==='ADMIN'?'Quản trị viên':'Học viên'}</td>
-                <td data-label="Trạng thái">${ui.badge(user.enabled?'Hoạt động':'Đã khóa',user.enabled?'good':'warn')}<small>${user.email_verified?'Email đã xác minh':'Email chưa xác minh'}</small></td>
-                <td data-label="Đăng ký">${ui.stamp(user.created_at)}</td><td><a class="text-button" data-detail href="${escape(detailUrl('user',user.id))}" aria-label="Quản lý ${escape(user.email)}">Quản lý →</a></td></tr>`).join('')}</tbody></table></div>`:'<p class="admin-empty">Không có tài khoản phù hợp. Hãy đổi điều kiện hoặc xóa bộ lọc.</p>'}${ui.pager(result)}<p data-status role="status"></p>`;
             adminFilters(root,{sort:'created'},users);
+            const usageSummary = root.querySelector(".admin-usage-summary");
+            root.prepend(usageSummary);
             usage(root.querySelector("#admin-usage"));
         } catch(error) { if(request===adminRequest && document.body.dataset.route==='admin-users') ui.failure(root,error.message,users); }
         finally { if(request===adminRequest) root.setAttribute('aria-busy','false'); }
@@ -358,39 +365,6 @@
         const filter=ui.query({q:'',status:'OPEN',category:'',referenceType:'',from:'',to:'',sort:'oldest',page:1,ticket:''});
         root.setAttribute('aria-busy','true');
         try {
-            if(filter.ticket) {
-                const item=await bridge().api(`/api/admin/support/tickets/${encodeURIComponent(filter.ticket)}`);
-                if(request!==adminRequest || document.body.dataset.route!=='admin-support') return;
-                root.innerHTML=`<a data-detail class="text-button" href="${escape(listUrl('ticket'))}">← Danh sách yêu cầu</a>
-                    <section class="admin-panel"><h2>#${item.id} · ${escape(item.subject)}</h2><dl class="admin-detail-grid">
-                    <div><dt>Người gửi</dt><dd><a href="/admin/users?user=${item.user_id}">${escape(item.email)}</a></dd></div>
-                    <div><dt>Loại vấn đề</dt><dd>${escape(categories[item.category])}</dd></div><div><dt>Ngày tạo</dt><dd>${ui.stamp(item.created_at)}</dd></div><div><dt>Cập nhật</dt><dd>${ui.stamp(item.updated_at)}</dd></div></dl>
-                    <p class="admin-detail-description">${escape(item.description)}</p>
-                    ${item.content_id?`<p><a href="${item.reference_type==='LISTENING'?'/admin/listening?edit=':'/admin/lessons/'}${item.content_id}">Xem nội dung bài liên quan →</a></p>`:''}
-                    <form data-ticket="${item.id}" data-admin-dirty="ticket-${item.id}"><label>Trạng thái<select name="status">${selectOptions(ticketStates,item.status,false)}</select></label>
-                    <label>Phản hồi cho người học<textarea name="adminNote" rows="5" maxlength="1000">${escape(item.admin_note)}</textarea></label>
-                    <button class="primary-button compact" type="submit">Lưu phản hồi</button></form>
-                    ${item.category==='SCORE' && item.reference_type==='LISTENING'?`<button type="button" class="text-button" data-grade-ticket="${item.id}">Kiểm tra phần nhớ ý</button><div data-grade-holder="${item.id}"></div>`:''}
-                    ${item.category==='ACCOUNT_DELETE'?'<button type="button" class="text-button" data-delete-account>Xóa tài khoản và dữ liệu học</button>':''}</section>
-                    <section class="admin-panel"><h2>Lịch sử xử lý</h2><div data-events>${ui.events(item.events)}</div></section><p data-status role="status" aria-live="polite"></p>`;
-                const form=root.querySelector('[data-ticket]'); ui.track(root);
-                submit(form,async data=>{
-                    await bridge().api(`/api/admin/support/tickets/${item.id}`,{method:'PUT',body:{...data,version:item.edit_version}});
-                    ui.clean(form);
-                    const updated=await bridge().api(`/api/admin/support/tickets/${item.id}`);
-                    item.edit_version=updated.edit_version;
-                    root.querySelector('[data-events]').innerHTML=ui.events(updated.events);
-                    status(root,'Đã lưu phản hồi.');
-                });
-                adminFilters(root,{},tickets); bindGrading(root);
-                root.querySelector('[data-delete-account]')?.addEventListener('click',()=>ui.busy(root,async()=>{
-                    const email=prompt(`Xóa vĩnh viễn tài khoản ${item.email} và toàn bộ lịch sử học. Nhập đúng email để xác nhận:`);
-                    if(!email) return;
-                    try { await bridge().api(`/api/admin/support/tickets/${item.id}/delete-account`,{method:'POST',body:{email}}); ui.clean(form); ui.url({...filter,ticket:''}); await tickets(); }
-                    catch(error) { status(root,error.message,true); }
-                }));
-                return;
-            }
             const result=await bridge().api(`/api/admin/support/tickets/page?${new URLSearchParams({...filter,page:Number(filter.page)-1})}`);
             if(request!==adminRequest || document.body.dataset.route!=='admin-support') return;
             ui.url({...filter,page:result.page+1},true);
@@ -400,7 +374,41 @@
                 <label>Từ ngày (UTC)<input type="date" name="from" value="${escape(filter.from)}"></label><label>Đến ngày (UTC)<input type="date" name="to" value="${escape(filter.to)}"></label>
                 <label>Sắp xếp<select name="sort">${selectOptions({oldest:'Cũ nhất trước',newest:'Mới nhất trước'},filter.sort,false)}</select></label>
                 <div class="admin-actions"><button type="submit" class="primary-button compact">Áp dụng</button><button type="button" class="text-button" data-clear>Xóa lọc</button></div></form>
-                <p class="admin-summary">${result.total} yêu cầu phù hợp</p>${result.items.length?`<div class="admin-table-wrap"><table class="admin-table"><caption class="sr-only">Danh sách yêu cầu hỗ trợ</caption><thead><tr><th scope="col">Yêu cầu</th><th scope="col">Loại</th><th scope="col">Trạng thái</th><th scope="col">Ngày tạo</th><th scope="col">Thao tác</th></tr></thead><tbody>${result.items.map(item=>`<tr><td><strong>#${item.id} · ${escape(item.subject)}</strong><small>${escape(item.email)}</small></td><td data-label="Loại">${escape(categories[item.category])}</td><td data-label="Trạng thái">${ui.badge(ticketStates[item.status],item.status==='RESOLVED'?'good':'warn')}</td><td data-label="Ngày tạo">${ui.stamp(item.created_at)}</td><td><a class="text-button" data-detail href="${escape(detailUrl('ticket',item.id))}" aria-label="Xử lý yêu cầu ${item.id}">Xử lý →</a></td></tr>`).join('')}</tbody></table></div>`:'<p class="admin-empty">Không có yêu cầu phù hợp. Hãy đổi điều kiện hoặc xóa bộ lọc.</p>'}${ui.pager(result)}<p data-status role="status"></p>`;
+                <div class="admin-records"><section class="admin-master"><p class="admin-summary">${result.total} yêu cầu phù hợp</p>${result.items.length?`<div class="admin-table-wrap"><table class="admin-table"><caption class="sr-only">Danh sách yêu cầu hỗ trợ</caption><thead><tr><th scope="col">Yêu cầu</th><th scope="col">Loại</th><th scope="col">Trạng thái</th><th scope="col">Ngày tạo</th><th scope="col">Thao tác</th></tr></thead><tbody>${result.items.map(item=>`<tr class="${String(item.id)===String(filter.ticket)?'is-selected':''}"><td><strong>#${item.id} · ${escape(item.subject)}</strong><small>${escape(item.email)}</small></td><td data-label="Loại">${escape(categories[item.category])}</td><td data-label="Trạng thái">${ui.badge(ticketStates[item.status],item.status==='RESOLVED'?'good':'warn')}</td><td data-label="Ngày tạo">${ui.stamp(item.created_at)}</td><td><a class="text-button" data-detail href="${escape(detailUrl('ticket',item.id))}" aria-label="Xử lý yêu cầu ${item.id}">Xử lý →</a></td></tr>`).join('')}</tbody></table></div>`:'<p class="admin-empty">Không có yêu cầu phù hợp. Hãy đổi điều kiện hoặc xóa bộ lọc.</p>'}${ui.pager(result)}</section><aside class="admin-detail" aria-label="Chi tiết yêu cầu"><div class="admin-empty">Chọn yêu cầu để xem nội dung và phản hồi.</div></aside></div><p data-status role="status" aria-live="polite"></p>`;
+            if(filter.ticket) {
+                const item=await bridge().api(`/api/admin/support/tickets/${encodeURIComponent(filter.ticket)}`);
+                if(request!==adminRequest || document.body.dataset.route!=='admin-support') return;
+                root.querySelector(".admin-detail").innerHTML=`<a data-detail class="text-button" href="${escape(listUrl('ticket'))}">← Danh sách yêu cầu</a>
+                    <section class="admin-panel"><h2>#${item.id} · ${escape(item.subject)}</h2><dl class="admin-detail-grid">
+                    <div><dt>Người gửi</dt><dd><a href="/admin/users?user=${item.user_id}">${escape(item.email)}</a></dd></div>
+                    <div><dt>Loại vấn đề</dt><dd>${escape(categories[item.category])}</dd></div><div><dt>Ngày tạo</dt><dd>${ui.stamp(item.created_at)}</dd></div><div><dt>Cập nhật</dt><dd>${ui.stamp(item.updated_at)}</dd></div></dl>
+                    <p class="admin-detail-description">${escape(item.description)}</p>
+                    ${item.content_id?`<p><a href="${item.reference_type==='LISTENING'?'/admin/listening?edit=':'/admin/lessons/'}${item.content_id}">Xem nội dung bài liên quan →</a></p>`:''}
+                    <form data-ticket="${item.id}" data-admin-dirty="ticket-${item.id}"><label>Trạng thái<select name="status">${selectOptions(ticketStates,item.status,false)}</select></label>
+                    <label>Phản hồi cho người học<textarea name="adminNote" rows="5" maxlength="1000">${escape(item.admin_note)}</textarea></label>
+                    <button class="primary-button compact" type="submit">Lưu phản hồi</button></form>
+                    ${item.category==='SCORE' && item.reference_type==='LISTENING'?`<button type="button" class="text-button" data-grade-ticket="${item.id}">Kiểm tra phần nhớ ý</button><div data-grade-holder="${item.id}"></div>`:''}
+                    ${item.category==='ACCOUNT_DELETE'?'<div class="admin-sensitive"><p>Thao tác xóa tài khoản và dữ liệu học</p><button type="button" class="text-button" data-delete-account>Xóa tài khoản và dữ liệu học</button></div>':''}</section>
+                    <section class="admin-panel"><h2>Lịch sử xử lý</h2><div data-events>${ui.events(item.events)}</div></section><p data-status role="status" aria-live="polite"></p>`;
+                root.querySelector(".admin-detail h2").setAttribute("tabindex", "-1");
+                root.querySelector(".admin-detail h2").focus({preventScroll: true});
+                const form=root.querySelector('[data-ticket]'); ui.track(root);
+                submit(form,async data=>{
+                    await bridge().api(`/api/admin/support/tickets/${item.id}`,{method:'PUT',body:{...data,version:item.edit_version}});
+                    ui.clean(form);
+                    const updated=await bridge().api(`/api/admin/support/tickets/${item.id}`);
+                    item.edit_version=updated.edit_version;
+                    root.querySelector('[data-events]').innerHTML=ui.events(updated.events);
+                    status(root,'Đã lưu phản hồi.');
+                });
+                root.querySelector('[data-delete-account]')?.addEventListener('click',()=>ui.busy(root,async()=>{
+                    const email=prompt(`Xóa vĩnh viễn tài khoản ${item.email} và toàn bộ lịch sử học. Nhập đúng email để xác nhận:`);
+                    if(!email) return;
+                    try { await bridge().api(`/api/admin/support/tickets/${item.id}/delete-account`,{method:'POST',body:{email}}); ui.clean(form); ui.url({...filter,ticket:''}); await tickets(); }
+                    catch(error) { status(root,error.message,true); }
+                }));
+            }
+            bindGrading(root);
             adminFilters(root,{status:'',sort:'oldest'},tickets);
         } catch(error) { if(request===adminRequest && document.body.dataset.route==='admin-support') ui.failure(root,error.message,tickets); }
         finally { if(request===adminRequest) root.setAttribute('aria-busy','false'); }

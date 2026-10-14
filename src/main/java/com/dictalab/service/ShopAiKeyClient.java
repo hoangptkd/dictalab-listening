@@ -21,6 +21,29 @@ public class ShopAiKeyClient {
     private final String model;
     private final String url;
     private final ProviderGuard guard;
+    private Duration assessmentTimeout=Duration.ofSeconds(60);
+    private Duration generationTimeout=Duration.ofSeconds(30);
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureTimeouts(@Value("${dictalab.shopaikey.assessment-timeout-seconds:25}") int assessment,
+                           @Value("${dictalab.shopaikey.generation-timeout-seconds:25}") int generation) {
+        if (assessment<1 || assessment>60 || generation<1 || generation>30)
+            throw new IllegalArgumentException("Invalid provider timeout");
+        assessmentTimeout=Duration.ofSeconds(assessment);
+        generationTimeout=Duration.ofSeconds(generation);
+    }
+
+    public static final class Failure extends IllegalStateException {
+        private final String reason;
+        Failure(String reason,String message) { super(message); this.reason=reason; }
+        public String reason() { return reason; }
+    }
+
+    static String reason(RuntimeException failure) {
+        if (failure instanceof Failure provider) return provider.reason();
+        if (failure instanceof ProviderGuard.Unavailable) return "ADMISSION_OR_RATE_LIMIT";
+        return "VALIDATION_OR_INTERNAL";
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     public ShopAiKeyClient(ObjectMapper json,
@@ -51,12 +74,12 @@ public class ShopAiKeyClient {
     public String model() { return model; }
 
     public JsonNode completeJson(String instruction, String input) {
-        return requestJson(instruction, input, model, Duration.ofSeconds(60));
+        return requestJson(instruction, input, model, assessmentTimeout);
     }
 
     public JsonNode completeJson(String instruction, String input, String requestModel) {
         // Bound conversation generation/repair independently of the slower assessment requests.
-        return requestJson(instruction, input, requestModel, Duration.ofSeconds(30));
+        return requestJson(instruction, input, requestModel, generationTimeout);
     }
 
     private JsonNode requestJson(String instruction, String input, String requestModel, Duration timeout) {
@@ -80,7 +103,9 @@ public class ShopAiKeyClient {
                 response = pending.get(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
             } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException exception) {
                 permit.failure();
-                throw new IllegalStateException("Không thể đọc phản hồi ShopAIKey trong thời hạn.", exception);
+                throw new Failure(exception instanceof java.util.concurrent.TimeoutException
+                        || exception.getCause() instanceof java.net.http.HttpTimeoutException ? "TIMEOUT" : "TRANSPORT",
+                        "Không thể đọc phản hồi ShopAIKey trong thời hạn.");
             } finally { pending.cancel(true); }
             if (response.statusCode() != 200) {
                 if(response.statusCode()==429 || response.statusCode()>=500)permit.failure();
@@ -88,11 +113,15 @@ public class ShopAiKeyClient {
                     int delay=ProviderGuard.retryAfterSeconds(response.headers().firstValue("Retry-After").orElse(null),java.time.Instant.now());
                     if(delay>0) throw new ProviderGuard.Unavailable("ShopAIKey trả HTTP 429",delay);
                 }
-                throw new IllegalStateException("ShopAIKey trả HTTP " + response.statusCode());
+                throw new Failure("HTTP_"+response.statusCode(),"ShopAIKey trả HTTP " + response.statusCode());
             }
-            JsonNode answer = json.readTree(response.body()).path("choices").path(0).path("message").path("content");
+            JsonNode choice = json.readTree(response.body()).path("choices").path(0);
+            if ("length".equals(choice.path("finish_reason").asText())) {
+                throw new Failure("OUTPUT_TRUNCATED","Phản hồi AI vượt giới hạn nội dung.");
+            }
+            JsonNode answer = choice.path("message").path("content");
             if (!answer.isTextual() || answer.asText().isBlank() || answer.asText().length() > 12_000) {
-                throw new IllegalStateException("ShopAIKey không trả nội dung hợp lệ.");
+                throw new Failure("INVALID_CONTENT","ShopAIKey không trả nội dung hợp lệ.");
             }
             String content = answer.asText().trim();
             if (content.startsWith("```")) {
@@ -116,7 +145,7 @@ public class ShopAiKeyClient {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Yêu cầu ShopAIKey bị gián đoạn.", exception);
         } catch (tools.jackson.core.JacksonException exception) {
-            throw new IllegalStateException("ShopAIKey JSON không hợp lệ.", exception);
+            throw new Failure("INVALID_JSON","ShopAIKey JSON không hợp lệ.");
         }
         }
     }

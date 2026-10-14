@@ -30,7 +30,7 @@ try {
         '-Dspring.profiles.active=postgres-test' `
         "-Dspring.datasource.url=jdbc:postgresql://127.0.0.1:$postgresPort/dictalab_messaging_test" `
         '-Dspring.datasource.username=dictalab_test' `
-        '-Dtest=RequestRateLimitFilterTest,RedisRateLimitIntegrationTest,JwtRedisIntegrationTest,ListeningGradingQueueIntegrationTest,ListeningComprehensionIntegrationTest,ProductionReliabilityTest' test
+        '-Dtest=RequestRateLimitFilterTest,RedisRateLimitIntegrationTest,JwtRedisIntegrationTest,ListeningGradingQueueIntegrationTest,AiBackgroundJobsIntegrationTest,AiRabbitQueueIntegrationTest,ListeningComprehensionIntegrationTest,ProductionReliabilityTest' test
     if ($LASTEXITCODE -ne 0) { throw "Messaging tests failed; reports: $testOutput/surefire-reports" }
 } finally {
     # Only this randomly named test project is removed, including its disposable DB volumes.

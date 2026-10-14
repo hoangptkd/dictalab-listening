@@ -24,6 +24,9 @@ spring:
     enabled: true
 
 dictalab:
+  ai:
+    budget:
+      enabled: false
   auth:
     signing-key: dGVzdC1vbmx5LWRpY3RhbGFiLXNpZ25pbmcta2V5LTMyaGFyYWN0ZXJz
     cookie-secure: false

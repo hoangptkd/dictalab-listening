@@ -67,7 +67,7 @@
             return;
         }
         if (!id) {
-            if (query.get("view") === "history") await history(Number(query.get("page") || 0));
+            if (query.get("view") === "history") await history(Number(query.get("page") || 1));
             else await catalog();
             return;
         }
@@ -88,16 +88,20 @@
     async function catalog() {
         const units = await loadView("/api/v1/listening/units");
         if (!units) return;
+        const levelNumbers = {};
+        const numberedUnits = units.map(unit => ({...unit,
+            number: levelNumbers[unit.level] = (levelNumbers[unit.level] || 0) + 1}));
         root().innerHTML = units.length ? `
             <label for="listening-level">Trình độ</label>
             <select id="listening-level">
                 <option value="">Tất cả (${units.length})</option>
                 ${["A1", "A2", "B1", "B2"].map(level => `<option value="${level}">${level} (${units.filter(unit => unit.level === level).length})</option>`).join("")}
             </select>
-            <div class="listening-grid">${units.map(unit => `
+            <p class="catalog-order-note">Thứ tự theo bài nguồn đã biên tập. Số bài được đánh riêng trong từng cấp độ, không biểu thị độ khó.</p>
+            <div class="listening-grid">${numberedUnits.map(unit => `
                 <article class="listening-card" data-level="${escape(unit.level)}">
                     <span class="level-stamp">${escape(unit.level)}</span>
-                    <h2>${escape(`Bài nghe ${unit.level} · ${unit.id}`)}</h2>
+                    <h2>${escape(`Bài nghe ${unit.level} · Bài ${String(unit.number).padStart(2, "0")}`)}</h2>
                     <p>${Math.ceil(Number(unit.duration_seconds) / 60)} phút · ${Number(unit.prior_sessions) ? "Đã có lịch sử học" : "Chưa ghi nhận học"}</p>
                     <label><input type="checkbox" class="listening-heard-before"> Tôi đã nghe audio này trước đây</label>
                     <div class="listening-actions">
@@ -105,7 +109,7 @@
                     </div>
                 </article>`).join("")}</div>`
             : "<p>Chưa có bài nghe hiểu được xuất bản.</p>";
-        root().insertAdjacentHTML("beforeend", `
+        root().insertAdjacentHTML("afterbegin", `
             <a class="text-button" href="/listening?view=history" id="listening-history">Lịch sử nghe hiểu</a>`);
         const levelSelect = root().querySelector("#listening-level");
         if (levelSelect) {
@@ -322,7 +326,7 @@
             root().querySelector("#listening-abandon").addEventListener("click", abandon);
         } else if (state.stage === "RECALL") {
             root().innerHTML = `${header}<form id="listening-recall-form">
-                <label for="listening-recall">Bạn nhớ hoặc hiểu được những ý gì? Viết bằng English hoặc Vietnamese. Không chấm grammar/spelling.</label>
+                <label for="listening-recall">Bạn nhớ hoặc hiểu được những ý gì? Viết bằng tiếng Anh hoặc tiếng Việt. Phần này đánh giá ý hiểu, không chấm ngữ pháp hay chính tả.</label>
                 <textarea id="listening-recall" maxlength="6000" rows="8">${escape(state.recallDraft || "")}</textarea>
                 <p id="listening-save-status" role="status"></p>
                 <button class="primary-button" type="submit">Nộp phần nhớ lại</button></form>`;
@@ -612,20 +616,20 @@
         }
     }
 
-    async function history(page = 0) {
-        page = Number.isSafeInteger(page) && page >= 0 ? page : 0;
-        const result = await loadView(`/api/v1/listening/history/page?page=${page}&size=10`);
+    async function history(page = 1) {
+        page = Number.isSafeInteger(page) && page >= 1 ? page : 1;
+        const result = await loadView(`/api/v1/listening/history/page?page=${page - 1}&size=10`);
         if (!result) return;
         const items = result.items;
         root().innerHTML = `<h2>Lịch sử nghe hiểu</h2>
             <a class="text-button" id="listening-back-catalog" href="/listening">← Chọn bài</a>
             <div id="listening-history-list">${items.length ? items.map(item => `<article class="listening-card"><h3>${escape(item.title)}</h3>
-                <p>${escape(item.mode)} · ${escape(item.stage)} · Hiểu lần đầu: ${item.comprehension_score == null ? "—" : Number(item.comprehension_score).toFixed(1) + "%"}</p>
+                <p>${item.mode === "TWO_PASS" ? "Hai lượt nghe" : "Một lượt nghe"} · ${escape(({READY:"Sẵn sàng nghe",PLAYING:"Đang nghe",RECALL:"Ghi lại ý hiểu",QUESTIONS:"Trả lời câu hỏi",GRADING:"Đang chấm",PASS1_RESULT:"Kết quả lượt đầu",COMPLETE:"Đã hoàn thành"})[item.stage] || "Đang học")} · Hiểu lần đầu: ${item.comprehension_score == null ? "—" : Number(item.comprehension_score).toFixed(1) + "%"}</p>
                 <a class="text-button" href="/listening/${encodeURIComponent(item.id)}" data-session="${escape(item.id)}">Mở bài</a></article>`).join("")
             : "<p>Trang này chưa có bài nghe hiểu.</p>"}</div>
-            <nav aria-label="Phân trang lịch sử nghe hiểu"><button type="button" id="listening-history-prev" ${page === 0 ? "disabled" : ""}>Trang trước</button>
-            <span role="status">Trang ${page + 1} · ${result.total} bài</span>
-            <button type="button" id="listening-history-next" ${(page + 1) * result.size >= result.total ? "disabled" : ""}>Trang sau</button></nav>`;
+            <nav aria-label="Phân trang lịch sử nghe hiểu"><button type="button" id="listening-history-prev" ${page === 1 ? "disabled" : ""}>Trang trước</button>
+            <span role="status">Trang ${page} · ${result.total} bài</span>
+            <button type="button" id="listening-history-next" ${page * result.size >= result.total ? "disabled" : ""}>Trang sau</button></nav>`;
         for (const [id, target] of [["listening-history-prev", page - 1], ["listening-history-next", page + 1]]) {
             root().querySelector(`#${id}`).addEventListener("click", () => bridge().navigate("listening", {view: "history", page: target}));
         }

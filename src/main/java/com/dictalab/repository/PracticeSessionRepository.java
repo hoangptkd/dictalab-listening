@@ -96,23 +96,29 @@ public interface PracticeSessionRepository extends JpaRepository<PracticeSession
     List<Long> completedSoloLessonIds(@Param("userId") Long userId, @Param("status") SessionStatus status,
                                       @Param("level") CefrLevel level);
 
-    @EntityGraph(attributePaths = "lesson")
-    List<PracticeSession> findByUserIdAndLessonLevelAndStatusOrderByStartedAtDesc(
-            Long userId, CefrLevel level, SessionStatus status
-    );
+    interface CatalogProgress {
+        Long getLessonId();
+        Integer getActivePosition();
+        Integer getCompleted();
+    }
 
+    // One row per lesson; retain the newest active session, including room sessions.
     @Query("""
-            select distinct session.lesson.id
-            from PracticeSession session
-            where session.user.id = :userId
-              and session.lesson.level = :level
-              and session.status = :status
+            select s.lesson.id as lessonId,
+                   max(case when s.status = :active then s.currentSentencePosition else null end) as activePosition,
+                   max(case when s.status = :completed then 1 else 0 end) as completed
+            from PracticeSession s
+            where s.user.id = :userId and s.lesson.level = :level
+              and (s.status = :completed or (s.status = :active and not exists (
+                select newer.id from PracticeSession newer
+                where newer.user.id = s.user.id and newer.lesson.id = s.lesson.id
+                  and newer.status = :active
+                  and (newer.startedAt > s.startedAt or (newer.startedAt = s.startedAt and newer.id > s.id))
+              )))
+            group by s.lesson.id
             """)
-    List<Long> findDistinctLessonIds(
-            @Param("userId") Long userId,
-            @Param("level") CefrLevel level,
-            @Param("status") SessionStatus status
-    );
+    List<CatalogProgress> catalogProgress(@Param("userId") Long userId, @Param("level") CefrLevel level,
+                                         @Param("active") SessionStatus active, @Param("completed") SessionStatus completed);
 
     boolean existsByLessonId(Long lessonId);
 

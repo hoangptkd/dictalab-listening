@@ -6,6 +6,134 @@ const vm = require('node:vm');
 const read = name => fs.readFileSync(path.resolve(__dirname, '../../main/resources/static/js', name), 'utf8');
 const html = fs.readFileSync(path.resolve(__dirname, '../../main/resources/static/index.html'), 'utf8');
 
+test('idempotency journal survives reload and keeps replay start/end as distinct actions', async () => {
+    const source=read('app.js').match(/    const pendingPracticeSubmissions = new Map\(\);[\s\S]*?(?=    function escapeHtml)/)[0];
+    const storage=new Map(), requests=[];
+    let key=0;
+    function load(api) {
+        const state={currentUser:{id: 42},practiceMutationQueue:Promise.resolve()};
+        return vm.runInNewContext(source+'\nqueuePracticeMutation', {state,api,
+            crypto:{randomUUID:()=>`key-${++key}`},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)}});
+    }
+    const first=load(async (path,options)=>{requests.push({path,options});throw new Error('Response lost');});
+    await assert.rejects(first('/session/word/checks',{method:'POST',body:{answer:'milk',responseTimeMs:10}}));
+    const resumed=load(async (path,options)=>{requests.push({path,options});return {};});
+    await resumed('/session/word/checks',{method:'POST',body:{answer:'milk',responseTimeMs:999}});
+    assert.equal(requests[0].options.headers['Idempotency-Key'],requests[1].options.headers['Idempotency-Key']);
+    assert.equal(requests[1].options.body.responseTimeMs,10);
+    const replay=load(async (path,options)=>{requests.push({path,options});return {};});
+    await Promise.all(['STARTED','COMPLETED'].map(event=>replay('/replay-events',{method:'POST',body:{event}})));
+    assert.notEqual(requests[2].options.headers['Idempotency-Key'],requests[3].options.headers['Idempotency-Key']);
+    assert.equal(requests[3].options.body.event,'COMPLETED');
+    assert.equal(JSON.parse(storage.get('dictalab.practice.42')).length,0);
+});
+
+test('missed word classifications stay outside inputs and retain word association and saved choices', () => {
+    const source = read('app.js').match(/    function renderWordSlots\([\s\S]*?\n    }\n/)[0];
+    const classifications = read('app.js').match(/    function renderWordClassifications\([\s\S]*?\n    }\n/)[0];
+    const state = {sentence: {words: []}, wordDrafts: new Map()};
+    const elements = {wordSlots: {}, wordCompletion: {}, wordClassifications: {},
+        wordClassificationList: {}, classificationCount: {}};
+    const render = vm.runInNewContext(`${source}\n${classifications}\n(() => {renderWordSlots(); renderWordClassifications();})`, {
+        state, elements, composingWords: new Set(), document: {}, escapeHtml: text => String(text).replaceAll('<', '&lt;').replaceAll('>', '&gt;'), escapeAttribute: String,
+        refreshDictationCopy() {}, roomQueueDraft() {}
+    });
+    for (const [errorType, correct, revealed] of [
+        [null, false, false], [null, true, false],
+        ['KNOWN_BUT_MISSED', false, false], ['KNOWN_BUT_MISSED', true, false], ['UNKNOWN', false, true]
+    ]) {
+        state.sentence.words = [{index: 2, length: 4, mask: '____', userInput: 'werd',
+            revealedText: 'word', firstLetter: 'w', errorType, correct, revealed}];
+        render();
+        assert.doesNotMatch(elements.wordSlots.innerHTML, /word-classification|<button /);
+        const markup = elements.wordClassificationList.innerHTML;
+        assert.equal(elements.wordClassifications.hidden, !errorType);
+        if (!errorType) {
+            assert.equal(markup, '');
+            continue;
+        }
+        assert.match(markup, /aria-label="Phân loại lỗi của từ 3"/);
+        assert.equal((markup.match(/<button /g) || []).length, 2);
+        assert.match(markup, revealed ? /<strong>word<\/strong>/ : /<strong>werd<\/strong>/);
+        if (!revealed) assert.doesNotMatch(markup, /<strong>word<\/strong>/);
+        assert.equal(elements.classificationCount.textContent, '1 từ');
+        for (const type of ['KNOWN_BUT_MISSED', 'UNKNOWN']) {
+            assert.match(markup, new RegExp(`data-word-index="2" data-error-type="${type}"\\s+aria-pressed="${errorType === type}"`));
+        }
+    }
+    state.sentence.words[0].revealedText = '<img src=x>';
+    render();
+    assert.match(elements.wordClassificationList.innerHTML, /&lt;img src=x&gt;/);
+    assert.doesNotMatch(elements.wordClassificationList.innerHTML, /<img/);
+    assert.ok(html.indexOf('id="word-classifications"') > html.indexOf('id="next-sentence"'));
+    assert.match(read('app.js'), /wordClassificationList.addEventListener\("click", onClassifyWord\)/);
+});
+
+test('classification panel preserves expansion during saves and clears stale words on sentence changes', () => {
+    const source = read('app.js').match(/    function renderWordClassifications\([\s\S]*?\n    }\n/)[0];
+    const state = {sentence: {words: [{index: 0, mask: '___', errorType: 'UNKNOWN'}]}};
+    const elements = {wordClassifications: {open: true}, wordClassificationList: {}, classificationCount: {}};
+    const render = vm.runInNewContext(`${source}\nrenderWordClassifications`, {state, elements, escapeHtml: String});
+    render();
+    assert.equal(elements.wordClassifications.open, true);
+    render(true);
+    assert.equal(elements.wordClassifications.open, false);
+    assert.match(elements.wordClassificationList.innerHTML, /<strong>___<\/strong>/);
+    state.sentence = {words: []};
+    elements.wordClassifications.open = true;
+    render();
+    assert.equal(elements.wordClassifications.open, false);
+    assert.equal(elements.wordClassifications.hidden, true);
+    assert.equal(elements.wordClassificationList.innerHTML, '');
+});
+
+test('relocated classification saves the selected word and restores button focus after rendering', async () => {
+    const source = read('app.js').match(/    async function onClassifyWord\([\s\S]*?\n    }\n/)[0];
+    for (const focused of [true, false]) {
+        const button = {dataset: {wordIndex: '2', errorType: 'UNKNOWN'}};
+        const requests = [], selectors = [], statuses = [];
+        let restored = 0, rendered = 0;
+        const sentence = {words: [{index: 2, errorType: 'UNKNOWN'}]}, state = {};
+        const classify = vm.runInNewContext(`${source}\nonClassifyWord`, {
+            state, document: {activeElement: focused ? button : {}},
+            practiceInputContext: () => () => true, captureWordFocus: () => null,
+            practicePath: suffix => `/practice${suffix}`,
+            queuePracticeMutation: async (url, options) => { requests.push({url, ...options}); return sentence; },
+            renderPractice() { rendered++; }, setPracticeStatus: message => statuses.push(message),
+            elements: {wordClassificationList: {querySelector(selector) {
+                selectors.push(selector); return {focus() { restored++; }};
+            }}}
+        });
+        await classify({target: {closest: () => button}});
+        assert.equal(requests[0].url, '/practice/classifications');
+        assert.equal(requests[0].method, 'POST');
+        assert.equal(requests[0].body.wordIndex, 2);
+        assert.equal(requests[0].body.errorType, 'UNKNOWN');
+        assert.equal(state.sentence, sentence);
+        assert.equal(rendered, 1);
+        assert.equal(restored, focused ? 1 : 0);
+        if (focused) assert.equal(selectors[0], 'button[data-word-index="2"][data-error-type="UNKNOWN"]');
+        assert.match(statuses[0], /Đã cập nhật/);
+    }
+});
+
+test('a late incorrect check cannot mark a newer draft as invalid or interrupt active composition', () => {
+    const source = read('app.js').match(/    function renderWordSlots\([\s\S]*?\n    }\n/)[0];
+    const state = {sentence: {words: [{index: 0, length: 3, userInput: 'cot', correct: false, mask: '___'}]},
+        wordDrafts: new Map([[0, 'ca']])};
+    const elements = {wordSlots: {}, wordCompletion: {}}, composingWords = new Set();
+    const render = vm.runInNewContext(`${source}\nrenderWordSlots`, {
+        state, elements, composingWords, document: {}, escapeHtml: String, escapeAttribute: String,
+        refreshDictationCopy() {}, roomQueueDraft() {}
+    });
+    render(); assert.doesNotMatch(elements.wordSlots.innerHTML, /is-wrong/);
+    assert.match(elements.wordSlots.innerHTML, /aria-invalid="false"/);
+    state.wordDrafts.set(0, 'cot'); render();
+    assert.match(elements.wordSlots.innerHTML, /is-wrong/);
+    const html = elements.wordSlots.innerHTML; composingWords.add(0); state.wordDrafts.set(0, 'cat'); render();
+    assert.equal(elements.wordSlots.innerHTML, html);
+});
+
 test('password toggles keep values and form behavior intact and affect only their own field', () => {
     const buttons = [], inputs = ['currentPassword', 'newPassword'].map(name => ({
         name, type: 'password', value: 'unchanged-secret', form: {id: 'account-password-form'},
@@ -151,7 +279,7 @@ test('opening a support link preserves deletion category and existing lesson ref
     for (const search of ['?category=ACCOUNT_DELETE', '?type=LISTENING&id=reference', '']) {
         let replaced = false, rendered = false;
         const resolve = vm.runInNewContext(`${source}\nresolveUrlAndNavigate`, {
-            isAdminArea: false, state: {}, router: {replace() { replaced = true; }}, _showView() {},
+            isAdminArea: false, state: {currentUser: {id: 1}}, router: {replace() { replaced = true; }}, _showView() {},
             window: {DictaLabAccount: {show: async () => { rendered = true; }}}
         });
         await resolve({route: 'support', params: {}, query: new URLSearchParams(search)}, false);
@@ -244,6 +372,7 @@ test('conversation navigation opens and loads the conversation view and session'
     const document = {body: {dataset: {route: 'catalog'}}, querySelector: selector => selector === '#conversation-view' ? target : {focus() {}}};
     const showSource = app.match(/    function _showView\([\s\S]*?\n    }\n/)[0];
     const show = vm.runInNewContext(`${showSource}\n_showView`, {isAdminArea: false, state: {}, document,
+        resetPracticeInput() {},
         elements: {views: [target, catalog], navLinks: []}, window: {scrollTo() {}}, roomPrepareStudyAudio() {}});
     let opened;
     const navigateSource = app.match(/    async function navigate\([\s\S]*?\n    }\n/)[0];
@@ -254,7 +383,7 @@ test('conversation navigation opens and loads the conversation view and session'
     assert.equal(document.body.dataset.route, 'conversation'); assert.equal(target.hidden, false); assert.equal(catalog.hidden, true);
 });
 
-function paginationHarness(page, total, filtered = []) {
+function paginationHarness(page, total, filtered = [], onPage) {
     const location = new URL(`https://dictalab.test/listening?level=B1&page=${page}`);
     let buttons = [];
     const nav = {
@@ -275,7 +404,7 @@ function paginationHarness(page, total, filtered = []) {
         window: {location, history: {replaceState(_state, _title, url) { location.href = url.href; }}}};
     const source = read('app.js').match(/    function paginateList\([\s\S]*?\n    }\n/)[0];
     const paginate = vm.runInNewContext(`${source}\npaginateList`, context);
-    paginate(container, 6);
+    paginate(container, 6, onPage);
     return {container, nav, location, next: () => buttons[1].click()};
 }
 
@@ -303,6 +432,43 @@ test('empty and single-page lists need no pagination controls', () => {
     assert.equal(paginationHarness(1, 6).nav.hidden, true);
 });
 
+test('pagination notifies detail selection with only the visible page after hiding other rows', () => {
+    const pages = [];
+    const h = paginationHarness(1, 7, [], items => pages.push(Array.from(items)));
+    assert.deepEqual(pages[0], h.container.children.slice(0, 6));
+    h.next();
+    assert.deepEqual(pages[1], h.container.children.slice(6));
+    assert.equal(pages[1][0].hidden, false);
+    assert.ok(h.container.children.slice(0, 6).every(item => item.hidden));
+});
+
+test('mobile viewport resizing reveals an occluded word without moving focus or scrolling visible inputs', () => {
+    const source = read('app.js');
+    const start = source.indexOf('        window.visualViewport?.addEventListener');
+    const end = source.indexOf('        elements.copyDictationSelection', start);
+    let handler, scrolled = 0, frame;
+    const input = {
+        matches: () => true,
+        getBoundingClientRect: () => ({top: 450, bottom: 496}),
+        scrollIntoView() { scrolled++; }
+    };
+    const document = {body: {dataset: {route: 'practice'}}, activeElement: input};
+    const window = {matchMedia: () => ({matches: true}), visualViewport: {
+        offsetTop: 0, height: 400,
+        addEventListener(_event, callback) { handler = callback; }
+    }};
+    vm.runInNewContext(source.slice(start, end), {document, window, requestAnimationFrame: callback => {frame = callback;}});
+    handler(); frame();
+    assert.equal(scrolled, 1);
+    assert.equal(document.activeElement, input);
+    window.visualViewport.height = 844;
+    handler(); frame();
+    assert.equal(scrolled, 1);
+    window.visualViewport.height = 400;
+    handler(); document.activeElement = null; frame();
+    assert.equal(scrolled, 1);
+});
+
 function listeningHarness(api, customRoot) {
     const buttons = [{disabled: true, isConnected: true}, {disabled: true, isConnected: true}];
     const notices = [];
@@ -311,10 +477,10 @@ function listeningHarness(api, customRoot) {
     const window = {clearTimeout, setTimeout, DictaLabListeningBridge: {
         api, stopRecordedAudio() {}, showToast: message => notices.push(message)
     }};
-    const source = read('listening.js').replace('{show, leave};', '{show, leave, loadView, mutate};');
+    const source = read('listening.js').replace('{show, leave};', '{show, leave, loadView, mutate, history};');
     vm.runInNewContext(source, {window, URLSearchParams, location: {search: ''},
         document: {querySelector: () => root, body: {dataset: {route: 'listening'}}}});
-    return {module: window.DictaLabListening, root, buttons, notices};
+    return {module: window.DictaLabListening, bridge: window.DictaLabListeningBridge, root, buttons, notices};
 }
 
 test('an old response cannot overwrite the screen after leaving Listening', async () => {
@@ -394,6 +560,101 @@ test('Listening history navigation retains its subview and page', async () => {
     assert.equal(received.params.page, 2);
 });
 
+test('Listening history uses the first API page and preserves records when paging forward and back', async () => {
+    const controls = new Map();
+    const root = {innerHTML: '', querySelectorAll: () => [], querySelector(selector) {
+        if (selector === 'audio') return null;
+        if (!controls.has(selector)) controls.set(selector, {addEventListener(_event, handler) { this.click = handler; }});
+        return controls.get(selector);
+    }};
+    const requests = [], navigations = [];
+    const h = listeningHarness(async path => {
+        requests.push(path);
+        const page = Number(new URL(path, 'https://dictalab.test').searchParams.get('page'));
+        return {page, size: 10, total: 12, items: [{id: `session-${page}`, title: `Page ${page} record`, mode: 'TEST', stage: 'COMPLETE'}]};
+    }, root);
+    // The public URL and the shared router use one-based pages.
+    const source = read('app.js').match(/    async function navigate\([\s\S]*?\n    }\n/)[0];
+    const navigate = vm.runInNewContext(`${source}\nnavigate`, {
+        state: {}, resolveUrlAndNavigate: async parsed => {
+            navigations.push(parsed.params.page);
+            await h.module.history(parsed.params.page);
+        }
+    });
+    // The real history buttons call the same bridge as the catalog/history links.
+    h.bridge.navigate = navigate;
+    await navigate('listening', {view: 'history'});
+    assert.match(root.innerHTML, /Page 0 record/);
+    assert.match(root.innerHTML, /Trang 1 · 12 bài/);
+    assert.match(root.innerHTML, /id="listening-history-prev" disabled/);
+    await controls.get('#listening-history-next').click();
+    assert.match(root.innerHTML, /Page 1 record/);
+    assert.match(root.innerHTML, /Trang 2 · 12 bài/);
+    assert.match(root.innerHTML, /id="listening-history-next" disabled/);
+    await controls.get('#listening-history-prev').click();
+    assert.match(root.innerHTML, /Page 0 record/);
+    assert.deepEqual(navigations, [1, 2, 1]);
+    assert.deepEqual(requests, [
+        '/api/v1/listening/history/page?page=0&size=10',
+        '/api/v1/listening/history/page?page=1&size=10',
+        '/api/v1/listening/history/page?page=0&size=10'
+    ]);
+    for (const page of [0, -1, NaN, 1.5]) {
+        await h.module.history(page);
+        assert.equal(requests.at(-1), '/api/v1/listening/history/page?page=0&size=10');
+    }
+});
+
+test('history mode links navigate internally, retain the requested subview and preserve modified clicks', async () => {
+    const links = [...html.matchAll(/<a[^>]+data-route="(listening|conversation)"[^>]*>/g)]
+        .filter(match => match[0].includes('class="text-button"')).map(match => ({
+            tagName: 'A', dataset: {route: match[1], view: match[0].match(/data-view="([^"]+)"/)?.[1]},
+            addEventListener(_event, handler) { this.click = handler; }
+        }));
+    assert.equal(links.length, 2);
+    const source = read('app.js').match(/        elements\.routeButtons\.forEach\(link => \{[\s\S]*?\n        \}\);/)[0];
+    const calls = [];
+    vm.runInNewContext(source, {elements: {routeButtons: links}, document: {querySelector: () => null},
+        navigate: (route, params) => calls.push({route, view: params.view})});
+    let prevented = 0;
+    for (const link of links) {
+        await link.click({button: 0, preventDefault() { prevented++; }});
+        await link.click({button: 0, ctrlKey: true, preventDefault() { assert.fail('modified clicks must remain native'); }});
+    }
+    assert.equal(prevented, 2);
+    assert.deepEqual(calls, [{route: 'listening', view: 'history'}, {route: 'conversation', view: undefined}]);
+});
+
+test('startup keeps the auth form hidden while checking the session and clears loading on success or rejection', async () => {
+    assert.match(html, /<main id="auth-screen"[^>]* hidden/);
+    const source = read('app.js').match(/    async function init\([\s\S]*?\n    }\n/)[0];
+    for (const authenticated of [true, false]) {
+        let finish, removed = false, entered = false, shownAuth = false;
+        const pending = new Promise((resolve, reject) => {
+            finish = () => authenticated ? resolve({id: 7}) : reject(Object.assign(new Error('Expired'), {status: 401}));
+        });
+        const init = vm.runInNewContext(`${source}\ninit`, {
+            bindEvents() {}, refreshCsrf: async () => {}, api: () => pending, state: {},
+            isAdminArea: false, URLSearchParams, location: {pathname: '/listening', search: '?view=history'},
+            window: {location: {pathname: '/listening', search: '?view=history'}},
+            router: {parse: () => ({route: 'listening'})},
+            enterApplication: async () => { entered = true; },
+            showAuthScreen() { shownAuth = true; },
+            document: {querySelector: () => ({remove() { removed = true; }})}
+        });
+        const ready = init();
+        await Promise.resolve();
+        assert.equal(removed, false);
+        assert.equal(entered, false);
+        assert.equal(shownAuth, false);
+        finish();
+        await ready;
+        assert.equal(removed, true);
+        assert.equal(entered, authenticated);
+        assert.equal(shownAuth, !authenticated);
+    }
+});
+
 test('admin startup does not access learner elements or request learning data', async () => {
     const source = read('app.js').match(/    async function enterApplication\([\s\S]*?\n    }\n/)[0];
     const requested = [];
@@ -417,7 +678,7 @@ test('cross-area navigation loads its own document and expired admin sessions re
     const source = read('app.js').match(/    async function resolveUrlAndNavigate\([\s\S]*?\n    }\n/)[0];
     for (const [isAdminArea, route, target] of [[false, 'admin-users', '/admin/users'], [true, 'catalog', '/catalog']]) {
         const resolve = vm.runInNewContext(`${source}\nresolveUrlAndNavigate`, {
-            isAdminArea, window: {DictaLabAdmin: {canLeave: () => true}}, router: {toPath: () => target}, location: {assign: path => requests.push(path)}
+            isAdminArea, state: {currentUser: {id: 1}}, window: {DictaLabAdmin: {canLeave: () => true}}, router: {toPath: () => target}, location: {assign: path => requests.push(path)}
         });
         await resolve({route, params: {}});
     }
@@ -448,15 +709,23 @@ test('publishing a lesson stays in the admin editor', async () => {
 test('login initialization preserves the admin destination supplied by the server', () => {
     const source = read('app.js').match(/    function showAuthScreen\([\s\S]*?\n    }\n/)[0];
     let redirected;
-    const location = {pathname: '/login', search: '?next=%2Fadmin%2Fusers'};
+    const location = {origin: 'https://dictalab.test', pathname: '/login', search: '?next=%2Fadmin%2Fusers'};
+    const notice = {};
     const showAuth = vm.runInNewContext(`${source}\nshowAuthScreen`, {
-        isAdminArea: false, state: {}, stopRecordedAudio() {}, stopTimer() {}, switchAuthMode() {},
-        document: {body: {dataset: {}}}, elements: {appShell: {}, authScreen: {}, authStatus: {}},
-        router: {parse: () => ({route: 'login', query: new URLSearchParams(location.search)})},
+        isAdminArea: false, state: {}, stopRecordedAudio() {}, stopTimer() {}, resetPracticeInput() {}, switchAuthMode() {},
+        document: {body: {dataset: {}}, querySelector: () => notice}, elements: {appShell: {}, authScreen: {}, authStatus: {}},
+        URL, location,
+        router: {parse: path => ({route: path.startsWith('/admin') ? 'admin-users' : 'login', query: new URLSearchParams(location.search)})},
         window: {location, history: {replaceState(_state, _title, path) { redirected = path; }}, requestAnimationFrame() {}}
     });
     showAuth();
     assert.equal(redirected, '/login?next=%2Fadmin%2Fusers');
+    assert.equal(notice.hidden, false);
+    assert.match(notice.textContent, /trang quản trị/);
+    location.search = '?next=%2F%2Fexternal.test';
+    showAuth();
+    assert.equal(notice.hidden, true);
+    assert.equal(notice.textContent, '');
 });
 
 test('legacy Listening administration links resolve to the dedicated admin page', () => {

@@ -30,7 +30,7 @@ class RequestCorrelationFilterTest {
         RuntimeException failure = transaction
                 ? new CannotCreateTransactionException("private-db-detail")
                 : new CannotGetJdbcConnectionException("private-db-detail");
-        given(users.findById(7L)).willThrow(failure);
+        given(users.authenticationState(7L)).willThrow(failure);
         var principal = new DictaLabPrincipal(7L, "test@example.invalid", "Test", "unused", "USER", true);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));

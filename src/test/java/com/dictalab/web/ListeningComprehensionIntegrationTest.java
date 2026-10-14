@@ -32,6 +32,9 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.spy;
@@ -244,15 +247,9 @@ class ListeningComprehensionIntegrationTest {
         db.update("UPDATE listening_sessions SET stage='RECALL' WHERE id=?", id);
         boolean recall = "RECALL".equals(stage);
         if (!recall) service.submitRecall(owner.getId(), id, "submitted recall");
-        JdbcTemplate draftDb = spy(db);
         CountDownLatch draftRead = new CountDownLatch(1);
         CountDownLatch submitFinished = new CountDownLatch(1);
-        doAnswer(invocation -> {
-            Object snapshot = invocation.callRealMethod();
-            draftRead.countDown();
-            if (!submitFinished.await(10, TimeUnit.SECONDS)) throw new AssertionError("Submission timed out");
-            return snapshot;
-        }).when(draftDb).queryForMap("SELECT * FROM listening_sessions WHERE id=? AND user_id=?", id, owner.getId());
+        JdbcTemplate draftDb = delayedSessionRead(id, owner.getId(), draftRead, submitFinished);
         var draftService = new ListeningComprehensionService(draftDb, json, ai, transactions);
         var executor = Executors.newSingleThreadExecutor();
         try {
@@ -281,7 +278,129 @@ class ListeningComprehensionIntegrationTest {
             submitFinished.countDown();
             executor.shutdownNow();
             executor.awaitTermination(10, TimeUnit.SECONDS);
+            draftService.stopWorkers();
         }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "PASS1_RESULT,SECOND,FINISH,COMPLETE,0",
+            "PASS1_RESULT,ABANDON,FINISH,COMPLETE,0",
+            "QUESTIONS,SUBMIT,ABANDON,ABANDONED,0",
+            "PASS1_RESULT,FINISH,SECOND,READY,1",
+            "QUESTIONS2,ABANDON,SUBMIT,COMPLETE,1"
+    })
+    void losingTransitionCannotChangeWinnerOrLeaveAnExtraPass(String initial, String late,
+            String winner, String expectedStage, int secondPasses) throws Exception {
+        AppUser owner = users.saveAndFlush(new AppUser("transition-race-" + UUID.randomUUID() + "@test.local",
+                "Listener", "unused", Instant.now()));
+        Long unit = db.queryForObject("SELECT id FROM listening_units WHERE published=TRUE ORDER BY id LIMIT 1", Long.class);
+        String id = (String) service.start(owner.getId(), unit, "ONE_PASS", false).get("sessionId");
+        if (initial.equals("QUESTIONS2")) {
+            db.update("UPDATE listening_passes SET recall_text='fixture recall' WHERE session_id=? AND pass_number=1", id);
+            db.update("UPDATE listening_sessions SET stage='PASS1_RESULT' WHERE id=?", id);
+            service.startSecondPass(owner.getId(), id);
+        }
+        db.update("UPDATE listening_passes SET recall_text='fixture recall' WHERE session_id=?", id);
+        db.update("UPDATE listening_sessions SET stage=? WHERE id=?", initial.equals("QUESTIONS2") ? "QUESTIONS" : initial, id);
+        var read = new CountDownLatch(1);
+        var winnerCommitted = new CountDownLatch(1);
+        var lateService = new ListeningComprehensionService(delayedSessionRead(id, owner.getId(), read, winnerCommitted),
+                json, ai, transactions);
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            var loser = executor.submit(() -> new TransactionTemplate(transactions).execute(status ->
+                    applyTransition(lateService, owner.getId(), id, late)));
+            assertThat(read.await(10, TimeUnit.SECONDS)).isTrue();
+            applyTransition(service, owner.getId(), id, winner);
+            winnerCommitted.countDown();
+            assertThatThrownBy(() -> loser.get(10, TimeUnit.SECONDS))
+                    .isInstanceOf(ExecutionException.class).hasCauseInstanceOf(InvalidPracticeStateException.class);
+            assertThat(service.state(owner.getId(), id).get("stage")).isEqualTo(expectedStage);
+            assertThat(db.queryForObject("SELECT COUNT(*) FROM listening_passes WHERE session_id=? AND pass_number=2",
+                    Integer.class, id)).isEqualTo(secondPasses);
+            if (winner.equals("ABANDON")) {
+                assertThat(db.queryForObject("SELECT answers_submitted_at FROM listening_passes WHERE session_id=? AND pass_number=1",
+                        Object.class, id)).isNull();
+            }
+        } finally {
+            winnerCommitted.countDown(); executor.shutdownNow(); executor.awaitTermination(10, TimeUnit.SECONDS);
+            lateService.stopWorkers();
+        }
+    }
+
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named="dictalab.race-tests", matches="true")
+    void mutationWaitsForParentLockWhileReadOnlyStateRemainsAvailable() throws Exception {
+        AppUser owner = users.saveAndFlush(new AppUser("lock-witness-" + UUID.randomUUID() + "@test.local",
+                "Listener", "unused", Instant.now()));
+        Long unit = db.queryForObject("SELECT id FROM listening_units WHERE published=TRUE ORDER BY id LIMIT 1", Long.class);
+        String id = (String) service.start(owner.getId(), unit, "ONE_PASS", false).get("sessionId");
+        db.update("UPDATE listening_sessions SET stage='PASS1_RESULT' WHERE id=?", id);
+        String application = "listening-lock-" + id;
+        var executor = Executors.newFixedThreadPool(2);
+        var mutation = new java.util.concurrent.atomic.AtomicReference<java.util.concurrent.Future<Map<String, Object>>>();
+        try {
+            new TransactionTemplate(transactions).executeWithoutResult(status -> {
+                db.queryForObject("SELECT id FROM listening_sessions WHERE id=? FOR UPDATE", String.class, id);
+                mutation.set(executor.submit(() -> new TransactionTemplate(transactions).execute(worker -> {
+                    db.queryForObject("SELECT set_config('application_name',?,true)", String.class, application);
+                    return service.startSecondPass(owner.getId(), id);
+                })));
+                org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(10)).untilAsserted(() ->
+                        assertThat(db.queryForObject("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name=? AND wait_event_type='Lock' AND query LIKE '%FOR UPDATE%'",
+                                Integer.class, application)).isEqualTo(1));
+                assertThat(mutation.get().isDone()).isFalse();
+                try {
+                    assertThat(executor.submit(() -> service.state(owner.getId(), id)).get(5, TimeUnit.SECONDS).get("stage"))
+                            .isEqualTo("PASS1_RESULT");
+                } catch (Exception failure) { throw new AssertionError("Read-only state was blocked", failure); }
+            });
+            assertThat(mutation.get().get(10, TimeUnit.SECONDS).get("stage")).isEqualTo("READY");
+            assertThat(db.queryForObject("SELECT COUNT(*) FROM listening_passes WHERE session_id=? AND pass_number=2", Integer.class, id))
+                    .isEqualTo(1);
+        } finally { executor.shutdownNow(); executor.awaitTermination(10, TimeUnit.SECONDS); }
+    }
+
+    @Test void failedSecondPassTransitionRollsBackTheInsertedPass() {
+        AppUser owner = users.saveAndFlush(new AppUser("transition-rollback-" + UUID.randomUUID() + "@test.local",
+                "Listener", "unused", Instant.now()));
+        Long unit = db.queryForObject("SELECT id FROM listening_units WHERE published=TRUE ORDER BY id LIMIT 1", Long.class);
+        String id = (String) service.start(owner.getId(), unit, "ONE_PASS", false).get("sessionId");
+        db.update("UPDATE listening_sessions SET stage='PASS1_RESULT' WHERE id=?", id);
+        JdbcTemplate failedDb = spy(db);
+        doReturn(0).when(failedDb).update(startsWith("UPDATE listening_sessions SET mode='TWO_PASS'"), eq(id));
+        var failedService = new ListeningComprehensionService(failedDb, json, ai, transactions);
+        try {
+            assertThatThrownBy(() -> new TransactionTemplate(transactions).execute(status ->
+                    failedService.startSecondPass(owner.getId(), id))).isInstanceOf(InvalidPracticeStateException.class);
+            assertThat(service.state(owner.getId(), id).get("stage")).isEqualTo("PASS1_RESULT");
+            assertThat(db.queryForObject("SELECT COUNT(*) FROM listening_passes WHERE session_id=? AND pass_number=2",
+                    Integer.class, id)).isZero();
+        } finally { failedService.stopWorkers(); }
+    }
+
+    private Map<String, Object> applyTransition(ListeningComprehensionService target, Long owner, String id, String operation) {
+        return switch (operation) {
+            case "SECOND" -> target.startSecondPass(owner, id);
+            case "FINISH" -> target.finishAfterFirstPass(owner, id);
+            case "SUBMIT" -> target.submitAnswers(owner, id, Map.of("Q1", 0));
+            case "ABANDON" -> target.abandon(owner, id);
+            default -> throw new IllegalArgumentException(operation);
+        };
+    }
+
+    private JdbcTemplate delayedSessionRead(String id, Long owner, CountDownLatch read, CountDownLatch resume) {
+        JdbcTemplate delayed = spy(db);
+        doAnswer(invocation -> {
+            // An unlocked read captures stale state; a locking read must pause BEFORE acquiring the lock.
+            boolean locking = invocation.<String>getArgument(0).endsWith("FOR UPDATE");
+            Object snapshot = locking ? null : invocation.callRealMethod();
+            read.countDown();
+            if (!resume.await(10, TimeUnit.SECONDS)) throw new AssertionError("Winning transition timed out");
+            return locking ? invocation.callRealMethod() : snapshot;
+        }).when(delayed).queryForMap(startsWith("SELECT * FROM listening_sessions WHERE id=? AND user_id=?"), eq(id), eq(owner));
+        return delayed;
     }
 
     @Test

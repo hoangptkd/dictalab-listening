@@ -54,6 +54,7 @@ public class PracticeService {
     private final AppUserRepository userRepository;
     private final JdbcTemplate db;
     private final Clock clock;
+    private final boolean learningEnabled;
 
     public PracticeService(LessonRepository lessonRepository,
                            LessonPreviewWordRepository previewWordRepository,
@@ -67,7 +68,8 @@ public class PracticeService {
                            ScoringService scoringService,
                            ListeningErrorClassifier errorClassifier,
                            ListeningAssessmentService assessmentService,
-                           JdbcTemplate db) {
+                           JdbcTemplate db,
+                           @org.springframework.beans.factory.annotation.Value("${dictalab.learning.enabled:false}") boolean learningEnabled) {
         this.lessonRepository = lessonRepository;
         this.previewWordRepository = previewWordRepository;
         this.sentenceRepository = sentenceRepository;
@@ -82,6 +84,7 @@ public class PracticeService {
         this.assessmentService = assessmentService;
         this.db = db;
         this.clock = Clock.systemUTC();
+        this.learningEnabled = learningEnabled;
     }
 
     @Transactional
@@ -194,9 +197,9 @@ public class PracticeService {
                                         ApiDtos.ReplayRequest request) {
         PracticeSession session = getSession(userId, sessionId);
         SentenceAttempt attempt = currentAttempt(session, sentenceId);
+        ApiDtos.SentenceState state = toState(attempt);
         if (request.event() == ReplayEventType.STARTED) {
-            boolean sentenceReadyToComplete = toState(attempt).canComplete();
-            if (!sentenceReadyToComplete) {
+            if (!state.canComplete()) {
                 double playbackSpeed = request.playbackSpeed() == null ? 1.0 : request.playbackSpeed();
                 attempt.incrementReplayCount();
                 attempt.recordPlayback(playbackSpeed);
@@ -205,7 +208,8 @@ public class PracticeService {
         } else if (attempt.hasAnswerReveal()) {
             attempt.markReplayCompleted();
         }
-        return toState(attempt);
+        // Playback changes counters/replay eligibility, not the word slots or lesson size.
+        return toState(attempt, state.words(), state.totalSentences());
     }
 
     @Transactional
@@ -216,8 +220,9 @@ public class PracticeService {
         requireListening(attempt);
         List<String> expectedWords = tokenizer.words(attempt.getSentence().getTranscript());
         validateWordIndex(wordIndex, expectedWords);
-        if (properNameIndices(attempt.getSentence()).contains(wordIndex)) {
-            return toState(attempt);
+        Set<Integer> properNames = properNameIndices(attempt.getSentence());
+        if (properNames.contains(wordIndex)) {
+            return toState(attempt, properNames);
         }
 
         WordAttempt wordAttempt = getOrCreateWordAttempt(attempt, wordIndex);
@@ -239,7 +244,7 @@ public class PracticeService {
                 wordAttempt, wordAttempt.getAttemptCount(), rawAnswer, normalizedAnswer,
                 correct, responseTimeMs, errorCategory, now()
         ));
-        return toState(attempt);
+        return toState(attempt, properNames);
     }
 
     @Transactional
@@ -251,16 +256,18 @@ public class PracticeService {
         List<String> words = tokenizer.words(attempt.getSentence().getTranscript());
 
         if (request.type() == HintType.REVEAL_SENTENCE) {
-            revealSentence(session, attempt, words);
-            return toState(attempt);
+            Set<Integer> properNames = properNameIndices(attempt.getSentence());
+            revealSentence(session, attempt, words, properNames);
+            return toState(attempt, properNames);
         }
 
         if (request.wordIndex() == null) {
             throw new InvalidPracticeStateException("Hãy chọn một ô từ trước khi dùng gợi ý này.");
         }
         validateWordIndex(request.wordIndex(), words);
-        if (properNameIndices(attempt.getSentence()).contains(request.wordIndex())) {
-            return toState(attempt);
+        Set<Integer> properNames = properNameIndices(attempt.getSentence());
+        if (properNames.contains(request.wordIndex())) {
+            return toState(attempt, properNames);
         }
         WordAttempt wordAttempt = getOrCreateWordAttempt(attempt, request.wordIndex());
 
@@ -272,7 +279,7 @@ public class PracticeService {
             attempt.requireReplayAfterReveal();
             session.incrementHints();
         }
-        return toState(attempt);
+        return toState(attempt, properNames);
     }
 
     @Transactional
@@ -305,7 +312,12 @@ public class PracticeService {
 
         attempt.setTimeSpentSeconds(request.timeSpentSeconds());
         attempt.markCompleted();
-        int totalSentences = Math.toIntExact(sentenceRepository.countByLessonId(session.getLesson().getId()));
+        if (learningEnabled) {
+            // Outbox is committed with sentence completion; broker availability is irrelevant here.
+            db.update("INSERT INTO learning_jobs(id,attempt_id) VALUES (?,?)",
+                    java.util.UUID.randomUUID().toString(), attempt.getId());
+        }
+        int totalSentences = state.totalSentences();
         if (attempt.getSentence().getPosition() >= totalSentences) {
             ApiDtos.LessonResult result = finishSession(session);
             return new ApiDtos.CompleteSentenceResponse(true, null, result);
@@ -319,17 +331,22 @@ public class PracticeService {
         return new ApiDtos.CompleteSentenceResponse(false, toState(nextAttempt), null);
     }
 
-    private void revealSentence(PracticeSession session, SentenceAttempt attempt, List<String> words) {
+    private void revealSentence(PracticeSession session, SentenceAttempt attempt, List<String> words,
+                                Set<Integer> properNames) {
         if (!attempt.isFullRevealUsed()) {
             attempt.markFullRevealUsed();
             session.incrementReveals();
         } else {
             attempt.requireReplayAfterReveal();
         }
-        Set<Integer> properNames = properNameIndices(attempt.getSentence());
+        Map<Integer, WordAttempt> attemptsByIndex = new HashMap<>();
+        wordAttemptRepository.findBySentenceAttemptIdOrderByWordIndex(attempt.getId())
+                .forEach(word -> attemptsByIndex.put(word.getWordIndex(), word));
         for (int index = 0; index < words.size(); index++) {
             if (!properNames.contains(index)) {
-                getOrCreateWordAttempt(attempt, index).reveal(HintType.REVEAL_SENTENCE);
+                WordAttempt word = attemptsByIndex.get(index);
+                if (word == null) word = wordAttemptRepository.save(new WordAttempt(attempt, index));
+                word.reveal(HintType.REVEAL_SENTENCE);
             }
         }
     }
@@ -354,12 +371,17 @@ public class PracticeService {
                         .computeIfAbsent(event.getWordAttempt().getId(), ignored -> new ArrayList<>())
                         .add(event));
 
+        Map<Long, List<WordAttempt>> wordsBySentence = new HashMap<>();
+        wordAttemptRepository.findBySessionIds(List.of(session.getId())).forEach(word ->
+                wordsBySentence.computeIfAbsent(word.getSentenceAttempt().getId(), ignored -> new ArrayList<>()).add(word));
+        wordsBySentence.values().forEach(words -> words.sort(java.util.Comparator.comparingInt(WordAttempt::getWordIndex)));
+        List<List<String>> properNamesForLesson = properNameTokens(session.getLesson().getId());
+
         for (SentenceAttempt attempt : attempts) {
             List<String> expectedWords = tokenizer.words(attempt.getSentence().getTranscript());
-            List<WordAttempt> wordAttempts = wordAttemptRepository
-                    .findBySentenceAttemptIdOrderByWordIndex(attempt.getId());
+            List<WordAttempt> wordAttempts = wordsBySentence.getOrDefault(attempt.getId(), List.of());
             totalWords += expectedWords.size();
-            Set<Integer> properNames = properNameIndices(attempt.getSentence());
+            Set<Integer> properNames = properNameIndices(expectedWords, properNamesForLesson);
             scoreableWords += expectedWords.size() - properNames.size();
             practiceSeconds += attempt.getTimeSpentSeconds();
             firstLetterHints += attempt.getFirstLetterHintCount();
@@ -398,13 +420,17 @@ public class PracticeService {
     }
 
     ApiDtos.LessonResult toResult(PracticeSession session, ApiDtos.LessonReview review) {
+        return toResult(session, review, true);
+    }
+
+    ApiDtos.LessonResult toResult(PracticeSession session, ApiDtos.LessonReview review, boolean includeAssessment) {
         return new ApiDtos.LessonResult(
                 session.getId(), session.getLesson().getId(), session.getLesson().getTitle(),
                 session.getLesson().getLevel(), session.getFirstAttemptAccuracy(), session.getFinalAccuracy(),
                 session.getTotalReplays(), session.getHintCount(), session.getRevealCount(),
                 session.getKnownMissedCount(), session.getUnknownCount(), session.getTotalPracticeSeconds(),
                 session.getOverallScore(), session.getCompletedAt(), review,
-                assessmentService.assess(session.getUser().getId())
+                includeAssessment ? assessmentService.assess(session.getUser().getId()) : null
         );
     }
 
@@ -483,9 +509,12 @@ public class PracticeService {
     }
 
     private ApiDtos.SentenceState toState(SentenceAttempt attempt) {
+        return toState(attempt, properNameIndices(attempt.getSentence()));
+    }
+
+    private ApiDtos.SentenceState toState(SentenceAttempt attempt, Set<Integer> properNames) {
         LessonSentence sentence = attempt.getSentence();
         List<TranscriptTokenizer.TranscriptToken> expectedTokens = tokenizer.tokens(sentence.getTranscript());
-        Set<Integer> properNames = properNameIndices(sentence);
         Map<Integer, WordAttempt> attemptsByIndex = new HashMap<>();
         if (attempt.getId() != null) {
             wordAttemptRepository.findBySentenceAttemptIdOrderByWordIndex(attempt.getId())
@@ -496,9 +525,14 @@ public class PracticeService {
                 .mapToObj(index -> toWordSlot(index, expectedTokens.get(index), attemptsByIndex.get(index),
                         properNames.contains(index)))
                 .toList();
+        int totalSentences = Math.toIntExact(sentenceRepository.countByLessonId(sentence.getLesson().getId()));
+        return toState(attempt, slots, totalSentences);
+    }
+
+    private ApiDtos.SentenceState toState(SentenceAttempt attempt, List<ApiDtos.WordSlot> slots, int totalSentences) {
+        LessonSentence sentence = attempt.getSentence();
         boolean resolved = slots.stream().allMatch(slot -> slot.correct() || slot.revealed());
         boolean requiresReplay = attempt.hasAnswerReveal() && !attempt.isReplayedAfterReveal();
-        int totalSentences = Math.toIntExact(sentenceRepository.countByLessonId(sentence.getLesson().getId()));
         return new ApiDtos.SentenceState(
                 sentence.getId(), sentence.getPosition(), totalSentences, slots,
                 sentence.getTranscript(), sentence.getAudioUrl(),
@@ -528,20 +562,24 @@ public class PracticeService {
     }
 
     private Set<Integer> properNameIndices(LessonSentence sentence) {
-        List<String> words = tokenizer.words(sentence.getTranscript());
+        return properNameIndices(tokenizer.words(sentence.getTranscript()), properNameTokens(sentence.getLesson().getId()));
+    }
+
+    private List<List<String>> properNameTokens(Long lessonId) {
+        return previewWordRepository.findByLessonIdOrderByPositionAsc(lessonId).stream()
+                .filter(word -> word.isProperName()).map(preview -> tokenizer.words(preview.getWord())).toList();
+    }
+
+    private Set<Integer> properNameIndices(List<String> words, List<List<String>> names) {
         Set<Integer> indices = new HashSet<>();
-        previewWordRepository.findByLessonIdOrderByPositionAsc(sentence.getLesson().getId()).stream()
-                .filter(word -> word.isProperName())
-                .forEach(preview -> {
-                    List<String> name = tokenizer.words(preview.getWord());
-                    for (int start = 0; start + name.size() <= words.size(); start++) {
-                        if (!name.isEmpty() && words.subList(start, start + name.size()).equals(name)) {
-                            for (int index = start; index < start + name.size(); index++) {
-                                indices.add(index);
-                            }
-                        }
-                    }
-                });
+        for (List<String> name : names) {
+            if (name.isEmpty()) continue;
+            for (int start = 0; start + name.size() <= words.size(); start++) {
+                if (words.subList(start, start + name.size()).equals(name)) {
+                    for (int index = start; index < start + name.size(); index++) indices.add(index);
+                }
+            }
+        }
         return indices;
     }
 

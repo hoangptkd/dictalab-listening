@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Real Redis and PostgreSQL, isolated by scripts/test-messaging.ps1. No provider calls. */
 @EnabledIfEnvironmentVariable(named = "DICTALAB_MESSAGING_TEST", matches = "true")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"spring.data.redis.url=redis://127.0.0.1:${TEST_REDIS_PORT}/14", "management.server.port=0"})
+        properties = {"spring.data.redis.url=redis://${TEST_REDIS_HOST:127.0.0.1}:${TEST_REDIS_PORT}/14", "management.server.port=0"})
 @AutoConfigureMockMvc
 class JwtRedisIntegrationTest {
     @Autowired MockMvc mvc;
@@ -195,9 +195,11 @@ class JwtRedisIntegrationTest {
         var user = account(); var login = login(user);
         var room = rooms.createRoom(user.getId(), user.getDisplayName()).orElseThrow();
         var closed = new CompletableFuture<Integer>();
+        var registered = new CompletableFuture<Void>();
         var listener = new java.net.http.WebSocket.Listener() {
             @Override public void onOpen(java.net.http.WebSocket socket) { socket.request(1); }
             @Override public CompletionStage<?> onText(java.net.http.WebSocket socket, CharSequence data, boolean last) {
+                if (last) registered.complete(null);
                 socket.request(1); return CompletableFuture.completedFuture(null);
             }
             @Override public CompletionStage<?> onClose(java.net.http.WebSocket socket, int status, String reason) {
@@ -211,6 +213,8 @@ class JwtRedisIntegrationTest {
             ws = client.newWebSocketBuilder().header("Origin", "http://localhost:18081")
                     .header("Cookie", JwtTokenService.ACCESS_COOKIE + "=" + access(login).getValue())
                     .buildAsync(uri, listener).get(10, TimeUnit.SECONDS);
+            // The upgrade response can arrive before afterConnectionEstablished registers the server session.
+            registered.get(10, TimeUnit.SECONDS);
             store.revoke(tokens.decode(access(login).getValue()).getClaimAsString("sid"));
             sockets.checkAuthentication();
             assertThat(closed.get(10, TimeUnit.SECONDS)).isEqualTo(1008);

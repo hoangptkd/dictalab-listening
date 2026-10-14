@@ -122,22 +122,27 @@ public class ConversationService {
     private final CartesiaClient tts;
     private final org.springframework.transaction.support.TransactionTemplate transaction;
     private final io.micrometer.observation.ObservationRegistry observations;
+    private final org.springframework.beans.factory.ObjectProvider<AiBackgroundJobs> jobs;
+    private final AiUsageBudget budget;
     private static final Logger log = LoggerFactory.getLogger(ConversationService.class);
     @org.springframework.beans.factory.annotation.Value("${dictalab.conversation.audio-retention-days:30}")
     private int audioRetentionDays = 30;
-    // ponytail: bounded local workers; a shared job queue is needed only with multiple app instances.
+    // Legacy mode only. RabbitMQ mode never submits paid work to these local workers.
     private final ExecutorService audioWorkers = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(8), new ThreadPoolExecutor.AbortPolicy());
-    private final Map<String, CompletableFuture<Void>> audioJobs = new HashMap<>();
+    private final Map<String, CompletableFuture<Void>> audioJobs = new java.util.concurrent.ConcurrentHashMap<>();
 
     public ConversationService(JdbcTemplate db, ObjectMapper json, ShopAiKeyClient ai, CartesiaClient tts,
                                ConversationProperties config, org.springframework.transaction.PlatformTransactionManager manager,
                                io.micrometer.core.instrument.MeterRegistry metrics,
-                               io.micrometer.observation.ObservationRegistry observations) {
+                               io.micrometer.observation.ObservationRegistry observations,
+                               org.springframework.beans.factory.ObjectProvider<AiBackgroundJobs> jobs, AiUsageBudget budget) {
         this.db = db; this.json = json; this.ai = ai; this.tts = tts;
         this.config = config;
         this.transaction = new org.springframework.transaction.support.TransactionTemplate(manager);
         this.observations=observations;
+        this.jobs=jobs;
+        this.budget=budget;
         var workers=(ThreadPoolExecutor)audioWorkers;
         metrics.gauge("dictalab.audio.queue",workers,w->w.getQueue().size());
         metrics.gauge("dictalab.audio.active",workers,ThreadPoolExecutor::getActiveCount);
@@ -146,9 +151,12 @@ public class ConversationService {
     public Map<String, Object> catalog(long userId) {
         return Map.of("enabled", config.enabled() && ai.configured() && tts.enabled(), "scenarios", SCENARIOS,
                 "levels", List.of("A1", "A2", "B1"), "sessions", db.queryForList("""
-                SELECT id,scenario,difficulty,created_at FROM ai_conversation_sessions
+                SELECT id,scenario,difficulty,created_at,state_json FROM ai_conversation_sessions
                 WHERE user_id=? ORDER BY created_at DESC LIMIT 12
-                """, userId));
+                """, userId).stream().map(row -> {
+                    row.put("completed", json.readTree((String) row.remove("state_json")).path("completed").asBoolean(false));
+                    return row;
+                }).toList());
     }
 
     public ObjectNode create(long userId, String scenario, String difficulty) {
@@ -226,8 +234,9 @@ public class ConversationService {
         // The claim persists the pending answer before any external call. No transaction spans AI I/O.
         String lease = claim(row);
         try {
+            budget.reserve(userId,false);
             JsonNode evaluation = ai.completeJson(GRADE_INSTRUCTION, json.writeValueAsString(
-                    Map.of("prompt", turn.path("prompt"), "attempts", attempts, "context", promptContext(row))));
+                    Map.of("prompt", turn.path("prompt"), "attempts", attempts)));
             validateEvaluation(evaluation, turn);
             pending.set("evaluation", evaluation);
             boolean captured = evaluation.path("facts").valueStream().allMatch(f -> "CAPTURED".equals(f.path("status").asText()));
@@ -235,7 +244,7 @@ public class ConversationService {
             if (turns(row).size() == 4 && turn.path("done").asBoolean()) row.state.put("completed", true);
             commit(row, lease);
         } catch (ResponseStatusException e) { release(row.id, lease); throw e;
-        } catch (RuntimeException e) { release(row.id, lease); unavailable("Chưa chấm được. Câu trả lời đã được lưu; hãy thử chấm lại."); }
+        } catch (RuntimeException e) { release(row.id, lease); logFailure("grade",e); unavailable("Chưa chấm được. Câu trả lời đã được lưu; hãy thử chấm lại."); }
         return get(userId, id);
     }
 
@@ -249,6 +258,7 @@ public class ConversationService {
             if (kind.equals("transcript")) turn.put("transcriptShown", true);
             if (kind.equals("translation")) turn.put("translationShown", true);
             if (kind.equals("clarify") && !turn.has("clarification")) {
+                budget.reserve(userId,false);
                 var clarification = ai.completeJson("""
                         Return ONLY JSON: {"utteranceEn":"20-65 words","translationVi":"Vietnamese translation"}.
                         Rephrase the supplied English utterance more clearly as the same speaker.
@@ -260,7 +270,7 @@ public class ConversationService {
                 turn.set("clarification", clarification);
             }
             commit(row, lease);
-        } catch (RuntimeException e) { release(row.id, lease); unavailable("Chưa tạo được hỗ trợ. Hãy thử lại."); }
+        } catch (RuntimeException e) { release(row.id, lease); logFailure("clarify",e); unavailable("Chưa tạo được hỗ trợ. Hãy thử lại."); }
         if (kind.equals("clarify")) warmAudio(row, turns(row).size(), "clarify");
         return get(userId, id);
     }
@@ -269,12 +279,18 @@ public class ConversationService {
         available();
         Row row = load(userId, id); checkTurn(row, expectedTurn);
         ObjectNode turn = current(row);
-        if (!variant.equals("original") && !variant.equals("clarify")) fail(HttpStatus.BAD_REQUEST, "Audio không hợp lệ.");
-        if (variant.equals("clarify") && !turn.has("clarification")) fail(HttpStatus.CONFLICT, "Hãy yêu cầu làm rõ trước.");
+        checkAudioVariant(turn, variant);
+        var queue = jobs.getIfAvailable();
+        if (queue != null && !audioExists(id, expectedTurn, variant)) {
+            String state = queue.audio(id, expectedTurn, variant, audioUtterance(row, expectedTurn, variant), true);
+            var pending = view(row);
+            pending.put("audioStatus", state);
+            return pending; // No conversation lease or HTTP thread waits for TTS.
+        }
         String lease = claim(row);
         try {
             try {
-                prepareAudio(row, expectedTurn, variant).get(50, TimeUnit.SECONDS);
+                if (queue == null) prepareAudio(row, expectedTurn, variant).get(50, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("Audio interrupted", e);
@@ -287,13 +303,35 @@ public class ConversationService {
         } catch (RuntimeException e) { release(row.id, lease); unavailable("Chưa tạo được giọng nói. Bạn có thể thử nghe lại."); }
         var result = get(userId, id);
         result.put("audioUrl", "/api/v1/conversation/sessions/" + id + "/audio/" + expectedTurn + "/" + variant);
+        result.put("audioStatus", "READY");
         return result;
     }
 
+    public Map<String, String> audioStatus(long userId, String id, int expectedTurn, String variant) {
+        Row row = load(userId, id); checkTurn(row, expectedTurn);
+        checkAudioVariant(current(row), variant);
+        if (audioExists(id, expectedTurn, variant)) return Map.of("status", "READY");
+        var queue = jobs.getIfAvailable();
+        return Map.of("status", queue == null ? "NOT_REQUESTED"
+                : queue.audioStatus(id, expectedTurn, variant, audioUtterance(row, expectedTurn, variant)));
+    }
+
+    private void checkAudioVariant(ObjectNode turn, String variant) {
+        if (!Set.of("original", "clarify").contains(variant)) fail(HttpStatus.BAD_REQUEST, "Audio không hợp lệ.");
+        if (variant.equals("clarify") && !turn.has("clarification")) fail(HttpStatus.CONFLICT, "Hãy yêu cầu làm rõ trước.");
+    }
+
+    private boolean audioExists(String id, int number, String variant) {
+        return db.queryForObject("SELECT COUNT(*) FROM ai_conversation_audio WHERE session_id=? AND turn_number=? AND variant=?",
+                Integer.class, id, number, variant) > 0;
+    }
+
     public byte[] audio(long userId, String id, int turn, String variant) {
-        load(userId, id);
-        var bytes = db.query("SELECT wav FROM ai_conversation_audio WHERE session_id=? AND turn_number=? AND variant=?",
-                (rs, n) -> rs.getBytes(1), id, turn, variant);
+        var bytes = db.query("""
+                SELECT a.wav FROM ai_conversation_audio a
+                JOIN ai_conversation_sessions s ON s.id=a.session_id
+                WHERE s.user_id=? AND a.session_id=? AND a.turn_number=? AND a.variant=?
+                """, (rs, n) -> rs.getBytes(1), userId, id, turn, variant);
         if (bytes.isEmpty()) fail(HttpStatus.NOT_FOUND, "Không tìm thấy audio.");
         return bytes.get(0);
     }
@@ -311,6 +349,7 @@ public class ConversationService {
     private JsonNode generatePrompt(Row row) {
         var context = new LinkedHashMap<String, Object>(promptContext(row));
         for (int attempt = 0; attempt < 2; attempt++) {
+            budget.reserve(row.user,false);
             JsonNode prompt = ai.completeJson(PROMPT_INSTRUCTION, json.writeValueAsString(context), config.generationModel());
             try {
                 validateNextPrompt(row, prompt);
@@ -329,6 +368,7 @@ public class ConversationService {
     private void reviewPrompt(Row row, JsonNode prompt) {
         JsonNode review;
         try {
+            budget.reserve(row.user,false);
             review = ai.completeJson(REVIEW_INSTRUCTION, json.writeValueAsString(
                     Map.of("prompt", prompt, "context", promptContext(row))), config.generationModel());
         } catch (RuntimeException providerFailure) {
@@ -383,6 +423,12 @@ public class ConversationService {
 
     private void warmAudio(Row row, int number, String variant) {
         try {
+            var queue = jobs.getIfAvailable();
+            if (queue != null) {
+                if (!audioExists(row.id, number, variant))
+                    queue.audio(row.id, number, variant, audioUtterance(row, number, variant), false);
+                return;
+            }
             prepareAudio(row, number, variant).exceptionally(error -> {
                 log.warn("Conversation audio prefetch failed; playback can retry"); return null;
             });
@@ -391,48 +437,64 @@ public class ConversationService {
         }
     }
 
-    private synchronized CompletableFuture<Void> prepareAudio(Row row, int number, String variant) {
+    private CompletableFuture<Void> prepareAudio(Row row, int number, String variant) {
         String key = row.id + "/" + number + "/" + variant;
-        var running = audioJobs.get(key);
-        if (running != null) return running;
-        if (db.queryForObject("SELECT COUNT(*) FROM ai_conversation_audio WHERE session_id=? AND turn_number=? AND variant=?",
-                Integer.class, row.id, number, variant) > 0) return CompletableFuture.completedFuture(null);
-        String utterance = audioUtterance(row, number, variant);
-        var parentObservation=observations.getCurrentObservation();
         var future = new CompletableFuture<Void>();
-        audioJobs.put(key, future);
+        var running = audioJobs.putIfAbsent(key, future);
+        if (running != null) return running;
         try {
+            if (audioExists(row.id, number, variant)) {
+                future.complete(null); audioJobs.remove(key, future); return future;
+            }
+            String utterance = audioUtterance(row, number, variant);
+            var parentObservation=observations.getCurrentObservation();
             audioWorkers.execute(() -> {
                 var job=io.micrometer.observation.Observation.createNotStarted("dictalab.audio.job",observations)
                         .parentObservation(parentObservation).start();
                 try (var scope=job.openScope()) {
-                    byte[] audio = tts.synthesize(utterance);
-                    if (audio == null) throw new IllegalStateException("Missing audio");
-                    Row saved = load(row.user, row.id);
-                    if (!utterance.equals(audioUtterance(saved, number, variant))) {
-                        throw new IllegalStateException("Audio task changed");
-                    }
-                    // No session lease or DB lock spans TTS I/O. The state comparison prevents stale writes.
-                    int inserted = db.update("""
-                            INSERT INTO ai_conversation_audio(session_id,turn_number,variant,wav)
-                            SELECT id,?,?,? FROM ai_conversation_sessions WHERE id=? AND state_json=?
-                            AND NOT EXISTS (SELECT 1 FROM ai_conversation_audio WHERE session_id=? AND turn_number=? AND variant=?)
-                            """, number, variant, audio, row.id, saved.state.toString(), row.id, number, variant);
-                    if (inserted == 0 && db.queryForObject(
-                            "SELECT COUNT(*) FROM ai_conversation_audio WHERE session_id=? AND turn_number=? AND variant=?",
-                            Integer.class, row.id, number, variant) == 0) throw new IllegalStateException("Audio state changed");
-                    synchronized (this) { audioJobs.remove(key, future); }
+                    synthesizeAudio(row, number, variant, utterance);
                     future.complete(null);
                 } catch (RuntimeException error) {
                     job.error(new IllegalStateException("Audio task failed"));
-                    synchronized (this) { audioJobs.remove(key, future); }
                     future.completeExceptionally(error);
-                } finally {job.stop();}
+                } finally {audioJobs.remove(key, future); job.stop();}
             });
-        } catch (RejectedExecutionException error) {
+        } catch (RuntimeException error) {
             audioJobs.remove(key, future); future.completeExceptionally(error);
         }
         return future;
+    }
+
+    Runnable generateQueuedAudio(String id, int number, String variant, String expectedHash) {
+        var owners = db.queryForList("SELECT user_id FROM ai_conversation_sessions WHERE id=?", Long.class, id);
+        if (owners.isEmpty() || audioExists(id, number, variant)) return () -> {};
+        Row row = load(owners.get(0), id);
+        String utterance = audioUtterance(row, number, variant);
+        if (!AiBackgroundJobs.hash(utterance).equals(expectedHash)) throw new IllegalStateException("Stale audio task");
+        return generateAudioWrite(row, number, variant, utterance);
+    }
+
+    private void synthesizeAudio(Row row, int number, String variant, String utterance) {
+        generateAudioWrite(row, number, variant, utterance).run();
+    }
+
+    private Runnable generateAudioWrite(Row row, int number, String variant, String utterance) {
+        budget.reserve(row.user,true);
+        byte[] audio = tts.synthesize(utterance);
+        if (audio == null) throw new IllegalStateException("Missing audio");
+        return () -> saveAudio(row, number, variant, utterance, audio);
+    }
+
+    private void saveAudio(Row row, int number, String variant, String utterance, byte[] audio) {
+        Row saved = load(row.user, row.id);
+        if (!utterance.equals(audioUtterance(saved, number, variant))) throw new IllegalStateException("Audio task changed");
+        // No DB lock spans TTS I/O. The state comparison prevents stale writes.
+        int inserted = db.update("""
+                INSERT INTO ai_conversation_audio(session_id,turn_number,variant,wav)
+                SELECT id,?,?,? FROM ai_conversation_sessions WHERE id=? AND state_json=?
+                AND NOT EXISTS (SELECT 1 FROM ai_conversation_audio WHERE session_id=? AND turn_number=? AND variant=?)
+                """, number, variant, audio, row.id, saved.state.toString(), row.id, number, variant);
+        if (inserted == 0 && !audioExists(row.id, number, variant)) throw new IllegalStateException("Audio state changed");
     }
 
     private String audioUtterance(Row row, int number, String variant) {
@@ -443,9 +505,12 @@ public class ConversationService {
     }
 
     @PreDestroy
-    synchronized void stopAudioWorkers() {
-        audioWorkers.shutdownNow();
-        audioJobs.values().forEach(future -> future.cancel(true)); audioJobs.clear();
+    void stopAudioWorkers() {
+        // Do not hold this monitor while waiting: finishing workers remove their futures under it.
+        WorkerShutdown.drain(audioWorkers, java.time.Duration.ofSeconds(70));
+        synchronized (this) {
+            audioJobs.values().forEach(future -> future.cancel(true)); audioJobs.clear();
+        }
     }
 
     private record Row(String id, long user, String scenario, String difficulty, ObjectNode state, long version) {}
@@ -469,7 +534,7 @@ public class ConversationService {
     }
 
     private void commit(Row row, String lease) {
-        if (dbPhase("commit").observe(()->db.update("UPDATE ai_conversation_sessions SET state_json=?,lease_id=NULL,busy_until=NULL WHERE id=? AND lease_id=? AND busy_until>CURRENT_TIMESTAMP",
+        if (dbPhase("commit").observe(()->db.update("UPDATE ai_conversation_sessions SET state_json=?,version=version+1,lease_id=NULL,busy_until=NULL WHERE id=? AND lease_id=? AND busy_until>CURRENT_TIMESTAMP",
                 row.state.toString(), row.id, lease)) != 1) fail(HttpStatus.CONFLICT, "Phiên đã thay đổi. Hãy tải lại.");
     }
 
@@ -625,5 +690,21 @@ public class ConversationService {
     }
     private void available() { if (!config.enabled() || !ai.configured() || !tts.enabled()) unavailable("Hội thoại AI chưa được cấu hình trên máy chủ."); }
     private void unavailable(String message) { fail(HttpStatus.SERVICE_UNAVAILABLE, message); }
+    private void logFailure(String operation,RuntimeException failure) {
+        // Only fixed validation codes are logged; never provider messages or learner evidence.
+        String validationRule = failure.getClass() == IllegalStateException.class
+                ? switch (java.util.Objects.toString(failure.getMessage(), "")) {
+                    case "Invalid JSON schema" -> "JSON_SHAPE";
+                    case "Invalid AI text" -> "TEXT";
+                    case "Invalid confirmation" -> "CONFIRMATION";
+                    case "Incomplete evaluation" -> "FACT_COUNT";
+                    case "Invalid evaluation" -> "FACT";
+                    case "Missing learner evidence" -> "LEARNER_EVIDENCE";
+                    case "Confirmation missing" -> "CONFIRMATION_MISSING";
+                    default -> "NONE";
+                } : "NONE";
+        log.warn("Conversation operation failed, operation={}, reason={}, validationRule={}, errorType={}, errorId={}",
+                operation,ShopAiKeyClient.reason(failure),validationRule,failure.getClass().getSimpleName(),UUID.randomUUID());
+    }
     private void fail(HttpStatus status, String message) { throw new ResponseStatusException(status, message); }
 }

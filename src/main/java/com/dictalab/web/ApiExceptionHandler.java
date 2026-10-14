@@ -30,6 +30,8 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler({org.springframework.transaction.CannotCreateTransactionException.class,
             org.springframework.jdbc.CannotGetJdbcConnectionException.class,
+            org.springframework.dao.QueryTimeoutException.class,
+            org.springframework.transaction.TransactionTimedOutException.class,
             com.dictalab.security.RedisTokenStore.Unavailable.class})
     public ResponseEntity<ApiDtos.ApiError> databaseUnavailable(Exception failure, HttpServletRequest request) {
         String errorId = UUID.randomUUID().toString();

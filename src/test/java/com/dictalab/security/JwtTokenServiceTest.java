@@ -20,7 +20,7 @@ class JwtTokenServiceTest {
 
     private JwtTokenService service(String key, String previous, String kid, String previousKid, String issuer) {
         return new JwtTokenService(store, users, key, previous, kid, previousKid, issuer,
-                Duration.ofMinutes(10), Duration.ofDays(7), true);
+                Duration.ofMinutes(10), Duration.ofDays(7), true, new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     }
 
     @Test void strongConfiguredKeyIsRequiredAndIssuerAndAudienceAreValidated() {
@@ -45,7 +45,9 @@ class JwtTokenServiceTest {
     @Test void rollingKeyRotationAcceptsPreviousKeyThenRetirementRejectsIt() {
         var user = mock(AppUser.class); given(user.getId()).willReturn(42L);
         given(user.isEnabled()).willReturn(true); given(user.getAuthVersion()).willReturn(3L);
-        given(user.getRole()).willReturn("USER"); given(users.findById(42L)).willReturn(Optional.of(user));
+        var state = mock(AppUserRepository.AuthenticationState.class);
+        given(state.isEnabled()).willReturn(true); given(state.getAuthVersion()).willReturn(3L);
+        given(state.getRole()).willReturn("USER"); given(users.authenticationState(42L)).willReturn(Optional.of(state));
         given(store.active(anyString(), eq(42L), eq(3L))).willReturn(true);
         var oldResponse = new MockHttpServletResponse(); service(firstKey, "", "old", "unused", "dictalab").issue(user, oldResponse);
         String oldToken = oldResponse.getCookie(JwtTokenService.ACCESS_COOKIE).getValue();

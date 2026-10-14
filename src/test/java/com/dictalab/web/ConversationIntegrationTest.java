@@ -8,6 +8,9 @@ import com.dictalab.service.ConversationService;
 import com.dictalab.service.ShopAiKeyClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -34,12 +37,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {"dictalab.conversation.enabled=true", "dictalab.coach.enabled=false"})
 @AutoConfigureMockMvc
 class ConversationIntegrationTest {
+    @Test void recentSessionsReportCompletionWithoutExposingTheirStoredState() {
+        var owner = users.saveAndFlush(new AppUser("recent-" + UUID.randomUUID() + "@test.local", "Recent", "unused", Instant.now()));
+        for (boolean completed : new boolean[]{false, true}) {
+            db.update("INSERT INTO ai_conversation_sessions(id,user_id,scenario,difficulty,state_json) VALUES(?,?,'cafe','A1',?)",
+                    UUID.randomUUID().toString(), owner.getId(), "{\"completed\":" + completed + ",\"private\":\"hidden\"}");
+        }
+        var catalog = service.catalog(owner.getId());
+        @SuppressWarnings("unchecked") var sessions = (java.util.List<Map<String,Object>>) catalog.get("sessions");
+        assertThat(sessions).extracting(row -> row.get("completed")).containsExactlyInAnyOrder(false, true);
+        assertThat(sessions).allSatisfy(row -> assertThat(row).doesNotContainKey("state_json"));
+    }
     @Autowired ConversationService service;
     @Autowired AppUserRepository users;
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
     @Autowired org.springframework.transaction.PlatformTransactionManager manager;
     @Autowired com.dictalab.config.ConversationProperties config;
+    @Autowired com.dictalab.service.AiUsageBudget budget;
     @Autowired MockMvc mvc;
     @MockitoBean ShopAiKeyClient ai;
     @MockitoBean CartesiaClient tts;
@@ -369,6 +384,49 @@ class ConversationIntegrationTest {
         assertThat(service.get(owner, id).path("turns").path(0).path("attempts").size()).isEqualTo(1);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"JSON_SHAPE", "TEXT", "CONFIRMATION", "FACT_COUNT", "FACT", "LEARNER_EVIDENCE", "CONFIRMATION_MISSING"})
+    @org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
+    void gradingFailureLogsOnlyFixedRulesAndPreservesPendingAnswer(String rule,
+            org.springframework.boot.test.system.CapturedOutput output) {
+        String id = start(); UUID request = UUID.randomUUID();
+        String answer = "PRIVATE_LEARNER_ANSWER_MARKER";
+        var invalid = (tools.jackson.databind.node.ObjectNode) grade("PARTIAL", "MISSED", answer);
+        switch (rule) {
+            case "JSON_SHAPE" -> invalid.put("privateUnexpectedField", answer);
+            case "TEXT" -> invalid.put("feedbackVi", answer.repeat(20));
+            case "CONFIRMATION" -> invalid.put("clarificationVi", 42);
+            case "FACT_COUNT" -> ((tools.jackson.databind.node.ArrayNode) invalid.path("facts")).remove(1);
+            case "FACT" -> ((tools.jackson.databind.node.ObjectNode) invalid.path("facts").path(0)).put("status", answer);
+            case "LEARNER_EVIDENCE" -> ((tools.jackson.databind.node.ObjectNode) invalid.path("facts").path(0)).put("evidenceVi", "PRIVATE_INVENTED_EVIDENCE_MARKER");
+            case "CONFIRMATION_MISSING" -> invalid.put("clarificationVi", "");
+            default -> throw new AssertionError("Unknown test rule");
+        }
+        when(ai.completeJson(anyString(), anyString())).thenReturn(invalid);
+        assertThatThrownBy(() -> service.answer(owner, id, 1, request, answer))
+                .isInstanceOfSatisfying(ResponseStatusException.class, e -> assertThat(e.getStatusCode().value()).isEqualTo(503));
+        var stored = json.readTree(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=?", String.class, id));
+        var attempts = stored.path("turns").path(0).path("attempts");
+        assertThat(attempts.size()).isEqualTo(1);
+        assertThat(attempts.path(0).path("answerVi").asText()).isEqualTo(answer);
+        assertThat(attempts.path(0).has("evaluation")).isFalse();
+        assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?", String.class, id)).isNull();
+        verify(ai, times(1)).completeJson(anyString(), anyString());
+        assertThat(output.getOut()).contains("operation=grade", "validationRule=" + rule)
+                .doesNotContain(answer, "PRIVATE_INVENTED_EVIDENCE_MARKER", "privateUnexpectedField");
+    }
+
+    @Test
+    @org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
+    void arbitraryProviderExceptionTextNeverBecomesAValidationRule(org.springframework.boot.test.system.CapturedOutput output) {
+        String id = start();
+        when(ai.completeJson(anyString(), anyString())).thenThrow(new IllegalStateException("PRIVATE_PROVIDER_OUTPUT_MARKER"));
+        assertThatThrownBy(() -> service.answer(owner, id, 1, UUID.randomUUID(), "fixture"))
+                .isInstanceOf(ResponseStatusException.class);
+        assertThat(output.getOut()).contains("validationRule=NONE").doesNotContain("PRIVATE_PROVIDER_OUTPUT_MARKER");
+        verify(ai, times(1)).completeJson(anyString(), anyString());
+    }
+
     @Test void fourTasksEndWithNewTransferAndSupportIsSeparated() {
         String id = start();
         for (int n = 1; n <= 4; n++) {
@@ -410,6 +468,104 @@ class ConversationIntegrationTest {
         } finally { finish.countDown(); executor.shutdownNow(); }
     }
 
+    @Test void staleReaderCannotOverwriteAResultCommittedAfterItsRead() throws Exception {
+        String id = start();
+        var providerEntered = new CountDownLatch(1);
+        var finishProvider = new CountDownLatch(1);
+        var staleRead = new CountDownLatch(1);
+        var resultCommitted = new CountDownLatch(1);
+        when(ai.completeJson(anyString(), anyString())).thenAnswer(invocation -> {
+            providerEntered.countDown();
+            if (!finishProvider.await(10, TimeUnit.SECONDS)) throw new AssertionError("Provider timed out");
+            return grade("CAPTURED", "CAPTURED", "quán");
+        });
+        JdbcTemplate staleDb = spy(db);
+        doAnswer(invocation -> {
+            Object snapshot = invocation.callRealMethod();
+            staleRead.countDown();
+            if (!resultCommitted.await(10, TimeUnit.SECONDS)) throw new AssertionError("Commit timed out");
+            return snapshot;
+        }).when(staleDb).query(eq("SELECT * FROM ai_conversation_sessions WHERE id=? AND user_id=?"),
+                any(org.springframework.jdbc.core.RowMapper.class), eq(id), eq(owner));
+        var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        var staleService = new ConversationService(staleDb, json, ai, tts, config, manager, metrics,
+                io.micrometer.observation.ObservationRegistry.NOOP,
+                new org.springframework.beans.factory.support.StaticListableBeanFactory()
+                        .getBeanProvider(com.dictalab.service.AiBackgroundJobs.class),budget);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var answer = executor.submit(() -> service.answer(owner, id, 1, UUID.randomUUID(), "quán"));
+            assertThat(providerEntered.await(10, TimeUnit.SECONDS)).isTrue();
+            var staleHelp = executor.submit(() -> staleService.help(owner, id, 1, "transcript"));
+            assertThat(staleRead.await(10, TimeUnit.SECONDS)).isTrue();
+            finishProvider.countDown();
+            assertThat(answer.get(10, TimeUnit.SECONDS).path("turns").path(0).path("done").asBoolean()).isTrue();
+            String committed = db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=?", String.class, id);
+            resultCommitted.countDown();
+            assertThatThrownBy(() -> staleHelp.get(10, TimeUnit.SECONDS))
+                    .isInstanceOf(ExecutionException.class)
+                    .cause().isInstanceOfSatisfying(ResponseStatusException.class,
+                            failure -> assertThat(failure.getStatusCode().value()).isEqualTo(409));
+            assertThat(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=?", String.class, id))
+                    .isEqualTo(committed);
+            verify(ai, times(1)).completeJson(anyString(), anyString());
+        } finally {
+            finishProvider.countDown(); resultCommitted.countDown(); executor.shutdownNow();
+            executor.awaitTermination(10, TimeUnit.SECONDS);
+            org.springframework.test.util.ReflectionTestUtils.invokeMethod(staleService, "stopAudioWorkers");
+            metrics.close();
+        }
+    }
+
+    @EnabledIfSystemProperty(named="dictalab.race-tests",matches="true")
+    @ParameterizedTest @ValueSource(ints={2,5,10,20})
+    void requestIdMatrixAndLostResponseRetry(int n) throws Exception {
+        try(var connection=db.getDataSource().getConnection()){
+            assertThat(connection.getMetaData().getDatabaseProductName()).isEqualTo("PostgreSQL");
+        }
+        assertThat(db.queryForObject("SELECT current_database()",String.class)).matches("dictalab_test(?:_[a-f0-9]{32})?");
+        int repeats=Integer.getInteger("dictalab.race-repeats",2);
+        assertThat(repeats).isBetween(1,5);
+        for(int repeat=0;repeat<repeats;repeat++){
+            String id=start();UUID request=UUID.randomUUID();
+            var barrier=new CyclicBarrier(n);var entered=new CountDownLatch(1);
+            var rejected=new CountDownLatch(n-1);var release=new CountDownLatch(1);
+            clearInvocations(ai);
+            when(ai.completeJson(anyString(),anyString())).thenAnswer(invocation->{
+                entered.countDown();assertThat(release.await(15,TimeUnit.SECONDS)).isTrue();
+                return grade("CAPTURED","CAPTURED","fixture");
+            });
+            var pool=Executors.newFixedThreadPool(n);
+            try{
+                var futures=new java.util.ArrayList<Future<Boolean>>();
+                for(int i=0;i<n;i++)futures.add(pool.submit(()->{
+                    barrier.await(10,TimeUnit.SECONDS);
+                    try{service.answer(owner,id,1,request,"fixture");return true;}
+                    catch(ResponseStatusException busy){
+                        assertThat(busy.getStatusCode().value()).isEqualTo(409);rejected.countDown();return false;
+                    }
+                }));
+                assertThat(entered.await(10,TimeUnit.SECONDS)).isTrue();
+                assertThat(rejected.await(10,TimeUnit.SECONDS)).as("All losers reached the live lease boundary").isTrue();
+                verify(ai,times(1)).completeJson(anyString(),anyString());
+                release.countDown();int winners=0;
+                for(var future:futures)if(future.get(15,TimeUnit.SECONDS))winners++;
+                assertThat(winners).isEqualTo(1);
+                var committed=service.answer(owner,id,1,request,"fixture"); // The first response is deliberately discarded.
+                var retries=new java.util.ArrayList<Future<JsonNode>>();
+                for(int i=0;i<n;i++)retries.add(pool.submit(()->service.answer(owner,id,1,request,"fixture")));
+                for(var retry:retries)assertThat(retry.get(15,TimeUnit.SECONDS)).isEqualTo(committed);
+                verify(ai,times(1)).completeJson(anyString(),anyString());
+                var stored=json.readTree(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=?",String.class,id));
+                assertThat(stored.path("turns").path(0).path("attempts").size()).isEqualTo(1);
+                assertThatThrownBy(()->service.answer(owner,id,1,request,"changed payload"))
+                        .isInstanceOfSatisfying(ResponseStatusException.class,e->assertThat(e.getStatusCode().value()).isEqualTo(409));
+                assertThatThrownBy(()->service.answer(Long.MAX_VALUE,id,1,request,"fixture"))
+                        .isInstanceOfSatisfying(ResponseStatusException.class,e->assertThat(e.getStatusCode().value()).isEqualTo(404));
+            }finally{release.countDown();pool.shutdownNow();assertThat(pool.awaitTermination(10,TimeUnit.SECONDS)).isTrue();}
+        }
+    }
+
     @Test void expiredGenerationCannotCommitEvenBeforeAReplacementClaims() {
         String id=service.create(owner,"cafe","A1").path("id").asText();
         when(ai.completeJson(startsWith("You design"),anyString(),anyString())).thenAnswer(call->{
@@ -428,7 +584,8 @@ class ConversationIntegrationTest {
         JsonNode original=service.answer(owner,id,1,request,"quán");
         var isolatedMetrics=new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         var replacement=new ConversationService(db,json,ai,tts,config,manager,isolatedMetrics,
-                io.micrometer.observation.ObservationRegistry.NOOP);
+                io.micrometer.observation.ObservationRegistry.NOOP,
+                new org.springframework.beans.factory.support.StaticListableBeanFactory().getBeanProvider(com.dictalab.service.AiBackgroundJobs.class),budget);
         clearInvocations(ai);
         try{
             assertThat(replacement.answer(owner,id,1,request,"quán")).isEqualTo(original);
@@ -524,6 +681,37 @@ class ConversationIntegrationTest {
         doReturn(new byte[]{4,5,6}).when(tts).synthesize(anyString());
         service.play(owner, retryId, 1, "original", false);
         assertThat(service.audio(owner, retryId, 1, "original")).containsExactly(4,5,6);
+    }
+
+    @Test void slowAudioLookupDoesNotBlockAnotherSessionPreparingAudio() throws Exception {
+        JdbcTemplate delayedDb = spy(db);
+        var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        var isolated = new ConversationService(delayedDb, json, ai, tts, config, manager, metrics,
+                io.micrometer.observation.ObservationRegistry.NOOP,
+                new org.springframework.beans.factory.support.StaticListableBeanFactory()
+                        .getBeanProvider(com.dictalab.service.AiBackgroundJobs.class), budget);
+        String first = isolated.create(owner, "cafe", "A1").path("id").asText();
+        String second = isolated.create(owner, "cafe", "A1").path("id").asText();
+        var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
+        doAnswer(call -> {
+            entered.countDown(); assertThat(release.await(10, TimeUnit.SECONDS)).isTrue();
+            return call.callRealMethod();
+        }).when(delayedDb).queryForObject(
+                eq("SELECT COUNT(*) FROM ai_conversation_audio WHERE session_id=? AND turn_number=? AND variant=?"),
+                eq(Integer.class), eq(first), eq(1), eq("original"));
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var blocked = executor.submit(() -> isolated.next(owner, first, 0));
+            assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+            var unrelated = executor.submit(() -> isolated.next(owner, second, 0));
+            assertThat(unrelated.get(5, TimeUnit.SECONDS).path("turnNumber").asInt()).isEqualTo(1);
+            assertThat(blocked.isDone()).isFalse();
+            release.countDown(); blocked.get(10, TimeUnit.SECONDS);
+        } finally {
+            release.countDown(); executor.shutdownNow();
+            var stop = ConversationService.class.getDeclaredMethod("stopAudioWorkers");
+            stop.setAccessible(true); stop.invoke(isolated); metrics.close();
+        }
     }
 
     @Test void deletedAccountCannotReceiveLatePrefetchedAudio() throws Exception {
