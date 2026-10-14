@@ -12,6 +12,28 @@ runnable check for non-trivial logic.
 Use professional, concise, complete sentences. Preserve technical meaning and use
 normal prose for irreversible actions, security warnings and multi-step instructions.
 
+## Automatic GitHub delivery after completed work
+
+After completing a feature or fix, run the relevant checks, then commit and push
+the task's changes to GitHub without asking for confirmation again. This is the
+owner's standing authorization for this project's normal commit and push flow.
+
+- Review the diff and stage only changes belonging to the completed task. Preserve
+  unrelated work and keep credentials, runtime data and generated private files out
+  of Git. Use a clear commit message describing the feature or fix.
+- Push to the current task branch on `origin`, setting its upstream if needed.
+  Never force-push, discard work or bypass required checks and branch protections.
+- Follow any GitHub Actions run triggered by the delivery. Fix failures caused by
+  the task and repeat the relevant checks before pushing the correction.
+- The existing deployment workflow deploys only from `main` after tests pass.
+  A push to another branch is GitHub delivery, not a verified production deployment.
+  Use the established release flow when production deployment is authorized.
+- Verify the remote commit after pushing. For a production deployment, also verify
+  the workflow result and the application's health before reporting success.
+- Report the branch, commit, check results and actual delivery/deployment status.
+  If checks, authentication, permissions or deployment fail, state the blocker;
+  never claim the task was delivered or deployed successfully without verification.
+
 ## Project authorization and credentials
 
 The owner prefers autonomous execution of explicitly requested deployment work and
