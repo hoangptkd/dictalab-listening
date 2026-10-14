@@ -37,4 +37,20 @@ Saved-DOM administration checks verify layout, not authenticated live administra
 
 ## Deployment
 
-Pending GitHub push. Deployment requires checksum guard, quiescent backup, automatic application rollback and public verification. No schema migration is part of this release.
+The source snapshot was pushed and verified on GitHub before VPS deployment:
+
+- Branch: `codex/dictalab-ui-release-20261014`.
+- Source commit: `097fa4d44a459a818a71bc3f33df373be3ca0aa8`.
+- Application activated successfully after quiescent backup with an installed-baseline checksum guard and automatic rollback on readiness failure.
+- Rollback backup: `/var/lib/dictalab/backups/release-lina_c6l`.
+- Installed JAR SHA256 matches the tested candidate; service health is `UP`.
+- Public `app.css` SHA256: `f778b0561b13c3f05293a43fe75af02270f46d2ef886ac95a79d526802411fe2`.
+- Public `fidelity.css` SHA256: `013b68af49b8590a984ee78f1304513b01917bf16db3f5269241921674f42688`.
+- Both publicly served CSS resources match the candidate byte for byte.
+- 11/11 public browser checks passed after deployment, including difficulty selection, filtering, pagination, retired links, guest login return, keyboard navigation and 320/390px mobile layouts; no uncaught browser errors.
+- Public library retains 15 difficulty tiers, 23 public originals and 63 memberships.
+- Google sign-in configuration remains enabled; an unauthenticated current-user request returns 401.
+- Production preflight confirms unchanged lesson inventory, Flyway V33 and the sampled completed/replay progress records.
+- Before and after counts are identical: 123 lessons, 1,237 practice sessions, 68,352 word attempts and 111 users.
+
+No schema migration was included. The database backup is a recovery precaution; activation did not restore or replace learning data.
