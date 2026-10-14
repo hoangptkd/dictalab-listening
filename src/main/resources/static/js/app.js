@@ -241,7 +241,7 @@
         logoutButton: document.querySelector("#logout-button"),
         views: [...document.querySelectorAll(".view")],
         routeButtons: [...document.querySelectorAll("[data-route]")],
-        navLinks: [...document.querySelectorAll(".nav-link[data-route]")],
+        navLinks: [...document.querySelectorAll(".nav-link[data-route], .nav-link[data-admin-section]")],
         levelTabs: document.querySelector("#level-tabs"),
         levelDescription: document.querySelector("#level-description"),
         lessonGrid: document.querySelector("#lesson-grid"),
@@ -383,6 +383,7 @@
     };
 
     document.addEventListener("DOMContentLoaded", init);
+    window.addEventListener("hashchange", () => updateNavigation(document.body.dataset.route));
 
     // Xử lý Back/Forward của trình duyệt
     window.addEventListener("popstate", async event => {
@@ -1070,17 +1071,25 @@
         elements.mobileNavMore?.setAttribute("aria-label", {
             history: "Thêm, đang xem Lịch sử", room: "Thêm, đang xem Luyện cùng bạn", support: "Thêm, đang xem Hỗ trợ", account: "Thêm, đang xem Tài khoản"
         }[viewId] || "Thêm");
+        updateNavigation(viewId);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        document.querySelector("#main-content").focus({ preventScroll: true });
+    }
+
+    function updateNavigation(viewId) {
+        const library = viewId === "admin" && (new URLSearchParams(location.search).get("library") === "1"
+            || location.hash === "#library-management");
         elements.navLinks.forEach(link => {
-            const active = link.dataset.route === (viewId === "practice" || viewId === "result" ? "catalog" : viewId);
+            const active = link.dataset.adminSection
+                ? viewId === "admin" && link.dataset.adminSection === (library ? "library" : "lessons")
+                : link.dataset.route === (viewId === "practice" || viewId === "result" ? "catalog" : viewId);
             link.classList.toggle("is-active", active);
             if (active) {
-                link.setAttribute("aria-current", "page");
+                link.setAttribute("aria-current", link.dataset.adminSection === "library" ? "location" : "page");
             } else {
                 link.removeAttribute("aria-current");
             }
         });
-        window.scrollTo({ top: 0, behavior: "smooth" });
-        document.querySelector("#main-content").focus({ preventScroll: true });
     }
 
     function showAuthScreen(message = "", nextPath = null) {

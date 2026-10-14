@@ -48,11 +48,11 @@ public class SupportController {
                              @Size(max = 1000) String adminNote, Long version) {}
     public record TicketPage(List<Map<String, Object>> tickets, int page, boolean hasMore) {}
     @GetMapping("/api/admin/support/tickets/page")
-    public AdminQueryService.Page page(@RequestParam(defaultValue="") String q, @RequestParam(defaultValue="OPEN") String status,
+    public AdminQueryService.Page page(@RequestParam(defaultValue="") String q, @RequestParam(required=false) String status,
             @RequestParam(defaultValue="") String category, @RequestParam(defaultValue="") String referenceType,
             @RequestParam(defaultValue="") String from, @RequestParam(defaultValue="") String to,
             @RequestParam(defaultValue="oldest") String sort, @RequestParam(defaultValue="0") int page) {
-        return queries.tickets(q,status,category,referenceType,from,to,sort,page);
+        return queries.tickets(q,status == null ? "OPEN" : status,category,referenceType,from,to,sort,page);
     }
     @GetMapping("/api/admin/support/tickets/{id}")
     public Map<String,Object> detail(@PathVariable long id) {

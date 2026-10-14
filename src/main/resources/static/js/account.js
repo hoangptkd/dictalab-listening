@@ -360,6 +360,11 @@
         finally { if(request===adminRequest) root.setAttribute('aria-busy','false'); }
     }
 
+    function ticketList(result, selectedTicket) {
+        const ui = window.DictaLabAdmin;
+        return `<p class="admin-summary">${result.total} yêu cầu phù hợp</p>${result.items.length?`<div class="admin-table-wrap"><table class="admin-table"><caption class="sr-only">Danh sách yêu cầu hỗ trợ</caption><thead><tr><th scope="col">Yêu cầu</th><th scope="col">Loại</th><th scope="col">Trạng thái</th><th scope="col">Ngày tạo</th><th scope="col">Thao tác</th></tr></thead><tbody>${result.items.map(item=>`<tr class="${String(item.id)===String(selectedTicket)?'is-selected':''}"><td><strong>#${item.id} · ${escape(item.subject)}</strong><small>${escape(item.email)}</small></td><td data-label="Loại">${escape(categories[item.category])}</td><td data-label="Trạng thái">${ui.badge(ticketStates[item.status],item.status==='RESOLVED'?'good':'warn')}</td><td data-label="Ngày tạo">${ui.stamp(item.created_at)}</td><td><a class="text-button" data-detail href="${escape(detailUrl('ticket',item.id))}" aria-label="Xử lý yêu cầu ${item.id}">Xử lý →</a></td></tr>`).join('')}</tbody></table></div>`:'<p class="admin-empty">Không có yêu cầu phù hợp. Hãy đổi điều kiện hoặc xóa bộ lọc.</p>'}${ui.pager(result)}`;
+    }
+
     async function tickets() {
         const ui=window.DictaLabAdmin, root=document.querySelector('#admin-support-content'), request=++adminRequest;
         const filter=ui.query({q:'',status:'OPEN',category:'',referenceType:'',from:'',to:'',sort:'oldest',page:1,ticket:''});
@@ -374,7 +379,7 @@
                 <label>Từ ngày (UTC)<input type="date" name="from" value="${escape(filter.from)}"></label><label>Đến ngày (UTC)<input type="date" name="to" value="${escape(filter.to)}"></label>
                 <label>Sắp xếp<select name="sort">${selectOptions({oldest:'Cũ nhất trước',newest:'Mới nhất trước'},filter.sort,false)}</select></label>
                 <div class="admin-actions"><button type="submit" class="primary-button compact">Áp dụng</button><button type="button" class="text-button" data-clear>Xóa lọc</button></div></form>
-                <div class="admin-records"><section class="admin-master"><p class="admin-summary">${result.total} yêu cầu phù hợp</p>${result.items.length?`<div class="admin-table-wrap"><table class="admin-table"><caption class="sr-only">Danh sách yêu cầu hỗ trợ</caption><thead><tr><th scope="col">Yêu cầu</th><th scope="col">Loại</th><th scope="col">Trạng thái</th><th scope="col">Ngày tạo</th><th scope="col">Thao tác</th></tr></thead><tbody>${result.items.map(item=>`<tr class="${String(item.id)===String(filter.ticket)?'is-selected':''}"><td><strong>#${item.id} · ${escape(item.subject)}</strong><small>${escape(item.email)}</small></td><td data-label="Loại">${escape(categories[item.category])}</td><td data-label="Trạng thái">${ui.badge(ticketStates[item.status],item.status==='RESOLVED'?'good':'warn')}</td><td data-label="Ngày tạo">${ui.stamp(item.created_at)}</td><td><a class="text-button" data-detail href="${escape(detailUrl('ticket',item.id))}" aria-label="Xử lý yêu cầu ${item.id}">Xử lý →</a></td></tr>`).join('')}</tbody></table></div>`:'<p class="admin-empty">Không có yêu cầu phù hợp. Hãy đổi điều kiện hoặc xóa bộ lọc.</p>'}${ui.pager(result)}</section><aside class="admin-detail" aria-label="Chi tiết yêu cầu"><div class="admin-empty">Chọn yêu cầu để xem nội dung và phản hồi.</div></aside></div><p data-status role="status" aria-live="polite"></p>`;
+                <div class="admin-records"><section class="admin-master">${ticketList(result, filter.ticket)}</section><aside class="admin-detail" aria-label="Chi tiết yêu cầu"><div class="admin-empty">Chọn yêu cầu để xem nội dung và phản hồi.</div></aside></div><p data-status role="status" aria-live="polite"></p>`;
             if(filter.ticket) {
                 const item=await bridge().api(`/api/admin/support/tickets/${encodeURIComponent(filter.ticket)}`);
                 if(request!==adminRequest || document.body.dataset.route!=='admin-support') return;
@@ -397,8 +402,21 @@
                     await bridge().api(`/api/admin/support/tickets/${item.id}`,{method:'PUT',body:{...data,version:item.edit_version}});
                     ui.clean(form);
                     const updated=await bridge().api(`/api/admin/support/tickets/${item.id}`);
+                    if(request!==adminRequest || document.body.dataset.route!=='admin-support') return;
                     item.edit_version=updated.edit_version;
                     root.querySelector('[data-events]').innerHTML=ui.events(updated.events);
+                    try {
+                        const refreshed=await bridge().api(`/api/admin/support/tickets/page?${new URLSearchParams({...filter,page:Number(filter.page)-1})}`);
+                        if(request!==adminRequest || document.body.dataset.route!=='admin-support') return;
+                        ui.url({...filter,page:refreshed.page+1},true);
+                        const master=root.querySelector('.admin-master');
+                        master.innerHTML=ticketList(refreshed,filter.ticket);
+                        adminFilters(master,{status:'',sort:'oldest'},tickets);
+                    } catch(error) {
+                        if(request===adminRequest && document.body.dataset.route==='admin-support')
+                            status(root,`Đã lưu phản hồi, nhưng chưa tải lại danh sách: ${error.message}`,true);
+                        return;
+                    }
                     status(root,'Đã lưu phản hồi.');
                 });
                 root.querySelector('[data-delete-account]')?.addEventListener('click',()=>ui.busy(root,async()=>{

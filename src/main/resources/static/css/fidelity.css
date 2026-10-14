@@ -297,6 +297,7 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; backg
 .dashboard-breadcrumb .text-button { color: var(--coral-deep); font-size: 12px; }
 .dashboard-breadcrumb { line-height: 16px; padding-bottom: 16px; margin-bottom: 36px; }
 .dashboard-breadcrumb .text-button { padding: 0; line-height: 16px; border: 0; }
+#dashboard-error-bank { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--cream); }
 .dashboard-header, .history-header { padding: 0 0 24px; margin: 0; gap: 32px; border-bottom: 1px solid var(--line); }
 .dashboard-header h1, .history-header h1 { font: 400 48px/60px var(--display); letter-spacing: -.02em; margin: 12px 0 0; }
 .dashboard-header > p, .history-header > p { font-size: 16px; max-width: 450px; }
@@ -576,15 +577,8 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; backg
     .auth-screen:has(#account-public-actions:not([hidden])) #reset-request button { min-height: 58px; }
     .auth-screen:has(.auth-tabs:not([hidden])) .auth-footer, .auth-screen:has(#account-public-actions:not([hidden])) .auth-footer { grid-column: 2; grid-row: 2; padding: 24px 64px; justify-content: center; }
     .auth-screen:has(.auth-tabs:not([hidden])) .auth-footer span, .auth-screen:has(#account-public-actions:not([hidden])) .auth-footer span { margin: 0; width: 100%; text-align: center; }
-    body[data-route="admin-users"] .admin-shell { grid-template-columns: 288px minmax(0,1fr); }
-    body[data-route="admin-users"] .admin-sidebar { width: 224px; margin: 24px 0 0 40px; padding: 0; background: none; border: 0; }
-    body[data-route="admin-users"] .admin-topbar { min-height: 65px; }
-    body[data-route="admin-users"] .admin-shell .account-page { padding: 24px 40px 24px 0; }
-    body[data-route="admin-listening"] .admin-shell { grid-template-columns: 256px minmax(0,1fr); }
+    body[data-route="admin-users"] .admin-shell .account-page { padding: 24px 40px; }
     body[data-route="admin-listening"] .admin-shell .account-page { padding: 40px; }
-    body[data-route="admin-support"] .admin-shell { grid-template-columns: 256px minmax(0,1fr); grid-template-rows: 64px minmax(0,1fr); }
-    body[data-route="admin-support"] .admin-shell > .admin-sidebar { grid-row: 1 / -1; height: 100dvh; top: 0; }
-    body[data-route="admin-support"] .admin-topbar { grid-column: 2; min-height: 64px; height: 64px; align-self: start; padding-inline: 40px; }
     body[data-route="admin-support"] .admin-shell .account-page { padding: 24px 40px; }
     body[data-route="admin"] .admin-hero { padding: 40px 48px 0; }
 }
@@ -618,7 +612,7 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; backg
 .policy-document section p { border-left: 2px solid var(--line); padding-left: 16px; margin: 16px 0; font-size: 18px; line-height: 29.25px; }
 
 /* Administration uses the compact shell and denser metadata from Stitch. */
-.admin-shell { grid-template-columns: 240px minmax(0, 1fr); background: #fdf9ef; }
+.admin-shell { grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); background: #fdf9ef; }
 .admin-main { display: contents; }
 .admin-topbar { grid-column: 1 / -1; grid-row: 1; }
 .admin-topbar .account-cluster { margin-left: auto; }
@@ -987,7 +981,7 @@ body[data-route="admin-users"] .admin-table td:last-child a { white-space: nowra
     .policy-document { padding: 20px; }
     .policy-document h1 { font-size: 32px; line-height: 36px; }
     .public-footer { padding: 20px 14px; gap: 16px; }
-    .admin-shell { grid-template-columns: 1fr; }
+    .admin-shell { grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0, 1fr); }
     .admin-shell > .admin-sidebar { grid-column: 1; grid-row: 2; height: auto; }
     .admin-shell #main-content { grid-column: 1; grid-row: 3; }
     .admin-sidebar { position: static; height: auto; padding: 16px; gap: 12px; border-bottom: 1px solid var(--line); }

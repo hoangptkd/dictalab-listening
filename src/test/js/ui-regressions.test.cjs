@@ -371,7 +371,8 @@ test('conversation navigation opens and loads the conversation view and session'
     const target = {id: 'conversation-view'}, catalog = {id: 'catalog-view'};
     const document = {body: {dataset: {route: 'catalog'}}, querySelector: selector => selector === '#conversation-view' ? target : {focus() {}}};
     const showSource = app.match(/    function _showView\([\s\S]*?\n    }\n/)[0];
-    const show = vm.runInNewContext(`${showSource}\n_showView`, {isAdminArea: false, state: {}, document,
+    const navigationSource = app.match(/    function updateNavigation\([\s\S]*?\n    }\n/)[0];
+    const show = vm.runInNewContext(`${showSource}\n${navigationSource}\n_showView`, {isAdminArea: false, state: {}, document,
         resetPracticeInput() {},
         elements: {views: [target, catalog], navLinks: []}, window: {scrollTo() {}}, roomPrepareStudyAudio() {}});
     let opened;

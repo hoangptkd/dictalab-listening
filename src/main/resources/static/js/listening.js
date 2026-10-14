@@ -3,6 +3,8 @@
 
     const bridge = () => window.DictaLabListeningBridge;
     const root = () => document.querySelector("#listening-content");
+    const questionTypeLabels = {MAIN_IDEA: "Ý chính", DETAIL: "Chi tiết", INFERENCE: "Suy luận", SPEAKER_INTENT: "Ý định người nói"};
+    const questionTypeLabel = type => Object.hasOwn(questionTypeLabels, type) ? questionTypeLabels[type] : "Loại câu hỏi khác";
     let sessionId = null;
     let reportTimer = null;
     let playing = false;
@@ -154,7 +156,7 @@
                 return `<details class="listening-editor-question" ${index === 0 ? "open" : ""}><summary>Câu hỏi ${index + 1}${index < 5 ? " · bắt buộc" : " · tùy chọn"}</summary>
                     <label>Nội dung câu hỏi<input name="q${index}text" maxlength="1000" value="${escape(q.text)}"></label>
                     <label>Loại câu hỏi<select name="q${index}type">${["MAIN_IDEA", "DETAIL", "INFERENCE", "SPEAKER_INTENT"]
-                        .map(type => `<option value="${type}" ${q.type === type ? "selected" : ""}>${({MAIN_IDEA:"Ý chính",DETAIL:"Chi tiết",INFERENCE:"Suy luận",SPEAKER_INTENT:"Ý định người nói"})[type]}</option>`).join("")}</select></label>
+                        .map(type => `<option value="${type}" ${q.type === type ? "selected" : ""}>${questionTypeLabel(type)}</option>`).join("")}</select></label>
                     ${[0, 1, 2, 3].map(choice => `<label>Lựa chọn ${choice + 1}<input name="q${index}option${choice}"
                         maxlength="1000" value="${escape(q.options?.[choice] || "")}"></label>`).join("")}
                     <label>Đáp án đúng<select name="q${index}correct">${[0, 1, 2, 3].map(choice => `<option value="${choice}"
@@ -528,14 +530,14 @@
             <tr><th scope="row">Nhớ ý</th><td>${metric(first,"recall_score")}</td><td>${second ? metric(second,"recall_score") : "—"}</td><td>${delta("recall_score")}</td></tr></tbody></table>
             <p>Lượt 1 là chỉ số chính. Lượt 2 giúp chẩn đoán sau khi đã thấy câu hỏi ở lượt 1.</p>
             <h3>Độ chính xác theo loại câu hỏi</h3>
-            <ul>${Object.entries(data.questionTypes || {}).map(([type, scores]) => `<li>${escape(type)}: lượt 1 ${scores[0].toFixed(1)}%${scores.length > 1 ? `, lượt 2 ${scores[1].toFixed(1)}%` : ""}</li>`).join("")}</ul>
+            <ul>${Object.entries(data.questionTypes || {}).map(([type, scores]) => `<li>${questionTypeLabel(type)}: lượt 1 ${scores[0].toFixed(1)}%${scores.length > 1 ? `, lượt 2 ${scores[1].toFixed(1)}%` : ""}</li>`).join("")}</ul>
             <h3>Các ý nhớ lại</h3>
             ${passes.map(pass => `<section class="listening-facts"><h4>Lượt ${pass.pass_number}</h4>${pass.recallResult?.facts
                 ? `<ul>${pass.recallResult.facts.map(fact => `<li><strong>${escape(fact.status)}</strong> · ${escape(data.facts.find(item => item.id === fact.factId)?.text || fact.factId)} — ${escape(fact.explanationVi)}</li>`).join("")}</ul>`
                 : `<p>${pass.grading_status === "FAILED" ? "Chưa chấm được phần nhớ lại." : "Đang chấm phần nhớ lại."}</p>`}
                 ${pass.grading_status === "FAILED" && data.gradingAvailable ? `<button type="button" class="text-button" data-retry-pass="${pass.pass_number}">Thử chấm lại</button>` : ""}</section>`).join("")}
             ${data.difficultSegments?.length ? `<h3>Đoạn khó đã đánh dấu</h3><ul>${data.difficultSegments.map(item => `<li>${escape(item.transcript)}</li>`).join("")}</ul>` : ""}
-            ${weakest ? `<p><strong>Gợi ý:</strong> Ở lượt đầu, loại câu hỏi ${escape(weakest[0])} có độ chính xác thấp nhất (${weakest[1][0].toFixed(1)}%). Hãy đối chiếu đoạn liên quan trong phần review.</p>` : ""}
+            ${weakest ? `<p><strong>Gợi ý:</strong> Ở lượt đầu, loại câu hỏi ${questionTypeLabel(weakest[0])} có độ chính xác thấp nhất (${weakest[1][0].toFixed(1)}%). Hãy đối chiếu đoạn liên quan trong phần review.</p>` : ""}
             <a class="primary-button" id="listening-open-review" href="/listening/${encodeURIComponent(sessionId)}?view=review">Xem transcript và nghe lại</a>
             <a class="text-button" href="/support?type=LISTENING&id=${encodeURIComponent(sessionId)}">Báo điểm hoặc nội dung chưa đúng</a>
             <a class="text-button" id="listening-new" href="/listening">Chọn bài khác</a>`;
@@ -560,6 +562,7 @@
         window.clearTimeout(reportTimer);
         const data = await loadView(`/api/v1/listening/sessions/${encodeURIComponent(sessionId)}/review`);
         if (!data) return;
+        const sentenceNumbers = new Map(data.sentences.map((sentence, index) => [String(sentence.id), index + 1]));
         root().innerHTML = `<h2>Review · ${escape(data.title)}</h2>
             <a class="text-button" id="listening-back-report" href="/listening/${encodeURIComponent(sessionId)}">← Về kết quả</a>
             <a class="text-button" href="/support?type=LISTENING&id=${encodeURIComponent(sessionId)}">Báo transcript hoặc audio sai</a>
@@ -573,7 +576,7 @@
                 </li>`).join("")}</ol>
             <h3>Đáp án và giải thích</h3>${data.content.questions.map(q => `<p><strong>${escape(q.text)}</strong><br>
                 ${escape(q.options[q.correct])} · ${escape(q.explanation)}</p>`).join("")}
-            <h3>Đoạn đã đánh dấu</h3><ul>${data.marks.map(mark => `<li>Câu ${mark.sentence_id}: ${mark.difficulty_type === "NOT_HEARD" ? "Không nghe ra" : "Chưa hiểu nghĩa"}</li>`).join("")}</ul>`;
+            <h3>Đoạn đã đánh dấu</h3><ul>${data.marks.map(mark => `<li>${sentenceNumbers.has(String(mark.sentence_id)) ? `Câu ${sentenceNumbers.get(String(mark.sentence_id))}` : "Câu không còn trong transcript"}: ${mark.difficulty_type === "NOT_HEARD" ? "Không nghe ra" : "Chưa hiểu nghĩa"}</li>`).join("")}</ul>`;
         followLink(root().querySelector("#listening-back-report"), () => bridge().navigate("listening", {sessionId}));
         root().querySelector("#listening-full-audio").addEventListener("click", () => playReview(data.audioUrl));
         root().querySelectorAll("[data-segment]").forEach(button => button.addEventListener("click", () => {
@@ -627,9 +630,9 @@
                 <p>${item.mode === "TWO_PASS" ? "Hai lượt nghe" : "Một lượt nghe"} · ${escape(({READY:"Sẵn sàng nghe",PLAYING:"Đang nghe",RECALL:"Ghi lại ý hiểu",QUESTIONS:"Trả lời câu hỏi",GRADING:"Đang chấm",PASS1_RESULT:"Kết quả lượt đầu",COMPLETE:"Đã hoàn thành"})[item.stage] || "Đang học")} · Hiểu lần đầu: ${item.comprehension_score == null ? "—" : Number(item.comprehension_score).toFixed(1) + "%"}</p>
                 <a class="text-button" href="/listening/${encodeURIComponent(item.id)}" data-session="${escape(item.id)}">Mở bài</a></article>`).join("")
             : "<p>Trang này chưa có bài nghe hiểu.</p>"}</div>
-            <nav aria-label="Phân trang lịch sử nghe hiểu"><button type="button" id="listening-history-prev" ${page === 1 ? "disabled" : ""}>Trang trước</button>
+            <nav class="pagination" aria-label="Phân trang lịch sử nghe hiểu"><button class="text-button" type="button" id="listening-history-prev" ${page === 1 ? "disabled" : ""}>Trang trước</button>
             <span role="status">Trang ${page} · ${result.total} bài</span>
-            <button type="button" id="listening-history-next" ${page * result.size >= result.total ? "disabled" : ""}>Trang sau</button></nav>`;
+            <button class="text-button" type="button" id="listening-history-next" ${page * result.size >= result.total ? "disabled" : ""}>Trang sau</button></nav>`;
         for (const [id, target] of [["listening-history-prev", page - 1], ["listening-history-next", page + 1]]) {
             root().querySelector(`#${id}`).addEventListener("click", () => bridge().navigate("listening", {view: "history", page: target}));
         }
