@@ -191,12 +191,19 @@ test('native practice rendering preserves active inputs and does not grade parti
         } while (Date.now() < deadline);
         assert.equal(result?.status, 'pass', result?.message || 'Chrome regression timed out');
     } finally {
-        socket?.close();
-        child?.kill();
-        if (exited) await exited;
+        // Graceful shutdown lets Chrome's children finish writing the temporary profile.
+        const killTimer = setTimeout(() => child?.kill(), 5000);
+        try {
+            if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({id: 0, method: 'Browser.close'}));
+            else child?.kill();
+            if (exited) await exited;
+        } finally {
+            clearTimeout(killTimer);
+            socket?.close();
+        }
         await new Promise(resolve => server.close(resolve));
         // This is the unique temporary Chrome profile created above, never a user profile.
         assert.equal(path.dirname(profile), os.tmpdir());
-        fs.rmSync(profile, {recursive: true, force: true, maxRetries: 5, retryDelay: 100});
+        await fs.promises.rm(profile, {recursive: true, force: true, maxRetries: 5, retryDelay: 100});
     }
 });
