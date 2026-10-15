@@ -440,7 +440,7 @@ class CapacityReadPathIntegrationTest {
         assertQueries("catalog-long-history", 2);
         String sql = SqlCounter.statements.get().get(0);
         String plan = db.queryForObject("explain (analyze, buffers, format json) " + sql, String.class,
-                owner.getId(), owner.getId(), "A1", false);
+                owner.getId(), owner.getId(), "A1", "A1", false);
         var result = new tools.jackson.databind.ObjectMapper().readTree(plan).get(0);
         assertThat(result.path("Plan").path("Actual Rows").asInt()).isEqualTo(
                 db.queryForObject("select count(*) from lessons where level='A1' and active=true and content_origin <> 'BRITISH_COUNCIL_PERSONAL'", Integer.class));

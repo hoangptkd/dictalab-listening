@@ -130,11 +130,16 @@ class ConcurrencyMatrixTest {
             practice.replay(owner,id,sentence,new ApiDtos.ReplayRequest(ReplayEventType.STARTED));
             int index=started.sentence().words().stream().filter(word->!word.prefilled()).findFirst().orElseThrow().index();
             locked(n,"practice_sessions",id,()->{practice.checkWord(owner,id,sentence,index,new ApiDtos.CheckWordRequest("wrong"));return 1;});
-            assertThat(db.queryForObject("SELECT attempt_count FROM word_attempts w JOIN sentence_attempts a ON a.id=w.sentence_attempt_id WHERE a.practice_session_id=? AND w.word_index=?",Integer.class,id,index)).isEqualTo(n);
-            assertThat(db.queryForObject("SELECT count(*) FROM word_attempt_events e JOIN word_attempts w ON w.id=e.word_attempt_id JOIN sentence_attempts a ON a.id=w.sentence_attempt_id WHERE a.practice_session_id=? AND w.word_index=?",Integer.class,id,index)).isEqualTo(n);
+            assertThat(db.queryForObject("SELECT attempt_count FROM word_attempts w JOIN sentence_attempts a ON a.id=w.sentence_attempt_id WHERE a.practice_session_id=? AND w.word_index=?",Integer.class,id,index)).isEqualTo(1);
+            assertThat(db.queryForObject("SELECT count(*) FROM word_attempt_events e JOIN word_attempts w ON w.id=e.word_attempt_id JOIN sentence_attempts a ON a.id=w.sentence_attempt_id WHERE a.practice_session_id=? AND w.word_index=?",Integer.class,id,index)).isEqualTo(1);
+            var answers=new java.util.concurrent.atomic.AtomicInteger();
+            locked(n,"practice_sessions",id,()->{practice.checkWord(owner,id,sentence,index,new ApiDtos.CheckWordRequest("wrong-"+answers.incrementAndGet()));return 1;});
+            assertThat(db.queryForObject("SELECT attempt_count FROM word_attempts w JOIN sentence_attempts a ON a.id=w.sentence_attempt_id WHERE a.practice_session_id=? AND w.word_index=?",Integer.class,id,index)).isEqualTo(n+1);
+            assertThat(db.queryForObject("SELECT count(*) FROM word_attempt_events e JOIN word_attempts w ON w.id=e.word_attempt_id JOIN sentence_attempts a ON a.id=w.sentence_attempt_id WHERE a.practice_session_id=? AND w.word_index=?",Integer.class,id,index)).isEqualTo(n+1);
             locked(n,"practice_sessions",id,()->{practice.useHint(owner,id,sentence,new ApiDtos.HintRequest(HintType.REVEAL_SENTENCE,null));return 1;});
             assertThat(db.queryForObject("SELECT reveal_count FROM practice_sessions WHERE id=?",Integer.class,id)).isEqualTo(1);
             practice.replay(owner,id,sentence,new ApiDtos.ReplayRequest(ReplayEventType.COMPLETED));
+            db.update("UPDATE sentence_attempts SET started_at=? WHERE practice_session_id=? AND sentence_id=?",Timestamp.from(Instant.now().minusSeconds(6)),id,sentence);
             var finished=locked(n,"practice_sessions",id,()->{try{practice.completeSentence(owner,id,sentence,new ApiDtos.CompleteSentenceRequest(5));return 1;}
                 catch(com.dictalab.exception.InvalidPracticeStateException expected){return 0;}});
             assertThat(finished.stream().mapToInt(Integer::intValue).sum()).isEqualTo(1);

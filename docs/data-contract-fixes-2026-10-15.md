@@ -34,6 +34,7 @@
 - UTF-8 các file thay đổi và `git diff --check`: đạt.
 - Build/profile `production-s3` và gate JAR đạt: audio S3, schema và các trang bài đã xuất bản được giữ đủ.
 - Đã push bản sửa `8ccd08f` và tạo [PR #3](https://github.com/hoangptkd/dictalab-listening/pull/3). CI PostgreSQL 17/18 và reliability được kích hoạt bởi PR; xem kết quả trực tiếp trong Checks của PR. Không coi kiểm tra local là CI PostgreSQL.
+- Lượt CI đầu phát hiện ba giả định kiểm thử cũ: số migration, tham số EXPLAIN và đáp án lặp trong race test. Đã cập nhật; sáu ca hồi quy với PostgreSQL/Testcontainers thật đạt, không bỏ qua. Race test kiểm tra riêng cả chống ghi trùng và không mất các đáp án khác nhau; thời gian hoàn thành dùng mốc bắt đầu ở server.
 
 ## Migration và phát hành
 
