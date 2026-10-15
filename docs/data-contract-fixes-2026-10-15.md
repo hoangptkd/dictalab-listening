@@ -33,7 +33,7 @@
 - Python: 29 ca, 28 đạt, 1 bỏ qua do chỉ chạy POSIX.
 - UTF-8 các file thay đổi và `git diff --check`: đạt.
 - Build/profile `production-s3` và gate JAR đạt: audio S3, schema và các trang bài đã xuất bản được giữ đủ.
-- CI trên GitHub chưa chạy cho thay đổi này: Chrome đang ở trạng thái “Sign in”, tài khoản cache của HTTPS không có quyền với repository. SSH vẫn truy cập được repository; cần phiên GitHub đúng tài khoản để tạo PR hoặc chạy workflow. Không coi kiểm tra local là CI PostgreSQL.
+- Đã push bản sửa `8ccd08f` và tạo [PR #3](https://github.com/hoangptkd/dictalab-listening/pull/3). CI PostgreSQL 17/18 và reliability được kích hoạt bởi PR; xem kết quả trực tiếp trong Checks của PR. Không coi kiểm tra local là CI PostgreSQL.
 
 ## Migration và phát hành
 
