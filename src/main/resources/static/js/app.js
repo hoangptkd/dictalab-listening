@@ -1620,13 +1620,13 @@
                 ? "Tiếp tục câu đang làm dở. Bạn có thể nghe lại hoặc nhập tiếp."
                 : "Nhấn Nghe câu để bắt đầu.");
         }
-        renderWordSlots();
+        renderWordSlots(newSentence);
         renderWordClassifications(newSentence);
         updatePracticeControls();
         if (shared) roomRenderStudy(state.roomStudy);
     }
 
-    function renderWordSlots() {
+    function renderWordSlots(newSentence = false) {
         // Replacing an active IME control would cancel its native composition.
         if (composingWords.size) return;
         const words = state.sentence.words;
@@ -1634,7 +1634,7 @@
         if (focused !== undefined) {
             state.activeWordIndex = Number(focused);
         }
-        elements.wordSlots.innerHTML = words.map(word => {
+        const markup = words.map(word => {
             const width = Math.max(3, Math.min(18, word.length));
             const draft = state.wordDrafts.get(word.index);
             const inputValue = word.prefilled ? word.userInput : draft === undefined
@@ -1674,6 +1674,42 @@
                 + `data-slot-index="${word.index}">${hint}`
                 + `<span class="word-answer">${before}${control}${after}</span></span></span>`;
         }).join("");
+
+        state.renderingWordSlots = true;
+        try {
+            if (newSentence || elements.wordSlots.children?.length !== words.length) {
+                elements.wordSlots.innerHTML = markup;
+            } else {
+                const template = document.createElement("template");
+                template.innerHTML = markup;
+                [...template.content.children].forEach((nextToken, index) => {
+                    const token = elements.wordSlots.children[index];
+                    const input = token.querySelector("input");
+                    const nextInput = nextToken.querySelector("input");
+                    if (!input || !nextInput) {
+                        if (token.outerHTML !== nextToken.outerHTML) token.replaceWith(nextToken);
+                        return;
+                    }
+                    // Keep native focus, selection and typing intact when another word's result arrives.
+                    token.querySelector(".word-slot").className = nextToken.querySelector(".word-slot").className;
+                    input.parentElement.querySelector(".sr-only").textContent = nextInput.parentElement.querySelector(".sr-only").textContent;
+                    for (const attribute of [...input.attributes]) {
+                        if (!nextInput.hasAttribute(attribute.name)) input.removeAttribute(attribute.name);
+                    }
+                    for (const attribute of nextInput.attributes) {
+                        if (input.getAttribute(attribute.name) !== attribute.value) input.setAttribute(attribute.name, attribute.value);
+                    }
+                    if (input.value !== nextInput.value) input.value = nextInput.value;
+                    const hint = token.querySelector(".slot-hint");
+                    const nextHint = nextToken.querySelector(".slot-hint");
+                    if (hint && nextHint) hint.textContent = nextHint.textContent;
+                    else if (hint) hint.remove();
+                    else if (nextHint) token.querySelector(".word-slot").prepend(nextHint);
+                });
+            }
+        } finally {
+            state.renderingWordSlots = false;
+        }
 
         const answerable = words.filter(word => !word.prefilled);
         const resolved = answerable.filter(word => word.correct || word.revealed).length;
@@ -1931,6 +1967,7 @@
     }
 
     function onWordBlur(event) {
+        if (state.renderingWordSlots) return;
         const input = event.target.closest("input[data-word-index]");
         if (!input) {
             return;
@@ -2032,7 +2069,12 @@
             const sentence = await queuePracticeMutation(practicePath(`/words/${index}/checks`), {
                 method: "POST",
                 body: {answer, responseTimeMs}
-            }, isCurrent);
+            }, isCurrent, () => {
+                const currentWord = state.sentence?.words[index];
+                const draft = state.wordDrafts.get(index);
+                return !composingWords.has(index) && currentWord && !currentWord.correct && !currentWord.revealed
+                    && (draft === undefined || draft.trim() === answer);
+            });
             if (!isCurrent()) {
                 return false;
             }
@@ -2069,6 +2111,7 @@
             }
             return correct;
         } catch (error) {
+            if (error.name === "AbortError") return false;
             check.pendingAnswer = null;
             if (isCurrent()) {
                 state.completeAfterPendingCheck = false;
@@ -3750,7 +3793,7 @@
 
     const pendingPracticeSubmissions = new Map();
     let practiceSubmissionOwner = null;
-    function queuePracticeMutation(path, options, isCurrent = () => true) {
+    function queuePracticeMutation(path, options, isCurrent = () => true, shouldSend = () => true) {
         if (!isCurrent()) return Promise.reject(new DOMException("Practice changed", "AbortError"));
         const storageKey = `dictalab.practice.${state.currentUser?.id ?? "anonymous"}`;
         if (practiceSubmissionOwner !== storageKey) {
@@ -3777,6 +3820,7 @@
             .catch(() => undefined)
             .then(() => {
                 if (!isCurrent()) throw new DOMException("Practice changed", "AbortError");
+                if (!shouldSend()) throw new DOMException("Answer changed", "AbortError");
                 sent = true;
                 return api(path, submission);
             })

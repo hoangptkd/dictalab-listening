@@ -262,6 +262,54 @@ test('checks still queued when leaving practice are never sent', async () => {
     assert.equal(h.requests.length, 1);
 });
 
+test('an edited unsent answer is skipped and only its latest submitted draft is checked', async () => {
+    const h = harness(); h.type(0, 'cat'); await h.advance(240);
+    h.type(1, 'cot'); await h.advance(240);
+    h.type(1, 'dog'); await h.advance(240);
+    await h.reply(0, true);
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.requests[1].options.body.answer, 'dog');
+    assert.equal(h.statuses.some(status => status.error), false);
+    const pending = vm.runInContext('[...pendingPracticeSubmissions.values()]', h.context);
+    assert.equal(pending.length, 1); assert.equal(pending[0].body.answer, 'dog');
+});
+
+for (const draft of ['', 'do']) test(`an unsent answer changed to ${JSON.stringify(draft)} waits for another submission`, async () => {
+    const h = harness(); h.type(0, 'cat'); await h.advance(240);
+    h.type(1, 'dog'); await h.advance(240); h.type(1, draft);
+    await h.reply(0, true); await h.advance(500);
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.input(1).value, draft);
+    assert.equal(h.state.checkingWords.size, 0);
+    assert.equal(h.statuses.some(status => status.error), false);
+    assert.equal(vm.runInContext('pendingPracticeSubmissions.size', h.context), 0);
+});
+
+test('composition invalidates an unsent check until composition ends', async () => {
+    const h = harness(); h.type(0, 'cat'); await h.advance(240);
+    h.type(1, 'dog'); await h.advance(240);
+    h.context.onWordCompositionStart({target: h.input(1)});
+    await h.reply(0, true);
+    assert.equal(h.requests.length, 1);
+    h.context.onWordCompositionEnd({target: h.input(1)}); await h.advance(240);
+    assert.equal(h.requests.length, 2); assert.equal(h.requests[1].options.body.answer, 'dog');
+});
+
+test('skipping an edited retry preserves its uncertain original receipt for an explicit retry', async () => {
+    const h = harness(); h.type(1, 'cot'); await h.advance(240);
+    h.requests[0].reject(new TypeError('Response lost')); await h.flush();
+    h.type(0, 'cat'); await h.advance(240);
+    h.context.onWordBlur({target: h.input(1)}); await h.flush();
+    h.type(1, ''); await h.reply(1, true);
+    assert.equal(h.requests.length, 2);
+    const pending = vm.runInContext('[...pendingPracticeSubmissions.values()]', h.context);
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].headers['Idempotency-Key'], h.requests[0].options.headers['Idempotency-Key']);
+    h.type(1, 'cot'); h.key(1, 'Enter'); await h.flush();
+    assert.equal(h.requests.length, 3);
+    assert.equal(h.requests[2].options.headers['Idempotency-Key'], h.requests[0].options.headers['Idempotency-Key']);
+});
+
 test('an old response cannot unlock a newer check at the same word index', async () => {
     const h = harness(); h.type(0, 'cot'); await h.advance(240);
     h.context.resetPracticeInput(); h.state.session = {sessionId: 'session-b'};
