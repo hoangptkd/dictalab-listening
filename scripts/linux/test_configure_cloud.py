@@ -163,6 +163,19 @@ class CloudConfigurationTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     config.production_environment(source, self.env())
 
+    def test_production_keeps_s3_identity_and_all_audio_mode(self):
+        storage = {'AWS_PROFILE': 'dictalab-audio', 'DICTALAB_MEDIA_S3_ENABLED': 'true',
+                   'DICTALAB_MEDIA_S3_BUCKET': 'current-bucket', 'DICTALAB_MEDIA_S3_REGION': 'us-east-1',
+                   'DICTALAB_MEDIA_S3_PREFIX': 'dictalab/audio/',
+                   'DICTALAB_MEDIA_S3_SIGNED_URL_DURATION': '30m',
+                   'DICTALAB_MEDIA_S3_ALL_AUDIO': 'true', 'DICTALAB_MEDIA_S3_PROXY_AUDIO': 'true'}
+        source = self.env() | {'DICTALAB_MEDIA_S3_ENABLED': 'false',
+                              'DICTALAB_MEDIA_S3_BUCKET': 'old-bucket',
+                              'DICTALAB_MEDIA_S3_PREFIX': 'wrong/'}
+        env = config.production_environment(source, self.env() | storage)
+        for key, value in storage.items():
+            self.assertEqual(value, env[key])
+
     def test_atomic_write_and_permissions(self):
         with tempfile.TemporaryDirectory() as temporary, patch.object(config.os, 'chown', create=True) as chown:
             root = pathlib.Path(temporary)

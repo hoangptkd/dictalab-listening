@@ -101,7 +101,7 @@ class CapacityReadPathIntegrationTest {
             assertThat(SqlCounter.statements.get().get(0)).doesNotContain("password_hash", "created_at", "updated_at");
         }
         then(store).should(times(2)).active(anyString(), eq(owner.getId()), eq(owner.getAuthVersion()));
-        mvc.perform(get("/api/v1/catalog/levels")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/auth/me")).andExpect(status().isUnauthorized());
     }
 
     @Test void authenticationProjectionAvoidsCrudTransactionControlButStillReadsCurrentState() {
@@ -164,7 +164,7 @@ class CapacityReadPathIntegrationTest {
     @Test void otherAuthenticationPathsStillRejectAStalePrincipal() throws Exception {
         var principal = DictaLabPrincipal.from(owner);
         db.update("update app_users set role='ADMIN' where id=?", owner.getId());
-        mvc.perform(get("/api/v1/catalog/levels").with(
+        mvc.perform(get("/api/auth/me").with(
                 org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(principal)))
                 .andExpect(status().isUnauthorized());
     }

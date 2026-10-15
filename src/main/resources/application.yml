@@ -47,7 +47,7 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations: classpath:db/migration,classpath:db/vendor/{vendor}
   task:
     scheduling:
       pool:
@@ -230,6 +230,8 @@ dictalab:
     max-file-size: 25MB
     s3:
       enabled: ${DICTALAB_MEDIA_S3_ENABLED:false}
+      all-audio: ${DICTALAB_MEDIA_S3_ALL_AUDIO:false}
+      proxy-audio: ${DICTALAB_MEDIA_S3_PROXY_AUDIO:false}
       bucket: ${DICTALAB_MEDIA_S3_BUCKET:}
       region: ${DICTALAB_MEDIA_S3_REGION:}
       prefix: ${DICTALAB_MEDIA_S3_PREFIX:dictalab/audio/}

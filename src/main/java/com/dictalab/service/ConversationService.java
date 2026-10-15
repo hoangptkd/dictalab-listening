@@ -124,6 +124,8 @@ public class ConversationService {
     private final io.micrometer.observation.ObservationRegistry observations;
     private final org.springframework.beans.factory.ObjectProvider<AiBackgroundJobs> jobs;
     private final AiUsageBudget budget;
+    private final MediaStorageService media;
+    private final S3MediaLifecycle s3Lifecycle;
     private static final Logger log = LoggerFactory.getLogger(ConversationService.class);
     @org.springframework.beans.factory.annotation.Value("${dictalab.conversation.audio-retention-days:30}")
     private int audioRetentionDays = 30;
@@ -137,12 +139,24 @@ public class ConversationService {
                                io.micrometer.core.instrument.MeterRegistry metrics,
                                io.micrometer.observation.ObservationRegistry observations,
                                org.springframework.beans.factory.ObjectProvider<AiBackgroundJobs> jobs, AiUsageBudget budget) {
+        this(db, json, ai, tts, config, manager, metrics, observations, jobs, budget, null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ConversationService(JdbcTemplate db, ObjectMapper json, ShopAiKeyClient ai, CartesiaClient tts,
+                               ConversationProperties config, org.springframework.transaction.PlatformTransactionManager manager,
+                               io.micrometer.core.instrument.MeterRegistry metrics,
+                               io.micrometer.observation.ObservationRegistry observations,
+                               org.springframework.beans.factory.ObjectProvider<AiBackgroundJobs> jobs, AiUsageBudget budget,
+                               MediaStorageService media, S3MediaLifecycle s3Lifecycle) {
         this.db = db; this.json = json; this.ai = ai; this.tts = tts;
         this.config = config;
         this.transaction = new org.springframework.transaction.support.TransactionTemplate(manager);
         this.observations=observations;
         this.jobs=jobs;
         this.budget=budget;
+        this.media=media;
+        this.s3Lifecycle=s3Lifecycle;
         var workers=(ThreadPoolExecutor)audioWorkers;
         metrics.gauge("dictalab.audio.queue",workers,w->w.getQueue().size());
         metrics.gauge("dictalab.audio.active",workers,ThreadPoolExecutor::getActiveCount);
@@ -336,6 +350,31 @@ public class ConversationService {
         return bytes.get(0);
     }
 
+    public Optional<java.net.URI> audioLocation(long userId, String id, int turn, String variant) {
+        // Ownership is checked before signing; the internal storage route is denied by SecurityConfig.
+        var urls = db.query("""
+                SELECT a.s3_audio_url FROM ai_conversation_audio a
+                JOIN ai_conversation_sessions s ON s.id=a.session_id
+                WHERE s.user_id=? AND a.session_id=? AND a.turn_number=? AND a.variant=?
+                """, (rs, n) -> rs.getString(1), userId, id, turn, variant);
+        if (urls.isEmpty()) fail(HttpStatus.NOT_FOUND, "Không tìm thấy audio.");
+        return urls.get(0) == null ? Optional.empty() : Optional.of(media.conversationAudioLocation(urls.get(0)));
+    }
+
+    public boolean serveS3Audio(long userId, String id, int turn, String variant,
+                               jakarta.servlet.http.HttpServletRequest request,
+                               jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        if (media == null || !media.proxyAudioEnabled()) return false;
+        var urls=db.query("""
+                SELECT a.s3_audio_url FROM ai_conversation_audio a JOIN ai_conversation_sessions s ON s.id=a.session_id
+                WHERE s.user_id=? AND a.session_id=? AND a.turn_number=? AND a.variant=?
+                """,(rs,n)->rs.getString(1),userId,id,turn,variant);
+        if(urls.isEmpty()) fail(HttpStatus.NOT_FOUND,"Không tìm thấy audio.");
+        if(urls.get(0)==null) return false;
+        media.serveConversationAudio(urls.get(0),request,response);
+        return true;
+    }
+
     private Map<String, Object> promptContext(Row row) {
         // Only the task history is needed, not every answer or the complete internal state.
         var history = turns(row).valueStream().map(t -> Map.of(
@@ -482,19 +521,25 @@ public class ConversationService {
         budget.reserve(row.user,true);
         byte[] audio = tts.synthesize(utterance);
         if (audio == null) throw new IllegalStateException("Missing audio");
-        return () -> saveAudio(row, number, variant, utterance, audio);
+        // Upload before the DB phase, including background-worker transaction/lease handling.
+        String s3Url = media != null && media.s3Enabled() ? media.storeConversationAudio(audio) : null;
+        return () -> saveAudio(row, number, variant, utterance, s3Url == null ? audio : null, s3Url);
     }
 
-    private void saveAudio(Row row, int number, String variant, String utterance, byte[] audio) {
+    private void saveAudio(Row row, int number, String variant, String utterance, byte[] audio, String s3Url) {
         Row saved = load(row.user, row.id);
         if (!utterance.equals(audioUtterance(saved, number, variant))) throw new IllegalStateException("Audio task changed");
         // No DB lock spans TTS I/O. The state comparison prevents stale writes.
+        transaction.executeWithoutResult(tx -> {
+        if (s3Url != null) s3Lifecycle.retain(s3Url);
         int inserted = db.update("""
-                INSERT INTO ai_conversation_audio(session_id,turn_number,variant,wav)
-                SELECT id,?,?,? FROM ai_conversation_sessions WHERE id=? AND state_json=?
+                INSERT INTO ai_conversation_audio(session_id,turn_number,variant,wav,s3_audio_url)
+                SELECT id,?,?,?,? FROM ai_conversation_sessions WHERE id=? AND state_json=?
                 AND NOT EXISTS (SELECT 1 FROM ai_conversation_audio WHERE session_id=? AND turn_number=? AND variant=?)
-                """, number, variant, audio, row.id, saved.state.toString(), row.id, number, variant);
+                """, number, variant, audio, s3Url, row.id, saved.state.toString(), row.id, number, variant);
         if (inserted == 0 && !audioExists(row.id, number, variant)) throw new IllegalStateException("Audio state changed");
+        if (inserted == 0 && s3Url != null) s3Lifecycle.release(s3Url);
+        });
     }
 
     private String audioUtterance(Row row, int number, String variant) {

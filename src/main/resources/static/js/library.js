@@ -193,6 +193,18 @@
         if (meta) meta.innerHTML = `<span>Quy mô<strong>${lesson.sentenceCount} câu</strong></span><span>Thời gian ước tính<strong>~${lesson.estimatedMinutes} phút</strong></span><span>Nguồn<strong>${escape(m?.source || "Theo bài gốc")}</strong></span>`;
         const extra = document.createElement("div"); extra.className = "library-detail-context";
         extra.innerHTML = `${link ? `<p><strong>Độ khó bài:</strong> ${escape(goals[course.goal])} · ${escape(course.title)}${course.goal !== "COMMUNICATION" ? " (tham khảo)" : ""}</p><p><strong>Mục đích bài:</strong> ${escape(link.purpose)}</p>` : ""}${m ? `<p><strong>Trọng tâm nghe:</strong> ${escape(m.focus)}</p>` : ""}<small>CEFR tham khảo: ${escape(lesson.level)}${link ? ` · Thử thách trong mức: ${link.difficulty}/5` : ""}</small><div class="library-history-links"><a href="/history">Lịch sử học</a><a href="/dashboard#dashboard-error-bank">Từ nghe lỡ &amp; chưa biết</a></div>`;
+        if (/^sample-(ielts|toeic|communication)-[a-z0-9-]+-20261015$/.test(lesson.slug)) {
+            const sampleLink = document.createElement("a");
+            sampleLink.href = `/audio/listening-samples-20261015/index.html#${encodeURIComponent(lesson.slug)}`;
+            sampleLink.className = "text-button"; sampleLink.textContent = "Nghe toàn bài & làm câu hỏi →";
+            extra.append(sampleLink);
+        }
+        if (/^b1-(ielts|toeic|communication)-[a-z0-9-]+-20261015$/.test(lesson.slug)) {
+            const exerciseLink = document.createElement("a");
+            exerciseLink.href = `/audio/b1-expansion-20261015/${encodeURIComponent(lesson.slug)}.html`;
+            exerciseLink.className = "text-button"; exerciseLink.textContent = "Nghe toàn bài & làm câu hỏi →";
+            extra.append(exerciseLink);
+        }
         detail.querySelector(".catalog-method")?.before(extra);
     }
     async function show() {
@@ -299,7 +311,7 @@
         adminLoading = true; root.setAttribute("aria-busy","true");
         try {
             adminSnapshot = await bridge().api("/api/admin/library");
-            root.innerHTML = '<p>Liên kết tới bài gốc; không sao chép bài hay tách lịch sử giữa các khóa. Vị trí trong mỗi nhóm phải khác nhau.</p><div id="library-admin-list"></div><div id="library-admin-editor"></div>';
+            root.innerHTML = '<p>Mỗi bài chỉ thuộc một mục: IELTS, TOEIC hoặc Giao tiếp. Bỏ liên kết ở mục cũ trước khi chuyển. Liên kết tới bài gốc giữ nguyên lịch sử học. Vị trí trong mỗi nhóm phải khác nhau.</p><div id="library-admin-list"></div><div id="library-admin-editor"></div>';
             renderAdminList();
         } catch (error) { root.innerHTML = `<p role="alert">${escape(error.message)}</p><button type="button" class="text-button">Thử lại</button>`; root.querySelector("button").onclick = showAdmin; }
         finally { adminLoading = false; root.setAttribute("aria-busy","false"); }

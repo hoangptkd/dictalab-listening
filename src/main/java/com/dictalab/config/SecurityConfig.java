@@ -129,6 +129,7 @@ public class SecurityConfig {
                                     && (path.endsWith(".json") || path.endsWith(".txt"));
                         }).denyAll()
                         // Static resources
+                        .requestMatchers("/conversation-media/**").denyAll()
                         .requestMatchers("/", "/index.html", "/css/**", "/js/**", "/images/**", "/audio/**",
                                 "/favicon.ico", "/favicon.svg", "/policies.html", "/privacy", "/terms", "/help").permitAll()
                         .requestMatchers(HttpMethod.GET,"/api/public/info").permitAll()

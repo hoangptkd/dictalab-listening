@@ -20,8 +20,8 @@ class MigrationUpgradeTest {
         var db=new JdbcTemplate(source);
         String database=db.queryForObject("SELECT current_database()",String.class);
         assertThat(database).matches("dictalab_test(?:_[a-f0-9]{32})?");
-        var old=Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).target("22").load();
-        var upgrade=Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).load();
+        var old=Flyway.configure().dataSource(source).locations("classpath:db/migration", "classpath:db/vendor/postgresql").schemas(schema).defaultSchema(schema).target("22").load();
+        var upgrade=Flyway.configure().dataSource(source).locations("classpath:db/migration", "classpath:db/vendor/postgresql").schemas(schema).defaultSchema(schema).load();
         try{
             old.migrate();
             db.update("INSERT INTO "+schema+".app_users(email,display_name,password_hash,created_at,updated_at) VALUES('INVALID@TEST.LOCAL','fixture','unused',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");

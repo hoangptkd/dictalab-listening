@@ -24,7 +24,7 @@ class CapacitySeedTest {
         String name="dictalab_capacity_"+UUID.randomUUID().toString().replace("-","");
         control.execute("CREATE DATABASE "+name);
         var fixtureSource=new DriverManagerDataSource(url.substring(0,url.lastIndexOf('/')+1)+name,username,password);
-        Flyway.configure().dataSource(fixtureSource).locations("classpath:db/migration").load().migrate();
+        Flyway.configure().dataSource(fixtureSource).locations("classpath:db/migration", "classpath:db/vendor/postgresql").load().migrate();
         var db=new JdbcTemplate(fixtureSource);
         var seed=new CapacitySeed(db,new BCryptPasswordEncoder(4),"Fixture-password-2026",4,3);
         seed.run();

@@ -154,6 +154,28 @@
 
     <profiles>
         <profile>
+            <id>production-s3</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-jar-plugin</artifactId>
+                        <configuration>
+                            <!-- Published audio lives in S3; keep the HTML, JS and transcript resources. -->
+                            <excludes>
+                                <exclude>static/audio/**/*.mp3</exclude>
+                                <exclude>static/audio/**/*.wav</exclude>
+                                <exclude>static/audio/**/*.m4a</exclude>
+                                <exclude>static/audio/**/*.ogg</exclude>
+                                <exclude>static/audio/**/*.aac</exclude>
+                                <exclude>static/audio/**/*.flac</exclude>
+                            </excludes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
             <id>reliability</id>
             <properties>
                 <dictalab.testcontainers.postgres-image>postgres:17.11-alpine</dictalab.testcontainers.postgres-image>

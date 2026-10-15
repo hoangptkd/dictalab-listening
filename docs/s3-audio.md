@@ -1,5 +1,12 @@
 # Lưu audio quản trị trên Amazon S3
 
+**Cập nhật 15/10/2026:** production đã chuyển toàn bộ audio đang dùng, gồm static,
+nội dung cá nhân và hội thoại, sang S3. Xem [triển khai toàn bộ audio](all-audio-s3-2026-10-15.md).
+Phạm vi và cách phát 307 trong các phần lịch sử dưới đây mô tả luồng upload ban đầu;
+production hiện stream cùng tên miền để giữ quyền truy cập và hỗ trợ `workers.dev`.
+Đã dọn 57 file audio local và 79 audio trong JAR đang chạy; nguồn phát hiện là S3.
+Backup và JAR staging của các lần triển khai trước được giữ để phục hồi.
+
 ## Phạm vi
 
 - Bật S3 để các file MP3/M4A/WAV tải lên từ quản trị được lưu vào bucket riêng tư.

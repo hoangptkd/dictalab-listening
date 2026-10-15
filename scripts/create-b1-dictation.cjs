@@ -94,7 +94,6 @@ function writeWave(pcm) {
 
 function combine(sentences, segments) {
     assert.equal(sentences.length, segments.length);
-    const gap = Buffer.alloc(Math.round(0.2 * SAMPLE_RATE) * 2);
     const chunks = [], aligned = []; let bytes = 0;
     for (const [index, pcm] of segments.entries()) {
         const duration = pcm.length / BYTES_PER_SECOND;
@@ -103,7 +102,12 @@ function combine(sentences, segments) {
         chunks.push(pcm); bytes += pcm.length;
         aligned.push({...sentences[index], position: index + 1,
             audioStartSeconds: start, audioEndSeconds: bytes / BYTES_PER_SECOND});
-        if (index + 1 < segments.length) { chunks.push(gap); bytes += gap.length; }
+        if (index + 1 < segments.length) {
+            const seconds = sentences[index].pauseAfterSeconds ?? 0.2;
+            assert(Number.isFinite(seconds) && seconds >= 0 && seconds <= 15, "Invalid pause");
+            const gap = Buffer.alloc(Math.round(seconds * SAMPLE_RATE) * 2);
+            chunks.push(gap); bytes += gap.length;
+        }
     }
     return {wave: writeWave(Buffer.concat(chunks)), aligned, durationSeconds: bytes / BYTES_PER_SECOND};
 }
@@ -117,6 +121,7 @@ function buildSql(manifest) {
         assert.match(lesson.slug, /^ai-b1-[a-z0-9-]+$/);
         assert.match(lesson.audioFile, /^[0-9a-f-]{36}\.wav$/);
         assert(lesson.sha256?.length === 64 && lesson.durationSeconds > 0);
+        sql += `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM audio_s3_aliases WHERE audio_url=${quote('/media/' + lesson.audioFile)} AND sha256=${quote(lesson.sha256)}) THEN RAISE EXCEPTION 'Upload verified audio to S3 before import'; END IF; END $$;\n`;
         sql += `INSERT INTO lessons(slug,title,description,level,topic,estimated_minutes,display_order,active,content_origin,speaker_count,accent_profile,vocabulary_difficulty,grammar_difficulty,sentence_difficulty,assessment_calibrated)
 VALUES (${quote(lesson.slug)},${quote(lesson.title)},${quote(lesson.description)},'B1',${quote(lesson.topic)},8,
 (SELECT COALESCE(MAX(display_order),0)+1 FROM lessons WHERE level='B1' AND content_origin<>'BRITISH_COUNCIL_PERSONAL'),FALSE,'ADMIN_UPLOAD',2,'English / AI voices',3,3,3,FALSE);\n`;
@@ -253,4 +258,5 @@ async function main() {
     console.log("REVIEW_REQUIRED: verify audio before SQL import/publication");
 }
 
-main().catch(error => { console.error(error.message); process.exitCode = 1; });
+module.exports = {words, request, readWave, combine};
+if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

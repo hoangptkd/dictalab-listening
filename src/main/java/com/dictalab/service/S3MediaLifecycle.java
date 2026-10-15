@@ -53,7 +53,7 @@ public class S3MediaLifecycle {
                 "SELECT COUNT(*) FROM s3_media_lifecycle WHERE cleanup_after IS NOT NULL", Integer.class);
     }
 
-    boolean managed(String url) { return url != null && url.matches("/media/s3/[0-9a-f-]{36}\\.(mp3|m4a|wav)"); }
+    boolean managed(String url) { return url != null && url.matches("/(?:media|conversation-media)/s3/[0-9a-f-]{36}\\.(mp3|m4a|wav)"); }
 
     public void stage(String url) {
         transaction.executeWithoutResult(tx -> db.update("""
@@ -90,16 +90,24 @@ public class S3MediaLifecycle {
     @Scheduled(initialDelayString = "${dictalab.media.s3.cleanup-delay-ms:60000}",
             fixedDelayString = "${dictalab.media.s3.cleanup-delay-ms:60000}")
     public void cleanup() {
-        if (!enabled || !cleanupEnabled) return;
+        if (!enabled) return;
+        // Account cascades and retention delete DB rows; schedule their private objects durably.
+        db.update("""
+                UPDATE s3_media_lifecycle SET cleanup_after=CURRENT_TIMESTAMP + INTERVAL '1' DAY * CAST(? AS INTEGER)
+                WHERE audio_url LIKE '/conversation-media/s3/%' AND status='LIVE' AND cleanup_after IS NULL
+                AND NOT EXISTS (SELECT 1 FROM ai_conversation_audio a WHERE a.s3_audio_url=s3_media_lifecycle.audio_url)
+                """, retentionDays);
         for (String url : db.queryForList("SELECT audio_url FROM s3_media_lifecycle WHERE cleanup_after<=" + databaseNow
-                + " AND storage_identity=? AND status<>'DELETED' ORDER BY cleanup_after,audio_url LIMIT 10", String.class, identity)) {
+                + " AND storage_identity=? AND status<>'DELETED'"
+                + (cleanupEnabled ? "" : " AND audio_url LIKE '/conversation-media/s3/%'")
+                + " ORDER BY cleanup_after,audio_url LIMIT 10", String.class, identity)) {
             String lease = UUID.randomUUID().toString();
             boolean claimed = Boolean.TRUE.equals(transaction.execute(tx -> {
                 var rows = db.queryForList("SELECT status,cleanup_after<=" + databaseNow + " AS due FROM s3_media_lifecycle WHERE audio_url=? FOR UPDATE", url);
                 if (rows.isEmpty() || !Boolean.TRUE.equals(rows.get(0).get("due")) || "DELETED".equals(rows.get(0).get("status"))) return false;
                 // All new references hold this catalog row until commit; no S3 call spans this lock.
-                if (db.queryForObject("SELECT (SELECT COUNT(*) FROM lesson_sentences WHERE audio_url=?) + (SELECT COUNT(*) FROM listening_units WHERE audio_url=?)",
-                        Integer.class, url, url) > 0) {
+                if (db.queryForObject("SELECT (SELECT COUNT(*) FROM lesson_sentences WHERE audio_url=?) + (SELECT COUNT(*) FROM listening_units WHERE audio_url=?) + (SELECT COUNT(*) FROM ai_conversation_audio WHERE s3_audio_url=?)",
+                        Integer.class, url, url, url) > 0) {
                     db.update("UPDATE s3_media_lifecycle SET status='LIVE',cleanup_after=NULL WHERE audio_url=?", url);
                     return false;
                 }

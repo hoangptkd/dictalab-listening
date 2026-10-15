@@ -117,6 +117,19 @@ public class LessonLibrary {
                     """, e.id(), e.goal(), e.title(), e.targetLabel(), e.description(), e.criteria(), e.coverageNote(), e.position(), e.published());
         }
         lockCourse(e.id());
+        var currentGoal = db.queryForObject("SELECT goal FROM library_courses WHERE id=?", String.class, e.id());
+        if (!e.goal().equals(currentGoal)) {
+            db.queryForList("""
+                    SELECT l.id FROM lessons l JOIN library_lessons x ON x.lesson_id=l.id
+                    WHERE x.course_id=? ORDER BY l.id FOR UPDATE OF l
+                    """, Long.class, e.id());
+            if (db.queryForObject("""
+                    SELECT COUNT(*) FROM library_lessons x JOIN library_lessons other ON other.lesson_id=x.lesson_id
+                    JOIN library_courses c ON c.id=other.course_id
+                    WHERE x.course_id=? AND other.course_id<>? AND c.goal<>?
+                    """, Integer.class, e.id(), e.id(), e.goal()) > 0)
+                invalid("Bài trong khóa đang thuộc mục khác. Bỏ liên kết cũ trước khi chuyển mục.");
+        }
         if (e.ready()) requireCoverage(e.id());
         db.update("""
                 UPDATE library_courses SET goal=?,title=?,target_label=?,description=?,criteria=?,coverage_note=?,
@@ -144,6 +157,13 @@ public class LessonLibrary {
         lockCourse(e.courseId());
         if (db.queryForObject("SELECT COUNT(*) FROM library_groups WHERE id=? AND course_id=?", Integer.class, e.groupId(), e.courseId()) == 0)
             invalid("Nhóm bài không thuộc khóa đã chọn.");
+        // Serialize assignments across courses so concurrent edits cannot mix goals.
+        db.queryForList("SELECT id FROM lessons WHERE id=? FOR UPDATE", Long.class, e.lessonId());
+        if (db.queryForObject("""
+                SELECT COUNT(*) FROM library_lessons x JOIN library_courses c ON c.id=x.course_id
+                WHERE x.lesson_id=? AND c.goal<>(SELECT goal FROM library_courses WHERE id=?)
+                """, Integer.class, e.lessonId(), e.courseId()) > 0)
+            invalid("Bài đã thuộc mục IELTS, TOEIC hoặc Giao tiếp khác. Bỏ liên kết ở mục cũ trước khi chuyển.");
         if (db.queryForObject("""
                 SELECT COUNT(*) FROM lessons l JOIN library_lesson_metadata m ON m.lesson_id=l.id
                 WHERE l.id=? AND l.active=TRUE AND l.content_origin<>'BRITISH_COUNCIL_PERSONAL'

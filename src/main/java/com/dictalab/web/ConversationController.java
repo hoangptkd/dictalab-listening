@@ -52,8 +52,14 @@ public class ConversationController {
             @PathVariable UUID id, @RequestParam int turnNumber, @RequestParam String variant) {
         return service.audioStatus(user.id(), id.toString(), turnNumber, variant);
     }
-    @GetMapping("/sessions/{id}/audio/{turn}/{variant}") public ResponseEntity<byte[]> audio(@AuthenticationPrincipal DictaLabPrincipal user,
-            @PathVariable UUID id, @PathVariable int turn, @PathVariable String variant) {
+    @GetMapping("/sessions/{id}/audio/{turn}/{variant}") public ResponseEntity<?> audio(@AuthenticationPrincipal DictaLabPrincipal user,
+            @PathVariable UUID id, @PathVariable int turn, @PathVariable String variant,
+            jakarta.servlet.http.HttpServletRequest request,
+            jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        if(service.serveS3Audio(user.id(),id.toString(),turn,variant,request,response)) return null;
+        var location = service.audioLocation(user.id(), id.toString(), turn, variant);
+        if (location.isPresent()) return ResponseEntity.status(307).location(location.get())
+                .cacheControl(CacheControl.noStore()).header("Referrer-Policy", "no-referrer").build();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).contentType(MediaType.parseMediaType("audio/wav"))
                 .body(service.audio(user.id(), id.toString(), turn, variant));
     }
