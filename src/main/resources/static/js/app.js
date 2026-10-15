@@ -1590,7 +1590,7 @@
         elements.lessonDetail.setAttribute("aria-busy", String(busy));
     }
 
-    function renderPractice(newSentence = false) {
+    function renderPractice(newSentence = false, wordIndex) {
         const sentence = state.sentence;
         if (!sentence || !state.session) {
             return;
@@ -1620,13 +1620,13 @@
                 ? "Tiếp tục câu đang làm dở. Bạn có thể nghe lại hoặc nhập tiếp."
                 : "Nhấn Nghe câu để bắt đầu.");
         }
-        renderWordSlots(newSentence);
+        renderWordSlots(newSentence, wordIndex);
         renderWordClassifications(newSentence);
         updatePracticeControls();
         if (shared) roomRenderStudy(state.roomStudy);
     }
 
-    function renderWordSlots(newSentence = false) {
+    function renderWordSlots(newSentence = false, wordIndex) {
         // Replacing an active IME control would cancel its native composition.
         if (composingWords.size) return;
         const words = state.sentence.words;
@@ -1634,7 +1634,9 @@
         if (focused !== undefined) {
             state.activeWordIndex = Number(focused);
         }
-        const markup = words.map(word => {
+        const replaceAll = newSentence || elements.wordSlots.children?.length !== words.length;
+        const changedWords = !replaceAll && wordIndex !== undefined ? [words[wordIndex]] : words;
+        const markup = changedWords.map(word => {
             const width = Math.max(3, Math.min(18, word.length));
             const draft = state.wordDrafts.get(word.index);
             const inputValue = word.prefilled ? word.userInput : draft === undefined
@@ -1677,13 +1679,13 @@
 
         state.renderingWordSlots = true;
         try {
-            if (newSentence || elements.wordSlots.children?.length !== words.length) {
+            if (replaceAll) {
                 elements.wordSlots.innerHTML = markup;
             } else {
                 const template = document.createElement("template");
                 template.innerHTML = markup;
-                [...template.content.children].forEach((nextToken, index) => {
-                    const token = elements.wordSlots.children[index];
+                [...template.content.children].forEach(nextToken => {
+                    const token = elements.wordSlots.children[Number(nextToken.firstElementChild.dataset.slotIndex)];
                     const input = token.querySelector("input");
                     const nextInput = nextToken.querySelector("input");
                     if (!input || !nextInput) {
@@ -2066,7 +2068,7 @@
         const attemptStartedAt = state.wordAttemptStartedAt.get(index) || Date.now();
         const responseTimeMs = Math.min(300000, Math.max(0, Date.now() - attemptStartedAt));
         try {
-            const sentence = await queuePracticeMutation(practicePath(`/words/${index}/checks`), {
+            const result = await queuePracticeMutation(practicePath(`/words/${index}/checks?compact=true`), {
                 method: "POST",
                 body: {answer, responseTimeMs}
             }, isCurrent, () => {
@@ -2077,6 +2079,27 @@
             });
             if (!isCurrent()) {
                 return false;
+            }
+            let sentence = result;
+            let updatedWordIndex;
+            if (!result.words) {
+                if (result.sentenceId !== state.sentence.sentenceId || result.word?.index !== index)
+                    throw new Error("Kết quả chấm không khớp câu hiện tại. Hãy tải lại trang.");
+                const {word, resolvedWords, completed, ...progress} = result;
+                sentence = {...state.sentence, ...progress, words: [...state.sentence.words]};
+                sentence.words[index] = {...sentence.words[index], ...word};
+                const resolved = sentence.words.filter(word => word.correct || word.revealed).length;
+                if (resolved !== resolvedWords || sentence.hintCount !== state.sentence.hintCount
+                    || sentence.revealCount !== state.sentence.revealCount) {
+                    // Another tab changed this sentence, or this is an older idempotent receipt.
+                    const current = await api(`/api/v1/practice-sessions/${encodeURIComponent(state.session.sessionId)}`);
+                    if (!isCurrent()) return false;
+                    if (current.sentence?.sentenceId !== result.sentenceId)
+                        throw new Error("Câu luyện đã thay đổi ở nơi khác. Hãy tải lại trang.");
+                    sentence = current.sentence;
+                } else {
+                    updatedWordIndex = index;
+                }
             }
             const focusBeforeRender = captureWordFocus();
             const userContinuedTyping = state.inputInteractionRevision !== interactionRevision
@@ -2092,7 +2115,7 @@
                 state.wordAttemptStartedAt.set(index, Date.now());
                 state.completeAfterPendingCheck = false;
             }
-            renderPractice(false);
+            renderPractice(false, updatedWordIndex);
             const newerDraft = !correct && state.wordDrafts.has(index)
                 && state.wordDrafts.get(index).trim() !== answer;
             setPracticeStatus(correct ? `Từ ${index + 1} chính xác.` : newerDraft

@@ -30,6 +30,16 @@ test('reliability gate requires every suite and no skipped, failed or missing ca
     assert.throws(() => verifySuites(suites), /Missing cases/);
 });
 
+test('compact word grading and retry races remain mandatory in PostgreSQL CI', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const pom = fs.readFileSync(path.join(__dirname, '../../../pom.xml'), 'utf8');
+    const profile = pom.match(/<id>reliability<\/id>([\s\S]*?)<\/profile>/)?.[1];
+    assert.ok(profile?.includes('<include>**/PracticeWordCheckIntegrationTest.java</include>'));
+    assert.equal(required.PracticeWordCheckIntegrationTest, 6);
+    assert.throws(() => verifySuites(passing().filter(suite => suite.name !== 'PracticeWordCheckIntegrationTest')), /Missing or duplicate suite/);
+});
+
 test('Surefire parser rejects malformed, truncated and missing-count reports', () => {
     const xml = '<testsuite name="com.dictalab.Example" tests="1" failures="0" errors="0" skipped="0"><testcase name="works"/></testsuite>';
     assert.equal(parseReport(xml).tests, 1);

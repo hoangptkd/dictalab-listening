@@ -219,20 +219,57 @@ public class PracticeService {
     @Transactional
     public ApiDtos.SentenceState checkWord(Long userId, String sessionId, Long sentenceId,
                                            int wordIndex, ApiDtos.CheckWordRequest request) {
+        CheckedWord checked = gradeWord(userId, sessionId, sentenceId, wordIndex, request);
+        List<ApiDtos.WordSlot> slots = java.util.stream.IntStream.range(0, checked.tokens().size())
+                .mapToObj(index -> toWordSlot(index, checked.tokens().get(index), checked.attempts().get(index),
+                        checked.properNames().contains(index))).toList();
+        int totalSentences = Math.toIntExact(sentenceRepository.countByLessonId(
+                checked.attempt().getSentence().getLesson().getId()));
+        return toState(checked.attempt(), slots, totalSentences);
+    }
+
+    @Transactional
+    public ApiDtos.WordCheckResult checkWordResult(Long userId, String sessionId, Long sentenceId,
+                                                   int wordIndex, ApiDtos.CheckWordRequest request) {
+        CheckedWord checked = gradeWord(userId, sessionId, sentenceId, wordIndex, request);
+        SentenceAttempt attempt = checked.attempt();
+        long resolved = java.util.stream.IntStream.range(0, checked.tokens().size()).filter(index -> {
+            WordAttempt word = checked.attempts().get(index);
+            return checked.properNames().contains(index) || word != null && (word.isFinalCorrect() || word.isRevealed());
+        }).count();
+        boolean requiresReplay = attempt.hasAnswerReveal() && !attempt.isReplayedAfterReveal();
+        return new ApiDtos.WordCheckResult(sentenceId,
+                toWordSlot(wordIndex, checked.tokens().get(wordIndex), checked.attempts().get(wordIndex),
+                        checked.properNames().contains(wordIndex)),
+                Math.toIntExact(resolved), attempt.getReplayCount(),
+                attempt.getFirstLetterHintCount() + attempt.getWordRevealCount(), attempt.isFullRevealUsed() ? 1 : 0,
+                attempt.getReplayCount() > 0, requiresReplay,
+                resolved == checked.tokens().size() && !requiresReplay, attempt.isCompleted());
+    }
+
+    private CheckedWord gradeWord(Long userId, String sessionId, Long sentenceId,
+                                  int wordIndex, ApiDtos.CheckWordRequest request) {
         PracticeSession session = getSession(userId, sessionId);
         SentenceAttempt attempt = currentAttempt(session, sentenceId);
         requireListening(attempt);
-        List<String> expectedWords = tokenizer.words(attempt.getSentence().getTranscript());
+        List<TranscriptTokenizer.TranscriptToken> tokens = tokenizer.tokens(attempt.getSentence().getTranscript());
+        List<String> expectedWords = tokens.stream().map(TranscriptTokenizer.TranscriptToken::word).toList();
         validateWordIndex(wordIndex, expectedWords);
-        Set<Integer> properNames = properNameIndices(attempt.getSentence());
-        if (properNames.contains(wordIndex)) {
-            return toState(attempt, properNames);
-        }
+        Set<Integer> properNames = properNameIndices(expectedWords, properNameTokens(session.getLesson().getId()));
+        Map<Integer, WordAttempt> attempts = new HashMap<>();
+        wordAttemptRepository.findBySentenceAttemptIdOrderByWordIndex(attempt.getId())
+                .forEach(word -> attempts.put(word.getWordIndex(), word));
+        CheckedWord checked = new CheckedWord(attempt, tokens, properNames, attempts);
+        if (properNames.contains(wordIndex)) return checked;
 
-        WordAttempt wordAttempt = getOrCreateWordAttempt(attempt, wordIndex);
+        WordAttempt wordAttempt = attempts.get(wordIndex);
+        if (wordAttempt == null) {
+            wordAttempt = wordAttemptRepository.save(new WordAttempt(attempt, wordIndex));
+            attempts.put(wordIndex, wordAttempt);
+        }
         String rawAnswer = request.answer().trim();
         if (wordAttempt.isFinalCorrect() || wordAttempt.isRevealed()
-                || rawAnswer.equals(wordAttempt.getLastAnswer())) return toState(attempt, properNames);
+                || rawAnswer.equals(wordAttempt.getLastAnswer())) return checked;
         if (wordAttempt.getAttemptCount() >= 50)
             throw new InvalidPracticeStateException("Đã đạt giới hạn thử từ này. Hãy dùng gợi ý để tiếp tục.");
         String normalizedAnswer = tokenizer.normalize(rawAnswer);
@@ -252,7 +289,11 @@ public class PracticeService {
                 wordAttempt, wordAttempt.getAttemptCount(), rawAnswer, normalizedAnswer,
                 correct, responseTimeMs, errorCategory, now()
         ));
-        return toState(attempt, properNames);
+        return checked;
+    }
+
+    private record CheckedWord(SentenceAttempt attempt, List<TranscriptTokenizer.TranscriptToken> tokens,
+                               Set<Integer> properNames, Map<Integer, WordAttempt> attempts) {
     }
 
     @Transactional
@@ -616,11 +657,9 @@ public class PracticeService {
 
     private SentenceAttempt currentAttempt(PracticeSession session, Long sentenceId) {
         ensureInProgress(session);
-        LessonSentence current = currentSentence(session);
-        if (!current.getId().equals(sentenceId)) {
-            throw new InvalidPracticeStateException("Câu này không phải câu hiện tại của phiên luyện tập.");
-        }
-        return getOrFailAttempt(session, sentenceId);
+        return sentenceAttemptRepository.findCurrent(session.getId(), sentenceId,
+                        session.getCurrentSentencePosition(), session.getLesson().getId())
+                .orElseThrow(() -> new InvalidPracticeStateException("Câu này không phải câu hiện tại của phiên luyện tập."));
     }
 
     private SentenceAttempt getOrFailAttempt(PracticeSession session, Long sentenceId) {

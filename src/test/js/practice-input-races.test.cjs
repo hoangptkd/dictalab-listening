@@ -10,7 +10,7 @@ function harness() {
     let now = 1000, nextTimer = 0, active = 0, completed = 0;
     const timers = new Map(), requests = [], statuses = [], inputs = new Map();
     const state = {currentUser: {id: 1}, session: {sessionId: 'session-a'},
-        sentence: {sentenceId: 10, hasListened: true, canComplete: false,
+        sentence: {sentenceId: 10, hasListened: true, canComplete: false, replayCount: 1, hintCount: 0, revealCount: 0,
             words: [0, 1, 2].map(index => ({index, length: 3, userInput: '', correct: false}))},
         wordDrafts: new Map(), wordAttemptStartedAt: new Map(), checkingWords: new Set(),
         inputInteractionRevision: 0, practiceMutationQueue: Promise.resolve()};
@@ -70,15 +70,67 @@ function harness() {
             }
             now = until; await flush();
         },
-        async reply(requestIndex, correct = false) {
+        async reply(requestIndex, correct = false, compact = true) {
             const request = requests[requestIndex], wordIndex = Number(request.url.match(/words\/(\d+)/)[1]);
             const sentence = JSON.parse(JSON.stringify(state.sentence));
             Object.assign(sentence.words[wordIndex], {userInput: request.options.body.answer, correct});
             sentence.canComplete = sentence.words.every(word => word.correct);
-            request.resolve(sentence); await flush();
+            request.resolve(compact ? {sentenceId: sentence.sentenceId, word: sentence.words[wordIndex],
+                resolvedWords: sentence.words.filter(word => word.correct || word.revealed).length,
+                replayCount: sentence.replayCount, hintCount: sentence.hintCount, revealCount: sentence.revealCount,
+                hasListened: true, requiresReplayAfterReveal: false, canComplete: sentence.canComplete, completed: false}
+                : sentence); await flush();
         }
     };
 }
+
+test('compact checks merge only the graded word and retain static sentence metadata', async () => {
+    const h = harness(); Object.assign(h.state.sentence, {audioUrl: '/test.mp3', position: 2, totalSentences: 5});
+    const untouched = h.state.sentence.words[2];
+    h.type(0, 'cat'); await h.advance(240); h.type(1, 'do'); await h.reply(0, true);
+    assert.ok(h.requests[0].url.endsWith('/checks?compact=true'));
+    assert.equal(h.state.sentence.words[2], untouched);
+    assert.equal(h.state.sentence.audioUrl, '/test.mp3');
+    assert.equal(h.state.sentence.position, 2); assert.equal(h.state.sentence.totalSentences, 5);
+    assert.equal(h.state.sentence.words[0].correct, true); assert.equal(h.input(1).value, 'do');
+    assert.equal(h.requests.length, 1);
+});
+
+test('a legacy full sentence response remains compatible during rollout', async () => {
+    const h = harness(); h.type(0, 'cat'); await h.advance(240); await h.reply(0, true, false);
+    assert.equal(h.state.sentence.words[0].correct, true); assert.equal(h.requests.length, 1);
+});
+
+test('a compact result from another word or sentence cannot corrupt cached state', async () => {
+    for (const result of [{sentenceId: 99, word: {index: 0}}, {sentenceId: 10, word: {index: 2}}]) {
+        const h = harness(); h.type(0, 'cat'); await h.advance(240);
+        h.requests[0].resolve(result); await h.flush();
+        assert.equal(h.state.sentence.words[0].correct, false);
+        assert.equal(h.state.wordDrafts.get(0), 'cat'); assert.equal(h.statuses.at(-1).error, true);
+    }
+});
+
+test('a compact progress mismatch reloads server state without repeating the mutation', async () => {
+    const h = harness(); h.type(0, 'cat'); await h.advance(240);
+    const current = {...h.state.sentence, canComplete: true,
+        words: h.state.sentence.words.map(word => ({...word, correct: true, userInput: 'cat'}))};
+    h.requests[0].resolve({sentenceId: 10, word: current.words[0], resolvedWords: 3, canComplete: true,
+        hintCount: 0, revealCount: 0}); await h.flush();
+    assert.equal(h.requests.length, 2); assert.equal(h.requests[1].options, undefined);
+    assert.equal(h.requests[1].url, '/api/v1/practice-sessions/session-a');
+    h.requests[1].resolve({sentence: current}); await h.flush();
+    assert.equal(h.state.sentence.words.every(word => word.correct), true);
+    assert.equal(h.requests.length, 2);
+});
+
+test('a resync response after navigation cannot restore the old cached sentence', async () => {
+    const h = harness(); h.type(0, 'cat'); await h.advance(240);
+    h.requests[0].resolve({sentenceId: 10, word: {index: 0, correct: true}, resolvedWords: 3}); await h.flush();
+    assert.equal(h.requests.length, 2);
+    h.context.resetPracticeInput(); h.state.sentence = {...h.state.sentence, sentenceId: 11};
+    h.requests[1].resolve({sentence: {sentenceId: 10}}); await h.flush();
+    assert.equal(h.state.sentence.sentenceId, 11); assert.equal(h.state.sentence.words[0].correct, false);
+});
 
 for (const interval of [0, 10, 40, 120]) test(`INPUT-01: burst typing at ${interval}ms sends only the final answer`, async () => {
     const h = harness();

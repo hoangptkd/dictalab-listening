@@ -5,6 +5,8 @@ const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
 const {spawn} = require('node:child_process');
+const {once} = require('node:events');
+const {setTimeout: delay} = require('node:timers/promises');
 
 const source = fs.readFileSync(process.env.DICTALAB_APP_JS || path.resolve(__dirname, '../../main/resources/static/js/app.js'), 'utf8');
 const chrome = [process.env.CHROME_BIN,
@@ -33,7 +35,7 @@ test('native practice rendering preserves active inputs and does not grade parti
     const practicePath = suffix => '/practice/' + state.sentence.sentenceId + suffix;
     const refreshDictationCopy = () => {}, roomQueueDraft = () => {}, updatePracticeControls = () => {};
     const stopRecordedAudio = () => {}, setPracticeStatus = () => {}, completeSentence = async () => {};
-    const renderPractice = fresh => renderWordSlots(fresh);
+    const renderPractice = (fresh, index) => renderWordSlots(fresh, index);
     ${functions}
     ${journal}
     ${handlers}
@@ -55,12 +57,15 @@ test('native practice rendering preserves active inputs and does not grade parti
         const sentence = structuredClone(state.sentence);
         Object.assign(sentence.words[index], {correct: true, userInput: request.options.body.answer});
         sentence.canComplete = sentence.words.every(word => word.correct);
-        request.resolve(sentence); await flush();
+        request.resolve({sentenceId: sentence.sentenceId, word: sentence.words[index],
+            resolvedWords: sentence.words.filter(word => word.correct || word.revealed).length,
+            replayCount: 1, hintCount: 0, revealCount: 0, hasListened: true,
+            requiresReplayAfterReveal: false, canComplete: sentence.canComplete, completed: false}); await flush();
     }
     (async () => {
         await new Promise(resolve => window.addEventListener('load', () => setTimeout(resolve, 0), {once: true}));
         const answers = ['I', 'like', 'hot', 'pizza', 'and', 'salad', 'for', 'dinner'];
-        state.sentence = {sentenceId: 10, hasListened: true, canComplete: false,
+        state.sentence = {sentenceId: 10, hasListened: true, canComplete: false, hintCount: 0, revealCount: 0,
             words: answers.map((word, index) => ({index, length: word.length, mask: '_'.repeat(word.length), userInput: '', correct: false}))};
         renderWordSlots(true);
         let nativeBlurCount = 0;
@@ -71,7 +76,14 @@ test('native practice rendering preserves active inputs and does not grade parti
             const el = type(i, answers[i].slice(0, -1));
             el.setSelectionRange(0, 1, 'backward');
             const blurs = nativeBlurCount;
+            const updates = [];
+            const observer = new MutationObserver(records => updates.push(...records));
+            observer.observe(elements.wordSlots, {subtree: true, childList: true, attributes: true, characterData: true});
             await reply(i - 1);
+            observer.disconnect();
+            check(updates.length > 0 && updates.every(update =>
+                Number(update.target.parentElement.closest('.word-slot')?.dataset.slotIndex
+                    ?? update.target.closest?.('.word-slot')?.dataset.slotIndex) === i - 1), 'compact result rendered an unrelated word');
             check(input(i) === el && document.activeElement === el, 'render replaced the active word ' + i);
             check(el.selectionStart === 0 && el.selectionEnd === 1 && el.selectionDirection === 'backward', 'render changed selection');
             check(nativeBlurCount === blurs, 'render emitted native focusout');
@@ -126,21 +138,62 @@ test('native practice rendering preserves active inputs and does not grade parti
             : '<!doctype html><body data-route="practice"><div id="slots"></div><span id="completion"></span><pre id="result" data-status="pending"></pre><script src="/probe.js"></script>');
     });
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'dictalab-input-browser-'));
+    let child, socket, exited;
     try {
         await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-        const output = await new Promise((resolve, reject) => {
-            const child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run',
-                '--no-default-browser-check', '--disable-background-networking', '--user-data-dir=' + profile,
-                '--dump-dom', '--virtual-time-budget=5000', 'http://127.0.0.1:' + server.address().port], {windowsHide: true});
-            let stdout = '', stderr = '';
-            const timeout = setTimeout(() => {child.kill(); reject(new Error('Chrome regression timed out'));}, 20000);
-            child.stdout.on('data', data => stdout += data);
-            child.stderr.on('data', data => stderr += data);
-            child.on('error', error => {clearTimeout(timeout); reject(error);});
-            child.on('close', code => {clearTimeout(timeout); code === 0 ? resolve(stdout) : reject(new Error('Chrome exited ' + code + ': ' + stderr.slice(-1000)));});
+        child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run',
+            '--no-default-browser-check', '--disable-background-networking', '--user-data-dir=' + profile,
+            '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', 'about:blank'], {windowsHide: true, stdio: 'ignore'});
+        let browserError;
+        exited = new Promise(resolve => {
+            child.once('exit', resolve);
+            child.once('error', error => {browserError = error; resolve();});
         });
-        assert.match(output, /data-status="pass"/, output.match(/<pre[^]*?<\/pre>/)?.[0] || output);
+        const deadline = Date.now() + 20000;
+        const portFile = path.join(profile, 'DevToolsActivePort');
+        while (!fs.existsSync(portFile) && Date.now() < deadline && !browserError && child.exitCode === null) await delay(25);
+        if (browserError) throw browserError;
+        assert.ok(fs.existsSync(portFile), 'Chrome did not open its temporary debugger');
+        const port = Number(fs.readFileSync(portFile, 'utf8').split('\n')[0]);
+        assert.ok(port > 0 && port <= 65535);
+        const targets = await (await fetch('http://127.0.0.1:' + port + '/json/list', {signal: AbortSignal.timeout(5000)})).json();
+        socket = new WebSocket(targets.find(target => target.type === 'page').webSocketDebuggerUrl);
+        await once(socket, 'open', {signal: AbortSignal.timeout(5000)});
+        let sequence = 0;
+        const pending = new Map();
+        socket.addEventListener('message', event => {
+            const reply = JSON.parse(event.data), request = pending.get(reply.id);
+            if (!request) return;
+            pending.delete(reply.id);
+            reply.error ? request.reject(new Error(reply.error.message)) : request.resolve(reply.result);
+        });
+        socket.addEventListener('close', () => {
+            for (const request of pending.values()) request.reject(new Error('Chrome debugger closed'));
+            pending.clear();
+        });
+        const send = (method, params = {}) => new Promise((resolve, reject) => {
+            const id = ++sequence;
+            const timer = setTimeout(() => {pending.delete(id); reject(new Error('Chrome command timed out: ' + method));}, 5000);
+            pending.set(id, {resolve: value => {clearTimeout(timer); resolve(value);},
+                reject: error => {clearTimeout(timer); reject(error);}});
+            socket.send(JSON.stringify({id, method, params}));
+        });
+        // Headless pages may be unfocused when another Chrome window is active on the test machine.
+        await send('Emulation.setFocusEmulationEnabled', {enabled: true});
+        await send('Page.navigate', {url: 'http://127.0.0.1:' + server.address().port});
+        let result;
+        do {
+            const evaluated = await send('Runtime.evaluate', {returnByValue: true,
+                expression: "({status: document.querySelector('#result')?.dataset.status, message: document.querySelector('#result')?.textContent})"});
+            result = evaluated.result.value;
+            if (result?.status === 'pass' || result?.status === 'fail') break;
+            await delay(25);
+        } while (Date.now() < deadline);
+        assert.equal(result?.status, 'pass', result?.message || 'Chrome regression timed out');
     } finally {
+        socket?.close();
+        child?.kill();
+        if (exited) await exited;
         await new Promise(resolve => server.close(resolve));
         // This is the unique temporary Chrome profile created above, never a user profile.
         assert.equal(path.dirname(profile), os.tmpdir());

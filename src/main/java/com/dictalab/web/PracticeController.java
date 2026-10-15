@@ -54,7 +54,7 @@ public class PracticeController {
                 ApiDtos.SentenceState.class, () -> practiceService.replay(principal.id(), sessionId, sentenceId, request));
     }
 
-    @PostMapping("/{sessionId}/sentences/{sentenceId}/words/{wordIndex}/checks")
+    @PostMapping(value = "/{sessionId}/sentences/{sentenceId}/words/{wordIndex}/checks", params = "!compact")
     public ApiDtos.SentenceState checkWord(
             @AuthenticationPrincipal DictaLabPrincipal principal,
             @PathVariable String sessionId,
@@ -64,6 +64,19 @@ public class PracticeController {
             @RequestHeader(value="Idempotency-Key", required=false) String key) {
         return submissions.execute(principal.id(), sessionId, key, sentenceId + "/checks/" + wordIndex, request,
                 ApiDtos.SentenceState.class, () -> practiceService.checkWord(principal.id(), sessionId, sentenceId, wordIndex, request));
+    }
+
+    @PostMapping(value = "/{sessionId}/sentences/{sentenceId}/words/{wordIndex}/checks", params = "compact=true")
+    public ApiDtos.WordCheckResult checkWordResult(
+            @AuthenticationPrincipal DictaLabPrincipal principal,
+            @PathVariable String sessionId,
+            @PathVariable Long sentenceId,
+            @PathVariable @Min(0) int wordIndex,
+            @Valid @RequestBody ApiDtos.CheckWordRequest request,
+            @RequestHeader(value="Idempotency-Key", required=false) String key) {
+        // Version the receipt shape without changing retries from older, still-open tabs.
+        return submissions.execute(principal.id(), sessionId, key, sentenceId + "/word-checks/" + wordIndex, request,
+                ApiDtos.WordCheckResult.class, () -> practiceService.checkWordResult(principal.id(), sessionId, sentenceId, wordIndex, request));
     }
 
     @PostMapping("/{sessionId}/sentences/{sentenceId}/hints")

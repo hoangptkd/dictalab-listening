@@ -8,6 +8,7 @@ const required = {
     LearningJobsIntegrationTest: 6,
     AiUsageBudgetIntegrationTest: 4,
     BackendReadIntegrationTest: 7,
+    PracticeWordCheckIntegrationTest: 6,
     ConversationIntegrationTest: 30,
     ListeningComprehensionIntegrationTest: 17,
     ConcurrencyMatrixTest: 28,

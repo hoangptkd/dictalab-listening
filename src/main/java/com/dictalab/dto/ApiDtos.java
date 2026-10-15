@@ -128,6 +128,20 @@ public final class ApiDtos {
         }
     }
 
+    public record WordCheckResult(
+            Long sentenceId,
+            WordSlot word,
+            int resolvedWords,
+            int replayCount,
+            int hintCount,
+            int revealCount,
+            boolean hasListened,
+            boolean requiresReplayAfterReveal,
+            boolean canComplete,
+            boolean completed
+    ) {
+    }
+
     public record PracticeStartResponse(
             String sessionId,
             Long lessonId,
