@@ -642,6 +642,10 @@
             hideAdminEditor();
         });
         const filters = document.querySelector("#admin-lesson-filters");
+        filters.addEventListener("change", () => {
+            const count = ["topic", "origin", "sort"].filter(key => filters.elements[key].value !== (key === "sort" ? "updated" : "")).length;
+            filters.querySelector("#admin-extra-filters summary").textContent = `Lọc thêm · ${count} đang áp dụng`;
+        });
         filters.addEventListener("submit", event => {
             event.preventDefault();
             window.DictaLabAdmin.url({...Object.fromEntries(new FormData(filters)), page: 1});
@@ -1064,7 +1068,15 @@
         if (["listening", "admin-listening"].includes(document.body.dataset.route) && viewId !== document.body.dataset.route) window.DictaLabListening?.leave();
         elements.views.forEach(view => view.hidden = view !== target);
         document.body.dataset.route = viewId;
-        if (viewId === "admin") window.DictaLabLibrary?.showAdmin();
+        if (viewId === "admin") {
+            const libraryMode = new URLSearchParams(location.search).get("library") === "1" || location.hash === "#library-management";
+            target.querySelector(".admin-hero").hidden = libraryMode;
+            target.querySelector(".admin-workspace").hidden = libraryMode;
+            target.querySelector("#admin-library-title").hidden = !libraryMode;
+            target.setAttribute("aria-labelledby", libraryMode ? "admin-library-title" : "admin-heading");
+            if (libraryMode) document.title = "Độ khó và nhóm bài · Quản trị DictaLab";
+            window.DictaLabLibrary?.showAdmin();
+        }
         if (viewId === "practice") roomPrepareStudyAudio();
         elements.mobileNavMenu?.hidePopover?.();
         elements.mobileNavMore?.classList.toggle("is-active", ["history", "room", "support", "account"].includes(viewId));
@@ -3051,6 +3063,10 @@
             state.adminPage = result;
             form.elements.topic.innerHTML = '<option value="">Tất cả</option>' + [...new Set(options.map(item=>item.topic))].map(topic=>`<option value="${escapeAttribute(topic)}">${escapeHtml(topic)}</option>`).join("");
             Object.entries(filters).forEach(([key,value])=>{ if(form.elements.namedItem(key)) form.elements.namedItem(key).value=value; });
+            const extraCount = ["topic", "origin", "sort"].filter(key => filters[key] !== (key === "sort" ? "updated" : "")).length;
+            const extra = form.querySelector("#admin-extra-filters");
+            extra.querySelector("summary").textContent = `Lọc thêm · ${extraCount} đang áp dụng`;
+            if (extraCount) extra.open = true;
             const corrected=new URL(location.href); corrected.searchParams.set("page",result.page+1); history.replaceState(history.state,"",corrected); ui.rememberUrl();
             if (preferredLessonId !== null) {
                 state.selectedAdminLessonId = preferredLessonId;

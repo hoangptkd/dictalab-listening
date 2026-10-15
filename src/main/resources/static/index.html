@@ -162,13 +162,13 @@
                 <h1 id="account-heading">Tài khoản của bạn.</h1><div id="account-content" aria-live="polite"></div></div>
         </section>
         <section id="support-view" class="view" hidden aria-labelledby="support-heading">
-            <div class="lesson-browser account-page"><p class="section-index">Trợ giúp</p>
-                <h1 id="support-heading">Chúng tôi có thể giúp gì?</h1><p class="support-lead">Gửi phản hồi về lỗi âm thanh, câu chép hoặc thắc mắc tài khoản. Bạn có thể theo dõi trạng thái và phản hồi ngay tại trang này.</p><div id="support-content" aria-live="polite"></div></div>
+            <div class="lesson-browser account-page">
+                <h1 id="support-heading">Chúng tôi có thể giúp gì?</h1><div id="support-content" aria-live="polite"></div></div>
         </section>
         <section id="conversation-view" class="view" hidden aria-labelledby="conversation-heading">
             <div class="lesson-browser conversation-browser">
                 <p class="section-index">Luyện tập · Hội thoại AI</p>
-                <h1 id="conversation-heading">Nghe để hiểu.<br><em>Trả lời theo cách của bạn.</em></h1>
+                <h1 id="conversation-heading"><span class="conversation-catalog-heading">Nghe để hiểu.<br><em>Trả lời theo cách của bạn.</em></span><span class="conversation-session-heading">Hội thoại AI</span></h1>
                 <p class="conversation-intro">Nghe tình huống và gõ điều mình hiểu bằng tiếng Việt. Transcript và bản dịch chỉ mở khi bạn cần và được ghi nhận là trợ giúp trong kết quả.</p>
                 <div id="conversation-content"></div>
             </div>
@@ -177,12 +177,15 @@
             <div class="lesson-browser listening-browser">
                 <p class="section-index">Listening Comprehension</p>
                 <h1 id="listening-heading">Nghe hiểu từ lần đầu.</h1>
+                <details id="listening-guide" class="ui-disclosure" open>
+                <summary>Cách luyện nghe hiểu · 2 lượt</summary>
                 <p>Nghe trọn bài một lần, ghi lại điều bạn nhớ, rồi trả lời câu hỏi. Sau lượt đầu, bạn có thể hoàn tất hoặc nghe thêm một lượt để đối chiếu.</p>
                 <section class="listening-process" aria-labelledby="listening-process-heading">
                     <h2 id="listening-process-heading">Quy trình nghe hiểu 2 lượt</h2>
                     <ol><li>Nghe bài một lần</li><li>Ghi nhớ và trả lời</li><li>Kết quả lượt 1</li><li>Có thể nghe thêm đúng 1 lượt hoặc hoàn tất</li><li>Ôn đáp án và transcript</li></ol>
                     <p>Transcript và đáp án được ẩn cho đến khi xem kết quả; bài nghe luôn sẵn sàng để nghe theo đúng số lượt quy định.</p>
                 </section>
+                </details>
                 <div id="listening-content" aria-live="polite"></div>
             </div>
         </section>
@@ -253,8 +256,7 @@
                 <section class="listening-console" aria-labelledby="listen-heading">
                     <div class="console-intro">
                     <div class="console-protocol"><p class="section-index">Nghe nguyên câu · Không transcript</p><span>Khóa tua (No seeking)</span></div>
-                    <h2 id="listen-heading">Bắt lấy nhịp điệu trước,<br>rồi mới tìm từng từ.</h2>
-                    <p class="console-description">Rèn luyện thính giác nhận diện câu đầy đủ. Âm thanh chạy từ đầu đến cuối không cắt lát.</p>
+                    <h2 id="listen-heading">Nghe câu</h2>
                     </div>
 
                     <div class="sound-stage">
@@ -369,7 +371,6 @@
                 <p class="field-help">Chọn loại lỗi cho từng từ để cập nhật dashboard.</p>
                 <div id="word-classification-list" class="word-classification-list"></div>
             </details>
-            <p class="practice-shortcuts"><kbd>Alt+P</kbd> Nghe lại · <kbd>Space</kbd> Sang từ · <kbd>Enter</kbd> Chuyển câu đủ điều kiện</p>
         </section>
 
         <section id="result-view" class="view" hidden aria-labelledby="result-heading">

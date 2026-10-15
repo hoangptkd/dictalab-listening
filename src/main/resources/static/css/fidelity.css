@@ -1028,4 +1028,29 @@ body[data-route="admin-users"] .admin-table td:last-child a { white-space: nowra
     .site-header .streak-pill { display: none; }
     .account-menu #account-link { white-space: nowrap; min-width: 64px; }
 }
+.ui-disclosure { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin: 12px 0; background: var(--cream); min-width: 0; }
+.ui-disclosure > summary { cursor: pointer; font-weight: 600; min-height: 28px; padding: 8px 0; }
+.ui-disclosure > summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; border-radius: 4px; }
+.ui-disclosure[open] > summary { margin-bottom: 12px; }
+.account-column { align-content: start; }
+.account-disclosure { margin: 0; }
+.account-disclosure > .account-panel { border: 0; box-shadow: none; padding: 0; background: transparent; }
+.account-disclosure [data-form-status]:empty { display: none; }
+#listening-guide:not(.is-history-guide) { display: contents; }
+#listening-guide:not(.is-history-guide) > summary { display: none; }
+.conversation-session-heading { display: none; }
+.has-active-session .conversation-catalog-heading, .has-active-session > .section-index, .has-active-session > .conversation-intro { display: none; }
+.has-active-session .conversation-session-heading { display: inline; }
+.conversation-session-layout.is-active-session { display: block; }
+.is-active-session .conversation-session-main .conversation-workspace { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.is-active-session .conversation-session-header { margin-top: 20px; }
+.conversation-guide { margin-block: 12px; }
+.conversation-help { margin-top: 12px; }
+.conversation-session-main .conversation-listen > .ui-disclosure { grid-column: 1 / -1; margin: 0; background: transparent; border-color: #344b4c; }
+.smart-review-more { margin: 0; }
+.smart-review-more > .smart-review-item + .smart-review-item { margin-top: 16px; }
+#admin-library-title { font: 400 32px/1.2 var(--display); margin: 24px 0; }
+#admin-extra-filters { grid-column: 1 / -1; margin: 0; }
+.admin-extra-filter-fields { display: grid; gap: 12px; }
+@media (max-width: 760px) { .is-active-session .conversation-session-main .conversation-workspace { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }

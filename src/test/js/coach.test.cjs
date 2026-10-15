@@ -32,6 +32,24 @@ const report = (label = 'Real evidence', aiEnabled = false) => ({source: 'RULES'
 const click = (h, attribute) => h.listeners.click({target: {closest: () => ({disabled: false,
     dataset: {}, hasAttribute: name => name === attribute})}});
 
+test('result review shows three items first and preserves every later item and action', async () => {
+    for (const count of [0, 1, 3, 4, 12]) {
+        const data = report();
+        data.reviewItems = Array.from({length: count}, (_, i) => ({...data.reviewItems[0], id: `item-${i}`}));
+        const h = harness(async () => data);
+        await h.module.show({sessionId: 'current'});
+        const html = h.$('#smart-review-items').innerHTML;
+        const first = html.split('<details')[0];
+        assert.equal((first.match(/data-coach-item=/g) || []).length, Math.min(3, count));
+        assert.equal((html.match(/data-coach-item=/g) || []).length, count);
+        for (const action of ['listen', 'drill', 'save']) {
+            assert.equal((html.match(new RegExp(`data-coach-${action}[ >]`, 'g')) || []).length, count);
+        }
+        assert.equal(html.includes('<details'), count > 3);
+        if (count > 3) assert.ok(html.includes(`Xem thêm ${count - 3} điểm cần ôn`));
+    }
+});
+
 test('automatic Error Bank escapes evidence and never presents a suspected cause as confirmed', async () => {
     const h=harness(async url => url==='/api/v1/error-bank' ? [] : url==='/api/v1/listening-learning'
         ? {due: 1,pending: 2,targets: [{target: '<script>',errors: 3,comparable_opportunities: 4}],

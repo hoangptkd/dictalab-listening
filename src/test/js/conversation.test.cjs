@@ -48,6 +48,21 @@ test('learner/AI strings are escaped and transcript is not displayed by default'
     assert.match(h.root.innerHTML, /id="conversation-transcript" hidden/);
     assert.match(h.root.innerHTML, /id="conversation-translation" hidden/);
 });
+
+test('assistance is collapsed without requesting help and playback controls remain direct', async () => {
+    const calls = [];
+    const h = harness(async (url, options) => { calls.push({url, options}); return state(); });
+    await h.module.show('session');
+    const html = h.root.innerHTML;
+    const details = html.match(/<details id="conversation-assistance"[^>]*>/)[0];
+    assert.doesNotMatch(details, /\bopen\b/);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].options, undefined);
+    for (const action of ['play', 'slow', 'stop']) {
+        assert.ok(html.indexOf(`data-action="${action}"`) < html.indexOf('id="conversation-assistance"'));
+    }
+    assert.ok(html.indexOf('Mở hỗ trợ sẽ được ghi nhận') < html.indexOf('id="conversation-assistance"'));
+});
 test('saved ungraded response is read-only and retry uses its existing request id', async () => {
     const requests = [];
     const h = harness(async (url, options) => {

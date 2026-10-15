@@ -133,7 +133,8 @@
             </section>` : ""}
             ${["BUSY", "UNAVAILABLE", "RETRY_REQUIRED"].includes(data.source) ? '<button class="text-button" type="button" data-coach-retry>Thử AI lại</button>' : ""}`;
         $("#smart-review-count").textContent = data.reviewItems.length ? `${data.reviewItems.length} lỗi ưu tiên · không cần ôn lại tất cả` : "Không có lỗi cần ưu tiên";
-        $("#smart-review-items").innerHTML = data.reviewItems.map(item => itemCard(item, sessionId)).join("");
+        $("#smart-review-items").innerHTML = data.reviewItems.slice(0, 3).map(item => itemCard(item, sessionId)).join("")
+            + (data.reviewItems.length > 3 ? `<details class="ui-disclosure smart-review-more"><summary>Xem thêm ${data.reviewItems.length - 3} điểm cần ôn</summary>${data.reviewItems.slice(3).map(item => itemCard(item, sessionId)).join("")}</details>` : "");
     }
 
     function itemCard(item, sourceSession, inBank = false) {
