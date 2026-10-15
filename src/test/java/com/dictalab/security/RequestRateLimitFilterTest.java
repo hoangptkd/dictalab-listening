@@ -8,6 +8,20 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.BDDMockito.*;
 
 class RequestRateLimitFilterTest {
+    @Test void practiceWritesUseRateLimiterAndGetRemainsAvailable() throws Exception {
+        var redis=mock(org.springframework.data.redis.core.StringRedisTemplate.class);
+        given(redis.execute(any(org.springframework.data.redis.core.script.RedisScript.class),anyList(),any(Object[].class))).willReturn(0L);
+        var filter=new RequestRateLimitFilter(true,1,new SimpleMeterRegistry(),1,1,10,"redis",redis);
+        var response=new MockHttpServletResponse();
+        filter.doFilter(new MockHttpServletRequest("POST","/api/v1/practice-sessions"),response,(r,s)->{});
+        assertThat(response.getStatus()).isEqualTo(429);
+        response=new MockHttpServletResponse();
+        filter.doFilter(new MockHttpServletRequest("POST","/api/v1/practice-sessions/test/sentences/1/replay-events"),response,(r,s)->{});
+        assertThat(response.getStatus()).isEqualTo(429);
+        response=new MockHttpServletResponse();
+        filter.doFilter(new MockHttpServletRequest("GET","/api/v1/practice-sessions/test"),response,(r,s)->{});
+        assertThat(response.getStatus()).isEqualTo(200);
+    }
     @Test void redisFailureBlocksProtectedWritesButNotReads() throws Exception {
         var redis=mock(org.springframework.data.redis.core.StringRedisTemplate.class);
         given(redis.execute(any(org.springframework.data.redis.core.script.RedisScript.class),anyList(),any(Object[].class)))

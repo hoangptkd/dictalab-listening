@@ -88,7 +88,7 @@ class HistoryIntegrationTest {
                 .andExpect(jsonPath("$.items[0].lessonTitle").value("Morning at the Market"))
                 .andExpect(jsonPath("$.items[0].level").value("A1"))
                 .andExpect(jsonPath("$.items[0].overallScore").isNumber())
-                .andExpect(jsonPath("$.items[0].firstExposure").value(true))
+                .andExpect(jsonPath("$.items[0].firstExposure").value(false)) // Seed lesson uses browser TTS.
                 .andExpect(jsonPath("$.items[0].completedAt").isNotEmpty());
 
         // 2. Check history detail for userA

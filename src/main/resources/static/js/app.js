@@ -1683,7 +1683,7 @@
     }
 
     function renderWordClassifications(newSentence = false) {
-        const words = (state.sentence?.words || []).filter(word => word.errorType);
+        const words = (state.sentence?.words || []).filter(word => word.classificationAvailable || word.errorType);
         elements.wordClassifications.hidden = words.length === 0;
         if (newSentence || !words.length) elements.wordClassifications.open = false;
         elements.classificationCount.textContent = `${words.length} từ`;
@@ -1719,6 +1719,9 @@
             elements.dictationCopyStatus.textContent = "";
         }
         elements.copyDictationAll.disabled = !text;
+        if (state.sentence?.speechText && !state.sentence.audioUrl) {
+            elements.dictationCopyStatus.textContent = "Giọng đọc trình duyệt — luyện có hỗ trợ, không dùng để ước lượng trình độ.";
+        }
     }
 
     async function copyDictationText(selectionOnly) {
@@ -2412,6 +2415,8 @@
         state.historyViewingSession = isHistoryReview;
         state.reviewAudioDurations.clear();
         document.querySelector("#result-score").textContent = Math.round(result.overallScore);
+        const scoreNote = document.querySelector("#result-score-note");
+        if (scoreNote) scoreNote.textContent = `Công thức v${result.scoringVersion || 1} · Điểm luyện tập, không phải điểm thi chuẩn hóa.`;
         document.querySelector("#result-first").textContent = `${formatPercent(result.firstAttemptAccuracy)}%`;
         document.querySelector("#result-final").textContent = `${formatPercent(result.finalAccuracy)}%`;
         document.querySelector("#result-replays").textContent = result.replayCount;
@@ -2743,14 +2748,15 @@
             totalAudioSeconds > 0
                 ? `Audio: ${formatTime(Math.round(totalAudioSeconds))}, tốc độ ước tính ${wordsPerMinute} từ/phút (tính cả khoảng lặng)`
                 : "Audio: chưa đo được thời lượng/tốc độ",
-            `Thời gian làm: ${formatTime(result.practiceSeconds)}`,
+            `Thời gian làm ước tính: ${formatTime(result.practiceSeconds)}`,
+            `Điểm luyện tập: công thức v${result.scoringVersion || 1}; không phải điểm thi chuẩn hóa.`,
             `Điểm tổng: ${formatPercent(result.overallScore)}/100`,
             `Độ chính xác lần đầu: ${formatPercent(result.firstAttemptAccuracy)}%`,
             `Độ chính xác cuối: ${formatPercent(result.finalAccuracy)}%`,
             `Replay: ${result.replayCount}; hint: ${result.hintCount}; reveal cả câu: ${result.revealCount}`,
             `Phân loại lỗi: biết nhưng nghe lỡ ${result.knownButMissed}; từ chưa biết ${result.unknownWords}`,
             result.assessment?.estimatedLevel
-                ? `Ước lượng nghe: ${result.assessment.estimatedLevel}; độ tin cậy ${formatPercent(result.assessment.confidence)}%; bằng chứng ${result.assessment.evidenceLessons}/${result.assessment.requiredLessons} bài mới`
+                ? `Ước lượng nghe nội bộ: ${result.assessment.estimatedLevel}; mức đủ dữ liệu ${formatPercent(result.assessment.confidence)}%; bằng chứng ${result.assessment.evidenceLessons}/${result.assessment.requiredLessons} bài mới`
                 : "Ước lượng nghe: chưa đủ dữ liệu",
             result.assessment ? `Tín hiệu độc lập: lần đầu không trợ giúp ${formatPercent(result.assessment.metrics.unassistedFirstPassAccuracy)}%; từ chức năng ${formatPercent(result.assessment.metrics.functionWordAccuracy)}%; từ nội dung ${formatPercent(result.assessment.metrics.contentWordAccuracy)}%` : "",
             `Kết quả theo từ: ${outcomeSummary}`,
@@ -2813,7 +2819,7 @@
         elements.headerSessionCount.textContent = summary.completedLessons;
         elements.dashboardSummary.innerHTML = [
             ["Buổi hoàn thành", summary.completedLessons, false],
-            ["Phút luyện", summary.learningMinutes, false],
+            ["Phút luyện (ước tính)", summary.learningMinutes, false],
             ["Đúng lần đầu", `${formatPercent(summary.averageFirstAttemptAccuracy)}%`, true],
             ["Đúng sau khi sửa", `${formatPercent(summary.averageFinalAccuracy)}%`, false],
             ["Điểm trung bình", formatPercent(summary.averageScore), false]
@@ -2893,7 +2899,7 @@
                 </div>
                 <div class="assessment-confidence">
                     <strong>${formatPercent(assessment.confidence)}%</strong>
-                    <span>Tin cậy ${escapeHtml(assessment.confidenceBand.toLowerCase())}</span>
+                    <span>Mức đủ dữ liệu ${escapeHtml(assessment.confidenceBand.toLowerCase())}</span>
                 </div>
             </div>
             <p class="assessment-summary">${escapeHtml(assessment.summary)}</p>
@@ -2910,7 +2916,7 @@
                 ${assessmentMetric("Phụ thuộc gợi ý", metrics.hintDependencyRate, "%")}
                 ${assessmentMetric("Phụ thuộc nghe chậm", metrics.slowPlaybackDependencyRate, "%")}
                 ${assessmentMetric("Tỷ lệ xem đáp án", metrics.revealRate, "%")}
-                ${assessmentMetric("Phản hồi TB", metrics.averageResponseTimeMs, " ms")}
+                ${assessmentMetric("Phản hồi TB", metrics.averageResponseTimeMs || null, " ms")}
             </div>
             <details class="assessment-errors">
                 <summary>Phân loại lỗi tự động</summary>
@@ -3553,7 +3559,7 @@
             const date = session.completedAt ? new Date(session.completedAt) : new Date();
             const dateStr = date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
             const timeStr = date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
-            const practiceMinutes = Math.max(1, Math.round(session.practiceSeconds / 60));
+            const practiceMinutes = Math.max(0, Math.round(session.practiceSeconds / 60));
             return `
                 <a class="history-card" href="${router.toPath("result", {sessionId: session.sessionId})}"
                          data-history-session-id="${escapeAttribute(session.sessionId)}" aria-label="Xem lại ${escapeAttribute(session.lessonTitle)}">
@@ -3565,7 +3571,7 @@
                         </h3>
                         <p class="history-card-meta">
                             <span>${escapeHtml(dateStr)} ${escapeHtml(timeStr)}</span>
-                            <span>${practiceMinutes} phút</span>
+                            <span>${practiceMinutes ? `≈ ${practiceMinutes}` : "&lt;1"} phút</span>
                             <span>${session.totalReplays} lượt nghe</span>
                             <span class="history-exposure-badge ${session.firstExposure ? "is-first" : "is-redo"}">
                                 ${session.firstExposure ? "Lần đầu" : "Làm lại"}

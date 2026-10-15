@@ -80,6 +80,24 @@ public class MediaStorageService {
 
     public boolean proxyAudioEnabled() { return proxyAudio; }
 
+    public void requireLessonAudioAccess(String filename, long user, boolean administrator) {
+        validateS3Filename(filename);
+        if (administrator) return;
+        String url = S3_URL_PREFIX + filename;
+        Integer visible = db.queryForObject("""
+                SELECT (SELECT COUNT(*) FROM lesson_sentences s JOIN lessons l ON l.id=s.lesson_id
+                    WHERE s.audio_url=? AND l.content_origin<>'BRITISH_COUNCIL_PERSONAL'
+                      AND (l.active=TRUE OR EXISTS (SELECT 1 FROM sentence_attempts a
+                        JOIN practice_sessions p ON p.id=a.practice_session_id
+                        WHERE a.sentence_id=s.id AND p.user_id=?)))
+                    + (SELECT COUNT(*) FROM listening_units u JOIN lessons l ON l.id=u.lesson_id
+                        WHERE u.audio_url=? AND l.content_origin<>'BRITISH_COUNCIL_PERSONAL'
+                          AND ((u.published=TRUE AND l.active=TRUE) OR EXISTS (
+                              SELECT 1 FROM listening_sessions s WHERE s.unit_id=u.id AND s.user_id=?)))
+                """, Integer.class, url, user, url, user);
+        if (visible == null || visible == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+    }
+
     public void serveLegacyAudio(String url, jakarta.servlet.http.HttpServletRequest request,
                                  jakarta.servlet.http.HttpServletResponse response) throws IOException {
         var names = db.queryForList("SELECT object_name FROM audio_s3_aliases WHERE audio_url=?", String.class, url);

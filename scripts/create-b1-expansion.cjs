@@ -336,6 +336,7 @@ async function exportBatch(){
   page=page.replaceAll(' download>',' download hidden>').replaceAll('type="button" data-segment=','type="button" disabled data-segment=');
   for(const name of [l.audioFile,l.mp3File])page=page.replaceAll('"'+name+'"','"/media/'+name+'"');
   page=page.replaceAll('research.md','index.html');
+  page=page.replace('</body>','<script src="/js/free-practice.js" defer></script></body>');
   assert(!page.includes('<script>'));await fs.writeFile(path.join(out,l.slug+'.html'),page,'utf8');
   transcript.push(`## ${l.goal} ${l.target} · ${l.title}\n\n${l.sentences.map((s,i)=>`${i+1}. **${s.speaker}**: ${s.text}`).join('\n')}\n\n${l.questions.map((q,i)=>`${i+1}. ${q.prompt}\n${q.options?.join(' | ')||''}\nĐáp án: ${q.answer} — ${q.explanation}`).join('\n\n')}`);
  }

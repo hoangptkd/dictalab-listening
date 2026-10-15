@@ -319,8 +319,8 @@ class AuthFlowIntegrationTest {
                                 """))
                 .andExpect(status().isCreated()).andReturn().getResponse();
         var access = registration.getCookie(JwtTokenService.ACCESS_COOKIE);
-        // This test runs in local mode: reaching 503 proves the JWT cookie passed security.
-        mockMvc.perform(get(mediaUrl).cookie(access)).andExpect(status().isServiceUnavailable())
+        // Authentication alone must not authorize an unattached managed audio URL.
+        mockMvc.perform(get(mediaUrl).cookie(access)).andExpect(status().isNotFound())
                 .andExpect(header().doesNotExist("Location"));
         mockMvc.perform(get("/media/s3/not-a-managed-audio.json").cookie(access))
                 .andExpect(status().isNotFound()).andExpect(header().doesNotExist("Location"));

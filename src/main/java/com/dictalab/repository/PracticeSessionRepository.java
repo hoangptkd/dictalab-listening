@@ -78,6 +78,8 @@ public interface PracticeSessionRepository extends JpaRepository<PracticeSession
     @Query("""
             select s from PracticeSession s
             where s.user.id = :userId and s.status = :status and s.roomId is null and s.firstExposure = true
+              and not exists (select t.id from LessonSentence t where t.lesson.id=s.lesson.id
+                  and (t.audioUrl is null or trim(t.audioUrl)=''))
               and not exists (
                 select other.id from PracticeSession other
                 where other.user.id = s.user.id and other.lesson.id = s.lesson.id

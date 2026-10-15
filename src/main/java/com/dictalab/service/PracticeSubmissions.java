@@ -38,6 +38,9 @@ public class PracticeSubmissions {
                 throw new InvalidPracticeStateException("Mã gửi bài đã được dùng với nội dung khác.");
             return json.readValue((String) receipt.get("response_json"), type);
         }
+        long receiptCount = db.queryForObject("SELECT COUNT(*) FROM practice_submission_receipts WHERE session_id=? AND action=?", Long.class, session, action);
+        // Keep all accepted retry keys; reject new writes at the bound instead of expiring deduplication.
+        if (receiptCount >= 500) throw new InvalidPracticeStateException("Đã đạt giới hạn thao tác này. Hãy tiếp tục câu hoặc tải lại trang.");
         // Completing a sentence has one natural outcome even if another tab uses a different key.
         String canonical = action.endsWith("/complete") ? "completed:" + action : null;
         var completed = canonical == null ? java.util.List.<String>of() : db.queryForList(
@@ -52,4 +55,5 @@ public class PracticeSubmissions {
                     session, canonical, action, hash, response);
         return result;
     }
+
 }

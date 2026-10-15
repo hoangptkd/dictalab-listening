@@ -126,6 +126,10 @@ public class WordAttempt {
         return errorType;
     }
 
+    public LearnerErrorType getLearnerReportedErrorType() {
+        return learnerReportedErrorType;
+    }
+
     public ListeningErrorCategory getInferredErrorCategory() {
         return inferredErrorCategory;
     }

@@ -84,10 +84,13 @@ public class RequestRateLimitFilter extends OncePerRequestFilter {
                 || path.startsWith("/api/v1/listening/") && (path.contains("/grading/") && path.endsWith("/retry")
                     || request.getMethod().equals("POST") && path.endsWith("/answers"))?"ai"
                 :path.startsWith("/api/admin/") && request.getContentType()!=null && request.getContentType().startsWith("multipart/")?"upload":"";
+        if(group.isEmpty() && (path.startsWith("/api/v1/practice-sessions")
+                || path.startsWith("/api/v1/catalog/") || path.startsWith("/api/v1/listening-learning/")
+                || path.startsWith("/api/v1/listening/"))) group="practice";
         if(group.isEmpty()){chain.doFilter(request,response);return;}
         var auth=SecurityContextHolder.getContext().getAuthentication();
         String actor=auth!=null && auth.getPrincipal() instanceof DictaLabPrincipal user?"u:"+user.id():"ip:"+request.getRemoteAddr();
-        int capacity=group.equals("auth")?authBurst:group.equals("ai")?aiBurst:uploadBurst;
+        int capacity=group.equals("auth")?authBurst:group.equals("ai")?aiBurst:group.equals("practice")?600:uploadBurst;
         String key=group+":"+actor;
         if("redis".equals(backend)){
             boolean allowed;

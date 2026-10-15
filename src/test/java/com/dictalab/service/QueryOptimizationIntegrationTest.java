@@ -24,9 +24,19 @@ class QueryOptimizationIntegrationTest {
     @Autowired CoachService coach;
     @Autowired HistoryService history;
     @Autowired AdminContentService admin;
+    @Autowired LessonLibrary library;
     @Autowired ConversationService conversation;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired io.micrometer.core.instrument.MeterRegistry metrics;
+
+    @Test void libraryLoadsAllLevelsWithOneCatalogAndPreviewBatch() {
+        JdbcQueryCounter.start();
+        var result=library.snapshot(0,false);
+        var sql=JdbcQueryCounter.stop();
+        assertThat(result.lessons()).isNotEmpty();
+        assertThat(JdbcQueryCounter.selects(sql)).isEqualTo(7);
+        assertThat(result.lessons().size()).isEqualTo(db.queryForObject("SELECT COUNT(*) FROM lessons WHERE active=TRUE AND content_origin<>'BRITISH_COUNCIL_PERSONAL'",Integer.class));
+    }
 
     @Test void listeningDraftsAndReviewReuseAlreadyLoadedRows() {
         AppUser owner = users.save(new AppUser("query-" + UUID.randomUUID() + "@test.local", "Owner", "unused", Instant.now()));

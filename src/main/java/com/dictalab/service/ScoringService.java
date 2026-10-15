@@ -18,12 +18,13 @@ public class ScoringService {
         double firstAccuracy = percentage(firstCorrect, totalWords);
         double finalAccuracy = percentage(finalCorrect, totalWords);
         int extraReplays = Math.max(0, totalReplays - sentenceCount);
-        double penalty = firstLetterHints * properties.firstLetterPenalty()
-                + wordReveals * properties.wordRevealPenalty()
-                + sentenceReveals * properties.sentenceRevealPenalty()
-                + extraReplays * properties.extraReplayPenalty();
+        // Version 2 normalizes opportunities, retaining the old 10-word/3-sentence reference scale.
+        double penalty = (firstLetterHints * properties.firstLetterPenalty()
+                + wordReveals * properties.wordRevealPenalty()) * 10.0 / Math.max(1, totalWords)
+                + (sentenceReveals * properties.sentenceRevealPenalty()
+                + extraReplays * properties.extraReplayPenalty()) * 3.0 / Math.max(1, sentenceCount);
         double independence = clamp(100.0 - penalty);
-        double overall = firstAccuracy * properties.firstAttemptWeight()
+        double overall = totalWords == 0 ? 0 : firstAccuracy * properties.firstAttemptWeight()
                 + finalAccuracy * properties.finalAccuracyWeight()
                 + independence * properties.independenceWeight();
         return new ScoreBreakdown(round(firstAccuracy), round(finalAccuracy), round(clamp(overall)));

@@ -84,13 +84,17 @@ class ListeningLearningIntegrationTest {
             return result;
         } finally {pool.shutdownNow();}
     }
-    @Test void tenDuplicateChecksAreOneEventButDistinctKeysRemainRealAttempts() throws Exception {
+    @Test void duplicateChecksStayOneEventAndChangedAnswersRemainRealAttempts() throws Exception {
         long user=user();var session=start(user);var request=new ApiDtos.CheckWordRequest("bye",123L);
         Supplier<ApiDtos.SentenceState> write=()->practice.checkWord(user,session.sessionId(),session.sentence().sentenceId(),1,request);
         var result=race(10,()->receipts.execute(user,session.sessionId(),"check-one", "check/1",request,ApiDtos.SentenceState.class,write));
         assertThat(result).allMatch(result.get(0)::equals);
         assertThat(events(session.sessionId())).isEqualTo(1);
         receipts.execute(user,session.sessionId(),"check-two","check/1",request,ApiDtos.SentenceState.class,write);
+        assertThat(events(session.sessionId())).isEqualTo(1);
+        var changed=new ApiDtos.CheckWordRequest("buy",123L);
+        receipts.execute(user,session.sessionId(),"check-three","check/1",changed,ApiDtos.SentenceState.class,
+                ()->practice.checkWord(user,session.sessionId(),session.sentence().sentenceId(),1,changed));
         assertThat(events(session.sessionId())).isEqualTo(2);
         assertThatThrownBy(()->receipts.execute(user,session.sessionId(),"check-one","check/1",new ApiDtos.CheckWordRequest("changed"),ApiDtos.SentenceState.class,write)).isInstanceOf(InvalidPracticeStateException.class);
         assertThatThrownBy(()->receipts.execute(user(),session.sessionId(),"check-one","check/1",request,ApiDtos.SentenceState.class,write)).isInstanceOf(ResourceNotFoundException.class);
@@ -208,6 +212,7 @@ class ListeningLearningIntegrationTest {
     }
     @Test void newContextReviewGradesOnceAndPreservesScoresAndExposure() throws Exception {
         long user=user(),attempt=completed(user);collect(user,attempt);
+        int previousTime=db.queryForObject("SELECT total_practice_seconds FROM practice_sessions s JOIN sentence_attempts a ON a.practice_session_id=s.id WHERE a.id=?",Integer.class,attempt);
         lesson("Transfer","He buys bread.","/alternative-"+UUID.randomUUID()+".mp3");
         var challenge=learning.startReview(user).get(0);
         assertThat(challenge.prompt()).contains("_____").doesNotContain("buys");
@@ -222,7 +227,7 @@ class ListeningLearningIntegrationTest {
         assertThat(db.queryForObject("SELECT revision FROM listening_review_cards WHERE user_id=?",Long.class,user)).isEqualTo(1);
         assertThat(db.queryForObject("SELECT COUNT(*) FROM audio_exposure_events WHERE user_id=? AND source='SPACED_REVIEW'",Integer.class,user)).isEqualTo(1);
         assertThatThrownBy(()->learning.answer(user,challenge.id(),"different",false)).isInstanceOf(InvalidPracticeStateException.class);
-        assertThat(db.queryForObject("SELECT total_practice_seconds FROM practice_sessions s JOIN sentence_attempts a ON a.practice_session_id=s.id WHERE a.id=?",Integer.class,attempt)).isEqualTo(10);
+        assertThat(db.queryForObject("SELECT total_practice_seconds FROM practice_sessions s JOIN sentence_attempts a ON a.practice_session_id=s.id WHERE a.id=?",Integer.class,attempt)).isEqualTo(previousTime);
         assertThat(learning.startReview(user)).isEmpty();
     }
     @Test void wrongOrRevealedReviewDoesNotPromoteAndAbandonDoesNotReschedule() {
