@@ -341,7 +341,10 @@ class AiRabbitQueueIntegrationTest {
         var factory=(org.springframework.amqp.rabbit.connection.CachingConnectionFactory)rabbit.getConnectionFactory();
         String originalAddress=System.getProperty("spring.rabbitmq.host")+":"+System.getProperty("spring.rabbitmq.port");
         // Keep the fault target's IP stable; reconnecting a shared bridge can invalidate Docker's host forwarding.
-        try(var isolatedNetwork=org.testcontainers.containers.Network.newNetwork();
+        // Docker requires an explicitly configured subnet to restore an endpoint's fixed IP.
+        try(var isolatedNetwork=org.testcontainers.containers.Network.builder().createNetworkCmdModifier(command ->
+                command.withIpam(new com.github.dockerjava.api.model.Network.Ipam().withConfig(
+                        new com.github.dockerjava.api.model.Network.Ipam.Config().withSubnet("10.253.241.0/24")))).build();
                 var broker=new org.testcontainers.rabbitmq.RabbitMQContainer("rabbitmq:4.3.6-management-alpine")
                 .withNetwork(isolatedNetwork).withNetworkAliases("rabbit-network-fixture")
                 .withAdminUser("dictalab_test").withAdminPassword("test-only-password")) {

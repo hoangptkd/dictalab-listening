@@ -83,7 +83,11 @@ class LearningJobsIntegrationTest {
         try {jobs.dispatch();assertThat(state(id)).isEqualTo("PENDING");assertThat(evidence(id)).isZero();}
         finally {ReliabilityContainers.setRabbitPaused(false);}
         ready(id);jobs.dispatch();listeners.start();
-        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(30)).until(()->state(id).equals("DONE"));
+        // Dispatch is bounded to five jobs; earlier tests can leave a durable backlog ahead of this job.
+        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(30)).until(()->{
+            jobs.dispatch();
+            return state(id).equals("DONE");
+        });
         assertThat(evidence(id)).isEqualTo(1);
         rabbit.convertAndSend("",LearningRabbitConfig.QUEUE,"not-a-uuid");
         org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(20)).untilAsserted(()->
