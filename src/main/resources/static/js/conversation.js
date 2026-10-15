@@ -23,6 +23,7 @@
 
     async function show(id) {
         leave(); session = null; draft = ""; message = "";
+        root().closest?.(".conversation-browser")?.classList.remove("has-active-session");
         const token = revision;
         root().innerHTML = '<p role="status">Đang tải hội thoại…</p>';
         try {
@@ -78,8 +79,10 @@
 
     function render() {
         const turn = current(), attempts = turn?.attempts || [], pending = attempts.at(-1) && !attempts.at(-1).evaluation;
+        const helpOpen = root().querySelector("#conversation-assistance")?.open;
+        root().closest?.(".conversation-browser")?.classList.toggle("has-active-session", !session.completed);
         if (pending) draft = attempts.at(-1).answerVi;
-        root().innerHTML = `<div class="conversation-session-layout"><aside class="conversation-card conversation-context"><p class="section-index">Cuộc gặp đang luyện</p><h2>${escape(session.scenarioVi)}</h2><p>${escape(session.difficulty)} · Bốn nhiệm vụ nghe và phản hồi</p><p>Nghe trọn câu, nắm ý chính và gõ điều mình hiểu bằng tiếng Việt. Mở transcript hoặc bản dịch khi cần.</p><a href="/conversation" id="conversation-back">← Chọn tình huống</a></aside><div class="conversation-session-main"><div class="conversation-session-header">
+        root().innerHTML = `<div class="conversation-session-layout ${session.completed ? "" : "is-active-session"}">${session.completed ? `<aside class="conversation-card conversation-context"><p class="section-index">Cuộc gặp đang luyện</p><h2>${escape(session.scenarioVi)}</h2><p>${escape(session.difficulty)} · Bốn nhiệm vụ nghe và phản hồi</p><p>Nghe trọn câu, nắm ý chính và gõ điều mình hiểu bằng tiếng Việt. Mở transcript hoặc bản dịch khi cần.</p><a href="/conversation" id="conversation-back">← Chọn tình huống</a></aside>` : ""}<div class="conversation-session-main">${session.completed ? "" : `<a href="/conversation" id="conversation-back">← Chọn tình huống</a><details class="ui-disclosure conversation-guide"><summary>Hướng dẫn luyện hội thoại</summary><p>Bốn nhiệm vụ nghe và phản hồi</p><p>Nghe trọn câu, nắm ý chính và gõ điều mình hiểu bằng tiếng Việt. Mở transcript hoặc bản dịch khi cần.</p></details>`}<div class="conversation-session-header">
             <div><span>${escape(session.scenarioVi)} · ${escape(session.difficulty)}</span>
             ${!session.completed ? `<h2 id="conversation-task">${escape(turn?.prompt.taskVi || "Sẵn sàng cho câu nghe đầu tiên?")}</h2>` : ""}</div></div>
             <div class="conversation-progress" role="group" aria-label="Tiến độ phiên">${[1, 2, 3, 4].map(n => `<span class="${n <= session.turnNumber ? "is-current" : ""}">${n === 4 ? "Kiểm tra lại" : `Nhiệm vụ ${n}`}</span>`).join("")}</div>
@@ -91,12 +94,14 @@
                         <button type="button" class="primary-button" data-action="play">${turn.plays ? "Nghe lại" : "Nghe câu này"} ▶</button>
                         <div class="conversation-audio-tools"><button type="button" class="secondary-button" data-action="slow">Nghe chậm · 0,8×</button>
                         <button type="button" class="text-button" data-action="stop">Dừng audio</button></div>
+                        <small>Mở hỗ trợ sẽ được ghi nhận trong kết quả.</small>
+                        <details id="conversation-assistance" class="ui-disclosure" ${helpOpen || turn.prompt.utteranceEn || turn.prompt.translationVi || turn.clarification ? "open" : ""}><summary>Hỗ trợ: làm rõ, transcript, bản dịch</summary>
                         <div class="conversation-help"><button type="button" class="text-button" data-action="clarify">${turn.clarification ? "Nghe bản làm rõ" : "Nhờ AI nói rõ hơn"}</button>
                         <button type="button" class="text-button" data-action="transcript" aria-expanded="${!!turn.prompt.utteranceEn}" aria-controls="conversation-transcript">Mở transcript</button>
                         <button type="button" class="text-button" data-action="translation" aria-expanded="${!!turn.prompt.translationVi}" aria-controls="conversation-translation">Mở bản dịch</button></div>
                         <div id="conversation-transcript" ${turn.prompt.utteranceEn ? "" : "hidden"}><p lang="en">${escape(turn.prompt.utteranceEn)}</p>${turn.clarification?.utteranceEn ? `<p lang="en">${escape(turn.clarification.utteranceEn)}</p>` : ""}</div>
                         <div id="conversation-translation" ${turn.prompt.translationVi ? "" : "hidden"}><p>${escape(turn.prompt.translationVi)}</p>${turn.clarification?.translationVi ? `<p>${escape(turn.clarification.translationVi)}</p>` : ""}</div>
-                        <small>Mở hỗ trợ sẽ được ghi nhận trong kết quả.</small>` : '<button type="button" class="primary-button" data-action="next">Tạo câu nghe đầu tiên →</button>'}
+                        </details>` : '<button type="button" class="primary-button" data-action="next">Tạo câu nghe đầu tiên →</button>'}
                 </section>
                 <section class="conversation-card conversation-reply" aria-labelledby="conversation-reply-heading">
                     <h2 id="conversation-reply-heading">Bạn hiểu được gì?</h2>

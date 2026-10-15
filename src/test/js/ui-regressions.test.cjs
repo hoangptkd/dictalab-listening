@@ -480,7 +480,7 @@ function listeningHarness(api, customRoot) {
     }};
     const source = read('listening.js').replace('{show, leave};', '{show, leave, loadView, mutate, history};');
     vm.runInNewContext(source, {window, URLSearchParams, location: {search: ''},
-        document: {querySelector: () => root, body: {dataset: {route: 'listening'}}}});
+        document: {querySelector: selector => selector === '#listening-content' ? root : null, body: {dataset: {route: 'listening'}}}});
     return {module: window.DictaLabListening, bridge: window.DictaLabListeningBridge, root, buttons, notices};
 }
 

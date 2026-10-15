@@ -64,6 +64,15 @@
         if (playing && id !== sessionId) bridge().stopRecordedAudio();
         sessionId = id || null;
         const query = new URLSearchParams(location.search);
+        if (document.body.dataset.route === "listening") {
+            const historyView = !id && query.get("view") === "history";
+            const heading = document.querySelector("#listening-heading");
+            if (heading) heading.textContent = historyView ? "Lịch sử nghe hiểu" : "Nghe hiểu từ lần đầu.";
+            const guide = document.querySelector("#listening-guide");
+            if (guide) { guide.open = !historyView; guide.classList.toggle("is-history-guide", historyView); }
+            const index = document.querySelector("#listening-view .listening-browser > .section-index");
+            if (index) index.hidden = historyView;
+        }
         if (document.body.dataset.route === "admin-listening") {
             if (bridge().isAdmin()) await admin(query.get("edit"));
             return;
@@ -624,7 +633,7 @@
         const result = await loadView(`/api/v1/listening/history/page?page=${page - 1}&size=10`);
         if (!result) return;
         const items = result.items;
-        root().innerHTML = `<h2>Lịch sử nghe hiểu</h2>
+        root().innerHTML = `
             <a class="text-button" id="listening-back-catalog" href="/listening">← Chọn bài</a>
             <div id="listening-history-list">${items.length ? items.map(item => `<article class="listening-card"><h3>${escape(item.title)}</h3>
                 <p>${item.mode === "TWO_PASS" ? "Hai lượt nghe" : "Một lượt nghe"} · ${escape(({READY:"Sẵn sàng nghe",PLAYING:"Đang nghe",RECALL:"Ghi lại ý hiểu",QUESTIONS:"Trả lời câu hỏi",GRADING:"Đang chấm",PASS1_RESULT:"Kết quả lượt đầu",COMPLETE:"Đã hoàn thành"})[item.stage] || "Đang học")} · Hiểu lần đầu: ${item.comprehension_score == null ? "—" : Number(item.comprehension_score).toFixed(1) + "%"}</p>

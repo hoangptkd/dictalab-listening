@@ -79,6 +79,8 @@
     }
     function navigation() {
         const root = document.querySelector("#library-navigation"), {params, goal, courses, course} = context();
+        const extraOpen = document.querySelector("#library-extra-filters")?.open;
+        const levelsOpen = document.querySelector("#library-level-details")?.open;
         const active = snapshot.activeSessions.find(item => snapshot.lessons.some(lesson => lesson.id === item.lessonId));
         const continuing = snapshot.lessons.find(item => item.id === active?.lessonId);
         let changed = "";
@@ -92,40 +94,49 @@
         }
         root.innerHTML = `${continuing && bridge().currentUser() ? `<section class="library-resume" aria-label="Tiếp tục học"><div><p class="section-index">Tiếp tục học gần nhất</p><strong>${escape(title(continuing))}</strong><p>${continuing.completed ? `Đã hoàn thành 100% · Luyện lại ${continuing.progressPercent}%` : `Đang học ${continuing.progressPercent}%`} · ${escape(snapshot.courses.find(item => courseLessons(item.id).has(continuing.id))?.title || "Tất cả bài")}</p></div><a class="primary-button compact" href="/practice/${encodeURIComponent(active.sessionId)}">${continuing.completed ? "Tiếp tục luyện lại" : "Tiếp tục học"} →</a></section>` : ""}
             <nav class="library-goals" aria-label="Hướng luyện">${Object.entries(goals).map(([id, label]) => `<button type="button" data-library-goal="${id}" aria-pressed="${goal === id}">${escape(label)}</button>`).join("")}</nav>
-            ${courses.length ? `<section class="library-difficulty" aria-label="Độ khó bài"><h2 class="section-index">Độ khó bài${goal === "COMMUNICATION" ? " · CEFR" : " · tham khảo"}</h2><div class="library-courses" role="group" aria-label="Chọn độ khó bài">${courses.map(item => {const p = progress(item.id); return `<button type="button" class="library-course" data-library-course="${item.id}" aria-pressed="${item.id === course?.id}"><strong>${escape(item.title)}</strong><span>${escape(item.targetLabel)}</span><span class="section-index">${item.ready ? bridge().currentUser() ? `${p.done}/${p.total} bài hoàn thành` : `${p.total} bài luyện` : "Đang bổ sung nội dung"}</span>${item.ready && bridge().currentUser() ? `<progress max="${p.total || 1}" value="${p.done}" aria-label="${escape(item.title)}: ${p.done}/${p.total} bài"></progress>` : ""}</button>`;}).join("")}</div></section>` : ""}
+            ${courses.length ? `<section class="library-difficulty" aria-label="Độ khó bài"><h2 class="section-index">Độ khó bài${goal === "COMMUNICATION" ? " · CEFR" : " · tham khảo"}</h2><div class="library-courses" role="group" aria-label="Chọn độ khó bài">${courses.map(item => {const p = progress(item.id); return `<button type="button" class="library-course" data-library-course="${escape(item.id)}" aria-pressed="${item.id === course?.id}" aria-describedby="library-level-${escape(item.id)}"><strong>${escape(item.title)}</strong><span>${item.ready ? `${p.total} bài luyện` : "Đang bổ sung nội dung"}</span></button>`;}).join("")}</div>
+            <details id="library-level-details" class="ui-disclosure" ${levelsOpen ? "open" : ""}><summary>Mô tả và tiến độ từng mức</summary><div class="library-level-details">${courses.map(item => {const p = progress(item.id); return `<section id="library-level-${escape(item.id)}"><h3>${escape(item.title)}</h3><p>${escape(item.targetLabel)}</p><p>${item.ready ? bridge().currentUser() ? `${p.done}/${p.total} bài hoàn thành` : `${p.total} bài luyện` : "Đang bổ sung nội dung"}</p>${item.ready && bridge().currentUser() ? `<progress max="${p.total || 1}" value="${p.done}" aria-label="${escape(item.title)}: ${p.done}/${p.total} bài"></progress>` : ""}</section>`;}).join("")}</div></details></section>` : ""}
             <div class="library-path"><span>${escape(goals[goal])}${course ? ` › ${escape(course.title)}` : " · Luyện tự do"}${params.get("group") ? ` › ${escape(snapshot.groups.find(item => item.id === params.get("group"))?.title || "")}` : ""}</span><div><a href="/history">Lịch sử học</a><a href="/dashboard#dashboard-error-bank">Từ nghe lỡ &amp; chưa biết</a></div></div>
             ${course ? `<div class="library-course-note"><p>${escape(course.description)}</p><small>${escape(course.coverageNote)} ${goal === "TOEIC" ? "Mốc TOEIC tham khảo thang tổng điểm Listening & Reading; bài chỉ luyện nghe." : ""}</small>${changed ? `<p role="status">${escape(changed)}</p>` : ""}</div>` : ""}`;
         const audited = snapshot.metadata.filter(item => item.reviewed);
         const groupOptions = snapshot.groups.filter(item => item.courseId === course?.id);
+        const extraKeys = ["group", "topic", "duration", "focus", "difficulty", "accent", "speakers"];
+        const extraCount = () => extraKeys.filter(key => query().get(key)).length;
         document.querySelector("#catalog-summary").innerHTML = `<form class="library-filters" role="search" aria-label="Tìm bài luyện">
             <label>Tìm bài<input name="search" type="search" value="${escape(params.get("search"))}" placeholder="Tên bài hoặc tình huống"></label>
+            ${bridge().currentUser() ? `<label>Trạng thái<select name="status"><option value="">Mọi trạng thái</option>${[["new","Chưa học"],["active","Đang học"],["completed","Đã hoàn thành"]].map(([v,t]) => `<option value="${v}" ${params.get("status") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>` : ""}
+            <details id="library-extra-filters" class="ui-disclosure" ${extraOpen ?? extraCount() > 0 ? "open" : ""}><summary>Bộ lọc thêm · ${extraCount()} đang áp dụng</summary><div class="library-extra-filter-fields">
             ${course?.ready ? `<label>Nhóm bài<select name="group">${selectOptions(groupOptions.map(item => item.id), params.get("group"), "Tất cả nhóm").replace(/>([^<]+)<\/option>/g, (all, id) => `>${escape(groupOptions.find(g => g.id === id)?.title || id)}</option>`)}</select></label>` : ""}
             <label>Chủ đề<select name="topic">${selectOptions(audited.map(item => item.topic), params.get("topic"), "Tất cả chủ đề")}</select></label>
             <label>Thời gian ước tính<select name="duration"><option value="">Mọi thời lượng</option>${[["short", "≤ 10 phút"],["medium", "11–20 phút"],["long", "> 20 phút"]].map(([v,t]) => `<option value="${v}" ${params.get("duration") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
-            ${bridge().currentUser() ? `<label>Trạng thái<select name="status"><option value="">Mọi trạng thái</option>${[["new","Chưa học"],["active","Đang học"],["completed","Đã hoàn thành"]].map(([v,t]) => `<option value="${v}" ${params.get("status") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>` : ""}
             <label>Trọng tâm nghe<select name="focus">${selectOptions(audited.map(item => item.focus), params.get("focus"), "Tất cả trọng tâm")}</select></label>
             ${course?.ready ? `<label>Thử thách trong mức<select name="difficulty">${selectOptions(members(course.id).map(item => item.difficulty).sort(), params.get("difficulty"), "Mọi mức thử thách")}</select></label>` : ""}
             ${audited.some(item => item.accent) ? `<label>Giọng đọc<select name="accent">${selectOptions(audited.map(item => item.accent), params.get("accent"), "Mọi giọng đọc")}</select></label>` : ""}
             ${audited.some(item => item.speakerCount) ? `<label>Số người nói<select name="speakers">${selectOptions(audited.map(item => item.speakerCount), params.get("speakers"), "Mọi số người nói")}</select></label>` : ""}
-            <button class="text-button" type="button" data-library-reset>Xóa bộ lọc</button></form>`;
+            </div></details><button class="text-button" type="button" data-library-reset ${[...extraKeys,"search","status"].some(key => params.get(key)) ? "" : "hidden"}>Xóa bộ lọc</button></form>`;
         root.onclick = event => {
             const goalButton = event.target.closest("[data-library-goal]"), courseButton = event.target.closest("[data-library-course]");
             if (bridge().library.busy() || (!goalButton && !courseButton)) return;
             updateUrl({goal: goalButton?.dataset.libraryGoal || goal, course: courseButton?.dataset.libraryCourse, group: null, lesson: null, page: null, difficulty: null});
             navigation(); renderList();
+            root.querySelector(courseButton ? '[data-library-course][aria-pressed="true"]' : '[data-library-goal][aria-pressed="true"]')?.focus({preventScroll: true});
         };
         const filters = document.querySelector(".library-filters");
+        const updateFilterSummary = () => {
+            filters.querySelector("summary").textContent = `Bộ lọc thêm · ${extraCount()} đang áp dụng`;
+            filters.querySelector("[data-library-reset]").hidden = ![...extraKeys, "search", "status"].some(key => query().get(key));
+        };
         filters.onsubmit = event => event.preventDefault();
         filters.onchange = event => {
             if (!event.target.name || event.target.name === "search" || bridge().library.busy()) return;
-            updateUrl({[event.target.name]: event.target.value, lesson: null, page: null}, true); renderList();
+            updateUrl({[event.target.name]: event.target.value, lesson: null, page: null}, true); updateFilterSummary(); renderList();
         };
         let timer;
         filters.oninput = event => {
             if (event.target.name !== "search") return;
             clearTimeout(timer); timer = setTimeout(() => {
                 if (bridge().library.busy()) return;
-                updateUrl({search: event.target.value, lesson: null, page: null}, true); renderList();
+                updateUrl({search: event.target.value, lesson: null, page: null}, true); updateFilterSummary(); renderList();
             }, 180);
         };
         filters.querySelector("[data-library-reset]").onclick = () => {
@@ -140,6 +151,8 @@
         grid.setAttribute("aria-busy", "false"); detail.setAttribute("aria-busy", "false");
         document.querySelector("#lesson-count").textContent = `${lessons.length} bài${bridge().currentUser() ? ` · ${lessons.filter(item => item.completed).length} đã hoàn thành` : ""}`;
         document.querySelector("#level-description").textContent = "Chọn hướng luyện và độ khó bài, xem chi tiết rồi nghe thử. Tiến độ được lưu khi đăng nhập.";
+        document.querySelector(".catalog-hero").classList.toggle("is-signed-in", Boolean(bridge().currentUser()));
+        document.querySelector("#catalog-heading").textContent = bridge().currentUser() ? "Thư viện bài luyện" : "Thư viện bài luyện tập trung";
         grid.closest(".catalog-workspace").removeAttribute("data-detail-open");
         grid.nextElementSibling?.matches(".library-pagination") && grid.nextElementSibling.remove();
         const pages = Math.max(1, Math.ceil(lessons.length / 6));
@@ -192,7 +205,7 @@
         const meta = detail.querySelector(".lesson-meta");
         if (meta) meta.innerHTML = `<span>Quy mô<strong>${lesson.sentenceCount} câu</strong></span><span>Thời gian ước tính<strong>~${lesson.estimatedMinutes} phút</strong></span><span>Nguồn<strong>${escape(m?.source || "Theo bài gốc")}</strong></span>`;
         const extra = document.createElement("div"); extra.className = "library-detail-context";
-        extra.innerHTML = `${link ? `<p><strong>Độ khó bài:</strong> ${escape(goals[course.goal])} · ${escape(course.title)}${course.goal !== "COMMUNICATION" ? " (tham khảo)" : ""}</p><p><strong>Mục đích bài:</strong> ${escape(link.purpose)}</p>` : ""}${m ? `<p><strong>Trọng tâm nghe:</strong> ${escape(m.focus)}</p>` : ""}<small>CEFR tham khảo: ${escape(lesson.level)}${link ? ` · Thử thách trong mức: ${link.difficulty}/5` : ""}</small><div class="library-history-links"><a href="/history">Lịch sử học</a><a href="/dashboard#dashboard-error-bank">Từ nghe lỡ &amp; chưa biết</a></div>`;
+        extra.innerHTML = `${link ? `<p><strong>Độ khó bài:</strong> ${escape(goals[course.goal])} · ${escape(course.title)}${course.goal !== "COMMUNICATION" ? " (tham khảo)" : ""}</p><p><strong>Mục đích bài:</strong> ${escape(link.purpose)}</p>` : ""}${m ? `<p><strong>Trọng tâm nghe:</strong> ${escape(m.focus)}</p>` : ""}<small>CEFR tham khảo: ${escape(lesson.level)}${link ? ` · Thử thách trong mức: ${link.difficulty}/5` : ""}</small>${bridge().currentUser() ? "" : `<div class="library-history-links"><a href="/history">Lịch sử học</a><a href="/dashboard#dashboard-error-bank">Từ nghe lỡ &amp; chưa biết</a></div>`}`;
         if (/^sample-(ielts|toeic|communication)-[a-z0-9-]+-20261015$/.test(lesson.slug)) {
             const sampleLink = document.createElement("a");
             sampleLink.href = `/audio/listening-samples-20261015/index.html#${encodeURIComponent(lesson.slug)}`;
@@ -304,7 +317,7 @@
     async function showAdmin() {
         const panel = document.querySelector("#library-management"), root = document.querySelector("#library-admin-content");
         if (!panel || !bridge().isAdmin()) return;
-        if (query().get("library") === "1") panel.open = true;
+        if (query().get("library") === "1" || location.hash === "#library-management") panel.open = true;
         if (!panel.open) { panel.ontoggle = () => { if (panel.open) showAdmin(); }; return; }
         if (adminLoading) return;
         if (root.querySelector("[data-admin-dirty]") && window.DictaLabAdmin?.canLeave() === false) return;

@@ -60,6 +60,7 @@
                 <h1 id="admin-support-heading">Yêu cầu hỗ trợ.</h1><div id="admin-support-content" aria-live="polite"></div></div>
         </section>
         <section id="admin-view" class="view admin-view" hidden aria-labelledby="admin-heading">
+            <h1 id="admin-library-title" hidden>Độ khó và nhóm bài</h1>
             <details id="library-management" class="admin-panel library-management"><summary>Quản lý mức độ khó, nhóm bài và metadata</summary><div id="library-admin-content"></div></details>
             <header class="admin-hero">
                 <div>
@@ -87,9 +88,11 @@
                     </label>
                     <label>Level<select name="level"><option value="">Tất cả</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select></label>
                     <label>Trạng thái<select name="status"><option value="">Tất cả</option><option value="PUBLISHED">Đã xuất bản</option><option value="DRAFT">Bản nháp</option></select></label>
+                    <details id="admin-extra-filters" class="ui-disclosure"><summary>Lọc thêm · 0 đang áp dụng</summary><div class="admin-extra-filter-fields">
                     <label>Chủ đề<select name="topic"><option value="">Tất cả</option></select></label>
                     <label>Nguồn<select name="origin"><option value="">Tất cả</option><option value="BUNDLED">Đóng gói</option><option value="ADMIN_UPLOAD">Tải lên</option><option value="BRITISH_COUNCIL_PERSONAL">Nội dung cá nhân</option></select></label>
                     <label>Sắp xếp<select name="sort"><option value="updated">Cập nhật mới nhất</option><option value="title">Tên A–Z</option></select></label>
+                    </div></details>
                     <div class="admin-actions"><button class="primary-button compact" type="submit">Áp dụng</button><button class="text-button" type="button" data-clear>Xóa lọc</button></div>
                     </form>
                     <div id="admin-lesson-list" class="admin-lesson-list" aria-live="polite"></div>

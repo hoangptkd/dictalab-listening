@@ -4,7 +4,7 @@
     const escape = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
     const status = (root, message, error = false) => {
-        const node = root.querySelector("[data-status]") || root.querySelector("#auth-status");
+        const node = root.querySelector("[data-status]") || root.querySelector("#auth-status") || root.querySelector("[data-form-status]");
         if (node) { node.textContent = message; node.dataset.error = String(error); }
     };
     const submit = (form, action, idleDisabled = () => false) => form.addEventListener("submit", async event => {
@@ -14,9 +14,19 @@
         const data=Object.fromEntries(new FormData(form).entries());
         const page=form.closest(".account-page") || form.closest(".auth-card");
         button.disabled = true;
+        const localStatus = form.querySelector?.("[data-form-status]");
+        if (localStatus) localStatus.textContent = "";
         status(form.closest(".account-page") || form.closest(".auth-card"), "Đang xử lý…");
         try { if (form.hasAttribute("data-admin-dirty")) await window.DictaLabAdmin.busy(form,()=>action(data)); else await action(data); }
-        catch (error) { status(page, error.message, true); }
+        catch (error) {
+            const disclosure = form.closest("details.account-disclosure");
+            if (disclosure) {
+                disclosure.open = true;
+                status(page, "");
+                status(form, error.message, true);
+                form.querySelector("[data-form-status]")?.focus();
+            } else status(page, error.message, true);
+        }
         finally { button.disabled = idleDisabled(); }
     });
 
@@ -128,14 +138,16 @@
                 <label>Tên hiển thị<input name="displayName" minlength="2" maxlength="80" value="${escape(user.displayName)}" required></label>
                 <button class="primary-button" type="submit" disabled>Lưu tên</button>
                 <small>Thay đổi tên hiển thị để lưu.</small></form>
-            <form id="account-email-form" class="account-panel"><h2>Đổi email</h2>
+            <details class="ui-disclosure account-disclosure"><summary>Đổi email</summary>
+            <form id="account-email-form" class="account-panel"><h2 class="sr-only">Đổi email</h2>
                 <label>Email mới<input name="email" type="email" maxlength="160" required></label>
                 <label>Mật khẩu hiện tại<input name="password" type="password" autocomplete="current-password" required></label>
-                <button class="primary-button" type="submit">Gửi liên kết xác nhận</button></form></div><div class="account-column">
-            <form id="account-password-form" class="account-panel"><h2>Mật khẩu</h2>
+                <button class="primary-button" type="submit">Gửi liên kết xác nhận</button><p data-form-status role="alert" tabindex="-1"></p></form></details></div><div class="account-column">
+            <details class="ui-disclosure account-disclosure"><summary>Đổi mật khẩu</summary>
+            <form id="account-password-form" class="account-panel"><h2 class="sr-only">Mật khẩu</h2>
                 <label>Mật khẩu hiện tại<input name="currentPassword" type="password" autocomplete="current-password" required></label>
                 <label>Mật khẩu mới<input name="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72" aria-describedby="account-password-note" required></label>
-                <p id="account-password-note">Từ 8 ký tự, có chữ cái và chữ số.</p><button class="primary-button" type="submit">Đổi mật khẩu</button></form>
+                <p id="account-password-note">Từ 8 ký tự, có chữ cái và chữ số.</p><button class="primary-button" type="submit">Đổi mật khẩu</button><p data-form-status role="alert" tabindex="-1"></p></form></details>
             <div class="account-panel account-danger"><h2>Bảo vệ tài khoản</h2><div class="account-danger-actions">
                 ${user.emailVerified ? "" : '<button id="account-verify" class="text-button" type="button">Gửi email xác minh</button>'}
                 <button id="account-logout-all" class="text-button" type="button">Đăng xuất mọi thiết bị</button>
@@ -143,6 +155,9 @@
             <p data-status role="status" aria-live="polite"></p>
             ${user.role === "ADMIN" ? '<p><a href="/admin/users">Quản lý người dùng</a> · <a href="/admin/support">Xử lý hỗ trợ</a></p>' : ""}`;
         enhancePasswords(root);
+        root.querySelectorAll(".account-disclosure form").forEach(form => {
+            form.addEventListener("invalid", () => { form.closest("details").open = true; }, true);
+        });
         const nameForm = root.querySelector("#account-name-form");
         const nameInput = nameForm.querySelector("input");
         const nameButton = nameForm.querySelector('button[type="submit"]');
@@ -200,8 +215,8 @@
                 <span class="support-ticket-status">${escape(ticketStates[item.STATUS ?? item.status] ?? item.STATUS ?? item.status)}</span></div>
                 <strong>${escape(item.SUBJECT ?? item.subject)}</strong><p>${escape(item.ADMIN_NOTE ?? item.admin_note ?? "Chưa có phản hồi")}</p></li>`).join("")}</ul>`
                 : page === 0 ? "<p>Bạn chưa gửi yêu cầu nào. Điền biểu mẫu để báo vấn đề hoặc yêu cầu hỗ trợ.</p>" : "<p>Trang này chưa có yêu cầu. Chọn Trang trước để xem các yêu cầu đã gửi.</p>"}
-                <div class="account-pager"><button id="support-prev" type="button" class="text-button" ${page === 0 ? "disabled" : ""}>Trang trước</button>
-                    <button id="support-next" type="button" class="text-button" ${result.hasMore ? "" : "disabled"}>Trang sau</button></div></div></div>
+                ${page > 0 || items.length || result.hasMore ? `<div class="account-pager"><button id="support-prev" type="button" class="text-button" ${page === 0 ? "disabled" : ""}>Trang trước</button>
+                    <button id="support-next" type="button" class="text-button" ${result.hasMore ? "" : "disabled"}>Trang sau</button></div>` : ""}</div></div>
             <p data-status role="status" aria-live="polite"></p>`;
         const form = root.querySelector("#support-form");
         const deletionGuide = document.createElement("div");
@@ -218,8 +233,8 @@
         const categorySelect = form.querySelector('[name="category"]');
         deletionGuide.hidden = categorySelect.value !== "ACCOUNT_DELETE";
         categorySelect.addEventListener("change", () => { deletionGuide.hidden = categorySelect.value !== "ACCOUNT_DELETE"; });
-        root.querySelector("#support-prev").addEventListener("click", () => support(page - 1));
-        root.querySelector("#support-next").addEventListener("click", () => support(page + 1));
+        root.querySelector("#support-prev")?.addEventListener("click", () => support(page - 1));
+        root.querySelector("#support-next")?.addEventListener("click", () => support(page + 1));
         submit(root.querySelector("#support-form"), async data => {
             await bridge().api("/api/support/tickets", {method: "POST", body: data});
             const url = new URL(location.href);
@@ -305,7 +320,7 @@
                 <label>Xác minh email<select name="verified">${selectOptions({true:'Đã xác minh',false:'Chưa xác minh'},filter.verified)}</select></label>
                 <label>Sắp xếp<select name="sort">${selectOptions({created:'Đăng ký mới nhất',login:'Đăng nhập gần nhất',name:'Tên A–Z'},filter.sort,false)}</select></label>
                 <div class="admin-actions"><button class="primary-button compact" type="submit">Áp dụng</button><button class="text-button" type="button" data-clear>Xóa lọc</button></div></form>
-                <details class="admin-usage-summary" open><summary>Tổng quan sử dụng</summary><section id="admin-usage" class="account-panel" aria-label="Tổng quan sử dụng"></section></details>
+                <details class="admin-usage-summary"><summary>Tổng quan sử dụng</summary><section id="admin-usage" class="account-panel" aria-label="Tổng quan sử dụng"></section></details>
                 <div class="admin-records"><section class="admin-master"><p class="admin-summary">${result.total} tài khoản phù hợp</p>${result.items.length?`<div class="admin-table-wrap"><table class="admin-table"><caption class="sr-only">Danh sách người dùng</caption><thead><tr><th scope="col">Người dùng</th><th scope="col">Vai trò</th><th scope="col">Trạng thái</th><th scope="col">Đăng ký</th><th scope="col">Thao tác</th></tr></thead><tbody>${result.items.map(user=>`<tr class="${String(user.id)===String(filter.user)?'is-selected':''}">
                 <td><strong>${escape(user.display_name)}</strong><small>${escape(user.email)}</small></td><td data-label="Vai trò">${user.role==='ADMIN'?'Quản trị viên':'Học viên'}</td>
                 <td data-label="Trạng thái">${ui.badge(user.enabled?'Hoạt động':'Đã khóa',user.enabled?'good':'warn')}<small>${user.email_verified?'Email đã xác minh':'Email chưa xác minh'}</small></td>
