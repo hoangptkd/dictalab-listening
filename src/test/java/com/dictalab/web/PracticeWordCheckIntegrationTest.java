@@ -4,10 +4,13 @@ import com.dictalab.domain.*;
 import com.dictalab.dto.ApiDtos;
 import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.PracticeService;
+import com.dictalab.service.PracticeSubmissions;
 import com.dictalab.support.JdbcQueryCounter;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -28,6 +31,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -41,6 +45,7 @@ class PracticeWordCheckIntegrationTest {
     @Autowired EntityManager em;
     @Autowired PlatformTransactionManager transactions;
     @Autowired PracticeService practice;
+    @Autowired PracticeSubmissions submissions;
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
 
@@ -95,16 +100,71 @@ class PracticeWordCheckIntegrationTest {
                 .andReturn().getResponse().getContentAsByteArray();
         List<String> sql = JdbcQueryCounter.stop();
         // Includes ORM and JDBC: ownership locks and durable retry receipts remain in the budget.
-        assertThat(JdbcQueryCounter.selects(sql)).isEqualTo(8);
+        assertThat(JdbcQueryCounter.selects(sql)).isEqualTo(6);
+        assertThat(sql.stream().filter(s -> s.startsWith("select") && s.contains("from practice_sessions "))).hasSize(1);
+        assertThat(sql.stream().filter(s -> s.startsWith("select") && s.contains("practice_submission_receipts")))
+                .singleElement().asString().contains("count(*)", "left join");
         assertThat(sql.stream().filter(s -> s.startsWith("select") && s.contains("from word_attempts "))).hasSize(1);
         assertThat(sql).noneMatch(s -> s.contains("count(") && s.contains("lesson_sentences"));
-        assertThat(sql).hasSizeLessThanOrEqualTo(12);
+        assertThat(sql).hasSizeLessThanOrEqualTo(10);
         var legacy = mvc.perform(check(1, "buys", "legacy-size", false))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.words.length()").value(7))
                 .andReturn().getResponse().getContentAsByteArray();
         assertThat(compact.length).isLessThan(legacy.length / 3);
         System.out.printf("Word check: compact=%d bytes, legacy=%d bytes, SQL selects=%d, SQL statements=%d%n",
                 compact.length, legacy.length, JdbcQueryCounter.selects(sql), sql.size());
+    }
+
+    @Test
+    void checksWithoutRetryKeysRetainOwnershipAndBothResponseContracts() throws Exception {
+        listen(ReplayEventType.STARTED);
+        mvc.perform(check(1, "bye", null, true).with(user(DictaLabPrincipal.from(other))))
+                .andExpect(status().isNotFound());
+        mvc.perform(check(1, "bye", null, true)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.word.correct").value(false));
+        mvc.perform(check(1, "buys", null, false)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.words[1].correct").value(true));
+        assertThat(events()).isEqualTo(2);
+        assertThat(receipts()).isZero();
+    }
+
+    @Test
+    void retryAtReceiptLimitStillReplaysButNewKeysAndChangedPayloadsAreRejected() throws Exception {
+        listen(ReplayEventType.STARTED);
+        String receipt = mvc.perform(check(1, "bye", "limit-retry", true)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String action = session.sentence().sentenceId() + "/word-checks/1";
+        db.batchUpdate("""
+                INSERT INTO practice_submission_receipts(session_id,submission_key,action,request_hash,response_json)
+                VALUES (?,?,?,?,?)
+                """, java.util.stream.IntStream.range(1, 500)
+                .mapToObj(i -> new Object[]{session.sessionId(), "limit-filler-" + i, action, "fixture", "{}"}).toList());
+        mvc.perform(check(1, "bye", "limit-retry", true)).andExpect(status().isOk()).andExpect(content().string(receipt));
+        mvc.perform(check(1, "buys", "limit-retry", true)).andExpect(status().isConflict());
+        mvc.perform(check(1, "buys", "limit-new-key", true)).andExpect(status().isConflict());
+        // The bound is per action, not per session.
+        mvc.perform(check(2, "fresh", "other-word-limit", true)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.word.correct").value(true));
+        assertThat(events()).isEqualTo(2);
+        assertThat(receipts()).isEqualTo(501);
+    }
+
+    @Test
+    void reusedSessionLockKeepsGradeAndReceiptInOneRollbackBoundary() throws Exception {
+        listen(ReplayEventType.STARTED);
+        var request = new ApiDtos.CheckWordRequest("bye", 20L);
+        assertThatThrownBy(() -> submissions.execute(owner.getId(), session.sessionId(), "rollback-check",
+                session.sentence().sentenceId() + "/word-checks/1", request, ApiDtos.WordCheckResult.class, locked -> {
+                    practice.checkLockedWordResult(locked, session.sentence().sentenceId(), 1, request);
+                    em.flush();
+                    throw new IllegalStateException("Simulated failure after grading");
+                })).isInstanceOf(IllegalStateException.class);
+        assertThat(events()).isZero();
+        assertThat(receipts()).isZero();
+        mvc.perform(check(1, "bye", "rollback-check", true)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.word.correct").value(false));
+        assertThat(events()).isEqualTo(1);
+        assertThat(receipts()).isEqualTo(1);
     }
 
     @Test
@@ -189,23 +249,25 @@ class PracticeWordCheckIntegrationTest {
         assertThat(events()).isZero();
     }
 
-    @Test
-    void concurrentRetriesCommitOneGradeAndOneCompactReceipt() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void concurrentChecksCommitOneGradeWithSameOrDistinctRetryKeys(boolean sameKey) throws Exception {
         listen(ReplayEventType.STARTED);
         var pool = Executors.newFixedThreadPool(2);
         var start = new CountDownLatch(1);
+        var sequence = new java.util.concurrent.atomic.AtomicInteger();
         try {
             java.util.concurrent.Callable<String> submit = () -> {
                 start.await(5, TimeUnit.SECONDS);
-                return mvc.perform(check(1, "bye", "concurrent-compact", true)).andExpect(status().isOk())
+                String key = sameKey ? "concurrent-compact" : "concurrent-compact-" + sequence.incrementAndGet();
+                return mvc.perform(check(1, "bye", key, true)).andExpect(status().isOk())
                         .andReturn().getResponse().getContentAsString();
             };
             var a = pool.submit(submit); var b = pool.submit(submit); start.countDown();
             assertThat(a.get(15, TimeUnit.SECONDS)).isEqualTo(b.get(15, TimeUnit.SECONDS));
         } finally { pool.shutdownNow(); }
         assertThat(events()).isEqualTo(1);
-        assertThat(db.queryForObject("SELECT COUNT(*) FROM practice_submission_receipts WHERE session_id=?",
-                Integer.class, session.sessionId())).isEqualTo(1);
+        assertThat(receipts()).isEqualTo(sameKey ? 1 : 2);
     }
 
     private int events() {
@@ -213,5 +275,10 @@ class PracticeWordCheckIntegrationTest {
                 SELECT COUNT(*) FROM word_attempt_events e JOIN word_attempts w ON w.id=e.word_attempt_id
                 JOIN sentence_attempts a ON a.id=w.sentence_attempt_id WHERE a.practice_session_id=?
                 """, Integer.class, session.sessionId());
+    }
+
+    private int receipts() {
+        return db.queryForObject("SELECT COUNT(*) FROM practice_submission_receipts WHERE session_id=?",
+                Integer.class, session.sessionId());
     }
 }

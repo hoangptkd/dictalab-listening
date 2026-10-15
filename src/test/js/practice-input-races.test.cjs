@@ -47,7 +47,7 @@ function harness() {
             }
         }
     });
-    const handlers = source.slice(source.indexOf('    const wordCheckTimers = new Map();'), source.indexOf('    async function useHint('));
+    const handlers = source.slice(source.indexOf('    const wordChecks = new Map();'), source.indexOf('    async function useHint('));
     const journal = source.slice(source.indexOf('    const pendingPracticeSubmissions = new Map();'), source.indexOf('    function escapeHtml('));
     vm.runInContext(journal + '\n' + handlers, context);
     const flush = async () => {for (let n = 0; n < 16; n++) await Promise.resolve();};
@@ -135,9 +135,20 @@ test('a resync response after navigation cannot restore the old cached sentence'
 for (const interval of [0, 10, 40, 120]) test(`INPUT-01: burst typing at ${interval}ms sends only the final answer`, async () => {
     const h = harness();
     for (const text of ['c', 'ca', 'cat']) {h.type(0, text); await h.advance(interval);}
-    await h.advance(240);
     assert.equal(h.requests.length, 1);
     assert.equal(h.requests[0].options.body.answer, 'cat');
+});
+
+test('a finished word starts checking without a timer; partial drafts wait', async () => {
+    const h = harness();
+    for (const text of ['c', 'ca']) {
+        h.type(0, text); await h.flush();
+        assert.equal(h.requests.length, 0);
+    }
+    h.type(0, 'cat'); await h.flush();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests[0].options.body.answer, 'cat');
+    assert.equal(h.timers.size, 0);
 });
 
 test('INPUT-02: empty input cancels automatic checking and preserves intentional deletion', async () => {
@@ -234,10 +245,10 @@ test('INPUT-15: automatic length checking counts Unicode code points rather than
     assert.equal(h.requests.length, 1); assert.equal(h.requests[0].options.body.answer, 'a😀b');
 });
 
-test('RACE-06: a timer from a previous session must not submit into another session', async () => {
+test('RACE-06: a queued check from a previous session must not submit into another session', async () => {
     const h = harness(); h.type(0, 'cat'); h.state.session = {sessionId: 'session-b'};
     h.state.wordDrafts.clear(); await h.advance(300);
-    assert.equal(h.requests.length, 0, 'old timer submitted into the new session');
+    assert.equal(h.requests.length, 0, 'old check submitted into the new session');
 });
 
 test('RACE-07: Enter while a check is pending must clear completion intent after a wrong result', async () => {
@@ -254,17 +265,17 @@ test('RACE-01: corrected full word during an in-flight check must eventually be 
     assert.equal(h.requests.at(-1).options.body.answer, 'cat', 'latest complete answer was never submitted');
 });
 
-test('RACE-02: blur plus pending debounce must not count the same answer twice', async () => {
+test('RACE-02: immediate checking plus blur must not count the same answer twice', async () => {
     const h = harness(); h.type(0, 'cot'); h.context.onWordBlur({target: h.input(0)}); await h.flush();
     await h.advance(100); await h.reply(0, false); await h.advance(200);
-    assert.equal(h.requests.length, 1, 'blur did not cancel the pending auto-check');
+    assert.equal(h.requests.length, 1, 'blur duplicated the immediate auto-check');
 });
 
-test('RACE-03: a timer belonging to an old sentence must not submit against the new sentence', async () => {
+test('RACE-03: a queued check belonging to an old sentence must not submit against the new sentence', async () => {
     const h = harness(); h.type(0, 'cat');
     h.state.sentence = {...h.state.sentence, sentenceId: 11}; h.state.wordDrafts.clear();
     await h.advance(300);
-    assert.equal(h.requests.length, 0, 'old input timer submitted into the new sentence');
+    assert.equal(h.requests.length, 0, 'old check submitted into the new sentence');
 });
 
 test('RACE-04: composing text must not be graded before composition finishes', async () => {
@@ -287,7 +298,7 @@ test('composition lifecycle suppresses blur and keys, then grades the finished d
     await h.advance(500);
     assert.equal(event.prevented, false); assert.equal(h.requests.length, 0);
     h.context.onWordCompositionEnd({target: h.input(0)});
-    h.type(0, 'cat'); await h.advance(300);
+    h.type(0, 'cat'); await h.flush();
     assert.equal(h.requests.length, 1);
 });
 
@@ -298,7 +309,7 @@ test('incorrect response preserves the selected substring', async () => {
     assert.equal(h.input(0).selectionStart, 1); assert.equal(h.input(0).selectionEnd, 2);
 });
 
-test('leaving practice cancels debounce and ignores a response even after reopening the same sentence', async () => {
+test('leaving practice cancels queued checks and ignores a response even after reopening the same sentence', async () => {
     const h = harness(); h.type(0, 'cot'); await h.advance(240);
     h.type(1, 'dog'); h.context.resetPracticeInput(); await h.advance(300);
     assert.equal(h.requests.length, 1);

@@ -1873,7 +1873,6 @@
         }
     }
 
-    const wordCheckTimers = new Map();
     const wordChecks = new Map();
     const composingWords = new Set();
     let practiceInputGeneration = 0;
@@ -1888,15 +1887,8 @@
             && document.body.dataset.route === "practice";
     }
 
-    function cancelWordCheckTimer(index) {
-        window.clearTimeout(wordCheckTimers.get(index));
-        wordCheckTimers.delete(index);
-    }
-
     function resetPracticeInput() {
         practiceInputGeneration++;
-        for (const timer of wordCheckTimers.values()) window.clearTimeout(timer);
-        wordCheckTimers.clear();
         wordChecks.clear();
         composingWords.clear();
         state.checkingWords.clear();
@@ -1913,7 +1905,6 @@
         if (!input) return;
         const index = Number(input.dataset.wordIndex);
         composingWords.add(index);
-        cancelWordCheckTimer(index);
         state.completeAfterPendingCheck = false;
     }
 
@@ -1956,15 +1947,10 @@
         roomQueueDraft();
         input.closest(".word-slot")?.classList.remove("is-wrong");
         input.setAttribute("aria-invalid", "false");
-        cancelWordCheckTimer(index);
         if (event.isComposing || composingWords.has(index)) return;
         const expectedLength = state.sentence.words[index].length;
         if (Array.from(input.value.trim()).length === expectedLength) {
-            const isCurrent = practiceInputContext();
-            wordCheckTimers.set(index, window.setTimeout(() => {
-                wordCheckTimers.delete(index);
-                if (isCurrent()) checkWord(index, state.wordDrafts.get(index) ?? input.value);
-            }, 240));
+            checkWord(index, input.value);
         }
     }
 
@@ -1975,7 +1961,6 @@
             return;
         }
         const index = Number(input.dataset.wordIndex);
-        cancelWordCheckTimer(index);
         if (composingWords.has(index) || !state.sentence) return;
         const answer = input.value.trim();
         if (state.sentence.words[index]?.correct) {
@@ -2004,7 +1989,6 @@
             }
         } else if (event.key === " ") {
             event.preventDefault();
-            cancelWordCheckTimer(index);
             if (state.sentence.words[index]?.correct) {
                 focusNextWord(index);
             } else if (input.value.trim()) {
@@ -2016,7 +2000,6 @@
             }
         } else if (event.key === "Enter") {
             event.preventDefault();
-            cancelWordCheckTimer(index);
             if (state.sentence.canComplete) {
                 await completeSentence(event);
             } else if (state.checkingWords.has(index)) {
@@ -2048,7 +2031,6 @@
     }
 
     async function checkWord(index, answer) {
-        cancelWordCheckTimer(index);
         answer = answer.trim();
         if (!answer || !state.sentence || composingWords.has(index)) return false;
         const isCurrent = practiceInputContext();

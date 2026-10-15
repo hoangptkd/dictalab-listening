@@ -63,7 +63,7 @@ public class PracticeController {
             @Valid @RequestBody ApiDtos.CheckWordRequest request,
             @RequestHeader(value="Idempotency-Key", required=false) String key) {
         return submissions.execute(principal.id(), sessionId, key, sentenceId + "/checks/" + wordIndex, request,
-                ApiDtos.SentenceState.class, () -> practiceService.checkWord(principal.id(), sessionId, sentenceId, wordIndex, request));
+                ApiDtos.SentenceState.class, locked -> practiceService.checkLockedWord(locked, sentenceId, wordIndex, request));
     }
 
     @PostMapping(value = "/{sessionId}/sentences/{sentenceId}/words/{wordIndex}/checks", params = "compact=true")
@@ -76,7 +76,7 @@ public class PracticeController {
             @RequestHeader(value="Idempotency-Key", required=false) String key) {
         // Version the receipt shape without changing retries from older, still-open tabs.
         return submissions.execute(principal.id(), sessionId, key, sentenceId + "/word-checks/" + wordIndex, request,
-                ApiDtos.WordCheckResult.class, () -> practiceService.checkWordResult(principal.id(), sessionId, sentenceId, wordIndex, request));
+                ApiDtos.WordCheckResult.class, locked -> practiceService.checkLockedWordResult(locked, sentenceId, wordIndex, request));
     }
 
     @PostMapping("/{sessionId}/sentences/{sentenceId}/hints")

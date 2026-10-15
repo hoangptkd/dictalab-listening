@@ -23,7 +23,7 @@ test('native practice rendering preserves active inputs and does not grade parti
             const fn = source.match(new RegExp(`^    function ${name}\\([^]*?^    }`, 'm'));
             assert.ok(fn, name); return fn[0];
         }).join('\n');
-    const handlers = source.slice(source.indexOf('    const wordCheckTimers = new Map();'), source.indexOf('    async function useHint('));
+    const handlers = source.slice(source.indexOf('    const wordChecks = new Map();'), source.indexOf('    async function useHint('));
     const journal = source.slice(source.indexOf('    const pendingPracticeSubmissions = new Map();'), source.indexOf('    function escapeHtml('));
     const script = `
     const state = {currentUser: {id: 1}, session: {sessionId: 'browser-test'},
@@ -71,7 +71,10 @@ test('native practice rendering preserves active inputs and does not grade parti
         let nativeBlurCount = 0;
         elements.wordSlots.addEventListener('focusout', () => nativeBlurCount++);
         const space = el => el.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true, cancelable: true}));
-        space(type(0, answers[0])); await flush();
+        const firstWord = type(0, answers[0]); await flush();
+        check(requests.length === 1, 'finished word did not start checking immediately');
+        space(firstWord); await flush();
+        check(requests.length === 1, 'Space duplicated the immediate check');
         for (let i = 1; i < answers.length; i++) {
             const el = type(i, answers[i].slice(0, -1));
             el.setSelectionRange(0, 1, 'backward');

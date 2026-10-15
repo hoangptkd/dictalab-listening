@@ -219,7 +219,13 @@ public class PracticeService {
     @Transactional
     public ApiDtos.SentenceState checkWord(Long userId, String sessionId, Long sentenceId,
                                            int wordIndex, ApiDtos.CheckWordRequest request) {
-        CheckedWord checked = gradeWord(userId, sessionId, sentenceId, wordIndex, request);
+        return checkLockedWord(getSession(userId, sessionId), sentenceId, wordIndex, request);
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public ApiDtos.SentenceState checkLockedWord(PracticeSession session, Long sentenceId,
+                                                 int wordIndex, ApiDtos.CheckWordRequest request) {
+        CheckedWord checked = gradeWord(session, sentenceId, wordIndex, request);
         List<ApiDtos.WordSlot> slots = java.util.stream.IntStream.range(0, checked.tokens().size())
                 .mapToObj(index -> toWordSlot(index, checked.tokens().get(index), checked.attempts().get(index),
                         checked.properNames().contains(index))).toList();
@@ -231,7 +237,13 @@ public class PracticeService {
     @Transactional
     public ApiDtos.WordCheckResult checkWordResult(Long userId, String sessionId, Long sentenceId,
                                                    int wordIndex, ApiDtos.CheckWordRequest request) {
-        CheckedWord checked = gradeWord(userId, sessionId, sentenceId, wordIndex, request);
+        return checkLockedWordResult(getSession(userId, sessionId), sentenceId, wordIndex, request);
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public ApiDtos.WordCheckResult checkLockedWordResult(PracticeSession session, Long sentenceId,
+                                                        int wordIndex, ApiDtos.CheckWordRequest request) {
+        CheckedWord checked = gradeWord(session, sentenceId, wordIndex, request);
         SentenceAttempt attempt = checked.attempt();
         long resolved = java.util.stream.IntStream.range(0, checked.tokens().size()).filter(index -> {
             WordAttempt word = checked.attempts().get(index);
@@ -247,9 +259,8 @@ public class PracticeService {
                 resolved == checked.tokens().size() && !requiresReplay, attempt.isCompleted());
     }
 
-    private CheckedWord gradeWord(Long userId, String sessionId, Long sentenceId,
+    private CheckedWord gradeWord(PracticeSession session, Long sentenceId,
                                   int wordIndex, ApiDtos.CheckWordRequest request) {
-        PracticeSession session = getSession(userId, sessionId);
         SentenceAttempt attempt = currentAttempt(session, sentenceId);
         requireListening(attempt);
         List<TranscriptTokenizer.TranscriptToken> tokens = tokenizer.tokens(attempt.getSentence().getTranscript());
