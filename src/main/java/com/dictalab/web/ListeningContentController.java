@@ -80,6 +80,7 @@ public class ListeningContentController {
     }
 
     @PostMapping("/units")
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public Map<String, Object> create(@Valid @RequestBody Create body, @AuthenticationPrincipal DictaLabPrincipal actor) {
         var result=service.createUnit(body.lessonId(), body.audioUrl(), body.durationSeconds());
         queries.event(actor.id(),"LISTENING",((Number)result.get("id")).longValue(),"CREATE_AI_DRAFT",null); return result;

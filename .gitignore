@@ -11,3 +11,8 @@ downloads/
 __pycache__/
 *.pyc
 .agents/
+artifacts/
+logs/
+output/
+target-*/
+.playwright-mcp/

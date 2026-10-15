@@ -23,10 +23,7 @@ public final class AuthDtos {
             @Size(max = 160, message = "Email quá dài.")
             String email,
 
-            @NotBlank(message = "Vui lòng nhập mật khẩu.")
-            @Size(min = 8, max = 72, message = "Mật khẩu cần từ 8 đến 72 ký tự.")
-            @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d).+$",
-                    message = "Mật khẩu cần có ít nhất một chữ cái và một chữ số.")
+            @PasswordPolicy
             String password
     ) {
     }
@@ -60,4 +57,8 @@ public final class AuthDtos {
 
     public record CsrfResponse(String headerName, String token) {
     }
+
+    public record GoogleLoginRequest(@NotBlank @Size(max = 16384) String credential) {}
+    public record GoogleConfigResponse(boolean enabled, String clientId) {}
+    public record GoogleChallengeResponse(String nonce) {}
 }

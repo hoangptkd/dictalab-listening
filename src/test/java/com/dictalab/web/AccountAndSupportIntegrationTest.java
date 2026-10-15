@@ -43,6 +43,84 @@ class AccountAndSupportIntegrationTest {
     }
 
     @Test
+    @Transactional
+    void usageIsAdminOnlyAndCountsCompletedSoloActivityWithinPeriod() throws Exception {
+        AppUser admin = create("usage-admin");
+        admin.promoteToAdmin(Instant.now());
+        users.saveAndFlush(admin);
+        var principal = DictaLabPrincipal.from(admin);
+        var before = json.readTree(mvc.perform(get("/api/admin/usage?days=7").with(user(principal)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        AppUser learner = create("usage-learner");
+        long lesson = db.queryForObject("SELECT id FROM lessons ORDER BY id LIMIT 1", Long.class);
+        long unit = db.queryForObject("SELECT id FROM listening_units ORDER BY id LIMIT 1", Long.class);
+        var now = Instant.now();
+        for (int index = 0; index < 5; index++) {
+            var at = java.sql.Timestamp.from(index == 2 ? now.minusSeconds(8 * 86400L)
+                    : index == 4 ? now.plusSeconds(86400L) : now.minusSeconds(60));
+            db.update("""
+                    INSERT INTO practice_sessions(id,learner_id,user_id,lesson_id,status,started_at,completed_at,total_practice_seconds,room_id)
+                    VALUES (?,?,?,?,?,?,?,?,?)
+                    """, UUID.randomUUID().toString(), "usage-test", learner.getId(), lesson,
+                    index == 3 ? "IN_PROGRESS" : "COMPLETED", at, at, 120, index == 1 ? "room-test" : null);
+            db.update("""
+                    INSERT INTO listening_sessions(id,user_id,unit_id,mode,stage,first_exposure,started_at,completed_at)
+                    VALUES (?,?,?,'ONE_PASS',?,FALSE,?,?)
+                    """, UUID.randomUUID().toString(), learner.getId(), unit,
+                    index == 3 ? "READY" : "COMPLETE", at, at);
+            db.update("""
+                    INSERT INTO ai_conversation_sessions(id,user_id,scenario,difficulty,state_json,created_at)
+                    VALUES (?,?,'cafe','A1','{}',?)
+                    """, UUID.randomUUID().toString(), learner.getId(), at);
+        }
+        var result = json.readTree(mvc.perform(get("/api/admin/usage?days=7").with(user(principal)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(result.path("registeredUsers").asLong()).isEqualTo(before.path("registeredUsers").asLong() + 1);
+        assertThat(result.path("newUsers").asLong()).isEqualTo(before.path("newUsers").asLong() + 1);
+        assertThat(result.path("completedDictationSessions").asLong()).isEqualTo(before.path("completedDictationSessions").asLong() + 1);
+        assertThat(result.path("dictationMinutes").asLong()).isEqualTo(before.path("dictationMinutes").asLong() + 2);
+        assertThat(result.path("completedListeningSessions").asLong()).isEqualTo(before.path("completedListeningSessions").asLong() + 2);
+        assertThat(result.path("conversationSessions").asLong()).isEqualTo(before.path("conversationSessions").asLong() + 3);
+        assertThat(java.time.Duration.between(Instant.parse(result.path("from").asText()),
+                Instant.parse(result.path("to").asText())).toDays()).isEqualTo(7);
+        for (String path : java.util.List.of("/api/admin/usage", "/api/admin/usage/export")) {
+            mvc.perform(get(path)).andExpect(status().isUnauthorized());
+            mvc.perform(get(path).with(user(DictaLabPrincipal.from(learner)))).andExpect(status().isForbidden());
+            for (String invalid : java.util.List.of("0", "8", "-1", "abc"))
+                mvc.perform(get(path).param("days", invalid).with(user(principal))).andExpect(status().isBadRequest());
+        }
+        var csv = mvc.perform(get("/api/admin/usage/export?days=7").with(user(principal)))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"dictalab-usage-7-days.csv\""))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(csv).startsWith("\uFEFFChỉ số,Giá trị,").contains("Buổi nghe hiểu hoàn thành,")
+                .doesNotContain(learner.getEmail(), admin.getEmail(), "usage-learner");
+        mvc.perform(get("/api/admin/usage?days=30").with(user(principal))).andExpect(status().isOk());
+        mvc.perform(get("/api/admin/usage?days=90").with(user(principal))).andExpect(status().isOk());
+    }
+
+    @Test
+    void resetRejectsExpiredAndReusedTokensAndRevokesExistingSession() throws Exception {
+        AppUser learner = create("reset-check");
+        var old = DictaLabPrincipal.from(learner);
+        for (boolean expired : new boolean[]{true, false}) {
+            String token = UUID.randomUUID().toString();
+            String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(token.getBytes(StandardCharsets.UTF_8)));
+            db.update("INSERT INTO account_tokens(token_hash,user_id,purpose,created_at,expires_at) VALUES (?,?,'RESET_PASSWORD',?,?)",
+                    hash, learner.getId(), java.sql.Timestamp.from(Instant.now().minusSeconds(1800)),
+                    java.sql.Timestamp.from(Instant.now().plusSeconds(expired ? -60 : 1800)));
+            String body = "{\"token\":\"" + token + "\",\"password\":\"newpass456\"}";
+            mvc.perform(post("/api/auth/password-reset/complete").with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(expired ? status().isBadRequest() : status().isOk());
+            mvc.perform(post("/api/auth/password-reset/complete").with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        assertThat(encoder.matches("newpass456", users.findById(learner.getId()).orElseThrow().getPasswordHash())).isTrue();
+        mvc.perform(get("/api/auth/me").with(user(old))).andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void passwordChangeRevokesPriorSessionAndResetDoesNotRevealAccount() throws Exception {
         AppUser learner = create("learner");
         DictaLabPrincipal old = DictaLabPrincipal.from(learner);
@@ -140,7 +218,8 @@ class AccountAndSupportIntegrationTest {
         db.update("""
                 INSERT INTO account_tokens(token_hash,user_id,purpose,created_at,expires_at)
                 VALUES (?,?,'VERIFY_EMAIL',?,?)
-                """, hash, candidate.getId(), Instant.now(), Instant.now().plusSeconds(1800));
+                """, hash, candidate.getId(), java.sql.Timestamp.from(Instant.now()),
+                java.sql.Timestamp.from(Instant.now().plusSeconds(1800)));
         mvc.perform(post("/api/auth/email/confirm").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"token\":\"" + token + "\"}"))
                 .andExpect(status().isOk());

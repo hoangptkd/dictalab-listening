@@ -1,38 +1,29 @@
 package com.dictalab.service;
 
 import com.dictalab.domain.CefrLevel;
-import com.dictalab.domain.Lesson;
-import com.dictalab.domain.PracticeSession;
-import com.dictalab.domain.SessionStatus;
 import com.dictalab.dto.ApiDtos;
 import com.dictalab.repository.LessonRepository;
-import com.dictalab.repository.LessonSentenceRepository;
-import com.dictalab.repository.PracticeSessionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 @Service
 @Transactional(readOnly = true)
 public class CatalogService {
 
     private final LessonRepository lessonRepository;
-    private final LessonSentenceRepository sentenceRepository;
-    private final PracticeSessionRepository sessionRepository;
     private final PreviewVocabularyService previewVocabularyService;
+    private final io.micrometer.core.instrument.Timer summaryRead;
+    private final io.micrometer.core.instrument.Timer previewRead;
 
-    public CatalogService(LessonRepository lessonRepository, LessonSentenceRepository sentenceRepository,
-                          PracticeSessionRepository sessionRepository,
-                          PreviewVocabularyService previewVocabularyService) {
+    public CatalogService(LessonRepository lessonRepository,
+                          PreviewVocabularyService previewVocabularyService,
+                          io.micrometer.core.instrument.MeterRegistry metrics) {
         this.lessonRepository = lessonRepository;
-        this.sentenceRepository = sentenceRepository;
-        this.sessionRepository = sessionRepository;
         this.previewVocabularyService = previewVocabularyService;
+        summaryRead = metrics.timer("dictalab.catalog.read", "part", "summary");
+        previewRead = metrics.timer("dictalab.catalog.read", "part", "preview");
     }
 
     public List<ApiDtos.LevelOption> levels() {
@@ -49,31 +40,21 @@ public class CatalogService {
     }
 
     public List<ApiDtos.LessonSummary> lessons(Long userId, CefrLevel level, boolean administrator) {
-        Map<Long, PracticeSession> activeSessions = new HashMap<>();
-        Set<Long> completedLessonIds = new HashSet<>();
-        if (userId != null) {
-            sessionRepository.findByUserIdAndLessonLevelAndStatusOrderByStartedAtDesc(
-                            userId, level, SessionStatus.IN_PROGRESS
-                    ).forEach(session -> activeSessions.putIfAbsent(session.getLesson().getId(), session));
-            completedLessonIds.addAll(sessionRepository.findDistinctLessonIds(
-                    userId, level, SessionStatus.COMPLETED
-            ));
-        }
-        return lessonRepository.findByLevelAndActiveTrueOrderByDisplayOrder(level).stream()
-                .filter(lesson -> administrator || !lesson.isPersonalContent())
-                .map(lesson -> toSummary(
-                        lesson,
-                        activeSessions.get(lesson.getId()),
-                        completedLessonIds.contains(lesson.getId())
-                ))
+        var lessons = summaryRead.record(() -> lessonRepository.catalog(userId, level.name(), administrator));
+        var ids = lessons.stream().map(LessonRepository.CatalogLesson::getId).toList();
+        var preview = previewRead.record(() -> previewVocabularyService.wordsForLessons(ids));
+        return lessons.stream()
+                .map(lesson -> toSummary(lesson, preview.getOrDefault(lesson.getId(), List.of())))
                 .toList();
     }
 
-    private ApiDtos.LessonSummary toSummary(Lesson lesson, PracticeSession activeSession, boolean completed) {
-        int sentenceCount = Math.toIntExact(sentenceRepository.countByLessonId(lesson.getId()));
-        int completedSentences = activeSession == null
+    private ApiDtos.LessonSummary toSummary(LessonRepository.CatalogLesson lesson, List<ApiDtos.PreviewWord> preview) {
+        int sentenceCount = Math.toIntExact(lesson.getSentenceCount());
+        boolean completed = lesson.getCompleted();
+        Integer activePosition = lesson.getActivePosition();
+        int completedSentences = activePosition == null
                 ? (completed ? sentenceCount : 0)
-                : Math.max(0, Math.min(sentenceCount, activeSession.getCurrentSentencePosition() - 1));
+                : Math.max(0, Math.min(sentenceCount, activePosition - 1));
         int progressPercent = sentenceCount == 0
                 ? 0
                 : (int) Math.round(completedSentences * 100.0 / sentenceCount);
@@ -82,16 +63,15 @@ public class CatalogService {
                 lesson.getSlug(),
                 lesson.getTitle(),
                 lesson.getDescription(),
-                lesson.getLevel(),
+                CefrLevel.valueOf(lesson.getLevel()),
                 lesson.getTopic(),
                 lesson.getEstimatedMinutes(),
                 sentenceCount,
                 progressPercent,
-                activeSession != null,
+                activePosition != null,
                 completed,
-                sentenceRepository.findByLessonIdAndPosition(lesson.getId(), 1)
-                        .map(com.dictalab.domain.LessonSentence::getAudioUrl).orElse(null),
-                previewVocabularyService.wordsFor(lesson)
+                lesson.getAudioUrl(),
+                preview
         );
     }
 }

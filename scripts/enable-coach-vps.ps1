@@ -2,22 +2,31 @@ $ErrorActionPreference = 'Stop'
 $serviceName = 'DictaLab'
 $nssm = (Get-Command nssm.exe -ErrorAction Stop).Source
 
-# Check the real account session before sending learner evidence to the bridge.
-$probe = @{model='chatgpt-web';stream=$false;messages=@(@{role='user';content='Return only {"ready":true} as JSON.'})} |
-    ConvertTo-Json -Depth 5 -Compress
-$response = Invoke-RestMethod 'http://127.0.0.1:3000/v1/chat/completions' -Method Post `
-    -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($probe)) -TimeoutSec 90
-$answer = $response.choices[0].message.content | ConvertFrom-Json
-if ($answer.ready -ne $true) { throw 'ChatGPT bridge did not return the expected JSON.' }
-
 $original = @(& $nssm get $serviceName AppEnvironmentExtra)
 if ($LASTEXITCODE -ne 0) { throw 'Could not read DictaLab service environment.' }
+$settings = @{}
+foreach ($entry in $original) {
+    if ($entry -match '^([^=]+)=(.*)$') { $settings[$Matches[1]] = $Matches[2] }
+}
+if ([string]::IsNullOrWhiteSpace($settings['SHOPAIKEY_API_KEY'])) { throw 'SHOPAIKEY_API_KEY is missing from the service environment.' }
+$apiUrl = if ($settings['SHOPAIKEY_URL']) { $settings['SHOPAIKEY_URL'] } else { 'https://api.shopaikey.com/v1/chat/completions' }
+$model = if ($settings['SHOPAIKEY_MODEL']) { $settings['SHOPAIKEY_MODEL'] } else { 'claude-sonnet-4-5' }
+
+# Verify the API using synthetic input only, never learner evidence or credentials in output.
+$probe = @{model=$model;temperature=0;max_tokens=64;messages=@(@{role='user';content='Return only {"ready":true} as JSON.'})} |
+    ConvertTo-Json -Depth 5 -Compress
+try {
+    $response = Invoke-RestMethod $apiUrl -Method Post -Headers @{Authorization="Bearer $($settings['SHOPAIKEY_API_KEY'])"} `
+        -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($probe)) -TimeoutSec 60
+    $answer = $response.choices[0].message.content | ConvertFrom-Json
+    if ($answer.ready -ne $true) { throw 'Unexpected JSON.' }
+} catch { throw 'ShopAIKey probe failed; service environment was not changed.' }
+
+$legacyNames = @('DICTALAB_COACH_ENABLED', 'DICTALAB_COACH_URL', 'DICTALAB_COACH_MODEL', 'DICTALAB_COACH_API_KEY', 'DICTALAB_COACH_TIMEOUT')
 $updated = @($original | Where-Object {
-    $_ -and -not $_.StartsWith('DICTALAB_COACH_ENABLED=', [StringComparison]::OrdinalIgnoreCase) -and
-    -not $_.StartsWith('DICTALAB_COACH_URL=', [StringComparison]::OrdinalIgnoreCase)
+    $_ -and $legacyNames -notcontains $_.Split('=', 2)[0]
 })
 $updated += 'DICTALAB_COACH_ENABLED=true'
-$updated += 'DICTALAB_COACH_URL=http://127.0.0.1:3000/v1/chat/completions'
 
 try {
     & $nssm set $serviceName AppEnvironmentExtra $updated | Out-Null

@@ -1,0 +1,9 @@
+apiVersion: 1
+datasources:
+  - name: DictaLab Prometheus
+    uid: dictalab-prometheus
+    type: prometheus
+    access: proxy
+    url: http://127.0.0.1:19090
+    isDefault: true
+    editable: false

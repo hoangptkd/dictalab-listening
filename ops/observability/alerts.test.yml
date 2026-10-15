@@ -1,0 +1,119 @@
+rule_files: [alerts.yml]
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'dictalab_provider_circuit{job="dictalab",provider="shopaikey"}'
+        values: '1 1 1 0 0'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: DictaLabProviderOpen
+        exp_alerts:
+          - exp_labels: {job: dictalab, provider: shopaikey, severity: warning}
+            exp_annotations:
+              summary: Provider circuit remains open
+              action: Verify credentials/quota/provider outage; keep learner drafts and allow one half-open recovery probe.
+      - eval_time: 4m
+        alertname: DictaLabProviderOpen
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'up{job="dictalab",instance="test"}'
+        values: '0 0 0 1 1'
+      - series: 'hikaricp_connections_active{job="dictalab",pool="test"}'
+        values: '10 10 10 1 1'
+      - series: 'hikaricp_connections_max{job="dictalab",pool="test"}'
+        values: '10 10 10 10 10'
+      - series: 'dictalab_jobs_oldest_seconds{job="dictalab",type="listening"}'
+        values: '190 190 190 0 0'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: DictaLabUnavailable
+        exp_alerts:
+          - exp_labels: {job: dictalab, instance: test, severity: critical}
+            exp_annotations:
+              summary: DictaLab management scrape is unavailable
+              action: Verify Windows service, local health and management tunnel; do not expose Actuator publicly.
+      - eval_time: 2m
+        alertname: DictaLabPoolSaturated
+        exp_alerts:
+          - exp_labels: {job: dictalab, pool: test, severity: warning}
+            exp_annotations:
+              summary: Database pool remains above 90 percent utilization
+              action: Inspect pending connections and database locks; do not simply increase pool size.
+      - eval_time: 2m
+        alertname: DictaLabJobStalled
+        exp_alerts:
+          - exp_labels: {job: dictalab, type: listening, severity: warning}
+            exp_annotations:
+              summary: A durable job has exceeded its processing budget
+              action: Inspect status/attempts/lease and sanitized last error; use authorized bounded retry, never reset all attempts.
+      - eval_time: 4m
+        alertname: DictaLabUnavailable
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: DictaLabPoolSaturated
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: DictaLabJobStalled
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'dictalab_backup_age_seconds{job="dictalab"}'
+        values: '90001+0x12 0+0x3'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: DictaLabBackupStale
+        exp_alerts:
+          - exp_labels: {job: dictalab, severity: critical}
+            exp_annotations:
+              summary: Verified backup is missing or older than 25 hours
+              action: Check backup task, free disk and checksum manifest; run isolated restore drill before declaring recovery ready.
+      - eval_time: 15m
+        alertname: DictaLabBackupStale
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{job="dictalab",status="500"}'
+        values: '0+2x10 20+0x10'
+      - series: 'http_server_requests_seconds_count{job="dictalab",status="200"}'
+        values: '0+10x20'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: DictaLabServerErrors
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: Sustained server error rate exceeds 1 percent
+              action: Use errorId/requestId in structured logs; inspect DB pool, jobs and provider health before retrying writes.
+      - eval_time: 18m
+        alertname: DictaLabServerErrors
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_bucket{job="dictalab",uri="/api/v1/catalog/lessons",le="1"}'
+        values: '0+0x10'
+      - series: 'http_server_requests_seconds_bucket{job="dictalab",uri="/api/v1/catalog/lessons",le="2"}'
+        values: '0+100x10'
+      - series: 'http_server_requests_seconds_bucket{job="dictalab",uri="/api/v1/catalog/lessons",le="+Inf"}'
+        values: '0+100x10'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: DictaLabSlowRequests
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: Core HTTP p95 exceeds the proposed 1 second target
+              action: Split by route; AI synchronous routes have different latency budgets. Inspect pool/GC and query plans.
+  - interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_bucket{job="dictalab",uri="/api/v1/conversation/sessions/{id}/answer",le="1"}'
+        values: '0+0x10'
+      - series: 'http_server_requests_seconds_bucket{job="dictalab",uri="/api/v1/conversation/sessions/{id}/answer",le="60"}'
+        values: '0+100x10'
+      - series: 'http_server_requests_seconds_bucket{job="dictalab",uri="/api/v1/conversation/sessions/{id}/answer",le="+Inf"}'
+        values: '0+100x10'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: DictaLabSlowRequests
+        exp_alerts: []

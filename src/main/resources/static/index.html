@@ -8,9 +8,14 @@
     <title>DictaLab · Luyện nghe chép chính tả</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="stylesheet" href="/css/app.css">
+    <link rel="stylesheet" href="/css/fonts.css">
+    <link rel="stylesheet" href="/css/fidelity.css">
+    <link rel="stylesheet" href="/css/library.css">
 </head>
 <body>
-<main id="auth-screen" class="auth-screen" aria-labelledby="auth-heading">
+<main id="app-loading" class="app-loading" role="status">Đang mở DictaLab…</main>
+<main id="auth-screen" class="auth-screen" hidden aria-labelledby="auth-heading">
+    <header class="auth-topbar"><a class="brand" href="/catalog"><span class="brand-mark" aria-hidden="true">D</span><span><strong>DictaLab</strong><small>listen · notice · remember</small></span></a><a href="/catalog" class="text-button">← Danh mục bài nghe</a></header>
     <div class="auth-story">
         <div class="auth-brand">
             <span class="brand-mark" aria-hidden="true">D</span>
@@ -18,9 +23,10 @@
         </div>
         <div class="auth-story-copy">
             <p class="eyebrow">Một câu mỗi lần · tiến bộ mỗi ngày</p>
-            <h1>Đôi tai cũng cần<br><em>một cuốn nhật ký.</em></h1>
+            <h1>Đôi tai cũng cần <em>một cuốn nhật ký.</em></h1>
             <p>Mỗi lần nghe, mỗi từ bỏ lỡ và mỗi bước tiến sẽ được lưu riêng trong tài khoản của bạn.</p>
         </div>
+        <div class="auth-rules"><strong>Quy tắc phòng luyện</strong><ul><li>Bảo lưu tiến trình chép dở</li><li>Giữ nguyên tốc độ 0.75× · 1× · 1.25×</li><li>Nghe, nhập từng từ và xem lại lỗi</li></ul></div>
         <div class="auth-signal" aria-hidden="true">
             <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
         </div>
@@ -32,6 +38,7 @@
             <h2 id="auth-heading">Chào mừng trở lại.</h2>
             <p id="auth-subtitle" class="auth-subtitle">Đăng nhập để tiếp tục từ đúng nơi bạn đã dừng.</p>
 
+            <p id="auth-destination" class="field-help" hidden></p>
             <div class="auth-tabs" role="tablist" aria-label="Đăng nhập hoặc đăng ký">
                 <button id="login-tab" type="button" role="tab" aria-selected="true"
                         aria-controls="login-form">Đăng nhập</button>
@@ -39,6 +46,12 @@
                         aria-controls="register-form" tabindex="-1">Tạo tài khoản</button>
             </div>
 
+            <div id="google-auth" class="google-auth" hidden>
+                <div id="google-signin"></div>
+                <p id="google-auth-status" class="field-help" role="status" aria-live="polite"></p>
+                <button id="google-auth-retry" class="text-button" type="button" hidden>Thử lại đăng nhập Google</button>
+                <p class="auth-alternative">Hoặc dùng email</p>
+            </div>
             <form id="login-form" class="auth-form" autocomplete="on">
                 <label>Email
                     <input id="login-email" name="email" type="email" autocomplete="email"
@@ -46,8 +59,9 @@
                 </label>
                 <label>Mật khẩu
                     <input name="password" type="password" autocomplete="current-password"
-                           placeholder="Ít nhất 8 ký tự" required>
+                           placeholder="Nhập mật khẩu của bạn" required>
                 </label>
+                <a id="forgot-password-link" class="text-button" href="/reset-password">Quên mật khẩu?</a>
                 <button class="primary-button auth-submit" type="submit">
                     Vào phòng luyện <span aria-hidden="true">→</span>
                 </button>
@@ -64,23 +78,23 @@
                 </label>
                 <label>Mật khẩu
                     <input name="password" type="password" autocomplete="new-password"
-                           placeholder="Có chữ cái và chữ số" minlength="8" maxlength="72" required>
+                           placeholder="Có chữ cái và chữ số" minlength="8" maxlength="72" aria-describedby="register-password-note" required>
                 </label>
-                <p class="password-note">Từ 8 ký tự, có ít nhất một chữ cái và một chữ số.</p>
+                <p id="register-password-note" class="password-note">Từ 8 ký tự, có ít nhất một chữ cái và một chữ số.</p>
                 <button class="primary-button auth-submit" type="submit">
                     Tạo nhật ký nghe <span aria-hidden="true">→</span>
                 </button>
             </form>
 
             <div id="account-public-actions" hidden></div>
-            <a id="forgot-password-link" class="text-button" href="/reset-password">Quên mật khẩu?</a>
             <p id="auth-status" class="auth-status" role="status" aria-live="polite"></p>
         </div>
     </div>
+    <footer class="auth-footer"><a href="/privacy">Quyền riêng tư</a><a href="/terms">Điều khoản</a><a href="/help">Hỗ trợ công khai</a><span>DictaLab · Luyện nghe tiếng Anh</span></footer>
 </main>
 
 <div id="app-shell" class="page-shell" hidden>
-    <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
+    <nav aria-label="Truy cập nhanh"><a class="skip-link" href="#main-content">Bỏ qua điều hướng</a></nav>
     <header class="site-header">
         <a class="brand" href="/catalog?level=A1&page=1" data-route="catalog" aria-label="Về trang chọn bài">
             <span class="brand-mark" aria-hidden="true">D</span>
@@ -91,36 +105,54 @@
         </a>
 
         <nav class="main-nav" aria-label="Điều hướng chính">
+            <div class="nav-group" role="group" aria-label="Luyện tập">
             <a class="nav-link is-active" href="/catalog?level=A1&page=1" data-route="catalog" data-mobile-label="Luyện tập" aria-current="page">
                 Phòng luyện
             </a>
             <a class="nav-link" href="/listening" data-route="listening" data-mobile-label="Nghe hiểu">
                 Nghe hiểu
             </a>
-            <a class="nav-link" href="/history?level=all&page=1" data-route="history" data-mobile-label="Lịch sử">
+            <a class="nav-link" href="/conversation" data-route="conversation" data-mobile-label="Hội thoại">Hội thoại AI</a>
+            </div>
+            <div class="nav-group" role="group" aria-label="Dữ liệu và tiến trình">
+            <a class="nav-link mobile-nav-secondary" href="/history?level=all&page=1" data-route="history" data-mobile-label="Lịch sử">
                 Lịch sử
             </a>
             <a class="nav-link" href="/dashboard" data-route="dashboard" data-mobile-label="Tiến bộ">
                 Tiến bộ
             </a>
-            <a class="nav-link" href="/rooms" data-route="room" data-mobile-label="Cùng bạn"
+            </div>
+            <div class="nav-group" role="group" aria-label="Cộng đồng và hỗ trợ">
+            <a class="nav-link mobile-nav-secondary" href="/rooms" data-route="room" data-mobile-label="Cùng bạn"
                     id="room-nav-link">
                 Luyện cùng bạn
             </a>
-            <a class="nav-link" href="/support" data-route="support" data-mobile-label="Hỗ trợ">Hỗ trợ</a>
+            <a class="nav-link mobile-nav-secondary" href="/support" data-route="support" data-mobile-label="Hỗ trợ">Hỗ trợ</a>
+            </div>
+            <button id="mobile-nav-more" class="nav-link mobile-nav-more" type="button"
+                    popovertarget="mobile-nav-menu" aria-expanded="false" aria-controls="mobile-nav-menu">Thêm</button>
+            <div id="mobile-nav-menu" class="mobile-nav-menu" popover="auto" aria-label="Điều hướng bổ sung">
+                <a class="nav-link" href="/history?level=all&page=1" data-route="history" autofocus>Lịch sử</a>
+                <a class="nav-link" href="/rooms" data-route="room">Luyện cùng bạn</a>
+                <a class="nav-link" href="/support" data-route="support">Hỗ trợ</a>
+                <a class="nav-link" href="/account" data-route="account">Tài khoản</a>
+            </div>
         </nav>
 
         <div class="account-cluster">
+            <a id="guest-login" class="text-button" href="/login" hidden>Đăng nhập</a>
             <div class="streak-pill" role="group" aria-label="Số buổi đã hoàn thành">
                 <span aria-hidden="true">●</span>
                 <strong id="header-session-count">0</strong> buổi
             </div>
-            <div class="account-copy">
-                <a id="account-link" href="/account" data-route="account" aria-label="Tài khoản"><strong id="account-name">Người học</strong></a>
+            <div class="account-menu">
+                <div class="account-copy">
+                <a id="account-link" href="/account" data-route="account" aria-label="Tài khoản của bạn"><strong id="account-name">Người học</strong></a>
                 <small id="account-email"></small>
-                <a id="admin-nav-link" class="admin-entry-link" href="/admin" hidden>Trang quản trị ↗</a>
-            </div>
+                <a id="admin-nav-link" class="admin-entry-link" href="/admin" aria-label="Trang quản trị" hidden><span class="admin-entry-desktop">Trang </span>quản trị ↗</a>
             <button id="logout-button" class="logout-button" type="button">Đăng xuất</button>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -131,25 +163,36 @@
         </section>
         <section id="support-view" class="view" hidden aria-labelledby="support-heading">
             <div class="lesson-browser account-page"><p class="section-index">Trợ giúp</p>
-                <h1 id="support-heading">Chúng tôi có thể giúp gì?</h1><div id="support-content" aria-live="polite"></div></div>
+                <h1 id="support-heading">Chúng tôi có thể giúp gì?</h1><p class="support-lead">Gửi phản hồi về lỗi âm thanh, câu chép hoặc thắc mắc tài khoản. Bạn có thể theo dõi trạng thái và phản hồi ngay tại trang này.</p><div id="support-content" aria-live="polite"></div></div>
+        </section>
+        <section id="conversation-view" class="view" hidden aria-labelledby="conversation-heading">
+            <div class="lesson-browser conversation-browser">
+                <p class="section-index">Luyện tập · Hội thoại AI</p>
+                <h1 id="conversation-heading">Nghe để hiểu.<br><em>Trả lời theo cách của bạn.</em></h1>
+                <p class="conversation-intro">Nghe tình huống và gõ điều mình hiểu bằng tiếng Việt. Transcript và bản dịch chỉ mở khi bạn cần và được ghi nhận là trợ giúp trong kết quả.</p>
+                <div id="conversation-content"></div>
+            </div>
         </section>
         <section id="listening-view" class="view" hidden aria-labelledby="listening-heading">
             <div class="lesson-browser listening-browser">
                 <p class="section-index">Listening Comprehension</p>
                 <h1 id="listening-heading">Nghe hiểu từ lần đầu.</h1>
-                <p>Nghe trọn bài một lần, ghi lại điều bạn nhớ, rồi trả lời câu hỏi. Lượt nghe thứ hai giúp bạn thấy mình tiến bộ ở đâu.</p>
+                <p>Nghe trọn bài một lần, ghi lại điều bạn nhớ, rồi trả lời câu hỏi. Sau lượt đầu, bạn có thể hoàn tất hoặc nghe thêm một lượt để đối chiếu.</p>
+                <section class="listening-process" aria-labelledby="listening-process-heading">
+                    <h2 id="listening-process-heading">Quy trình nghe hiểu 2 lượt</h2>
+                    <ol><li>Nghe bài một lần</li><li>Ghi nhớ và trả lời</li><li>Kết quả lượt 1</li><li>Có thể nghe thêm đúng 1 lượt hoặc hoàn tất</li><li>Ôn đáp án và transcript</li></ol>
+                    <p>Transcript và đáp án được ẩn cho đến khi xem kết quả; bài nghe luôn sẵn sàng để nghe theo đúng số lượt quy định.</p>
+                </section>
                 <div id="listening-content" aria-live="polite"></div>
             </div>
         </section>
         <section id="catalog-view" class="view" aria-labelledby="catalog-heading">
             <div class="catalog-hero">
                 <div class="hero-copy">
-                    <p class="eyebrow">English ear training · A1—B2</p>
-                    <h1 id="catalog-heading">Nghe được.<br><em>Viết đúng.</em></h1>
-                    <p class="hero-intro">
-                        Tập trung vào điều bạn nghe ở lần đầu. Mỗi câu là một thí nghiệm nhỏ giúp đôi tai
-                        nhận ra âm nối, âm yếu và những từ vẫn thường bị bỏ lỡ.
-                    </p>
+                    <p class="eyebrow">01 / Hướng luyện · Độ khó · Bài luyện</p>
+                    <h1 id="catalog-heading">Thư viện bài luyện tập trung</h1>
+                    <p id="level-description" class="hero-intro"></p>
+                    <p class="catalog-mode-guide">Chọn IELTS, TOEIC hoặc Giao tiếp rồi chọn độ khó phù hợp. Tất cả bài trong thư viện này đều luyện nghe và chép chính tả.</p>
                 </div>
                 <aside class="method-card" aria-label="Phương pháp luyện tập">
                     <span class="method-number">03</span>
@@ -162,21 +205,17 @@
             </div>
 
             <section class="lesson-browser" aria-labelledby="lesson-browser-heading">
-                <div class="section-heading-row">
-                    <div>
-                        <p class="section-index">01 / Chọn độ khó</p>
-                        <h2 id="lesson-browser-heading">Hôm nay bạn muốn nghe ở level nào?</h2>
+                <h2 id="lesson-browser-heading" class="sr-only">Chọn bài luyện</h2>
+                <div id="library-navigation" class="library-navigation" aria-live="polite"></div>
+                <div class="catalog-workspace">
+                    <div class="catalog-library">
+                        <div class="catalog-filters"><div id="level-tabs" class="level-tabs" role="tablist" aria-label="Chọn level CEFR"></div><p id="lesson-count" class="lesson-count" aria-live="polite"></p></div>
+                        <label class="catalog-sort-label" for="catalog-sort" hidden>Sắp xếp <select id="catalog-sort"><option value="progress">Theo tiến độ</option><option value="curriculum">Theo giáo trình</option></select></label>
+                        <div id="catalog-summary" class="catalog-summary" aria-live="polite"></div>
+                        <div id="lesson-grid" class="lesson-grid" role="group" aria-busy="true" aria-label="Danh sách bài luyện"></div>
                     </div>
-                    <p id="level-description" class="level-description"></p>
+                    <section id="lesson-detail" class="lesson-detail" aria-label="Chi tiết bài đang chọn" aria-busy="true"></section>
                 </div>
-
-                <div id="level-tabs" class="level-tabs" role="tablist" aria-label="Chọn level CEFR"></div>
-
-                <div class="lesson-heading">
-                    <p class="section-index">02 / Chọn bài luyện</p>
-                    <p id="lesson-count" class="lesson-count" aria-live="polite"></p>
-                </div>
-                <div id="lesson-grid" class="lesson-grid" aria-busy="true"></div>
             </section>
         </section>
 
@@ -212,14 +251,13 @@
 
             <div class="practice-layout">
                 <section class="listening-console" aria-labelledby="listen-heading">
-                    <p class="section-index">Nghe nguyên câu · Không transcript</p>
+                    <div class="console-intro">
+                    <div class="console-protocol"><p class="section-index">Nghe nguyên câu · Không transcript</p><span>Khóa tua (No seeking)</span></div>
                     <h2 id="listen-heading">Bắt lấy nhịp điệu trước,<br>rồi mới tìm từng từ.</h2>
+                    <p class="console-description">Rèn luyện thính giác nhận diện câu đầy đủ. Âm thanh chạy từ đầu đến cuối không cắt lát.</p>
+                    </div>
 
                     <div class="sound-stage">
-                        <div class="waveform" aria-hidden="true">
-                            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-                            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-                        </div>
                         <button id="replay-button" class="replay-button" type="button" aria-describedby="replay-help">
                             <span class="play-icon" aria-hidden="true">▶</span>
                             <span>
@@ -227,19 +265,30 @@
                                 <small>Phím tắt: Alt + P</small>
                             </span>
                         </button>
-                        <label class="playback-speed-control">
+                        <div class="waveform" aria-hidden="true">
+                            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                        </div>
+                        <div class="playback-speed-control" role="group" aria-label="Tốc độ nghe">
                             <span>Tốc độ nghe</span>
-                            <select id="playback-speed" aria-label="Tốc độ phát câu">
+                            <select id="playback-speed" aria-label="Tốc độ phát câu" hidden>
                                 <option value="0.75">0.75× chậm</option>
                                 <option value="1" selected>1× chuẩn</option>
                                 <option value="1.25">1.25× nhanh</option>
                             </select>
-                        </label>
+                            <div class="speed-options">
+                                <button type="button" data-playback-speed="0.75" aria-pressed="false">0.75×</button>
+                                <button type="button" data-playback-speed="1" aria-pressed="true">1×</button>
+                                <button type="button" data-playback-speed="1.25" aria-pressed="false">1.25×</button>
+                            </div>
+                        </div>
                         <p id="replay-help" class="sr-only">Phát toàn bộ câu tiếng Anh hiện tại.</p>
                     </div>
+                    <button id="room-enable-study-audio" class="text-button" type="button" aria-describedby="room-study-audio-status" hidden>Bật nghe chung</button>
+                    <p id="room-study-audio-status" class="support-note" role="status" aria-live="polite" hidden></p>
 
                     <div class="listening-stats" role="group" aria-label="Thống kê câu hiện tại">
-                        <div><span>Lượt nghe</span><strong id="replay-count">0</strong></div>
+                        <div><span id="replay-count-label">Lượt nghe</span><strong id="replay-count" aria-live="polite">0</strong></div>
                         <div><span>Thời gian</span><strong id="sentence-timer">00:00</strong></div>
                         <div><span>Trợ giúp</span><strong id="hint-count">0</strong></div>
                     </div>
@@ -267,9 +316,25 @@
                     </p>
 
                     <form id="dictation-form" novalidate>
-                        <div id="word-slots" class="word-slots" role="group"
+                        <div class="dictation-entry"><div id="word-slots" class="word-slots" role="group"
                              aria-describedby="dictation-instructions"></div>
 
+                        <details class="dictation-copy">
+                            <summary>Sao chép câu đang hiển thị</summary>
+                            <p id="dictation-copy-help" class="field-help">Sao chép các từ đang hiện trong phần Chép chính tả, gồm từ bạn nhập và đáp án đã mở. Bỏ qua ô trống. Bôi chọn từ hoặc cụm từ bên dưới để sao chép riêng.</p>
+                            <label for="dictation-copy-text" class="sr-only">Nội dung câu đang hiển thị để sao chép</label>
+                            <textarea id="dictation-copy-text" rows="3" readonly spellcheck="false"
+                                      aria-describedby="dictation-copy-help"></textarea>
+                            <div class="dictation-copy-actions">
+                                <button id="copy-dictation-selection" class="text-button" type="button">Sao chép phần đã chọn</button>
+                                <button id="copy-dictation-all" class="text-button" type="button" disabled>Sao chép cả câu</button>
+                            </div>
+                            <p id="dictation-copy-status" class="field-help" role="status" aria-live="polite"></p>
+                        </details>
+                        </div>
+
+                        <section class="practice-help" aria-label="Trợ giúp học tập">
+                        <div class="practice-help-heading"><details><summary>Trợ giúp (có trừ điểm)</summary><p class="field-help">Gợi ý trừ điểm độc lập, không trừ trực tiếp tỷ lệ đúng lần đầu.</p></details><small>Sau khi xem đáp án, hãy nghe lại cả câu</small></div>
                         <div class="hint-toolbar" role="group" aria-label="Các mức gợi ý">
                             <button id="hint-letter" class="hint-button" type="button">
                                 <span aria-hidden="true">Aa</span>
@@ -287,19 +352,11 @@
                                 <small>−20 điểm độc lập</small>
                             </button>
                         </div>
-
-                        <div id="feedback-panel" class="feedback-panel" hidden>
-                            <div>
-                                <strong>Phân loại từ bị lỡ</strong>
-                                <p>Điều này giúp dashboard phân biệt lỗi nghe và thiếu từ vựng.</p>
-                            </div>
-                            <div id="error-classifications" class="error-classifications"></div>
-                        </div>
-
-                        <div id="practice-status" class="practice-status" role="status" aria-live="polite"></div>
+                        </section>
 
                         <div class="sentence-actions">
-                            <p id="next-requirement">Nghe câu ít nhất một lần để bắt đầu.</p>
+                            <div><div id="practice-status" class="practice-status" role="status" aria-live="polite"></div>
+                            <p id="next-requirement">Nghe câu ít nhất một lần để bắt đầu.</p></div>
                             <button id="next-sentence" class="primary-button" type="submit" disabled>
                                 Câu tiếp theo <span aria-hidden="true">→</span>
                             </button>
@@ -307,72 +364,64 @@
                     </form>
                 </section>
             </div>
+            <details id="word-classifications" class="practice-classifications" hidden>
+                <summary>Phân loại từ bị lỡ <span id="classification-count" class="completion-badge"></span></summary>
+                <p class="field-help">Chọn loại lỗi cho từng từ để cập nhật dashboard.</p>
+                <div id="word-classification-list" class="word-classification-list"></div>
+            </details>
+            <p class="practice-shortcuts"><kbd>Alt+P</kbd> Nghe lại · <kbd>Space</kbd> Sang từ · <kbd>Enter</kbd> Chuyển câu đủ điều kiện</p>
         </section>
 
         <section id="result-view" class="view" hidden aria-labelledby="result-heading">
-            <header class="coach-hero">
+            <div class="result-summary-layout"><header class="coach-hero">
                 <div>
                     <p class="eyebrow">Dictation complete · AI Coach</p>
-                    <h1 id="result-heading">Nghe rõ hơn.<br><em>Từng chút một.</em></h1>
+                    <h1 id="result-heading">Nghe rõ hơn. <em>Từng chút một.</em></h1>
                     <p id="coach-lesson"></p>
                     <p id="result-message"></p>
+                    <p id="coach-status" role="status">Đang chọn điểm cần luyện…</p>
                 </div>
-                <div class="coach-listening-score">
+                <div class="coach-listening-score sr-only">
                     <strong id="coach-accuracy">—</strong>
                     <span>từ đúng ngay lần nhập đầu</span>
                     <small>Trong bài này, có thể đã dùng nghe lại hoặc gợi ý.</small>
                 </div>
             </header>
+            <section class="result-overview" aria-label="Kết quả buổi luyện">
+                <article class="result-metric is-priority"><span>Đúng lần nhập đầu</span><strong id="result-first">0%</strong><p>Phân biệt với kết quả sau khi sửa; bài có thể đã dùng nghe lại hoặc trợ giúp.</p></article>
+                <article class="result-metric"><span>Đúng sau khi sửa</span><strong id="result-final">0%</strong><p>Kết quả cuối cùng sau khi thử lại và sửa lỗi.</p></article>
+            </section>
+            </div>
             <div id="coach-panel" class="coach-panel">
-                <p id="coach-status" role="status">Đang chọn điểm cần luyện…</p>
                 <div id="coach-insights"></div>
                 <section id="coach-practice" class="coach-practice" aria-label="Luyện điểm yếu" hidden></section>
                 <section class="smart-review" aria-labelledby="smart-review-heading">
                     <div class="coach-section-heading">
-                        <div><p class="section-index">Ôn đúng chỗ</p><h2 id="smart-review-heading">Smart Review</h2></div>
+                        <div><p class="section-index">Ôn đúng chỗ</p><h2 id="smart-review-heading">Ôn tập trọng tâm</h2></div>
                         <p id="smart-review-count"></p>
                     </div>
                     <div id="smart-review-items"></div>
                 </section>
                 <details id="coach-error-bank" class="coach-bank">
-                    <summary>Error Bank · lỗi đã lưu</summary>
-                    <p>Ôn lại những lỗi bạn đã chọn từ các buổi học. Hiển thị tối đa 100 lỗi gần nhất.</p>
+                    <summary>Error Bank · kho lỗi và lịch ôn nghe</summary>
+                    <p>Lỗi được tổng hợp sau khi hoàn thành câu. Lỗi lưu thủ công vẫn được giữ. Hiển thị tối đa 100 lỗi gần nhất.</p>
                     <div id="coach-bank-items"></div>
                 </details>
             </div>
-            <nav class="coach-navigation" aria-label="Sau buổi luyện">
-                <a class="text-button" href="/catalog?level=A1&page=1" data-route="catalog">Chọn bài tiếp theo →</a>
-                <a class="text-button" href="/history?level=all&page=1" data-route="history">Lịch sử luyện</a>
-                <a class="text-button" href="/dashboard" data-route="dashboard">Xem tiến bộ</a>
-            </nav>
             <details id="result-technical" class="result-technical">
             <summary>Phân tích chi tiết <span>Điểm số, trợ giúp và toàn bộ câu</span></summary>
+            <section id="result-assessment" class="assessment-card result-assessment" aria-label="Ước lượng năng lực nghe"></section>
             <div class="result-layout">
                 <div class="result-score-card">
-                    <p class="eyebrow">Điểm tổng hợp</p>
-                    <div class="score-orbit">
-                        <strong id="result-score">0</strong>
-                        <span>/ 100</span>
-                    </div>
+                    <p class="eyebrow">Tiếp tục học</p>
                     <a class="primary-button" href="/dashboard" data-route="dashboard">
                         Xem tiến bộ <span aria-hidden="true">→</span>
                     </a>
                 </div>
                 <div class="result-details">
                     <p class="section-index">Bản ghi buổi luyện</p>
-                    <section id="result-assessment" class="assessment-card result-assessment"
-                             aria-label="Ước lượng năng lực nghe"></section>
                     <div class="result-metrics">
-                        <article class="result-metric is-priority">
-                            <span>First attempt</span>
-                            <strong id="result-first">0%</strong>
-                            <p>Chỉ số chính phản ánh khả năng nghe thực tế.</p>
-                        </article>
-                        <article class="result-metric">
-                            <span>Final accuracy</span>
-                            <strong id="result-final">0%</strong>
-                            <p>Kết quả sau khi thử lại và sửa lỗi.</p>
-                        </article>
+                        <article class="result-metric"><span>Điểm độc lập</span><strong id="result-score">0</strong><p>Thang 100 điểm, phản ánh mức trợ giúp đã dùng.</p></article>
                         <article class="result-metric">
                             <span>Replay</span>
                             <strong id="result-replays">0</strong>
@@ -445,21 +494,49 @@
                 </section>
             </section>
             </details>
+            <nav class="coach-navigation" aria-label="Sau buổi luyện">
+                <a class="text-button" href="/catalog?level=A1&page=1" data-route="catalog">Chọn bài tiếp theo →</a>
+                <a class="text-button" href="/history?level=all&page=1" data-route="history">Lịch sử luyện</a>
+                <a class="text-button" href="/dashboard" data-route="dashboard">Xem tiến bộ</a>
+            </nav>
         </section>
 
         <section id="dashboard-view" class="view" hidden aria-labelledby="dashboard-heading">
+            <div class="dashboard-breadcrumb"><span>Bảng điều khiển cá nhân / <strong>Báo cáo năng lực thính giác</strong></span>
+                <button id="dashboard-error-bank" class="text-button" type="button" aria-controls="dashboard-bank-panel" aria-expanded="false">Kho lỗi · Ôn nghe hôm nay</button>
+            </div>
             <div class="dashboard-header">
                 <div>
                     <p class="eyebrow">Learning signal, not vanity metrics</p>
-                    <h1 id="dashboard-heading">Đôi tai đang<br><em>tiến bộ thế nào?</em></h1>
+                    <h1 id="dashboard-heading">Đôi tai đang <em>tiến bộ thế nào?</em></h1>
                 </div>
                 <p>
-                    Đường màu cam là first-attempt accuracy — tín hiệu quan trọng nhất. Đường xanh cho thấy
+                    Cột màu cam là first-attempt accuracy — tín hiệu quan trọng nhất. Cột xanh cho thấy
                     mức chính xác cuối cùng sau khi bạn đã sửa lỗi.
                 </p>
             </div>
 
-            <div id="dashboard-summary" class="summary-grid" aria-live="polite"></div>
+            <div class="dashboard-next-actions">
+            <aside id="recommendation-card" class="recommendation-card" aria-labelledby="recommendation-heading">
+                <div class="recommendation-copy">
+                <p class="section-index">Bài tiếp theo</p>
+                <span id="recommendation-level" class="recommendation-level">A1</span>
+                <h2 id="recommendation-heading">Đang phân tích…</h2>
+                <p id="recommendation-reason"></p>
+                <p id="dashboard-welcome" class="dashboard-period" role="status"></p>
+                </div>
+                <button id="start-recommendation" class="primary-button dark" type="button" disabled>
+                    Luyện bài này <span aria-hidden="true">→</span>
+                </button>
+            </aside>
+            </div>
+            <div id="dashboard-bank-panel"></div>
+            <div id="dashboard-load-error" class="dashboard-period" role="alert" hidden>
+                <p>Không tải được tiến bộ. Kiểm tra kết nối rồi thử lại. Dữ liệu đang hiển thị có thể chưa cập nhật.</p>
+                <button class="text-button" type="button">Thử lại</button>
+            </div>
+            <p id="dashboard-period" class="dashboard-period">Tổng hợp toàn bộ thời gian · Các buổi luyện chép chính tả cá nhân đã hoàn thành</p>
+            <div id="dashboard-summary" class="summary-grid" aria-describedby="dashboard-period" aria-live="polite"></div>
 
             <div class="dashboard-grid">
                 <section id="dashboard-assessment" class="assessment-card dashboard-assessment"
@@ -477,16 +554,6 @@
                     </div>
                     <div id="trend-chart" class="trend-chart"></div>
                 </section>
-
-                <aside id="recommendation-card" class="recommendation-card" aria-labelledby="recommendation-heading">
-                    <p class="section-index">Bài tiếp theo</p>
-                    <span id="recommendation-level" class="recommendation-level">A1</span>
-                    <h2 id="recommendation-heading">Đang phân tích…</h2>
-                    <p id="recommendation-reason"></p>
-                    <button id="start-recommendation" class="primary-button dark" type="button" disabled>
-                        Luyện bài này <span aria-hidden="true">→</span>
-                    </button>
-                </aside>
 
                 <section class="level-card" aria-labelledby="level-progress-heading">
                     <div class="card-heading">
@@ -507,6 +574,11 @@
                     </div>
                     <div id="error-breakdown" class="error-breakdown"></div>
                 </section>
+                <section class="chart-card" aria-labelledby="dashboard-recent-heading">
+                    <p class="section-index">Hoạt động gần đây · Chép chính tả cá nhân</p>
+                    <h2 id="dashboard-recent-heading">Các buổi vừa hoàn thành</h2>
+                    <div id="dashboard-recent"></div>
+                </section>
             </div>
         </section>
 
@@ -514,13 +586,18 @@
             <div class="history-header">
                 <div>
                     <p class="eyebrow">Practice journal · every session matters</p>
-                    <h1 id="history-heading">Nhật ký<br><em>luyện nghe.</em></h1>
+                    <h1 id="history-heading">Nhật ký <em>luyện nghe.</em></h1>
                 </div>
                 <p>
                     Mỗi bài bạn đã luyện đều được lưu lại. Bấm vào bất kỳ buổi nào để xem lại transcript,
                     điểm số và dấu vết nghe từng từ.
                 </p>
             </div>
+            <nav class="history-mode-links" aria-label="Lịch sử theo chế độ học">
+                <span aria-current="page">Chép chính tả</span>
+                <a class="text-button" href="/listening?view=history" data-route="listening" data-view="history">Lịch sử nghe hiểu</a>
+                <a class="text-button" href="/conversation" data-route="conversation">Lịch sử hội thoại</a>
+            </nav>
             <div class="history-controls">
                 <div id="history-level-tabs" class="history-level-tabs" role="tablist" aria-label="Lọc theo level">
                     <button class="level-tab is-active" type="button" role="tab" aria-selected="true" data-history-level="all">
@@ -530,9 +607,14 @@
                 <p id="history-count" class="history-count"></p>
             </div>
             <div id="history-list" class="history-list"></div>
+            <div id="history-load-error" class="history-empty" role="alert" hidden>
+                <p>Không tải được lịch sử. Kiểm tra kết nối rồi thử lại.</p>
+                <button class="text-button" type="button">Thử lại</button>
+            </div>
             <div id="history-empty" class="history-empty" hidden>
                 <p>Chưa có buổi luyện nào.</p>
-                <a class="primary-button" href="/catalog?level=A1&page=1" data-route="catalog">
+                <button class="text-button" type="button" hidden>Xem tất cả trình độ</button>
+                <a class="primary-button" href="/catalog?level=A1&page=1">
                     Bắt đầu luyện nghe <span aria-hidden="true">→</span>
                 </a>
             </div>
@@ -574,6 +656,8 @@
 
             <!-- === ROOM CALL PANEL === -->
             <div id="room-call-panel" class="room-call-panel" hidden>
+                <aside class="room-session-context"><p class="section-index">Phòng học 1-1</p><h2>Luyện cùng một người bạn.</h2><p>Chia sẻ link mời để người còn lại vào phòng. Chủ phòng duyệt yêu cầu tham gia trước khi bắt đầu.</p><h3>Quy ước luyện tập</h3><ul><li>Chọn bài học chung từ danh mục bài nghe.</li><li>Bật mic để trao đổi qua cuộc gọi.</li><li>Bản nháp được đồng bộ trong bài luyện chung; chủ phòng điều khiển chuyển câu.</li></ul><a class="text-button" href="/catalog?level=A1&page=1" data-route="catalog">Danh mục bài nghe →</a></aside>
+                <div class="room-session-main">
                 <div class="room-topbar">
                     <div>
                         <p class="section-index">Phiên gọi thoại</p>
@@ -673,6 +757,7 @@
 
                 <!-- audio element ẩn chứa luồng remote -->
                 <audio id="room-remote-audio" autoplay playsinline aria-hidden="true"></audio>
+                </div>
             </div>
 
             <!-- === PENDING PANEL (guest đang chờ duyệt) === -->
@@ -688,13 +773,17 @@
 
         </section>
     </main>
+    <footer class="public-footer"><span>DictaLab · Nghe được. Viết đúng.</span><nav aria-label="Thông tin công khai"><a href="/privacy#privacy">Quyền riêng tư</a> · <a href="/terms#terms">Điều khoản</a> · <a href="/help#help">Hỗ trợ công khai</a></nav></footer>
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
+<script src="/js/google-login.js" defer></script>
 <script src="/js/app.js" defer></script>
+<script src="/js/library.js" defer></script>
 <script src="/js/coach.js" defer></script>
 <script src="/js/listening.js" defer></script>
+<script src="/js/conversation.js" defer></script>
 <script src="/js/account.js" defer></script>
 </body>
 </html>

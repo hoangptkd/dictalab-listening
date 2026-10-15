@@ -63,6 +63,10 @@ public class WordAttempt {
     private LearnerErrorType errorType;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "learner_reported_error_type", length = 30)
+    private LearnerErrorType learnerReportedErrorType;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "inferred_error_category", length = 30)
     private ListeningErrorCategory inferredErrorCategory;
 
@@ -193,6 +197,7 @@ public class WordAttempt {
 
     public void classify(LearnerErrorType type) {
         this.errorType = type;
+        this.learnerReportedErrorType = type;
     }
 
     public void recordInferredError(ListeningErrorCategory category) {

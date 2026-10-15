@@ -14,6 +14,29 @@ public class AdminQueryService {
     public AdminQueryService(JdbcTemplate db) { this.db = db; }
     public record Page(List<Map<String, Object>> items, int page, long total, int size) {}
 
+    public record Usage(int days, java.time.Instant from, java.time.Instant to, long registeredUsers,
+                        long newUsers, long completedDictationSessions, long dictationMinutes,
+                        long completedListeningSessions, long conversationSessions) {}
+
+    @Transactional(readOnly = true)
+    public Usage usage(int days) {
+        if (!List.of(7, 30, 90).contains(days)) bad();
+        var to = java.time.Instant.now();
+        var from = to.minus(days, java.time.temporal.ChronoUnit.DAYS);
+        var start = java.sql.Timestamp.from(from);
+        var end = java.sql.Timestamp.from(to);
+        long registered = db.queryForObject("SELECT COUNT(*) FROM app_users", Long.class);
+        long added = db.queryForObject("SELECT COUNT(*) FROM app_users WHERE created_at>=? AND created_at<?", Long.class, start, end);
+        var dictation = db.queryForMap("""
+                SELECT COUNT(*) AS sessions,COALESCE(SUM(total_practice_seconds),0) AS seconds
+                FROM practice_sessions WHERE status='COMPLETED' AND room_id IS NULL AND completed_at>=? AND completed_at<?
+                """, start, end);
+        long listening = db.queryForObject("SELECT COUNT(*) FROM listening_sessions WHERE stage='COMPLETE' AND completed_at>=? AND completed_at<?", Long.class, start, end);
+        long conversations = db.queryForObject("SELECT COUNT(*) FROM ai_conversation_sessions WHERE created_at>=? AND created_at<?", Long.class, start, end);
+        return new Usage(days, from, to, registered, added, ((Number) dictation.get("sessions")).longValue(),
+                Math.round(((Number) dictation.get("seconds")).longValue() / 60.0), listening, conversations);
+    }
+
     @Transactional(readOnly = true)
     public Page lessons(String q, String level, String status, String topic, String origin, String sort, int page) {
         List<Object> args = new ArrayList<>();

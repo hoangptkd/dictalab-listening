@@ -13,7 +13,30 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 
     Optional<AppUser> findByEmail(String email);
 
+    Optional<AppUser> findByGoogleSubject(String subject);
+
     boolean existsByEmail(String email);
+
+    interface AuthenticationState {
+        Long getId();
+        String getEmail();
+        String getDisplayName();
+        String getRole();
+        boolean isEnabled();
+        long getAuthVersion();
+    }
+
+    // A single authoritative read; declared queries do not open the CRUD read-only transaction.
+    @Query("""
+            select u.id as id, u.email as email, u.displayName as displayName, u.role as role,
+                   u.enabled as enabled, u.authVersion as authVersion
+            from AppUser u where u.id = :id
+            """)
+    Optional<AuthenticationState> authenticationState(@Param("id") Long id);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from AppUser u where u.id = :id")
+    Optional<AppUser> lockById(@Param("id") Long id);
 
     @Query("""
             SELECT u FROM AppUser u WHERE

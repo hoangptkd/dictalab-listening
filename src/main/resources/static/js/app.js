@@ -29,13 +29,15 @@
                 return {route: "admin-listening", params: {edit: q.get("edit") || "", page}, query: q};
             }
 
-            if (s0 === "" || s0 === "login")  return { route: "login",    params: {}, query: q };
+            if (s0 === "") return {route: "catalog", params: {level: "A1", page}, query: q};
+            if (s0 === "login")  return { route: "login",    params: {}, query: q };
             if (s0 === "register")             return { route: "register", params: {}, query: q };
             if (s0 === "reset-password" || s0 === "verify-email") return { route: s0, params: {}, query: q };
             if (s0 === "account" || s0 === "support") return { route: s0, params: {}, query: q };
             if (s0 === "admin" && (s1 === "users" || s1 === "support")) return { route: `admin-${s1}`, params: {}, query: q };
-            if (s0 === "catalog")              return { route: "catalog",  params: { level: q.get("level") || "A1", page }, query: q };
+            if (s0 === "catalog") return { route: "catalog", params: {level: q.get("level") || "A1", page, sort: q.get("sort") || "", lesson: q.get("lesson") || "", start: q.get("start") || ""}, query: q };
             if (s0 === "listening")            return { route: "listening", params: { sessionId: s1 || null, page, level: q.get("level") || "", view: q.get("view") || "", edit: q.get("edit") || "" }, query: q };
+            if (s0 === "conversation")         return { route: "conversation", params: { sessionId: s1 || null }, query: q };
             if (s0 === "dashboard")            return { route: "dashboard", params: {}, query: q };
             if (s0 === "practice" && s1)       return { route: "practice", params: { sessionId: s1 }, query: q };
             if (s0 === "history" && !s1)       return { route: "history",  params: { level: q.get("level") || "all", page }, query: q };
@@ -61,7 +63,8 @@
                 case "admin-users": return "/admin/users";
                 case "admin-listening": return `/admin/listening?page=${encodeURIComponent(params.page || 1)}${params.edit ? `&edit=${encodeURIComponent(params.edit)}` : ""}`;
                 case "admin-support": return "/admin/support";
-                case "catalog":     return `/catalog?level=${encodeURIComponent(params.level || "A1")}&page=${encodeURIComponent(params.page || 1)}`;
+                case "catalog": return `/catalog?level=${encodeURIComponent(params.level || "A1")}&page=${encodeURIComponent(params.page || 1)}${params.sort ? `&sort=${encodeURIComponent(params.sort)}` : ""}${params.lesson ? `&lesson=${encodeURIComponent(params.lesson)}` : ""}${params.start === "1" ? "&start=1" : ""}`;
+                case "conversation": return params.sessionId ? `/conversation/${encodeURIComponent(params.sessionId)}` : "/conversation";
                 case "listening": {
                     if (params.sessionId) {
                         const query = params.view ? `?view=${encodeURIComponent(params.view)}` : "";
@@ -97,7 +100,7 @@
     };
 
     // Paginate the existing API arrays without changing their response contracts.
-    function paginateList(container, size = 6) {
+    function paginateList(container, size = 6, onPage) {
         if (container.nextElementSibling?.matches(".pagination")) container.nextElementSibling.remove();
         const items = [...container.children].filter(item => !item.hidden);
         const count = Math.max(1, Math.ceil(items.length / size));
@@ -108,6 +111,7 @@
         function render(requested, focus = false) {
             const page = Math.min(count, Math.max(1, Number.isSafeInteger(Number(requested)) ? Number(requested) : 1));
             items.forEach((item, index) => { item.hidden = index < (page - 1) * size || index >= page * size; });
+            onPage?.(items.filter(item => !item.hidden));
             const url = new URL(window.location.href);
             url.searchParams.set("page", page);
             window.history.replaceState(window.history.state, "", url);
@@ -126,11 +130,15 @@
 
     const state = {
         currentUser: null,
+        authenticating: false,
         csrfHeader: "X-XSRF-TOKEN",
         csrfToken: null,
         levels: [],
         lessons: [],
         selectedLevel: "A1",
+        selectedCatalogLessonId: null,
+        catalogSort: "progress",
+        catalogStarting: false,
         session: null,
         sentence: null,
         activeWordIndex: 0,
@@ -158,6 +166,8 @@
         adminSelectedLesson: null,
         adminEditingNew: false,
         historySessions: [],
+        historyPage: null,
+        historyLoadGeneration: 0,
         historyFilter: "all",
         historyViewingSession: false,
         // --- Room (Luyện cùng bạn) ---
@@ -188,6 +198,12 @@
         roomCallTimer: null,
         roomCallReadySent: false,
         roomStudy: null,
+        roomPlayback: null,
+        roomPlaybackSeen: 0,
+        roomAudioEnabled: false,
+        roomAudioPreparedKey: null,
+        roomAudioPreparingKey: null,
+        roomAudioClockOffset: null,
         roomStudySyncing: false,
         roomSharedSessionId: null,
         roomSharedCompleted: false,
@@ -225,10 +241,13 @@
         logoutButton: document.querySelector("#logout-button"),
         views: [...document.querySelectorAll(".view")],
         routeButtons: [...document.querySelectorAll("[data-route]")],
-        navLinks: [...document.querySelectorAll(".nav-link")],
+        navLinks: [...document.querySelectorAll(".nav-link[data-route], .nav-link[data-admin-section]")],
         levelTabs: document.querySelector("#level-tabs"),
         levelDescription: document.querySelector("#level-description"),
         lessonGrid: document.querySelector("#lesson-grid"),
+        catalogSummary: document.querySelector("#catalog-summary"),
+        catalogSort: document.querySelector("#catalog-sort"),
+        lessonDetail: document.querySelector("#lesson-detail"),
         lessonCount: document.querySelector("#lesson-count"),
         headerSessionCount: document.querySelector("#header-session-count"),
         leavePractice: document.querySelector("#leave-practice"),
@@ -241,17 +260,25 @@
         playbackSpeed: document.querySelector("#playback-speed"),
         listeningConsole: document.querySelector(".listening-console"),
         replayCount: document.querySelector("#replay-count"),
+        replayCountLabel: document.querySelector("#replay-count-label"),
+        roomEnableStudyAudio: document.querySelector("#room-enable-study-audio"),
+        roomStudyAudioStatus: document.querySelector("#room-study-audio-status"),
         sentenceTimer: document.querySelector("#sentence-timer"),
         hintCount: document.querySelector("#hint-count"),
         speechSupportNote: document.querySelector("#speech-support-note"),
         wordCompletion: document.querySelector("#word-completion"),
         wordSlots: document.querySelector("#word-slots"),
+        wordClassifications: document.querySelector("#word-classifications"),
+        wordClassificationList: document.querySelector("#word-classification-list"),
+        classificationCount: document.querySelector("#classification-count"),
+        dictationCopyText: document.querySelector("#dictation-copy-text"),
+        copyDictationSelection: document.querySelector("#copy-dictation-selection"),
+        copyDictationAll: document.querySelector("#copy-dictation-all"),
+        dictationCopyStatus: document.querySelector("#dictation-copy-status"),
         dictationForm: document.querySelector("#dictation-form"),
         hintLetter: document.querySelector("#hint-letter"),
         hintWord: document.querySelector("#hint-word"),
         revealSentence: document.querySelector("#reveal-sentence"),
-        feedbackPanel: document.querySelector("#feedback-panel"),
-        classifications: document.querySelector("#error-classifications"),
         practiceStatus: document.querySelector("#practice-status"),
         nextRequirement: document.querySelector("#next-requirement"),
         nextSentence: document.querySelector("#next-sentence"),
@@ -356,12 +383,16 @@
     };
 
     document.addEventListener("DOMContentLoaded", init);
+    window.addEventListener("hashchange", () => updateNavigation(document.body.dataset.route));
 
     // Xử lý Back/Forward của trình duyệt
     window.addEventListener("popstate", async event => {
-        if (!state.currentUser) return; // đang ở auth screen
         const { pathname, search } = window.location;
         const parsed = router.parse(pathname, search);
+        if (!state.currentUser && !isAdminArea && parsed.route === "catalog") {
+            await enterApplication();
+            return;
+        }
         await resolveUrlAndNavigate(parsed, false); // false = không push lại history
     });
 
@@ -376,8 +407,22 @@
                 return;
             }
             state.currentUser = await api("/api/auth/me", {redirectOnUnauthorized: false});
+            const next = new URLSearchParams(location.search).get("next");
+            if (next?.startsWith("/")) {
+                const target = new URL(next, location.origin);
+                if (target.origin === location.origin && target.pathname.startsWith("/admin")) {
+                    location.replace(target.pathname + target.search);
+                    return;
+                }
+            }
             await enterApplication();
         } catch (error) {
+            const publicDestination = router.parse(location.pathname, location.search);
+            if (!isAdminArea && error.status === 401 && publicDestination.route === "catalog") {
+                state.currentUser = null;
+                await enterApplication();
+                return;
+            }
             if (isAdminArea) {
                 if (error.status === 401) showAuthScreen();
                 else {
@@ -397,11 +442,14 @@
             const nextPath = (parsed.route !== "login" && parsed.route !== "register" && parsed.route !== "not-found")
                 ? (pathname + search) : null;
             showAuthScreen(error.status === 401 ? "" : error.message, nextPath);
+        } finally {
+            document.querySelector("#app-loading")?.remove();
         }
     }
 
     function bindEvents() {
         elements.logoutButton.addEventListener("click", logout);
+        bindMobileNavigation();
         elements.accountLink = document.querySelector("#account-link");
         elements.routeButtons.forEach(link => {
             link.addEventListener("click", event => {
@@ -409,13 +457,16 @@
                     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                     event.preventDefault();
                 }
-                navigate(link.dataset.route);
+                elements.mobileNavMenu?.hidePopover?.();
+                document.querySelector(".account-menu")?.removeAttribute("open");
+                navigate(link.dataset.route, link.dataset.view ? {view: link.dataset.view} : {});
             });
         });
         if (isAdminArea) {
             bindAdminEvents();
             return;
         }
+        window.DictaLabAccount.enhancePasswords(document);
         elements.loginTab.addEventListener("click", () => switchAuthMode("login"));
         elements.registerTab.addEventListener("click", () => switchAuthMode("register"));
         [elements.loginTab, elements.registerTab].forEach((tab, index, tabs) => {
@@ -429,6 +480,24 @@
         });
         elements.loginForm.addEventListener("submit", event => submitAuth(event, "login"));
         elements.registerForm.addEventListener("submit", event => submitAuth(event, "register"));
+        document.querySelector("#forgot-password-link").addEventListener("click", () => {
+            try { sessionStorage.setItem("dictalab-reset-email", elements.loginForm.elements.email.value.trim()); }
+            catch (_) { /* The reset form remains usable when browser storage is unavailable. */ }
+        });
+        document.querySelector("#dashboard-load-error button").addEventListener("click", async () => {
+            await refreshDashboard(true);
+            if (document.body.dataset.route === "dashboard" && document.querySelector("#dashboard-load-error").hidden)
+                document.querySelector("#main-content").focus();
+        });
+        document.querySelector("#dashboard-error-bank").addEventListener("click", async () => {
+            await window.DictaLabCoach?.openBank(document.querySelector("#dashboard-bank-panel"));
+            document.querySelector("#dashboard-error-bank").setAttribute("aria-expanded", "true");
+        });
+        document.querySelector("#history-load-error button").addEventListener("click", async () => {
+            await loadHistory();
+            if (document.body.dataset.route === "history" && document.querySelector("#history-load-error").hidden)
+                elements.historyLevelTabs.querySelector('[aria-selected="true"]')?.focus();
+        });
         elements.levelTabs.addEventListener("click", event => {
             const button = event.target.closest("[data-level]");
             if (button) {
@@ -436,6 +505,25 @@
             }
         });
         elements.lessonGrid.addEventListener("click", event => {
+            const selection = event.target.closest("[data-select-lesson]");
+            if (selection) selectCatalogLesson(Number(selection.dataset.selectLesson), true);
+        });
+        elements.catalogSummary.addEventListener("click", event => {
+            const button = event.target.closest("[data-lesson-id]");
+            if (button) startLesson(Number(button.dataset.lessonId));
+        });
+        elements.catalogSort.addEventListener("change", () => {
+            state.catalogSort = elements.catalogSort.value;
+            router.replace("catalog", {level: state.selectedLevel, sort: state.catalogSort});
+            renderLessons();
+            paginateCatalog();
+        });
+        elements.lessonDetail.addEventListener("click", event => {
+            if (event.target.closest("[data-catalog-back]")) {
+                elements.lessonGrid.closest(".catalog-workspace").removeAttribute("data-detail-open");
+                elements.lessonGrid.querySelector('[aria-pressed="true"]')?.focus({preventScroll: true});
+                return;
+            }
             const previewButton = event.target.closest("[data-preview-word]");
             if (previewButton) {
                 playPreviewWord(previewButton);
@@ -449,22 +537,49 @@
         elements.replayButton.addEventListener("click", playSentence);
         elements.playbackSpeed.addEventListener("change", event => {
             state.playbackSpeed = Number(event.target.value) || 1;
+            syncPlaybackSpeedControls();
         });
+        document.querySelectorAll("[data-playback-speed]").forEach(button => button.addEventListener("click", () => {
+            if (elements.playbackSpeed.disabled) return;
+            elements.playbackSpeed.value = button.dataset.playbackSpeed;
+            elements.playbackSpeed.dispatchEvent(new Event("change", {bubbles: true}));
+        }));
         elements.wordSlots.addEventListener("focusin", onWordFocus);
         elements.wordSlots.addEventListener("input", onWordInput);
+        elements.wordSlots.addEventListener("compositionstart", onWordCompositionStart);
+        elements.wordSlots.addEventListener("compositionend", onWordCompositionEnd);
         elements.wordSlots.addEventListener("keydown", onWordKeydown);
         elements.wordSlots.addEventListener("focusout", onWordBlur);
         elements.wordSlots.addEventListener("paste", onSentencePaste);
+        elements.wordClassificationList.addEventListener("click", onClassifyWord);
+        window.visualViewport?.addEventListener("resize", () => {
+            if (!window.matchMedia("(max-width: 760px)").matches || document.body.dataset.route !== "practice") return;
+            const input = document.activeElement;
+            if (!input?.matches("#word-slots input[data-word-index]")) return;
+            requestAnimationFrame(() => {
+                if (document.activeElement !== input) return;
+                const viewport = window.visualViewport;
+                const bounds = input.getBoundingClientRect();
+                if (bounds.bottom > viewport.offsetTop + viewport.height - 24 || bounds.top < viewport.offsetTop + 80) {
+                    input.scrollIntoView({block: "center", behavior: "auto"});
+                }
+            });
+        });
+        elements.copyDictationSelection.addEventListener("click", () => copyDictationText(true));
+        elements.copyDictationAll.addEventListener("click", () => copyDictationText(false));
         elements.hintLetter.addEventListener("click", () => useHint("FIRST_LETTER"));
         elements.hintWord.addEventListener("click", () => useHint("REVEAL_WORD"));
         elements.revealSentence.addEventListener("click", () => useHint("REVEAL_SENTENCE"));
-        elements.classifications.addEventListener("click", onClassifyWord);
         elements.dictationForm.addEventListener("submit", completeSentence);
         elements.reviewSentences.addEventListener("click", playReviewAudio);
         elements.copyAnalysisReport.addEventListener("click", copyAnalysisReport);
         elements.historyLevelTabs.addEventListener("click", event => {
             const tab = event.target.closest("[data-history-level]");
             if (tab) selectHistoryLevel(tab.dataset.historyLevel);
+        });
+        elements.historyEmpty.querySelector("button").addEventListener("click", () => {
+            elements.historyLevelTabs.querySelector('[data-history-level="all"]').focus();
+            selectHistoryLevel("all");
         });
         elements.historyList.addEventListener("click", event => {
             const card = event.target.closest("[data-history-session-id]");
@@ -478,7 +593,7 @@
                 playSentence();
                 return;
             }
-            if (event.key === "Enter" && !event.isComposing && document.body.dataset.route === "practice"
+            if (event.key === "Enter" && !event.isComposing && !composingWords.size && document.body.dataset.route === "practice"
                 && state.sentence?.canComplete && !state.speaking) {
                 const nativeControl = event.target.closest?.("button, select, textarea, a");
                 if (nativeControl) return;
@@ -503,6 +618,7 @@
         elements.roomAdvanceSentence.addEventListener("click", roomAdvanceLesson);
         elements.sharedMicButton.addEventListener("click", () => state.roomLocalStream ? roomToggleMic() : roomJoinCall());
         elements.sharedEnableAudio.addEventListener("click", roomEnableAudio);
+        elements.roomEnableStudyAudio.addEventListener("click", roomEnableStudyAudio);
         elements.sharedReconnect.addEventListener("click", roomReconnect);
         elements.roomLeaveBtn.addEventListener("click", roomLeave);
         elements.roomApproveBtn.addEventListener("click", roomApproveGuest);
@@ -564,9 +680,14 @@
     }
 
     async function refreshCsrf() {
-        const csrf = await api("/api/auth/csrf", {redirectOnUnauthorized: false});
-        state.csrfHeader = csrf.headerName;
-        state.csrfToken = csrf.token;
+        if (!csrfRefreshPromise) {
+            csrfRefreshPromise = api("/api/auth/csrf", {redirectOnUnauthorized: false, cache: "no-store"})
+                .then(csrf => {
+                    state.csrfHeader = csrf.headerName;
+                    state.csrfToken = csrf.token;
+                }).finally(() => { csrfRefreshPromise = null; });
+        }
+        return csrfRefreshPromise;
     }
 
     async function enterApplication() {
@@ -597,13 +718,16 @@
         }
         elements.authScreen.hidden = true;
         elements.appShell.hidden = false;
-        elements.accountName.textContent = state.currentUser.displayName;
-        elements.accountEmail.textContent = state.currentUser.email;
-        elements.adminNavLink.hidden = state.currentUser.role !== "ADMIN";
+        elements.accountName.textContent = state.currentUser?.displayName || "";
+        elements.accountEmail.textContent = state.currentUser?.email || "";
+        elements.adminNavLink.hidden = state.currentUser?.role !== "ADMIN";
+        document.body.classList.toggle("is-guest", !state.currentUser);
+        document.querySelector("#guest-login").hidden = Boolean(state.currentUser);
+        elements.logoutButton.hidden = !state.currentUser;
         renderLessonSkeletons();
         state.levels = await api("/api/v1/catalog/levels");
         renderLevelTabs();
-        await refreshDashboard(false);
+        if (state.currentUser) await refreshDashboard(false);
 
         // Tương thích backward: /?invite=xxx → /rooms/join/xxx
         const legacyInvite = new URLSearchParams(window.location.search).get("invite");
@@ -622,6 +746,12 @@
      * @param {boolean} pushHistory — true khi gọi từ user action (navigate), false khi khởi động / popstate
      */
     async function resolveUrlAndNavigate({ route, params, query }, pushHistory = true) {
+        if (state.session?.sessionId
+            && (route !== "practice" || params.sessionId !== state.session?.sessionId)) resetPracticeInput();
+        if (!isAdminArea && !state.currentUser && !["catalog", "login", "register", "reset-password", "verify-email", "not-found"].includes(route)) {
+            showAuthScreen("Đăng nhập để lưu tiến độ và bắt đầu học.", router.toPath(route, params));
+            return;
+        }
         if (isAdminArea && pushHistory && window.DictaLabAdmin?.canLeave() === false) return;
         if (route.startsWith("admin") !== isAdminArea) {
             location.assign(router.toPath(route, params));
@@ -644,7 +774,7 @@
                     return;
                 }
                 if (pushHistory) router.push(route);
-                else if (!route.startsWith("admin-") && !(route === "support" && query?.has("id"))) router.replace(route);
+                else if (!route.startsWith("admin-") && !(route === "support" && (query?.has("id") || query?.has("category")))) router.replace(route);
                 _showView(route);
                 await window.DictaLabAccount?.show(route);
                 return;
@@ -656,8 +786,16 @@
                 await window.DictaLabListening?.show(params.sessionId);
                 return;
             }
+            case "conversation": {
+                if (pushHistory) router.push("conversation", params);
+                else router.replace("conversation", params);
+                await _showView("conversation");
+                await window.DictaLabConversation?.show(params.sessionId);
+                return;
+            }
             case "login":
             case "register": {
+                if (!state.currentUser) { showAuthScreen(); return; }
                 // Nếu đã đăng nhập thì redirect về catalog
                 router.replace("catalog", { level: state.selectedLevel });
                 await _showView("catalog");
@@ -666,13 +804,30 @@
             }
 
             case "catalog": {
+                if (window.DictaLabLibrary) {
+                    if (pushHistory) router.push("catalog", params);
+                    await _showView("catalog");
+                    await window.DictaLabLibrary.show();
+                    return;
+                }
                 const level = router.validLevels.has(params.level) && params.level !== "all"
                     ? params.level : "A1";
                 state.selectedLevel = level;
-                if (pushHistory) router.push("catalog", { level, page: params.page });
-                else router.replace("catalog", { level, page: params.page });
+                state.catalogSort = params.sort === "curriculum" || !state.currentUser ? "curriculum" : "progress";
+                elements.catalogSort.value = state.catalogSort;
+                elements.catalogSort.disabled = !state.currentUser;
+                state.selectedCatalogLessonId = params.lesson ? Number(params.lesson) : state.selectedCatalogLessonId;
+                if (pushHistory) router.push("catalog", { ...params, level, sort: state.catalogSort });
+                else router.replace("catalog", { ...params, level, sort: state.catalogSort });
                 await _showView("catalog");
                 await selectLevel(level, params.page);
+                if (params.lesson && state.lessons.some(lesson => lesson.id === Number(params.lesson))) {
+                    selectCatalogLesson(Number(params.lesson), true);
+                    if (params.start === "1" && state.currentUser) {
+                        router.replace("catalog", {level, sort: state.catalogSort, lesson: params.lesson});
+                        await startLesson(Number(params.lesson));
+                    }
+                }
                 return;
             }
 
@@ -869,18 +1024,38 @@
      * Hàm nội bộ: chỉ chuyển DOM view (không push history, không load data).
      * Tách riêng để resolveUrlAndNavigate kiểm soát hoàn toàn.
      */
+    function bindMobileNavigation() {
+        elements.mobileNavMore = document.querySelector("#mobile-nav-more");
+        elements.mobileNavMenu = document.querySelector("#mobile-nav-menu");
+        if (!elements.mobileNavMore || !elements.mobileNavMenu?.hidePopover) return;
+        elements.mobileNavMenu.addEventListener("toggle", event => {
+            elements.mobileNavMore.setAttribute("aria-expanded", String(event.newState === "open"));
+        });
+        window.matchMedia("(min-width: 761px)").addEventListener("change", event => {
+            if (event.matches) elements.mobileNavMenu.hidePopover();
+        });
+    }
+
     function _showView(route) {
         // Map route key → view id
         const viewId = {
             catalog: "catalog", practice: "practice", result: "result",
-            history: "history", dashboard: "dashboard", listening: "listening",
+            history: "history", dashboard: "dashboard", listening: "listening", conversation: "conversation",
             room: "room", admin: "admin", account: "account", support: "support",
             "admin-users": "admin-users", "admin-support": "admin-support", "admin-listening": "admin-listening", login: null, register: null
         }[route] || "catalog";
 
         const target = document.querySelector(`#${viewId}-view`);
         if (!target) return;
-        if (document.body.dataset.route === "result" && viewId !== "result") window.DictaLabCoach?.leave();
+        if (viewId !== "practice") resetPracticeInput();
+        if (state.roomStudy && viewId !== "practice") {
+            roomSendWs({type: "audio-ready", position: state.sentence?.position, ready: false});
+            state.roomAudioPreparedKey = null;
+            stopRecordedAudio();
+            window.speechSynthesis?.cancel();
+        }
+        if (["result", "dashboard"].includes(document.body.dataset.route) && viewId !== document.body.dataset.route) window.DictaLabCoach?.leave();
+        if (document.body.dataset.route === "conversation" && viewId !== "conversation") window.DictaLabConversation?.leave();
         if (isAdminArea) {
             stopRecordedAudio();
             const title = {admin: "Bài nghe", "admin-users": "Người dùng", "admin-support": "Yêu cầu hỗ trợ", "admin-listening": "Nghe hiểu"}[viewId];
@@ -889,17 +1064,32 @@
         if (["listening", "admin-listening"].includes(document.body.dataset.route) && viewId !== document.body.dataset.route) window.DictaLabListening?.leave();
         elements.views.forEach(view => view.hidden = view !== target);
         document.body.dataset.route = viewId;
+        if (viewId === "admin") window.DictaLabLibrary?.showAdmin();
+        if (viewId === "practice") roomPrepareStudyAudio();
+        elements.mobileNavMenu?.hidePopover?.();
+        elements.mobileNavMore?.classList.toggle("is-active", ["history", "room", "support", "account"].includes(viewId));
+        elements.mobileNavMore?.setAttribute("aria-label", {
+            history: "Thêm, đang xem Lịch sử", room: "Thêm, đang xem Luyện cùng bạn", support: "Thêm, đang xem Hỗ trợ", account: "Thêm, đang xem Tài khoản"
+        }[viewId] || "Thêm");
+        updateNavigation(viewId);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        document.querySelector("#main-content").focus({ preventScroll: true });
+    }
+
+    function updateNavigation(viewId) {
+        const library = viewId === "admin" && (new URLSearchParams(location.search).get("library") === "1"
+            || location.hash === "#library-management");
         elements.navLinks.forEach(link => {
-            const active = link.dataset.route === viewId;
+            const active = link.dataset.adminSection
+                ? viewId === "admin" && link.dataset.adminSection === (library ? "library" : "lessons")
+                : link.dataset.route === (viewId === "practice" || viewId === "result" ? "catalog" : viewId);
             link.classList.toggle("is-active", active);
             if (active) {
-                link.setAttribute("aria-current", "page");
+                link.setAttribute("aria-current", link.dataset.adminSection === "library" ? "location" : "page");
             } else {
                 link.removeAttribute("aria-current");
             }
         });
-        window.scrollTo({ top: 0, behavior: "smooth" });
-        document.querySelector("#main-content").focus({ preventScroll: true });
     }
 
     function showAuthScreen(message = "", nextPath = null) {
@@ -907,11 +1097,14 @@
             location.replace(`/login?next=${encodeURIComponent(nextPath || location.pathname + location.search)}`);
             return;
         }
+        elements.mobileNavMenu?.hidePopover?.();
         window.DictaLabCoach?.leave();
         window.DictaLabListening?.leave();
+        window.DictaLabConversation?.leave();
         stopRecordedAudio();
         document.body.dataset.route = "login";
         stopTimer();
+        resetPracticeInput();
         state.currentUser = null;
         state.session = null;
         state.sentence = null;
@@ -921,6 +1114,25 @@
         const parsed = router.parse(window.location.pathname, window.location.search);
         const mode = parsed.route === "register" ? "register" : "login";
         nextPath ||= parsed.query.get("next");
+        const destinationNotice = document.querySelector("#auth-destination");
+        if (destinationNotice) {
+            destinationNotice.hidden = true;
+            destinationNotice.textContent = "";
+            try {
+                const target = nextPath?.startsWith("/") ? new URL(nextPath, location.origin) : null;
+                const destination = target?.origin === location.origin ? router.parse(target.pathname, target.search).route : null;
+                const label = destination?.startsWith("admin") ? "trang quản trị" : ({
+                    catalog: "thư viện bài luyện", practice: "bài chép chính tả", listening: "nghe hiểu",
+                    conversation: "hội thoại", history: "lịch sử luyện", result: "kết quả buổi luyện",
+                    dashboard: "tiến bộ", room: "phòng luyện cùng bạn", "room-id": "phòng luyện cùng bạn",
+                    "room-join": "lời mời luyện cùng bạn", account: "tài khoản", support: "hỗ trợ"
+                })[destination];
+                if (label) {
+                    destinationNotice.textContent = `Sau khi đăng nhập, bạn sẽ quay lại ${label}.`;
+                    destinationNotice.hidden = false;
+                }
+            } catch (_) { /* Invalid destinations have no return notice. */ }
+        }
         switchAuthMode(mode);
         elements.authStatus.textContent = message;
         // Lưu next path vào URL để sau đăng nhập redirect về đúng nơi
@@ -935,6 +1147,8 @@
             window.history.replaceState({}, "", "/login");
         }
         window.requestAnimationFrame(() => document.querySelector("#login-email")?.focus());
+        if (["reset-password", "verify-email"].includes(parsed.route)) window.DictaLabGoogleLogin?.hide();
+        else window.DictaLabGoogleLogin?.show(api, completeAuthentication, setAuthBusy);
     }
 
     function switchAuthMode(mode) {
@@ -954,33 +1168,45 @@
 
     async function submitAuth(event, mode) {
         event.preventDefault();
+        if (!setAuthBusy(true)) return;
         const form = event.currentTarget;
         const submitButton = form.querySelector("button[type='submit']");
         const data = Object.fromEntries(new FormData(form).entries());
         submitButton.disabled = true;
         elements.authStatus.textContent = mode === "login" ? "Đang đăng nhập…" : "Đang tạo tài khoản…";
         try {
-            state.currentUser = await api(`/api/auth/${mode}`, {
+            const user = await api(`/api/auth/${mode}`, {
                 method: "POST",
                 body: data,
                 redirectOnUnauthorized: false
             });
             form.reset();
-            elements.authStatus.textContent = "";
-            // Đọc ?next= để redirect về đúng trang sau đăng nhập
-            const nextParam = new URLSearchParams(window.location.search).get("next");
-            const nextUrl = nextParam?.startsWith("/") ? new URL(nextParam, location.origin) : null;
-            const safeNext = nextUrl?.origin === location.origin ? nextUrl.pathname + nextUrl.search : null;
-            if (safeNext) {
-                // Thay URL trước khi enterApplication đọc lại
-                window.history.replaceState({}, "", safeNext);
-            }
-            await enterApplication();
+            await completeAuthentication(user);
         } catch (error) {
             elements.authStatus.textContent = error.message;
         } finally {
             submitButton.disabled = false;
+            setAuthBusy(false);
         }
+    }
+
+    function setAuthBusy(busy) {
+        if (busy && state.authenticating) return false;
+        state.authenticating = busy;
+        document.querySelectorAll(".auth-form button[type='submit'], .auth-tabs button").forEach(button => button.disabled = busy);
+        return true;
+    }
+
+    async function completeAuthentication(user) {
+        state.currentUser = user;
+        await refreshCsrf();
+        elements.authStatus.textContent = "";
+        const nextParam = new URLSearchParams(window.location.search).get("next");
+        const nextUrl = nextParam?.startsWith("/") ? new URL(nextParam, location.origin) : null;
+        const safeNext = nextUrl?.origin === location.origin ? nextUrl.pathname + nextUrl.search : null;
+        if (safeNext) window.history.replaceState({}, "", safeNext);
+        await enterApplication();
+        window.DictaLabGoogleLogin?.hide();
     }
 
     async function logout() {
@@ -988,6 +1214,7 @@
         elements.logoutButton.disabled = true;
         try {
             if (state.room && !await roomLeave()) return;
+            resetPracticeInput();
             await api("/api/auth/logout", {method: "POST", redirectOnUnauthorized: false});
         } catch (error) {
             if (error.status !== 401) {
@@ -1011,6 +1238,7 @@
         const routeMap = {
             catalog:   { route: "catalog",   params: { level: params.level || state.selectedLevel } },
             listening: { route: "listening", params: { sessionId: params.sessionId || null, level: params.level || "", page: params.page || 1, view: params.view || "", edit: params.edit || "" } },
+            conversation: { route: "conversation", params: { sessionId: params.sessionId || null } },
             history:   { route: "history",   params: { level: params.level || state.historyFilter || "all" } },
             dashboard: { route: "dashboard", params: {} },
             account:   { route: "account", params: {} },
@@ -1034,6 +1262,7 @@
     }
 
     function renderLevelTabs() {
+        if (window.DictaLabLibrary) { elements.levelTabs.hidden = true; return; }
         elements.levelTabs.innerHTML = state.levels.map((level, index) => `
             <button class="level-tab" id="level-tab-${level.code}" type="button" role="tab"
                     aria-selected="${level.code === state.selectedLevel}" aria-controls="lesson-grid"
@@ -1061,6 +1290,8 @@
 
     let catalogRequest = 0;
     async function selectLevel(level, page = 1) {
+        if (window.DictaLabLibrary) { await window.DictaLabLibrary.show(); return; }
+        if (state.catalogStarting) return;
         const request = ++catalogRequest;
         state.selectedLevel = level;
         document.querySelectorAll('a[data-route="catalog"]').forEach(link => {
@@ -1075,17 +1306,24 @@
         elements.levelDescription.textContent = levelInfo?.description || "";
         renderLessonSkeletons();
         // Cập nhật URL query param (dùng replaceState để không tạo entry mới)
-        router.replace("catalog", { level, page });
+        const requestedLesson = new URLSearchParams(location.search).get("lesson");
+        router.replace("catalog", {level, page, sort: state.catalogSort, lesson: requestedLesson});
         try {
             const lessons = await api(`/api/v1/catalog/lessons?level=${encodeURIComponent(level)}`);
             if (request !== catalogRequest || document.body.dataset.route !== "catalog") return;
             state.lessons = lessons;
             renderLessons();
-            paginateList(elements.lessonGrid);
+            if (requestedLesson) {
+                const position = catalogList().findIndex(lesson => lesson.id === Number(requestedLesson));
+                if (position >= 0) router.replace("catalog", {level, page: Math.floor(position / 6) + 1, sort: state.catalogSort, lesson: requestedLesson});
+            }
+            paginateCatalog();
         } catch (error) {
             if (request !== catalogRequest || document.body.dataset.route !== "catalog") return;
             elements.lessonGrid.setAttribute("aria-busy", "false");
             elements.lessonGrid.innerHTML = `<p>Không tải được bài luyện: ${escapeHtml(error.message)}</p>`;
+            elements.lessonDetail.setAttribute("aria-busy", "false");
+            elements.lessonDetail.innerHTML = '<p>Không tải được chi tiết. Hãy chọn lại cấp độ để thử lại.</p>';
         }
     }
 
@@ -1094,31 +1332,129 @@
         elements.lessonGrid.setAttribute("aria-busy", "true");
         elements.lessonGrid.innerHTML = '<div class="lesson-skeleton"></div><div class="lesson-skeleton"></div>';
         elements.lessonCount.textContent = "Đang tải…";
+        elements.catalogSummary.replaceChildren();
+        elements.lessonDetail.setAttribute("aria-busy", "true");
+        elements.lessonDetail.innerHTML = '<p role="status">Đang tải chi tiết bài…</p>';
+        elements.lessonGrid.closest(".catalog-workspace").removeAttribute("data-detail-open");
+    }
+
+    function catalogDescription(lesson) {
+        // Only localize bundled boilerplate; preserve descriptions edited by the author.
+        if (!/^Short human-recorded ELLLO sentences for /.test(lesson.description || "")) return lesson.description || "";
+        const objectives = {
+            "Be Verbs - Present Simple": "Làm quen ở trường: nghe lời giới thiệu và câu hỏi với am/is/are.",
+            "Yes / No Questions - Be Verbs": "Nghe câu hỏi có/không và câu trả lời ngắn với động từ be.",
+            "Likes and Dislikes": "Nghe sở thích về món ăn, thức uống và cách nói thích/không thích.",
+            "Verbs - Present Simple": "Nghe các hoạt động thường ngày và câu hỏi về thói quen.",
+            "Yes / No Questions with Verbs": "Nhận biết do/do not trong câu hỏi và câu trả lời về hoạt động hằng ngày.",
+            "Present Simple": "Nghe thói quen và sự việc thường xuyên ở thì hiện tại đơn.",
+            "Third Person Singular - Present Simple": "Chú ý động từ ngôi thứ ba và đuôi s/es trong câu kể về người khác.",
+            "Present Continuous": "Nhận biết am/is/are và động từ đuôi ing khi nói về việc đang diễn ra.",
+            "Will / Future Tense": "Nhận biết will khi người nói nhắc đến tương lai.",
+            "Going to / Future Tense": "Nghe dự định và kế hoạch với cấu trúc going to.",
+            "Do for Emphasis": "Nghe cách dùng do/does/did để nhấn mạnh ý nói.",
+            "Causative Verbs": "Nghe cấu trúc diễn tả việc nhờ, khiến hoặc để ai làm việc gì.",
+            "Used To for Past Tense": "Nghe thói quen và trạng thái trước đây với used to.",
+            "Would for Past Tense": "Nghe cách kể thói quen trong quá khứ với would.",
+            "Should for Suggestions": "Nhận biết lời khuyên và đề xuất với should.",
+            "Simple Passive": "Nghe câu bị động và nhận biết đối tượng chịu tác động.",
+            "Past Passive": "Nghe câu bị động kể về sự việc trong quá khứ.",
+            "Was able to": "Nghe cách kể việc đã làm được trong quá khứ.",
+            "Was going to": "Nghe dự định trong quá khứ với was/were going to.",
+            "Adverb Placement": "Chú ý vị trí trạng từ và phần ý nghĩa được bổ sung trong câu."
+        };
+        return objectives[lesson.title] || lesson.description;
+    }
+
+    function catalogList() {
+        const rank = lesson => lesson.inProgress ? 0 : lesson.completed ? 2 : 1;
+        return state.catalogSort === "progress" && state.currentUser
+            ? [...state.lessons].sort((a, b) => rank(a) - rank(b)) : state.lessons;
+    }
+
+    function paginateCatalog() {
+        paginateList(elements.lessonGrid, 6, visible => {
+            if (!visible.some(item => Number(item.dataset.catalogLesson) === state.selectedCatalogLessonId)) {
+                selectCatalogLesson(Number(visible[0]?.dataset.catalogLesson));
+            }
+        });
     }
 
     function renderLessons() {
         elements.lessonGrid.setAttribute("aria-busy", "false");
-        elements.lessonCount.textContent = `${state.lessons.length} bài phù hợp`;
+        const completed = state.lessons.filter(lesson => lesson.completed).length;
+        elements.lessonCount.textContent = state.currentUser ? `${completed}/${state.lessons.length} bài đã hoàn thành` : `${state.lessons.length} bài luyện`;
+        const continuing = state.lessons.find(lesson => lesson.inProgress && !lesson.completed)
+            || state.lessons.find(lesson => lesson.inProgress);
+        const next = continuing || state.lessons.find(lesson => !lesson.completed);
+        elements.catalogSummary.innerHTML = state.lessons.length ? `
+            <p>${!state.currentUser ? "Xem bài và từ vựng tự do. Đăng nhập khi bắt đầu học để lưu tiến độ." : completed === state.lessons.length ? "Bạn đã hoàn thành tất cả bài trong cấp độ này. Có thể chọn bài để luyện lại hoặc chuyển cấp độ." : "Chọn bài phù hợp hoặc tiếp tục bài còn dang dở."}</p>
+            ${next && state.currentUser && !state.room ? `<button type="button" class="text-button" data-lesson-id="${next.id}">${continuing ? (next.completed ? "Tiếp tục luyện lại" : "Tiếp tục học") : "Học bài chưa hoàn thành"}: ${escapeHtml(next.title)} →</button>` : ""}
+            <p class="catalog-order-note">${state.catalogSort === "progress" && state.currentUser ? "Đang học → Chưa học → Đã hoàn thành. " : "Thứ tự theo giáo trình và biên tập. "}Mã bài giữ cố định khi đổi cách sắp xếp.</p>` : "";
         if (!state.lessons.length) {
             elements.lessonGrid.innerHTML = "<p>Level này chưa có bài luyện.</p>";
+            state.selectedCatalogLessonId = null;
+            elements.lessonDetail.setAttribute("aria-busy", "false");
+            elements.lessonDetail.innerHTML = '<p>Chọn cấp độ khác để tìm bài luyện.</p>';
             return;
         }
-        elements.lessonGrid.innerHTML = state.lessons.map((lesson, index) => {
-            const actionLabel = state.room ? "Chọn cho cả hai" : lesson.inProgress ? "Tiếp tục" : lesson.completed ? "Làm lại" : "Bắt đầu";
-            const progressLabel = lesson.inProgress
-                ? (lesson.completed ? "Đang luyện lại" : "Đang học")
-                : lesson.completed ? "Đã hoàn thành" : "Chưa bắt đầu";
-            const stateClass = lesson.inProgress ? "is-in-progress" : lesson.completed ? "is-completed" : "is-new";
+        elements.lessonGrid.innerHTML = catalogList().map(lesson => `
+            <article class="catalog-list-item ${lesson.completed ? "is-completed" : ""}" data-catalog-lesson="${lesson.id}">
+                <button type="button" class="catalog-select" data-select-lesson="${lesson.id}"
+                        aria-pressed="false" aria-controls="lesson-detail">
+                    <span class="lesson-card-number" aria-hidden="true">${String(state.lessons.indexOf(lesson) + 1).padStart(2, "0")}</span>
+                    <span class="catalog-list-copy">
+                        ${state.currentUser ? `<span class="lesson-progress-heading"><strong>${lesson.completed ? "✓ Đã hoàn thành" : lesson.inProgress ? "Đang học" : "Chưa bắt đầu"}</strong><span>${lesson.completed ? 100 : Math.min(99, lesson.progressPercent)}%</span>${lesson.completed && lesson.inProgress ? `<span>· Luyện lại ${lesson.progressPercent}%</span>` : ""}</span>` : '<span class="lesson-progress-heading">Xem trước bài luyện</span>'}
+                        <span class="catalog-list-source">${lesson.topic === "ELLLO Grammar" ? "Luyện theo cấu trúc" : lesson.slug?.startsWith("ai-b1-") || lesson.topic?.includes("British Council") ? "Luyện theo tình huống" : "Bài luyện bổ sung"} · ${escapeHtml(lesson.topic)}</span>
+                        <strong class="catalog-list-title">${escapeHtml(lesson.title)}</strong>
+                        <span class="catalog-list-description">${escapeHtml(catalogDescription(lesson))}</span>
+                    </span>
+                    <span class="catalog-row-end"><span class="catalog-selected-label">Đang xem chi tiết</span><span class="catalog-list-meta">${lesson.sentenceCount} câu · ~${lesson.estimatedMinutes} phút</span></span>
+                    <span class="catalog-list-preview"><span class="catalog-list-mobile-meta">${lesson.sentenceCount} câu · ~${lesson.estimatedMinutes} phút</span><span>Từ khó:</span> ${(lesson.previewWords || []).filter(item => !item.properName).map(item => `<span class="catalog-word">${escapeHtml(item.word)}</span>`).join(" ")}${lesson.previewWords?.some(item => item.properName) ? ` <span>+${lesson.previewWords.filter(item => item.properName).length} tên riêng</span>` : ""}<span class="catalog-select-label">Xem bảng từ →</span></span>
+                </button>
+            </article>`).join("");
+        const selected = state.lessons.find(lesson => lesson.id === state.selectedCatalogLessonId) || catalogList()[0];
+        selectCatalogLesson(selected.id);
+    }
+
+    function selectCatalogLesson(lessonId, openDetail = false) {
+        if (state.catalogStarting) return;
+        const lesson = state.lessons.find(item => item.id === lessonId);
+        if (!lesson) return;
+        if (window.DictaLabLibrary) state.selectedLevel = lesson.level;
+        state.selectedCatalogLessonId = lesson.id;
+        elements.lessonGrid.querySelectorAll("[data-select-lesson]").forEach(button => {
+            const selected = Number(button.dataset.selectLesson) === lesson.id;
+            button.setAttribute("aria-pressed", String(selected));
+            button.closest(".catalog-list-item").classList.toggle("is-selected", selected);
+        });
+        renderCatalogDetail(lesson);
+        if (openDetail) {
+            elements.lessonGrid.closest(".catalog-workspace").setAttribute("data-detail-open", "");
+            if (window.matchMedia("(max-width: 760px)").matches) {
+                elements.lessonDetail.querySelector("h3")?.focus({preventScroll: true});
+                elements.lessonDetail.scrollIntoView({block: "start"});
+            }
+        }
+    }
+
+    function renderCatalogDetail(lesson) {
+        elements.lessonDetail.setAttribute("aria-busy", "false");
+        const index = state.lessons.findIndex(item => item.id === lesson.id);
+            const actionLabel = state.room ? "Chọn cho cả hai" : lesson.inProgress ? "Tiếp tục" : lesson.completed ? "Luyện lại" : "Bắt đầu";
+            const progressLabel = lesson.completed ? "✓ Đã hoàn thành" : lesson.inProgress ? "Đang học" : "Chưa bắt đầu";
+            const progress = lesson.completed ? 100 : Math.min(99, lesson.progressPercent);
+            const stateClass = lesson.completed ? "is-completed" : lesson.inProgress ? "is-in-progress" : "is-new";
             const previewGroups = [
-                ["Từ khó", lesson.previewWords?.filter(item => !item.properName) || []],
-                ["Tên riêng", lesson.previewWords?.filter(item => item.properName) || []]
+                ["Từ vựng quan trọng (nghe trước)", lesson.previewWords?.filter(item => !item.properName) || []],
+                ["Tên riêng & địa danh trong bài", lesson.previewWords?.filter(item => item.properName) || []]
             ].filter(([, items]) => items.length);
             const preview = previewGroups.length ? `
                 <div class="lesson-preview" role="group" aria-label="Từ cần nghe trước">
-                    <span class="lesson-preview-label">Nghe trước · không tính trọng số CEFR</span>
+                    <span class="lesson-preview-label sr-only">Nghe trước · không tính trọng số CEFR</span>
                     ${previewGroups.map(([label, items]) => `
                         <div class="lesson-preview-group">
-                            <strong>${label}</strong>
+                            <div class="lesson-preview-heading"><strong>${label}</strong><small>${items.some(item => item.properName) ? `${items.length} từ` : "Không tính CEFR"}</small></div>
                             <div>${items.map(item => `
                                 <button type="button" data-preview-word="${escapeHtml(item.word)}"
                                         data-preview-lesson-id="${lesson.id}"
@@ -1130,36 +1466,34 @@
                                 </button>`).join("")}</div>
                         </div>`).join("")}
                 </div>` : "";
-            return `
+            elements.lessonDetail.innerHTML = `
+            <div class="catalog-detail-nav"><button type="button" class="text-button catalog-back" data-catalog-back>← Danh sách bài luyện</button><span>Bài ${String(index + 1).padStart(2, "0")}/${String(state.lessons.length).padStart(2, "0")}</span></div>
             <article class="lesson-card ${stateClass}">
-                <span class="lesson-card-number" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span>
+                <div class="catalog-detail-heading">${state.currentUser ? `<span>${progressLabel}</span><span>${progress}%</span>` : '<span>Xem trước bài</span>'}<span>${escapeHtml(lesson.topic)} · ${escapeHtml(state.selectedLevel)}</span></div>
                 <div>
-                    <div class="lesson-progress-heading">
-                        <strong>${progressLabel}</strong>
-                        <span>${lesson.progressPercent}%</span>
-                    </div>
                     <div class="lesson-progress-bar" role="progressbar"
                          aria-label="Tiến độ bài ${escapeHtml(lesson.title)}"
-                         aria-valuemin="0" aria-valuemax="100" aria-valuenow="${lesson.progressPercent}">
-                        <span style="width: ${lesson.progressPercent}%"></span>
+                         aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}">
+                        <span style="width: ${progress}%"></span>
                     </div>
-                    <h3>${escapeHtml(lesson.title)}</h3>
-                    <p>${escapeHtml(lesson.description)}</p>
-                    <div class="lesson-meta" role="group" aria-label="Thông tin bài luyện">
-                        <span>${escapeHtml(lesson.topic)}</span>
-                        <span>${lesson.sentenceCount} câu</span>
-                        <span>~${lesson.estimatedMinutes} phút</span>
-                    </div>
-                    ${preview}
+                    <p class="section-index">Bài ${String(index + 1).padStart(2, "0")} · Tổng quan</p>
+                    <h3 tabindex="-1">${escapeHtml(lesson.title)}</h3>
+                    <p>${escapeHtml(catalogDescription(lesson))}</p>
                 </div>
+                ${state.currentUser && lesson.completed ? `<p class="catalog-completion-note">${lesson.inProgress ? `Lượt luyện lại đang ở ${lesson.progressPercent}%. ` : ""}Bạn đã hoàn thành bài này. Luyện lại không xóa kết quả cũ. 100% là tiến độ hoàn thành, không phải điểm chính xác.</p>` : ""}
                 <button class="start-lesson" type="button" data-lesson-id="${lesson.id}"
-                        aria-label="${actionLabel} bài ${escapeHtml(lesson.title)}">
-                    <strong>${actionLabel}</strong>
+                        aria-label="${!state.currentUser ? "Đăng nhập để học" : actionLabel} bài ${escapeHtml(lesson.title)}">
+                    <strong>${!state.currentUser ? "Đăng nhập để học bài này" : actionLabel + (state.room ? "" : " bài luyện")}</strong>
                     <span aria-hidden="true">→</span>
                 </button>
+                <div class="lesson-meta" role="group" aria-label="Thông tin bài luyện"><span>Quy mô<strong>${lesson.sentenceCount} câu</strong></span><span>Thời lượng<strong>~${lesson.estimatedMinutes} phút</strong></span><span>Nguồn ngữ liệu<strong>${escapeHtml(lesson.topic)}</strong></span></div>
+                ${preview}
+                <aside class="catalog-method"><strong>Cách luyện</strong><p>Nghe một câu → Điền từng từ → Nhìn lỗi và nghe lại.</p></aside>
+                <div class="catalog-room-link"><span>Muốn học cùng bạn bè?</span><a href="/rooms">${state.room ? "Về phòng đang học" : "Tạo phòng luyện nhóm"} <span aria-hidden="true">→</span></a></div>
             </article>
         `;
-        }).join("");
+        setCatalogBusy(state.catalogStarting);
+        window.DictaLabLibrary?.decorateDetail(lesson);
     }
 
     async function playPreviewWord(button) {
@@ -1170,7 +1504,7 @@
             const audioUrl = button.dataset.previewAudioUrl;
             if (audioUrl && button.dataset.previewStart && button.dataset.previewEnd) {
                 await loadAudioBuffer(audioUrl);
-                await api("/api/v1/catalog/preview-exposure", {method: "POST", body: {
+                if (state.currentUser) await api("/api/v1/catalog/preview-exposure", {method: "POST", body: {
                     lessonId: Number(button.dataset.previewLessonId), audioUrl}});
                 await playRecordedAudio(audioUrl, button.dataset.previewStart, button.dataset.previewEnd);
             } else {
@@ -1185,6 +1519,12 @@
     }
 
     async function startLesson(lessonId) {
+        if (state.catalogStarting) return;
+        if (!state.currentUser) {
+            const next = window.DictaLabLibrary?.returnUrl(lessonId) || router.toPath("catalog", {level: state.selectedLevel, sort: state.catalogSort, lesson: lessonId, start: "1"});
+            showAuthScreen("Đăng nhập để bắt đầu bài đã chọn và lưu tiến độ.", next);
+            return;
+        }
         setCatalogBusy(true);
         try {
             if (state.room) {
@@ -1225,8 +1565,17 @@
     }
 
     function setCatalogBusy(busy) {
-        elements.lessonGrid.querySelectorAll("button").forEach(button => button.disabled = busy);
+        state.catalogStarting = busy;
+        document.querySelectorAll("#level-tabs button, .catalog-workspace button:not([data-catalog-back]):not([data-page])")
+            .forEach(button => button.disabled = busy);
+        if (elements.catalogSort) elements.catalogSort.disabled = busy || !state.currentUser;
+        const pageCount = Math.max(1, Math.ceil(state.lessons.length / 6));
+        elements.lessonGrid.nextElementSibling?.querySelectorAll("[data-page]").forEach(button => {
+            const page = Number(button.dataset.page);
+            button.disabled = busy || page < 1 || page > pageCount;
+        });
         elements.lessonGrid.setAttribute("aria-busy", String(busy));
+        elements.lessonDetail.setAttribute("aria-busy", String(busy));
     }
 
     function renderPractice(newSentence = false) {
@@ -1235,8 +1584,11 @@
             return;
         }
         if (newSentence) {
+            resetPracticeInput();
             state.wordDrafts.clear();
             state.wordAttemptStartedAt.clear();
+            elements.dictationCopyText.value = "";
+            elements.dictationCopyStatus.textContent = "";
         }
         elements.practiceLevel.textContent = state.session.level;
         elements.practiceTitle.textContent = state.session.lessonTitle;
@@ -1248,7 +1600,7 @@
         elements.sentencePosition.textContent = sentence.position;
         elements.sentenceTotal.textContent = sentence.totalSentences;
         elements.sentenceProgress.style.width = `${sentence.position / sentence.totalSentences * 100}%`;
-        elements.replayCount.textContent = sentence.replayCount;
+        elements.replayCount.textContent = shared ? (state.roomPlayback?.replayCount || 0) : sentence.replayCount;
         elements.hintCount.textContent = sentence.hintCount + sentence.revealCount;
         if (newSentence) {
             resetTimer();
@@ -1257,12 +1609,14 @@
                 : "Nhấn Nghe câu để bắt đầu.");
         }
         renderWordSlots();
-        renderClassifications();
+        renderWordClassifications(newSentence);
         updatePracticeControls();
         if (shared) roomRenderStudy(state.roomStudy);
     }
 
     function renderWordSlots() {
+        // Replacing an active IME control would cancel its native composition.
+        if (composingWords.size) return;
         const words = state.sentence.words;
         const focused = document.activeElement?.dataset?.wordIndex;
         if (focused !== undefined) {
@@ -1275,10 +1629,12 @@
                 ? (word.userInput || word.firstLetter || "")
                 : draft;
             const classes = ["word-slot"];
+            const wrong = Boolean(word.userInput && !word.correct && !word.revealed
+                && (draft === undefined || draft.trim() === word.userInput.trim()));
             if (word.prefilled) classes.push("is-prefilled");
             else if (word.correct) classes.push("is-correct");
             if (word.revealed) classes.push("is-revealed");
-            if (word.userInput && !word.correct && !word.revealed) classes.push("is-wrong");
+            if (wrong) classes.push("is-wrong");
             const hint = word.firstLetter
                 ? `<span class="slot-hint" aria-hidden="true">Bắt đầu: ${escapeHtml(word.firstLetter)}</span>`
                 : "";
@@ -1294,7 +1650,7 @@
                               style="width: calc(${width}ch + 24px)" placeholder="${escapeHtml(word.mask)}"
                               value="${escapeAttribute(inputValue)}" ${word.correct ? "readonly aria-readonly=\"true\"" : ""}
                               ${word.prefilled ? "tabindex=\"-1\"" : ""}
-                              aria-invalid="${word.userInput && !word.correct ? "true" : "false"}">
+                              aria-invalid="${wrong ? "true" : "false"}">
                    </label>`;
             const before = word.punctuationBefore
                 ? `<span class="word-punctuation before">${escapeHtml(word.punctuationBefore)}</span>`
@@ -1302,18 +1658,112 @@
             const after = word.punctuationAfter
                 ? `<span class="word-punctuation after">${escapeHtml(word.punctuationAfter)}</span>`
                 : "";
-            return `<span class="dictation-token">${before}<span class="${classes.join(" ")}" `
-                + `data-slot-index="${word.index}">${hint}${control}</span>${after}</span>`;
+            return `<span class="dictation-token"><span class="${classes.join(" ")}" `
+                + `data-slot-index="${word.index}">${hint}`
+                + `<span class="word-answer">${before}${control}${after}</span></span></span>`;
         }).join("");
 
         const answerable = words.filter(word => !word.prefilled);
         const resolved = answerable.filter(word => word.correct || word.revealed).length;
         elements.wordCompletion.textContent = `${resolved}/${answerable.length} từ`;
+        refreshDictationCopy();
         roomQueueDraft();
+    }
+
+    function renderWordClassifications(newSentence = false) {
+        const words = (state.sentence?.words || []).filter(word => word.errorType);
+        elements.wordClassifications.hidden = words.length === 0;
+        if (newSentence || !words.length) elements.wordClassifications.open = false;
+        elements.classificationCount.textContent = `${words.length} từ`;
+        elements.wordClassificationList.innerHTML = words.map(word => `
+            <div class="word-classification" role="group" aria-label="Phân loại lỗi của từ ${word.index + 1}">
+                <span class="word-classification-label">Từ ${word.index + 1}
+                    <strong>${escapeHtml(word.revealed ? word.revealedText : (word.userInput || word.mask))}</strong>
+                </span>
+                <span class="choice-buttons">
+                    <button type="button" data-word-index="${word.index}" data-error-type="KNOWN_BUT_MISSED"
+                            aria-pressed="${word.errorType === "KNOWN_BUT_MISSED"}">Biết nhưng lỡ</button>
+                    <button type="button" data-word-index="${word.index}" data-error-type="UNKNOWN"
+                            aria-pressed="${word.errorType === "UNKNOWN"}">Từ mới</button>
+                </span>
+            </div>
+        `).join("");
+    }
+
+    function buildVisibleDictationSentence() {
+        return (state.sentence?.words || []).map(word => {
+            const input = elements.wordSlots.querySelector(`input[data-word-index="${word.index}"]`);
+            const revealed = elements.wordSlots.querySelector(`[data-slot-index="${word.index}"] .revealed-word`);
+            const value = (input?.value ?? revealed?.textContent ?? "").trim();
+            return value ? `${word.punctuationBefore || ""}${value}${word.punctuationAfter || ""}` : "";
+        }).filter(Boolean).join(" ");
+    }
+
+    function refreshDictationCopy() {
+        const text = buildVisibleDictationSentence();
+        // Leave selection untouched when a background word check doesn't change the text.
+        if (elements.dictationCopyText.value !== text) {
+            elements.dictationCopyText.value = text;
+            elements.dictationCopyStatus.textContent = "";
+        }
+        elements.copyDictationAll.disabled = !text;
+    }
+
+    async function copyDictationText(selectionOnly) {
+        const field = elements.dictationCopyText;
+        const sourceText = field.value;
+        const sessionId = state.session?.sessionId;
+        const sentenceId = state.sentence?.sentenceId;
+        const route = document.body.dataset.route;
+        const start = selectionOnly ? field.selectionStart : 0;
+        const end = selectionOnly ? field.selectionEnd : field.value.length;
+        const text = field.value.slice(start, end);
+        if (!text.trim()) {
+            elements.dictationCopyStatus.textContent = selectionOnly
+                ? "Hãy bôi chọn từ hoặc cụm từ trong vùng câu bên trên trước."
+                : "Chưa có nội dung để sao chép.";
+            return;
+        }
+        const button = selectionOnly ? elements.copyDictationSelection : elements.copyDictationAll;
+        button.disabled = true;
+        let copied = false;
+        let usedFallback = false;
+        try {
+            if (navigator.clipboard?.writeText && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                copied = true;
+            }
+        } catch (_error) {
+            // HTTP deployments and denied clipboard permission can still use native copy.
+        }
+        // Clipboard permission can finish after the learner edits or leaves this sentence.
+        if (state.session?.sessionId !== sessionId || state.sentence?.sentenceId !== sentenceId
+            || document.body.dataset.route !== route || field.value !== sourceText) {
+            button.disabled = !field.value;
+            return;
+        }
+        try {
+            if (!copied) {
+                usedFallback = true;
+                copied = copyTextWithSelection(text);
+            }
+        } catch (_error) {
+            copied = false;
+        } finally {
+            button.disabled = selectionOnly ? false : !field.value;
+        }
+        if ((usedFallback || !copied) && field.value.slice(start, end) === text) {
+            field.focus({preventScroll: true});
+            field.setSelectionRange(start, end);
+        }
+        elements.dictationCopyStatus.textContent = copied
+            ? (selectionOnly ? "Đã sao chép phần đã chọn." : "Đã sao chép câu đang hiển thị.")
+            : "Không thể sao chép tự động. Nhấn Ctrl+C (Mac: ⌘C) để sao chép phần đã chọn.";
     }
 
     function updatePracticeControls() {
         const sentence = state.sentence;
+        if (!sentence) return;
         const currentWord = sentence.words[state.activeWordIndex];
         const canUseWordHint = sentence.hasListened && !state.speaking && currentWord
             && !currentWord.correct && !currentWord.revealed;
@@ -1326,14 +1776,36 @@
             elements.hintWord.disabled = true;
             elements.revealSentence.disabled = true;
         }
-        elements.replayButton.disabled = state.speaking;
-        elements.playbackSpeed.disabled = state.speaking;
+        const shared = state.roomSharedSessionId === state.session?.sessionId && Boolean(state.roomStudy);
+        const playback = shared ? state.roomPlayback : null;
+        const sharedBusy = Boolean(playback?.playing);
+        if (shared) elements.roomAdvanceSentence.disabled = sharedBusy || !state.roomStudy.hostReady || !state.roomStudy.guestReady;
+        elements.replayButton.disabled = state.speaking || (shared && (!state.roomIsHost || sharedBusy
+            || !playback?.hostAudioReady || !playback?.guestAudioReady || state.roomWs?.readyState !== WebSocket.OPEN));
+        elements.playbackSpeed.disabled = state.speaking || (shared && (!state.roomIsHost || sharedBusy));
+        syncPlaybackSpeedControls();
+        elements.replayButton.querySelector("strong").textContent = shared ? "Nghe chung" : "Nghe câu";
+        elements.replayCountLabel.textContent = shared ? "Lượt nghe chung" : "Lượt nghe";
+        elements.roomEnableStudyAudio.hidden = !shared || (state.roomAudioEnabled && state.audioContext?.state === "running"
+            && (state.roomIsHost ? playback?.hostAudioReady : playback?.guestAudioReady));
+        elements.roomStudyAudioStatus.hidden = !shared;
+        if (shared) {
+            elements.replayCount.textContent = playback?.replayCount || 0;
+            elements.roomStudyAudioStatus.textContent = !sentence.audioUrl
+                ? "Bài này chưa có file audio để nghe chung. Hãy rời phòng và chọn bài có audio."
+                : !state.roomAudioEnabled || state.audioContext?.state !== "running"
+                ? "Bấm Bật nghe chung một lần để cho phép phát âm thanh."
+                : sharedBusy ? "Đang phát câu cho cả hai."
+                    : !playback?.hostAudioReady || !playback?.guestAudioReady ? "Đang chờ cả hai bật nghe chung và tải audio."
+                        : state.roomIsHost ? "Bấm Nghe chung để cả hai nghe; tốc độ do chủ phòng chọn."
+                            : "Chủ phòng bấm Nghe chung để phát câu cho cả hai.";
+        }
         elements.wordSlots.querySelectorAll("input").forEach(input => {
             const word = sentence.words[Number(input.dataset.wordIndex)];
             input.disabled = !sentence.hasListened || (Boolean(state.roomStudy) && state.roomReady);
             input.readOnly = Boolean(word?.correct);
         });
-        elements.nextSentence.disabled = !sentence.canComplete || state.speaking || (Boolean(state.roomStudy) && state.roomReady);
+        elements.nextSentence.disabled = !sentence.canComplete || state.speaking || sharedBusy || (Boolean(state.roomStudy) && state.roomReady);
         elements.nextSentence.firstChild.textContent = state.roomStudy ? "Sẵn sàng " : "Câu tiếp theo ";
 
         if (!sentence.hasListened) {
@@ -1346,6 +1818,60 @@
             const remaining = sentence.words.filter(word => !word.correct && !word.revealed).length;
             elements.nextRequirement.textContent = `Còn ${remaining} từ cần hoàn thành.`;
         }
+    }
+
+    const wordCheckTimers = new Map();
+    const wordChecks = new Map();
+    const composingWords = new Set();
+    let practiceInputGeneration = 0;
+
+    function practiceInputContext() {
+        const generation = practiceInputGeneration;
+        const userId = state.currentUser?.id;
+        const sessionId = state.session?.sessionId;
+        const sentenceId = state.sentence?.sentenceId;
+        return () => generation === practiceInputGeneration && userId === state.currentUser?.id
+            && sessionId === state.session?.sessionId && sentenceId === state.sentence?.sentenceId
+            && document.body.dataset.route === "practice";
+    }
+
+    function cancelWordCheckTimer(index) {
+        window.clearTimeout(wordCheckTimers.get(index));
+        wordCheckTimers.delete(index);
+    }
+
+    function resetPracticeInput() {
+        practiceInputGeneration++;
+        for (const timer of wordCheckTimers.values()) window.clearTimeout(timer);
+        wordCheckTimers.clear();
+        wordChecks.clear();
+        composingWords.clear();
+        state.checkingWords.clear();
+        state.completeAfterPendingCheck = false;
+        state.completingSentence = false;
+        stopRecordedAudio();
+        window.speechSynthesis?.cancel();
+        state.speaking = false;
+        elements.listeningConsole?.classList.remove("is-speaking");
+    }
+
+    function onWordCompositionStart(event) {
+        const input = event.target.closest("input[data-word-index]");
+        if (!input) return;
+        const index = Number(input.dataset.wordIndex);
+        composingWords.add(index);
+        cancelWordCheckTimer(index);
+        state.completeAfterPendingCheck = false;
+    }
+
+    function onWordCompositionEnd(event) {
+        const input = event.target.closest("input[data-word-index]");
+        if (!input) return;
+        composingWords.delete(Number(input.dataset.wordIndex));
+        onWordInput(event);
+        const focus = captureWordFocus();
+        renderPractice(false);
+        if (focus) restoreWordFocus(focus);
     }
 
     function onWordFocus(event) {
@@ -1363,25 +1889,29 @@
 
     function onWordInput(event) {
         const input = event.target.closest("input[data-word-index]");
-        if (!input) return;
+        if (!input || !state.sentence) return;
         const index = Number(input.dataset.wordIndex);
         state.inputInteractionRevision++;
+        state.completeAfterPendingCheck = false;
         state.activeWordIndex = index;
         if (!state.wordAttemptStartedAt.has(index)) {
             state.wordAttemptStartedAt.set(index, Date.now());
         }
-        if (input.value) {
-            state.wordDrafts.set(index, input.value);
-        } else {
-            state.wordDrafts.delete(index);
-        }
+        // An empty draft is an intentional deletion, not a missing draft.
+        state.wordDrafts.set(index, input.value);
+        refreshDictationCopy();
         roomQueueDraft();
         input.closest(".word-slot")?.classList.remove("is-wrong");
         input.setAttribute("aria-invalid", "false");
-        window.clearTimeout(input._checkTimer);
+        cancelWordCheckTimer(index);
+        if (event.isComposing || composingWords.has(index)) return;
         const expectedLength = state.sentence.words[index].length;
         if (Array.from(input.value.trim()).length === expectedLength) {
-            input._checkTimer = window.setTimeout(() => checkWord(index, input.value), 240);
+            const isCurrent = practiceInputContext();
+            wordCheckTimers.set(index, window.setTimeout(() => {
+                wordCheckTimers.delete(index);
+                if (isCurrent()) checkWord(index, state.wordDrafts.get(index) ?? input.value);
+            }, 240));
         }
     }
 
@@ -1391,12 +1921,14 @@
             return;
         }
         const index = Number(input.dataset.wordIndex);
+        cancelWordCheckTimer(index);
+        if (composingWords.has(index) || !state.sentence) return;
         const answer = input.value.trim();
         if (state.sentence.words[index]?.correct) {
             return;
         }
         const lastCheckedAnswer = state.sentence.words[index]?.userInput?.trim();
-        if (!answer || answer === lastCheckedAnswer || state.checkingWords.has(index)) {
+        if (!answer || answer === lastCheckedAnswer) {
             return;
         }
         checkWord(index, answer);
@@ -1406,6 +1938,7 @@
         const input = event.target.closest("input[data-word-index]");
         if (!input) return;
         const index = Number(input.dataset.wordIndex);
+        if (event.isComposing || composingWords.has(index)) return;
         state.inputInteractionRevision++;
         if (event.key === "Backspace" && !input.value && input.selectionStart === 0 && input.selectionEnd === 0) {
             const previous = [...elements.wordSlots.querySelectorAll("input[data-word-index]:not(:disabled):not([readonly])")]
@@ -1417,7 +1950,7 @@
             }
         } else if (event.key === " ") {
             event.preventDefault();
-            window.clearTimeout(input._checkTimer);
+            cancelWordCheckTimer(index);
             if (state.sentence.words[index]?.correct) {
                 focusNextWord(index);
             } else if (input.value.trim()) {
@@ -1428,13 +1961,13 @@
                 focusNextWord(index);
             }
         } else if (event.key === "Enter") {
-            if (event.isComposing) return;
             event.preventDefault();
-            window.clearTimeout(input._checkTimer);
+            cancelWordCheckTimer(index);
             if (state.sentence.canComplete) {
                 await completeSentence(event);
             } else if (state.checkingWords.has(index)) {
                 state.completeAfterPendingCheck = true;
+                checkWord(index, input.value);
                 setPracticeStatus("Đang kiểm tra từ cuối…");
             } else if (input.value.trim() && !state.sentence.words[index]?.correct) {
                 state.completeAfterPendingCheck = true;
@@ -1461,19 +1994,31 @@
     }
 
     async function checkWord(index, answer) {
-        if (!answer.trim() || state.checkingWords.has(index)) return false;
+        cancelWordCheckTimer(index);
+        answer = answer.trim();
+        if (!answer || !state.sentence || composingWords.has(index)) return false;
+        const isCurrent = practiceInputContext();
+        if (!isCurrent()) return false;
+        const existing = wordChecks.get(index);
+        if (existing?.isCurrent()) {
+            existing.pendingAnswer = answer === existing.answer ? null : answer;
+            return false;
+        }
+        const word = state.sentence.words[index];
+        if (!word || word.correct || word.revealed
+            || (word.userInput?.trim() === answer && !state.wordDrafts.has(index))) return false;
+        const check = {answer, isCurrent, pendingAnswer: null};
+        wordChecks.set(index, check);
         state.checkingWords.add(index);
-        const sessionId = state.session?.sessionId;
-        const sentenceId = state.sentence?.sentenceId;
         const interactionRevision = state.inputInteractionRevision;
         const attemptStartedAt = state.wordAttemptStartedAt.get(index) || Date.now();
         const responseTimeMs = Math.min(300000, Math.max(0, Date.now() - attemptStartedAt));
         try {
             const sentence = await queuePracticeMutation(practicePath(`/words/${index}/checks`), {
                 method: "POST",
-                body: {answer: answer.trim(), responseTimeMs}
-            });
-            if (state.session?.sessionId !== sessionId || state.sentence?.sentenceId !== sentenceId) {
+                body: {answer, responseTimeMs}
+            }, isCurrent);
+            if (!isCurrent()) {
                 return false;
             }
             const focusBeforeRender = captureWordFocus();
@@ -1488,16 +2033,19 @@
                 state.wordAttemptStartedAt.delete(index);
             } else {
                 state.wordAttemptStartedAt.set(index, Date.now());
+                state.completeAfterPendingCheck = false;
             }
             renderPractice(false);
-            setPracticeStatus(correct ? `Từ ${index + 1} chính xác.` : `Từ ${index + 1} chưa khớp. Hãy nghe lại hoặc phân loại lỗi.`, !correct);
-            if (focusBeforeRender && userContinuedTyping) {
+            const newerDraft = !correct && state.wordDrafts.has(index)
+                && state.wordDrafts.get(index).trim() !== answer;
+            setPracticeStatus(correct ? `Từ ${index + 1} chính xác.` : newerDraft
+                ? `Đã giữ nội dung mới của từ ${index + 1}.`
+                : `Từ ${index + 1} chưa khớp. Hãy nghe lại hoặc phân loại lỗi.`, !correct && !newerDraft);
+            if (focusBeforeRender && (userContinuedTyping || !correct)) {
                 restoreWordFocus(focusBeforeRender);
             } else if (focusBeforeRender) {
                 if (correct) {
                     focusNextWord(index);
-                } else {
-                    focusWord(index, true);
                 }
             }
             if (correct && state.sentence.canComplete && state.completeAfterPendingCheck) {
@@ -1506,32 +2054,51 @@
             }
             return correct;
         } catch (error) {
-            setPracticeStatus(error.message, true);
+            check.pendingAnswer = null;
+            if (isCurrent()) {
+                state.completeAfterPendingCheck = false;
+                setPracticeStatus(error instanceof TypeError || error.name === "TypeError"
+                    ? "Không thể kết nối. Nội dung đã nhập vẫn được giữ; hãy kiểm tra mạng rồi thử lại."
+                    : error.message, true);
+            }
             return false;
         } finally {
-            state.checkingWords.delete(index);
+            if (wordChecks.get(index) === check) {
+                wordChecks.delete(index);
+                state.checkingWords.delete(index);
+                const draft = state.wordDrafts.get(index)?.trim();
+                if (isCurrent() && check.pendingAnswer && draft === check.pendingAnswer) {
+                    checkWord(index, draft);
+                }
+            }
         }
     }
 
     async function useHint(type) {
         if (!state.sentence) return;
+        const isCurrent = practiceInputContext();
+        const wordIndex = state.activeWordIndex;
         try {
-            state.sentence = await queuePracticeMutation(practicePath("/hints"), {
+            const sentence = await queuePracticeMutation(practicePath("/hints"), {
                 method: "POST",
                 body: {
                     type,
-                    wordIndex: type === "REVEAL_SENTENCE" ? null : state.activeWordIndex
+                    wordIndex: type === "REVEAL_SENTENCE" ? null : wordIndex
                 }
-            });
+            }, isCurrent);
+            if (!isCurrent()) return;
+            const focus = captureWordFocus();
+            state.sentence = sentence;
             renderPractice(false);
+            if (focus) restoreWordFocus(focus);
             if (type === "FIRST_LETTER") {
                 setPracticeStatus("Đã mở chữ cái đầu. Gợi ý này được tính vào điểm độc lập.");
-                focusWord(state.activeWordIndex, true);
+                if (!focus) focusWord(wordIndex, true);
             } else {
                 setPracticeStatus("Đáp án đã được mở. Hãy nghe lại câu đúng trước khi chuyển tiếp.");
             }
         } catch (error) {
-            setPracticeStatus(error.message, true);
+            if (isCurrent()) setPracticeStatus(error.message, true);
         }
     }
 
@@ -1539,37 +2106,42 @@
         const button = event.target.closest("button[data-error-type]");
         if (!button) return;
         const wordIndex = Number(button.dataset.wordIndex);
+        const isCurrent = practiceInputContext();
         try {
-            state.sentence = await queuePracticeMutation(practicePath("/classifications"), {
+            const sentence = await queuePracticeMutation(practicePath("/classifications"), {
                 method: "POST",
                 body: {wordIndex, errorType: button.dataset.errorType}
-            });
+            }, isCurrent);
+            if (!isCurrent()) return;
+            const keepFocus = document.activeElement === button;
+            const focus = captureWordFocus();
+            state.sentence = sentence;
             renderPractice(false);
+            if (focus) restoreWordFocus(focus);
+            if (keepFocus) {
+                elements.wordClassificationList.querySelector(`button[data-word-index="${wordIndex}"][data-error-type="${button.dataset.errorType}"]`)
+                    ?.focus({preventScroll: true});
+            }
             setPracticeStatus("Đã cập nhật loại lỗi cho dashboard.");
         } catch (error) {
-            setPracticeStatus(error.message, true);
+            if (isCurrent()) setPracticeStatus(error.message, true);
         }
     }
 
-    function renderClassifications() {
-        const missedWords = state.sentence.words.filter(word => word.errorType);
-        elements.feedbackPanel.hidden = missedWords.length === 0;
-        elements.classifications.innerHTML = missedWords.map(word => `
-            <div class="error-choice">
-                <strong>Từ ${word.index + 1}</strong>
-                <span class="choice-buttons" role="group" aria-label="Phân loại lỗi của từ ${word.index + 1}">
-                    <button type="button" data-word-index="${word.index}" data-error-type="KNOWN_BUT_MISSED"
-                            aria-pressed="${word.errorType === "KNOWN_BUT_MISSED"}">Biết nhưng lỡ</button>
-                    <button type="button" data-word-index="${word.index}" data-error-type="UNKNOWN"
-                            aria-pressed="${word.errorType === "UNKNOWN"}">Từ mới</button>
-                </span>
-            </div>
-        `).join("");
-    }
-
-    async function playSentence() {
+    async function playSentence(sharedPlayback = null) {
         if (!state.sentence || state.speaking) return;
-        const playbackSpeed = state.playbackSpeed;
+        const shared = state.roomSharedSessionId === state.session?.sessionId && Boolean(state.roomStudy);
+        // Click/keyboard handlers pass DOM events, not playback commands.
+        sharedPlayback = sharedPlayback?.startsAt ? sharedPlayback : null;
+        if (shared && !sharedPlayback) {
+            if (!state.roomIsHost || !state.roomPlayback?.hostAudioReady || !state.roomPlayback?.guestAudioReady
+                || state.roomPlayback.playing) return;
+            roomSendWs({type: "lesson-play", position: state.sentence.position,
+                sequence: state.roomPlayback.sequence, speed: state.playbackSpeed});
+            return;
+        }
+        const playbackSpeed = sharedPlayback?.speed || state.playbackSpeed;
+        const sameSentence = practiceInputContext();
         const completedBeforePlayback = state.sentence.canComplete;
         const hasRecordedAudio = Boolean(state.sentence.audioUrl);
         if (!hasRecordedAudio && !("speechSynthesis" in window)) {
@@ -1583,48 +2155,77 @@
         elements.listeningConsole.classList.add("is-speaking");
         updatePracticeControls();
         try {
-            state.sentence = await queuePracticeMutation(practicePath("/replay-events"), {
+            if (sharedPlayback && (!hasRecordedAudio || state.audioContext?.state !== "running")) {
+                throw new Error("Chưa sẵn sàng nghe chung. Hãy bấm Bật nghe chung rồi phát lại.");
+            }
+            if (sharedPlayback && Date.now() - sharedPlayback.localStartsAt > 1500) {
+                throw new Error("Mạng phản hồi chậm; nhờ chủ phòng phát lại để cả hai nghe cùng lượt.");
+            }
+            const started = await queuePracticeMutation(practicePath("/replay-events"), {
                 method: "POST",
                 body: {event: "STARTED", playbackSpeed}
-            });
+            }, sameSentence);
+            if (!sameSentence()) throw new DOMException("Sentence changed", "AbortError");
+            state.sentence = started;
             if (!state.sentenceStartedAt) {
                 startTimer();
             }
-            elements.replayCount.textContent = state.sentence.replayCount;
+            elements.replayCount.textContent = shared ? sharedPlayback.replayCount : state.sentence.replayCount;
             updatePracticeControls();
             setPracticeStatus("Đang phát câu. Bạn có thể nhập ngay trong khi nghe.");
             if (hasRecordedAudio) {
+                if (sharedPlayback && Date.now() - sharedPlayback.localStartsAt > 1500) {
+                    throw new Error("Mạng phản hồi chậm; nhờ chủ phòng phát lại để cả hai nghe cùng lượt.");
+                }
                 await playRecordedAudio(
                     state.sentence.audioUrl,
                     state.sentence.audioStartSeconds,
                     state.sentence.audioEndSeconds,
-                    playbackSpeed
+                    playbackSpeed,
+                    sharedPlayback ? Math.max(0, sharedPlayback.localStartsAt - Date.now()) / 1000 : 0
                 );
             } else {
                 await speak(state.sentence.speechText, state.sentence.speechRate * playbackSpeed);
             }
-            state.sentence = await queuePracticeMutation(practicePath("/replay-events"), {
+            if (!sameSentence()) throw new DOMException("Sentence changed", "AbortError");
+            const completed = await queuePracticeMutation(practicePath("/replay-events"), {
                 method: "POST",
                 body: {event: "COMPLETED", playbackSpeed}
-            });
+            }, sameSentence);
+            if (!sameSentence()) throw new DOMException("Sentence changed", "AbortError");
+            state.sentence = completed;
             setPracticeStatus(completedBeforePlayback
                 ? "Đã nghe lại câu hoàn chỉnh. Lượt này không tính vào kết quả."
                 : state.sentence.requiresReplayAfterReveal
                     ? "Hãy nghe hết câu trước khi chuyển tiếp."
                     : "Đã nghe trọn câu. Bây giờ hãy điền những gì bạn nghe được.");
         } catch (error) {
-            stopRecordedAudio();
-            if (error.name !== "AbortError") {
+            if (sameSentence()) stopRecordedAudio();
+            if (sameSentence() && error.name !== "AbortError") {
                 setPracticeStatus(error.message, true);
             }
+            if (sameSentence() && sharedPlayback) {
+                state.roomAudioPreparedKey = null;
+                roomSendWs({type: "audio-ready", position: sharedPlayback.position, ready: false});
+            }
         } finally {
-            state.speaking = false;
-            elements.listeningConsole.classList.remove("is-speaking");
-            updatePracticeControls();
+            if (sharedPlayback) roomSendWs({type: "lesson-played", position: sharedPlayback.position, sequence: sharedPlayback.sequence});
+            if (sameSentence()) {
+                state.speaking = false;
+                elements.listeningConsole.classList.remove("is-speaking");
+                updatePracticeControls();
+            }
         }
     }
 
-    async function playRecordedAudio(url, startSeconds, endSeconds, playbackSpeed = 1) {
+    function syncPlaybackSpeedControls() {
+        document.querySelectorAll("[data-playback-speed]").forEach(button => {
+            button.disabled = elements.playbackSpeed.disabled;
+            button.setAttribute("aria-pressed", String(Number(button.dataset.playbackSpeed) === state.playbackSpeed));
+        });
+    }
+
+    async function playRecordedAudio(url, startSeconds, endSeconds, playbackSpeed = 1, startDelay = 0) {
         stopRecordedAudio();
         const playbackGeneration = ++state.audioPlaybackGeneration;
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -1670,7 +2271,7 @@
                 })
             };
             try {
-                source.start(0, segment.start, segment.duration);
+                source.start(state.audioContext.currentTime + startDelay, segment.start, segment.duration);
             } catch (_error) {
                 finish(() => reject(new Error("Không thể bắt đầu phát file audio của bài nghe.")));
             }
@@ -1688,7 +2289,7 @@
             return cached;
         }
 
-        const pending = fetch(url, {credentials: "same-origin"})
+        const pending = authenticatedFetch(url, {credentials: "same-origin"})
             .then(response => {
                 if (!response.ok) throw new Error(`Audio HTTP ${response.status}`);
                 return response.arrayBuffer();
@@ -1752,6 +2353,7 @@
         }
         if (fromRoom && state.room && state.roomStudy
             && state.sentence?.position >= state.roomStudy.lessonPosition) return;
+        const isCurrent = practiceInputContext();
         state.completingSentence = true;
         state.completeAfterPendingCheck = false;
         elements.nextSentence.disabled = true;
@@ -1759,7 +2361,8 @@
             const response = await queuePracticeMutation(practicePath("/complete"), {
                 method: "POST",
                 body: {timeSpentSeconds: state.timerSeconds}
-            });
+            }, isCurrent);
+            if (!isCurrent()) return;
             if (response.lessonCompleted) {
                 if (state.roomSharedSessionId === state.session?.sessionId) state.roomSharedCompleted = true;
                 stopTimer();
@@ -1769,6 +2372,7 @@
                     elements.resultAssessment.setAttribute("aria-label", "Bài học chung không dùng để đánh giá năng lực độc lập");
                 }
                 await refreshDashboard(false);
+                if (!isCurrent()) return;
                 // Chuyển URL sang /history/{sessionId}
                 const sessionId = response.result?.sessionId || state.session?.sessionId;
                 router.push("result", { sessionId });
@@ -1782,10 +2386,12 @@
                 elements.replayButton.focus({preventScroll: true});
             }
         } catch (error) {
-            setPracticeStatus(error.message, true);
-            elements.nextSentence.disabled = false;
+            if (isCurrent()) {
+                setPracticeStatus(error.message, true);
+                updatePracticeControls();
+            }
         } finally {
-            state.completingSentence = false;
+            if (isCurrent()) state.completingSentence = false;
         }
     }
 
@@ -1809,7 +2415,7 @@
                 ? "Bạn đã nắm được nhiều từ trong bài. Tập trung vào vài điểm còn vướng dưới đây."
                 : "Bài này còn nhiều chỗ khó. Bắt đầu bằng một nhóm lỗi nhỏ, nghe lại rồi thử lại.";
 
-        const resultActions = document.querySelector(".result-score-card");
+        const resultActions = document.querySelector(".coach-navigation");
         const existingBack = resultActions.querySelector(".history-back-link");
         if (existingBack) existingBack.remove();
         resultActions.querySelector(".result-report-link")?.remove();
@@ -2031,7 +2637,13 @@
             const timeout = window.setTimeout(() => finish(0), 7000);
             audio.preload = "metadata";
             audio.onloadedmetadata = () => finish(audio.duration);
-            audio.onerror = () => finish(0);
+            let authRetried = false;
+            audio.onerror = async () => {
+                if (authRetried || settled) {finish(0); return;}
+                authRetried = true;
+                try {await api("/api/auth/me"); if (!settled) audio.load();}
+                catch (_) {finish(0);}
+            };
             audio.src = url;
         });
     }
@@ -2171,12 +2783,17 @@
     }
 
     async function refreshDashboard(showErrors) {
+        const errorPanel = document.querySelector("#dashboard-load-error");
+        const view = document.querySelector("#dashboard-view");
+        errorPanel.hidden = true;
+        view.setAttribute("aria-busy", "true");
         try {
             const dashboard = await api("/api/v1/dashboard");
             renderDashboard(dashboard);
         } catch (error) {
+            errorPanel.hidden = false;
             if (showErrors) showToast(error.message, true);
-        }
+        } finally { view.setAttribute("aria-busy", "false"); }
     }
 
     function renderDashboard(dashboard) {
@@ -2185,8 +2802,8 @@
         elements.dashboardSummary.innerHTML = [
             ["Buổi hoàn thành", summary.completedLessons, false],
             ["Phút luyện", summary.learningMinutes, false],
-            ["First attempt", `${formatPercent(summary.averageFirstAttemptAccuracy)}%`, true],
-            ["Final accuracy", `${formatPercent(summary.averageFinalAccuracy)}%`, false],
+            ["Đúng lần đầu", `${formatPercent(summary.averageFirstAttemptAccuracy)}%`, true],
+            ["Đúng sau khi sửa", `${formatPercent(summary.averageFinalAccuracy)}%`, false],
             ["Điểm trung bình", formatPercent(summary.averageScore), false]
         ].map(([label, value, priority]) => `
             <article class="summary-card ${priority ? "is-priority" : ""}">
@@ -2194,11 +2811,13 @@
             </article>
         `).join("");
 
+        renderRecommendation(dashboard.recommendation);
         renderTrend(dashboard.trend);
+        renderDashboardActivity(dashboard.trend);
         elements.levelProgress.innerHTML = dashboard.byLevel.map(item => `
             <div class="level-row">
                 <strong>${item.level}</strong>
-                <div class="level-meter" role="meter" aria-label="First-attempt accuracy level ${item.level}"
+                <div class="level-meter" role="meter" aria-label="Tỷ lệ đúng lần đầu ở trình độ ${item.level}"
                      aria-valuemin="0" aria-valuemax="100" aria-valuenow="${item.averageFirstAttemptAccuracy}">
                     <span style="width: ${item.averageFirstAttemptAccuracy}%"></span>
                 </div>
@@ -2210,7 +2829,33 @@
             <article class="error-stat"><strong>${dashboard.errors.unknownWords}</strong><span>Từ chưa biết</span></article>
         `;
         renderAssessment(elements.dashboardAssessment, dashboard.assessment);
-        renderRecommendation(dashboard.recommendation);
+    }
+
+    function renderDashboardActivity(trend) {
+        const welcome = document.querySelector("#dashboard-welcome");
+        const recent = document.querySelector("#dashboard-recent");
+        const latest = trend.at(-1);
+        if (!latest) {
+            welcome.textContent = "Chưa có buổi chép chính tả cá nhân hoàn thành. Bắt đầu một bài để xem tiến bộ của bạn.";
+            recent.innerHTML = '<p>Buổi học đầu tiên của bạn sẽ xuất hiện ở đây.</p><a class="text-button" href="/catalog?level=A1&page=1">Chọn bài luyện đầu tiên →</a>';
+            return;
+        }
+        const previous = trend.slice(0, -1).reverse().find(point => point.level === latest.level);
+        if (previous) {
+            const change = Math.round((latest.firstAttemptAccuracy - previous.firstAttemptAccuracy) * 10) / 10;
+            welcome.textContent = `Buổi ${latest.level} gần nhất: đúng lần đầu ${formatPercent(latest.firstAttemptAccuracy)}%. `
+                + (change === 0 ? "Không đổi so với buổi trước cùng trình độ."
+                    : `${change > 0 ? "Tăng" : "Giảm"} ${formatPercent(Math.abs(change))} điểm phần trăm so với buổi trước cùng trình độ.`)
+                + " Hai bài có thể khác độ khó; đây là so sánh kết quả từng buổi.";
+        } else {
+            welcome.textContent = `Buổi ${latest.level} gần nhất: đúng lần đầu ${formatPercent(latest.firstAttemptAccuracy)}%. Chưa có buổi trước cùng trình độ trong 8 buổi gần đây để so sánh.`;
+        }
+        recent.innerHTML = `<ul class="dashboard-recent-list">${trend.slice(-3).reverse().map(point => `
+            <li><a href="${router.toPath("result", {sessionId: point.sessionId})}">
+                <strong>${escapeHtml(point.lessonTitle)}</strong>
+                <span>${escapeHtml(point.level)} · <time datetime="${escapeAttribute(point.date)}">${escapeHtml(point.date.split("-").reverse().join("/"))}</time> · Lần đầu ${formatPercent(point.firstAttemptAccuracy)}%</span>
+                <span>Xem lại →</span>
+            </a></li>`).join("")}</ul>`;
     }
 
     function renderAssessment(container, assessment) {
@@ -2292,11 +2937,11 @@
             <div class="trend-group" title="${escapeAttribute(point.lessonTitle)}">
                 <div class="trend-bar first" style="height: ${point.firstAttemptAccuracy}%">
                     <span>${Math.round(point.firstAttemptAccuracy)}</span>
-                    <small class="trend-label">${escapeHtml(point.level)}</small>
                 </div>
                 <div class="trend-bar final" style="height: ${point.finalAccuracy}%">
                     <span>${Math.round(point.finalAccuracy)}</span>
                 </div>
+                <small class="trend-label">${escapeHtml(point.level)}<br><time datetime="${escapeAttribute(point.date)}">${escapeHtml(point.date.split("-").slice(1).reverse().join("/"))}</time></small>
             </div>
         `).join("");
     }
@@ -2304,15 +2949,18 @@
     function renderRecommendation(recommendation) {
         if (!recommendation) {
             elements.recommendationCard.innerHTML = `
-                <p class="section-index">Bài tiếp theo</p><h2 id="recommendation-heading">Chưa có gợi ý</h2>
-                <p>Thư viện hiện chưa có bài phù hợp.</p>`;
+                <div class="recommendation-copy"><p class="section-index">Bài tiếp theo</p><h2 id="recommendation-heading">Chưa có gợi ý</h2>
+                <p>Thư viện hiện chưa có bài phù hợp.</p><p id="dashboard-welcome" class="dashboard-period" role="status"></p></div>`;
             return;
         }
         elements.recommendationCard.innerHTML = `
+            <div class="recommendation-copy">
             <p class="section-index">Bài tiếp theo</p>
             <span class="recommendation-level">${escapeHtml(recommendation.level)}</span>
             <h2 id="recommendation-heading">${escapeHtml(recommendation.lessonTitle)}</h2>
             <p>${escapeHtml(recommendation.reason)}</p>
+            <p id="dashboard-welcome" class="dashboard-period" role="status"></p>
+            </div>
             <button class="primary-button dark" type="button" data-recommended-lesson="${recommendation.lessonId}">
                 Luyện bài này <span aria-hidden="true">→</span>
             </button>`;
@@ -2337,34 +2985,31 @@
         return {
             index: Number(input.dataset.wordIndex),
             selectionStart: input.selectionStart,
-            selectionEnd: input.selectionEnd
+            selectionEnd: input.selectionEnd,
+            selectionDirection: input.selectionDirection
         };
     }
 
     function restoreWordFocus(focus) {
-        window.requestAnimationFrame(() => {
-            const input = elements.wordSlots.querySelector(`input[data-word-index="${focus.index}"]`);
-            if (!input || input.disabled) return;
-            input.focus({preventScroll: true});
-            const end = input.value.length;
-            const start = Math.min(focus.selectionStart ?? end, end);
-            const selectionEnd = Math.min(focus.selectionEnd ?? start, end);
-            input.setSelectionRange(start, selectionEnd);
-            updatePracticeControls();
-        });
+        const input = elements.wordSlots.querySelector(`input[data-word-index="${focus.index}"]`);
+        if (!input || input.disabled) return;
+        input.focus({preventScroll: true});
+        const end = input.value.length;
+        const start = Math.min(focus.selectionStart ?? end, end);
+        const selectionEnd = Math.min(focus.selectionEnd ?? start, end);
+        input.setSelectionRange(start, selectionEnd, focus.selectionDirection);
+        updatePracticeControls();
     }
 
     function focusWord(index, select, caretAtEnd = false) {
         state.activeWordIndex = index;
-        window.requestAnimationFrame(() => {
-            const input = elements.wordSlots.querySelector(`input[data-word-index="${index}"]`);
-            if (input && !input.disabled) {
-                input.focus({preventScroll: true});
-                if (select) input.select();
-                else if (caretAtEnd) input.setSelectionRange(input.value.length, input.value.length);
-            }
-            updatePracticeControls();
-        });
+        const input = elements.wordSlots.querySelector(`input[data-word-index="${index}"]`);
+        if (input && !input.disabled) {
+            input.focus({preventScroll: true});
+            if (select) input.select();
+            else if (caretAtEnd) input.setSelectionRange(input.value.length, input.value.length);
+        }
+        updatePracticeControls();
     }
 
     function startTimer() {
@@ -2796,23 +3441,45 @@
 
     /* ─── History Functions ─── */
 
-    async function loadHistory() {
+    async function loadHistory(requestedPage = new URLSearchParams(window.location.search).get("page"), focusPage = false) {
+        const numericPage = Number(requestedPage);
+        const page = Number.isSafeInteger(numericPage) ? Math.min(100001, Math.max(1, numericPage)) : 1;
+        const level = state.historyFilter;
+        const generation = ++state.historyLoadGeneration;
+        const query = new URLSearchParams({page: page - 1, size: 10});
+        if (level !== "all") query.set("level", level);
+        const focusLevel = document.activeElement?.dataset?.historyLevel;
+        elements.historyList.setAttribute("aria-busy", "true");
+        const errorPanel = document.querySelector("#history-load-error");
+        if (errorPanel) errorPanel.hidden = true;
         try {
-            const sessions = await api("/api/v1/history");
-            if (document.body.dataset.route !== "history") return;
-            state.historySessions = sessions;
+            const result = await api(`/api/v1/history?${query}`);
+            if (generation !== state.historyLoadGeneration || document.body.dataset.route !== "history") return;
+            if (result.totalPages > 0 && result.page >= result.totalPages) {
+                router.replace("history", {level, page: result.totalPages});
+                await loadHistory(result.totalPages, focusPage);
+                return;
+            }
+            state.historySessions = result.items;
+            state.historyPage = result;
+            router.replace("history", {level, page: result.totalPages ? result.page + 1 : 1});
             renderHistoryLevelTabs();
             renderHistoryList();
+            renderHistoryPagination(focusPage);
+            if (focusLevel) elements.historyLevelTabs.querySelector(`[data-history-level="${level}"]`)?.focus();
         } catch (error) {
-            showToast(error.message, true);
+            if (generation === state.historyLoadGeneration && document.body.dataset.route === "history") {
+                elements.historyEmpty.hidden = true;
+                if (errorPanel) errorPanel.hidden = false;
+                showToast(error.message, true);
+            }
+        } finally {
+            if (generation === state.historyLoadGeneration) elements.historyList.setAttribute("aria-busy", "false");
         }
     }
 
     function renderHistoryLevelTabs() {
-        const levels = ["all", ...new Set(state.historySessions.map(s => s.level))];
-        if (!levels.includes(state.historyFilter)) {
-            state.historyFilter = "all";
-        }
+        const levels = ["all", "A1", "A2", "B1", "B2"];
         const levelLabels = { all: "Tất cả", A1: "A1", A2: "A2", B1: "B1", B2: "B2" };
         elements.historyLevelTabs.innerHTML = levels.map(level => `
             <button class="level-tab${level === state.historyFilter ? " is-active" : ""}" type="button"
@@ -2835,28 +3502,33 @@
             if (event.key === "End") nextIndex = tabs.length - 1;
             tabs[nextIndex].focus();
             selectHistoryLevel(tabs[nextIndex].dataset.historyLevel);
-            elements.historyLevelTabs.querySelector(`[data-history-level="${state.historyFilter}"]`)?.focus();
         }));
     }
 
     function selectHistoryLevel(level) {
+        const restoreFocus = Boolean(document.activeElement?.dataset?.historyLevel);
         state.historyFilter = level;
         const historyLink = document.querySelector('a[data-route="history"]');
         if (historyLink) historyLink.href = router.toPath("history", {level, page: 1});
         // Cập nhật URL query param
         router.replace("history", { level });
         renderHistoryLevelTabs();
-        renderHistoryList();
+        if (restoreFocus) elements.historyLevelTabs.querySelector(`[data-history-level="${level}"]`)?.focus();
+        loadHistory(1);
     }
 
     function renderHistoryList() {
-        const filtered = state.historyFilter === "all"
-            ? state.historySessions
-            : state.historySessions.filter(s => s.level === state.historyFilter);
+        const filtered = state.historySessions;
 
         elements.historyEmpty.hidden = filtered.length > 0;
-        elements.historyCount.textContent = filtered.length
-            ? `${filtered.length} buổi luyện`
+        const levelFiltered = state.historyFilter !== "all";
+        elements.historyEmpty.querySelector("p").textContent = levelFiltered
+            ? `Chưa có buổi luyện ở trình độ ${state.historyFilter}. Thử xem tất cả trình độ hoặc bắt đầu một bài mới.`
+            : "Chưa có buổi luyện nào. Hoàn thành bài đầu tiên để bắt đầu nhật ký.";
+        elements.historyEmpty.querySelector("button").hidden = !levelFiltered;
+        elements.historyEmpty.querySelector("a").href = router.toPath("catalog", {level: levelFiltered ? state.historyFilter : "A1", page: 1});
+        elements.historyCount.textContent = state.historyPage.totalElements
+            ? `${state.historyPage.totalElements} buổi luyện`
             : "";
 
         elements.historyList.innerHTML = filtered.map(session => {
@@ -2887,17 +3559,35 @@
                     <div class="history-card-stats">
                         <div class="history-stat">
                             <strong>${formatPercent(session.firstAttemptAccuracy)}%</strong>
-                            <small>First attempt</small>
+                            <small>Đúng lần đầu</small>
                         </div>
                         <div class="history-stat">
                             <strong>${formatPercent(session.finalAccuracy)}%</strong>
-                            <small>Final</small>
+                            <small>Sau khi sửa</small>
                         </div>
                     </div>
                 </a>
             `;
         }).join("");
-        paginateList(elements.historyList, 10);
+    }
+
+    function renderHistoryPagination(focus = false) {
+        if (elements.historyList.nextElementSibling?.matches(".pagination")) elements.historyList.nextElementSibling.remove();
+        const result = state.historyPage;
+        const page = result.page + 1;
+        const nav = document.createElement("nav");
+        nav.className = "pagination";
+        nav.setAttribute("aria-label", "Phân trang lịch sử luyện nghe");
+        nav.hidden = result.totalPages <= 1;
+        nav.innerHTML = `<button type="button" class="text-button" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>← Trang trước</button>
+            <span role="status" tabindex="-1">Trang ${page}/${Math.max(1, result.totalPages)} · ${result.totalElements} buổi luyện</span>
+            <button type="button" class="text-button" data-page="${page + 1}" ${page >= result.totalPages ? "disabled" : ""}>Trang sau →</button>`;
+        elements.historyList.after(nav);
+        nav.querySelectorAll("button").forEach(button => button.addEventListener("click", () => {
+            router.push("history", {level: state.historyFilter, page: button.dataset.page});
+            loadHistory(Number(button.dataset.page), true);
+        }));
+        if (focus && !nav.hidden) nav.querySelector("[role='status']").focus({preventScroll: true});
     }
 
     async function viewHistorySession(sessionId) {
@@ -2935,6 +3625,64 @@
         elements.toast._hideTimer = window.setTimeout(() => elements.toast.hidden = true, 5000);
     }
 
+    let tokenRefreshPromise = null;
+    let csrfRefreshPromise = null;
+
+    async function fetchWithCsrfRecovery(path, request) {
+        const mutation = !["GET", "HEAD", "OPTIONS"].includes((request.method || "GET").toUpperCase());
+        const send = () => fetch(path, mutation && state.csrfToken ? {
+            ...request, headers: {...request.headers, [state.csrfHeader]: state.csrfToken}
+        } : request);
+        let response = await send();
+        if (mutation && response.status === 403 && response.headers.get("X-CSRF-Error") === "1") {
+            await refreshCsrf();
+            response = await send();
+        }
+        return response;
+    }
+
+    async function refreshAuthentication() {
+        if (tokenRefreshPromise) return tokenRefreshPromise;
+        // Web Locks coordinates refresh rotation across tabs without storing tokens in JavaScript.
+        if (!navigator.locks) {
+            const error = new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+            error.status = 401;
+            throw error;
+        }
+        tokenRefreshPromise = navigator.locks.request("dictalab-token-refresh", async () => {
+            // Another tab/request may already have refreshed while this tab waited for the lock.
+            const probe = await fetch("/api/auth/me", {credentials: "same-origin", cache: "no-store"});
+            if (probe.ok) return;
+            if (probe.status !== 401) {
+                const error = new Error("Không thể kiểm tra phiên đăng nhập. Vui lòng thử lại.");
+                error.status = probe.status;
+                throw error;
+            }
+            const response = await fetchWithCsrfRecovery("/api/auth/refresh", {
+                method: "POST", credentials: "same-origin", cache: "no-store",
+                signal: AbortSignal.timeout(10000)
+            });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => null);
+                const error = new Error(payload?.message || "Không thể làm mới phiên đăng nhập.");
+                error.status = response.status;
+                throw error;
+            }
+        });
+        try { return await tokenRefreshPromise; }
+        finally { tokenRefreshPromise = null; }
+    }
+
+    async function authenticatedFetch(path, request, allowRefresh = true) {
+        let response = await fetchWithCsrfRecovery(path, request);
+        // Only explicit CSRF/authentication rejections are replayed; never retry network/503 failures.
+        if (response.status === 401 && allowRefresh) {
+            await refreshAuthentication();
+            response = await fetchWithCsrfRecovery(path, request);
+        }
+        return response;
+    }
+
     async function api(path, options = {}) {
         const request = {
             method: options.method || "GET",
@@ -2943,6 +3691,7 @@
             },
             credentials: "same-origin"
         };
+        if (options.cache) request.cache = options.cache;
         if (options.headers) Object.assign(request.headers, options.headers);
         if (isAdminArea && !["GET","HEAD","OPTIONS"].includes(request.method) && /^\/api\/admin\/lessons\/\d+(?:\/|$)/.test(path) && state.adminSelectedLesson?.updatedAt) {
             request.headers["X-Edit-Version"] = state.adminSelectedLesson.updatedAt;
@@ -2953,10 +3702,17 @@
             request.headers["Content-Type"] = "application/json";
             request.body = JSON.stringify(options.body);
         }
-        if (!["GET", "HEAD", "OPTIONS"].includes(request.method) && state.csrfToken) {
-            request.headers[state.csrfHeader] = state.csrfToken;
+        let response;
+        try {
+            const send = () => authenticatedFetch(path, request,
+                !path.startsWith("/api/auth/") || path === "/api/auth/me");
+            response = navigator.locks && ["/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/logout"].includes(path)
+                ? await navigator.locks.request("dictalab-token-refresh", send) : await send();
+        } catch (error) {
+            if (error.status === 401 && options.redirectOnUnauthorized !== false)
+                showAuthScreen("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+            throw error;
         }
-        const response = await fetch(path, request);
         const contentType = response.headers.get("content-type") || "";
         const payload = contentType.includes("application/json") ? await response.json() : null;
         if (!response.ok) {
@@ -2970,10 +3726,49 @@
         return payload;
     }
 
-    function queuePracticeMutation(path, options) {
+    const pendingPracticeSubmissions = new Map();
+    let practiceSubmissionOwner = null;
+    function queuePracticeMutation(path, options, isCurrent = () => true) {
+        if (!isCurrent()) return Promise.reject(new DOMException("Practice changed", "AbortError"));
+        const storageKey = `dictalab.practice.${state.currentUser?.id ?? "anonymous"}`;
+        if (practiceSubmissionOwner !== storageKey) {
+            pendingPracticeSubmissions.clear(); practiceSubmissionOwner = storageKey;
+            try {
+                for (const [id, submission] of JSON.parse(sessionStorage.getItem(storageKey) || "[]"))
+                    pendingPracticeSubmissions.set(id, submission);
+            } catch (_) { /* Storage may be unavailable; in-memory retry protection remains. */ }
+        }
+        // Freeze each uncertain action, including timing fields. Never replay it with a new key.
+        const id = path + ":" + (path.endsWith("/complete") ? "complete"
+            : JSON.stringify({...options.body, responseTimeMs: undefined}));
+        const wasPending = pendingPracticeSubmissions.has(id);
+        let sent = false;
+        const submission = pendingPracticeSubmissions.get(id) || {...options, body: JSON.parse(JSON.stringify(options.body)),
+            headers: {...options.headers, "Idempotency-Key": crypto.randomUUID()}};
+        pendingPracticeSubmissions.set(id, submission);
+        function persist() {
+            try { sessionStorage.setItem(storageKey, JSON.stringify([...pendingPracticeSubmissions])); }
+            catch (_) { /* Never fail an attempt because browser storage is full. */ }
+        }
+        persist();
         const request = state.practiceMutationQueue
             .catch(() => undefined)
-            .then(() => api(path, options));
+            .then(() => {
+                if (!isCurrent()) throw new DOMException("Practice changed", "AbortError");
+                sent = true;
+                return api(path, submission);
+            })
+            .then(result => {
+                if (pendingPracticeSubmissions.get(id) === submission) pendingPracticeSubmissions.delete(id);
+                if (practiceSubmissionOwner === storageKey) persist();
+                return result;
+            }, error => {
+                if (((!sent && !wasPending) || (error.status && error.status < 500))
+                    && pendingPracticeSubmissions.get(id) === submission)
+                    pendingPracticeSubmissions.delete(id);
+                if (practiceSubmissionOwner === storageKey) persist();
+                throw error;
+            });
         state.practiceMutationQueue = request.then(() => undefined, () => undefined);
         return request;
     }
@@ -3065,9 +3860,81 @@
         elements.peerPracticeHeading.textContent = `${peerName || "Bạn học"} đang nhập`;
         elements.peerPracticeStatus.textContent = `${state.roomReady ? "Bạn đã sẵn sàng. " : ""}${peerReady ? "Bạn học đã sẵn sàng." : "Đang chờ bạn học hoàn thành."}`;
         elements.roomAdvanceSentence.hidden = !state.roomIsHost;
-        elements.roomAdvanceSentence.disabled = !(room.hostReady && room.guestReady);
+        elements.roomAdvanceSentence.disabled = !(room.hostReady && room.guestReady) || Boolean(state.roomPlayback?.playing);
         roomRenderPeerDrafts(room.peerDrafts);
+        roomApplyPlayback(room.playback, room.serverNow);
+        roomPrepareStudyAudio();
         updatePracticeControls();
+    }
+
+    async function roomEnableStudyAudio() {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return setPracticeStatus("Trình duyệt này không hỗ trợ nghe chung. Hãy dùng Chrome hoặc Edge.", true);
+        try {
+            state.audioContext ||= new AudioContextClass();
+            await state.audioContext.resume();
+            if (state.audioContext.state !== "running") throw new Error("Chưa bật được âm thanh. Hãy bấm Bật nghe chung lại.");
+            state.roomAudioEnabled = true;
+            state.roomAudioPreparedKey = null;
+            await roomPrepareStudyAudio();
+        } catch (error) {
+            setPracticeStatus(error.message, true);
+        }
+        updatePracticeControls();
+    }
+
+    async function roomPrepareStudyAudio() {
+        if (!state.room || !state.roomStudy || !state.sentence || !state.roomAudioEnabled
+            || state.audioContext?.state !== "running" || document.body.dataset.route !== "practice"
+            || state.roomSharedSessionId !== state.session?.sessionId || state.roomWs?.readyState !== WebSocket.OPEN) return;
+        const key = `${state.room.roomId}:${state.sentence.sentenceId}`;
+        if (key === state.roomAudioPreparedKey || key === state.roomAudioPreparingKey) return;
+        const position = state.sentence.position;
+        const audioUrl = state.sentence.audioUrl;
+        if (!audioUrl) {
+            elements.roomStudyAudioStatus.textContent = "Bài này chưa có file audio để nghe chung. Chủ phòng hãy chọn bài có audio.";
+            return;
+        }
+        state.roomAudioPreparingKey = key;
+        try {
+            await loadAudioBuffer(audioUrl);
+            if (`${state.room?.roomId}:${state.sentence?.sentenceId}` !== key
+                || document.body.dataset.route !== "practice" || state.audioContext?.state !== "running") return;
+            if (roomSendWs({type: "audio-ready", position, ready: true})) state.roomAudioPreparedKey = key;
+        } catch (error) {
+            state.roomAudioEnabled = false;
+            setPracticeStatus(error.message, true);
+        } finally {
+            if (state.roomAudioPreparingKey === key) state.roomAudioPreparingKey = null;
+        }
+    }
+
+    function roomApplyPlayback(playback, serverNow) {
+        if (!playback || !state.roomStudy || state.roomSharedSessionId !== state.session?.sessionId
+            || playback.position !== state.sentence?.position
+            || (state.roomPlayback && playback.version < state.roomPlayback.version)) return;
+        state.roomPlayback = playback;
+        if (!state.roomIsHost) {
+            state.playbackSpeed = playback.speed;
+            elements.playbackSpeed.value = String(playback.speed);
+        }
+        elements.replayCount.textContent = playback.replayCount;
+        updatePracticeControls();
+        if (!playback.startsAt || playback.sequence <= state.roomPlaybackSeen) return;
+        state.roomPlaybackSeen = playback.sequence;
+        if (!playback.playing) return; // Reconnect must not replay an already-finished command.
+        const delay = Date.parse(playback.startsAt) - Date.parse(serverNow);
+        if (!Number.isFinite(delay) || delay < -1500 || !state.roomAudioEnabled
+            || state.audioContext?.state !== "running" || document.body.dataset.route !== "practice") {
+            roomSendWs({type: "audio-ready", position: playback.position, ready: false});
+            roomSendWs({type: "lesson-played", position: playback.position, sequence: playback.sequence});
+            state.roomAudioPreparedKey = null;
+            setPracticeStatus("Chưa nghe được lượt chung này. Bật nghe chung và nhờ chủ phòng phát lại.", true);
+            return;
+        }
+        const localStartsAt = state.roomAudioClockOffset == null
+            ? Date.now() + Math.max(0, delay) : Date.parse(playback.startsAt) - state.roomAudioClockOffset;
+        playSentence({...playback, localStartsAt});
     }
 
     async function roomSyncStudy(room) {
@@ -3075,10 +3942,15 @@
         if (state.roomSharedSessionId && !state.roomSharedCompleted
             && state.sentence?.position === room.lessonPosition && state.roomStudy?.lessonPosition === room.lessonPosition
             && state.roomStudy?.hostReady === room.hostReady && state.roomStudy?.guestReady === room.guestReady
-            && JSON.stringify(state.roomStudy?.peerDrafts) === JSON.stringify(room.peerDrafts)) return;
+            && state.roomPlayback?.version === room.playback?.version
+            && JSON.stringify(state.roomStudy?.peerDrafts) === JSON.stringify(room.peerDrafts)) {
+            roomPrepareStudyAudio();
+            return;
+        }
         state.roomStudySyncing = true;
         try {
             roomRenderStudy(room);
+            roomPrepareStudyAudio();
             if (!state.roomSharedSessionId) {
                 const session = await api(`/api/v1/rooms/${encodeURIComponent(state.room.roomId)}/practice`, {method: "POST"});
                 state.roomSharedSessionId = session.sessionId;
@@ -3129,7 +4001,7 @@
             window.clearTimeout(state.roomDraftTimer);
             const words = state.sentence.words.map(word => word.revealed ? "" : (
                 elements.wordSlots.querySelector(`[data-word-index="${word.index}"]`)?.value
-                || state.wordDrafts.get(word.index) || word.userInput || ""
+                ?? state.wordDrafts.get(word.index) ?? word.userInput ?? ""
             ).slice(0, 80));
             roomSendWs({type: "draft", position: state.sentence.position, sequence: ++state.roomDraftSequence, words});
             const room = await api(`/api/v1/rooms/${encodeURIComponent(state.room.roomId)}/ready`, {method: "POST"});
@@ -3160,7 +4032,7 @@
             const words = state.sentence.words.map(word => {
                 if (word.revealed) return "";
                 return elements.wordSlots.querySelector(`[data-word-index="${word.index}"]`)?.value
-                    || state.wordDrafts.get(word.index) || word.userInput || "";
+                    ?? state.wordDrafts.get(word.index) ?? word.userInput ?? "";
             });
             roomSendWs({type: "draft", position: state.sentence.position,
                 sequence: ++state.roomDraftSequence, words: words.map(word => word.slice(0, 80))});
@@ -3401,7 +4273,20 @@
 
     // ---- WebSocket Signaling -------------------------------------------
 
-    function roomConnectWebSocket(roomId) {
+    async function roomConnectWebSocket(roomId) {
+        if (state.roomWsConnecting) return;
+        state.roomWsConnecting = true;
+        try {
+            // Browser WebSocket uses the same HttpOnly access cookie; no token in the URL.
+            await api("/api/auth/me");
+        } catch (error) {
+            roomShowError(error.message, "Thử kết nối lại sau khi phiên đăng nhập khả dụng.");
+            roomUpdateStatus("DISCONNECTED");
+            elements.roomReconnectBtn.hidden = false;
+            elements.sharedReconnect.hidden = false;
+            return;
+        } finally { state.roomWsConnecting = false; }
+        if (!state.room || state.room.roomId !== roomId) return;
         if (state.roomWs && state.roomWs.readyState !== WebSocket.CLOSED) {
             state.roomWs.close();
         }
@@ -3413,10 +4298,13 @@
         ws.addEventListener("open", () => {
             if (ws !== state.roomWs) return;
             state.roomWsReconnectCount = 0;
+            roomWakePolling();
             roomClearError();
             if (state.roomPc) roomSendWs({type: "ready"});
             roomQueueDraft();
             roomSendMicState();
+            state.roomAudioPreparedKey = null;
+            roomPrepareStudyAudio();
             window.clearInterval(state.roomWsHeartbeatTimer);
             state.roomWsHeartbeatTimer = window.setInterval(() => roomSendWs({type: "ping"}), 20000);
         });
@@ -3430,6 +4318,12 @@
 
         ws.addEventListener("close", event => {
             if (ws !== state.roomWs) return;
+            state.roomAudioPreparedKey = null;
+            if (state.roomPlayback) {
+                state.roomPlayback.hostAudioReady = false;
+                state.roomPlayback.guestAudioReady = false;
+            }
+            if (state.roomStudy && state.sentence) updatePracticeControls();
             window.clearInterval(state.roomWsHeartbeatTimer);
             state.roomWsHeartbeatTimer = null;
             if (event.code === 1000 || !state.room) return; // đóng bình thường
@@ -3460,6 +4354,9 @@
 
     function roomHandleWsMessage(msg) {
         switch (msg.type) {
+            case "room-changed":
+                roomWakePolling();
+                break;
             case "peer-joined":
                 roomOnPeerJoined(msg);
                 break;
@@ -3500,6 +4397,9 @@
                 break;
             case "call-started":
                 roomStartCallClock(msg.startedAt, msg.serverNow);
+                break;
+            case "lesson-audio":
+                roomApplyPlayback(msg.playback, msg.serverNow);
                 break;
             case "pong":
                 break; // heartbeat OK
@@ -3607,13 +4507,18 @@
 
     function roomStartPolling(roomId) {
         roomStopPolling();
-        const request = {};
+        const request = {running: false, wake: false};
         state.roomPollingRequest = request;
         const poll = async () => {
             if (!state.room || state.room.roomId !== roomId || state.roomPollingRequest !== request) return;
+            if (request.running) { request.wake = true; return; }
+            request.running = true;
             try {
+                const requestStartedAt = Date.now();
                 const s = await api(`/api/v1/rooms/${encodeURIComponent(roomId)}`);
                 if (!state.room || state.room.roomId !== roomId || state.roomPollingRequest !== request) return;
+                const serverTime = Date.parse(s.serverNow);
+                if (Number.isFinite(serverTime)) state.roomAudioClockOffset = serverTime - (requestStartedAt + Date.now()) / 2;
                 // Nếu host: kiểm tra pending
                 if (state.roomIsHost) {
                     elements.roomApprovalPanel.hidden = !s.pending;
@@ -3656,10 +4561,25 @@
                     roomOnRoomClosed("Phòng không còn tồn tại.");
                     return;
                 }
+            } finally {
+                request.running = false;
+                if (state.roomPollingRequest === request) {
+                    const connected = state.roomWs?.readyState === WebSocket.OPEN;
+                    state.roomPollingTimer = window.setTimeout(poll, request.wake ? 0 : connected ? 15000 : 2500);
+                    request.wake = false;
+                }
             }
-            if (state.roomPollingRequest === request) state.roomPollingTimer = window.setTimeout(poll, 2500);
         };
+        request.poll = poll;
         state.roomPollingTimer = window.setTimeout(poll, 2500);
+    }
+
+    function roomWakePolling() {
+        const request = state.roomPollingRequest;
+        if (!request?.poll) return;
+        window.clearTimeout(state.roomPollingTimer);
+        if (request.running) request.wake = true;
+        else state.roomPollingTimer = window.setTimeout(request.poll, 0);
     }
 
     function roomStopPolling() {
@@ -4113,6 +5033,12 @@
         state.roomPeerMicEnabled = null;
         state.roomStudy = null;
         state.roomSharedSessionId = null;
+        state.roomPlayback = null;
+        state.roomPlaybackSeen = 0;
+        state.roomAudioClockOffset = null;
+        state.roomAudioPreparedKey = null;
+        state.roomAudioPreparingKey = null;
+        stopRecordedAudio();
         state.roomSharedCompleted = false;
         if (sharedSessionId && state.session?.sessionId === sharedSessionId) {
             state.session = null;
@@ -4195,6 +5121,12 @@
         state.roomPeerMicEnabled = null;
         state.roomStudy = null;
         state.roomSharedSessionId = null;
+        state.roomPlayback = null;
+        state.roomPlaybackSeen = 0;
+        state.roomAudioClockOffset = null;
+        state.roomAudioPreparedKey = null;
+        state.roomAudioPreparingKey = null;
+        stopRecordedAudio();
         state.roomSharedCompleted = false;
         if (sharedSessionId && state.session?.sessionId === sharedSessionId) {
             state.session = null;
@@ -4237,6 +5169,8 @@
 
     // ==================================================================== END ROOM MODULE
     window.DictaLabListeningBridge = {api, navigate, playRecordedAudio, loadAudioBuffer, stopRecordedAudio, paginateList,
+        library: {setLessons: lessons => { state.lessons = lessons; },
+            select: selectCatalogLesson, start: startLesson, busy: () => state.catalogStarting},
         showToast, isAdmin: () => state.currentUser?.role === "ADMIN",
         currentUser: () => state.currentUser, refreshUser: async () => {
             state.currentUser = await api("/api/auth/me");

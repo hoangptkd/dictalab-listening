@@ -1,0 +1,22 @@
+{
+    admin off
+    default_sni 184.194.89.90
+}
+
+https://184.194.89.90 {
+    tls {
+        issuer acme https://acme-v02.api.letsencrypt.org/directory {
+            profile shortlived
+            disable_tlsalpn_challenge
+        }
+    }
+    # Rehearsal is not an authoritative writer. Remove only during a verified cutover.
+    @rehearsal path /api/* /ws /ws/*
+    header @rehearsal Retry-After "300"
+    respond @rehearsal "Migration rehearsal: API is not active on this server." 503
+    reverse_proxy 127.0.0.1:18082
+}
+
+http://184.194.89.90 {
+    redir https://184.194.89.90{uri} 308
+}

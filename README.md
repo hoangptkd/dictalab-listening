@@ -1,10 +1,12 @@
 # DictaLab — English Listening Dictation
 
+Tài liệu toàn bộ hệ thống cập nhật 08/10/2026: [Current system reference](docs/current-system-reference.md). Có thể tải riêng file này lên ChatGPT để cung cấp ngữ cảnh về chức năng, công nghệ, thuật toán, API, dữ liệu và vận hành hiện tại. Tài liệu phân biệt mã local với các mốc triển khai đã ghi nhận, kèm prompt và các câu hỏi để chọn hướng phát triển tiếp.
+
 MVP web luyện nghe chép chính tả tiếng Anh theo CEFR A1–B2. Người học nghe từng câu, điền từng từ vào ô có độ dài tương ứng, nhận phản hồi ngay và theo dõi khả năng nghe thực tế qua chỉ số **first-attempt accuracy**.
 
 ## Chức năng đã có
 
-- Đăng ký, đăng nhập, đăng xuất bằng email; mật khẩu được băm BCrypt và phiên đăng nhập dùng cookie HttpOnly.
+- Đăng ký, đăng nhập, đăng xuất bằng email; mật khẩu băm BCrypt, JWT access/refresh token dùng cookie HttpOnly và Redis quản lý phiên token.
 - Lịch sử luyện, điểm số, dashboard và gợi ý bài được tách riêng theo từng tài khoản.
 - Chọn level A1, A2, B1, B2 và bài luyện.
 - Mỗi bài gồm nhiều câu; mỗi từ có một ô nhập riêng và độ rộng theo độ dài từ.
@@ -36,6 +38,23 @@ MVP web luyện nghe chép chính tả tiếng Anh theo CEFR A1–B2. Người h
 - Audio người thật từ ELLLO; Web Speech API chỉ dùng làm phương án dự phòng
 
 ## Chạy local với PostgreSQL
+
+### Redis và RabbitMQ
+
+Đã tích hợp Redis cho phiên JWT access/refresh token, rate limit dùng chung và RabbitMQ cho chấm phần nhớ ý Listening.
+Hướng dẫn xác thực và cấu hình khóa: [JWT/Redis](docs/jwt-redis-auth.md).
+Hướng dẫn cấu hình, kiểm thử và quay lui: [Redis/RabbitMQ](docs/redis-rabbitmq.md).
+Sau khi thêm `RABBITMQ_USER`, `RABBITMQ_PASSWORD` và các cổng từ `.env.example` vào `.env`, chạy:
+
+```powershell
+pwsh -File .\scripts\run-local.ps1 -WithMessaging
+```
+
+Lệnh này bật `DICTALAB_RATE_LIMIT_BACKEND=redis` và `DICTALAB_LISTENING_QUEUE_ENABLED=true`
+cho ứng dụng local. Redis/RabbitMQ chạy trong Docker, cổng chỉ mở trên loopback. PostgreSQL vẫn lưu
+đáp án, trạng thái chấm và kết quả. Chạy không có `-WithMessaging` sử dụng cấu hình trong `.env`;
+mặc định là bộ đếm trong RAM và worker PostgreSQL hiện có. Redis vẫn bắt buộc cho xác thực JWT;
+script local tự khởi động Redis. Môi trường mới cần đặt `JWT_SIGNING_KEY`; session đăng nhập cũ cần đăng nhập lại.
 
 Yêu cầu Java 17+, Maven 3.9+, PowerShell 7 và Docker Desktop (hoặc cluster PostgreSQL native đã có). Lần đầu tiên, sao chép `.env.example`
 thành `.env` rồi đổi `POSTGRES_PASSWORD`. File `.env` đã được Git bỏ qua.
@@ -124,7 +143,8 @@ DICTALAB_ALLOWED_ORIGINS=https://your-domain.com,https://www.your-domain.com
 Nội dung do quản trị viên tạo được lưu tách khỏi JAR:
 
 - thông tin bài và transcript nằm trong PostgreSQL;
-- audio tải lên nằm tại `DICTALAB_MEDIA_ROOT` (production khuyến nghị `C:\DictaLab\media`);
+- audio tải lên mặc định nằm tại `DICTALAB_MEDIA_ROOT` (production khuyến nghị `C:\DictaLab\media`);
+  có thể bật S3 riêng tư cho upload mới, giữ audio cũ trên ổ đĩa: [cấu hình S3 audio](docs/s3-audio.md);
 - bài mới bắt đầu là **bản nháp** và chỉ xuất hiện với người học sau khi đủ audio rồi bấm **Xuất bản bài**;
 - thay JAR hoặc chạy workflow deploy không xóa PostgreSQL và thư mục media.
 
@@ -213,62 +233,47 @@ Người học có thể nghe lại đoạn audio gốc, luyện điền từ t�
 vào Error Bank theo tài khoản. Lượt ôn không thay đổi điểm Dictation. Toàn bộ câu, telemetry,
 ước lượng năng lực và xuất dữ liệu nằm trong **Phân tích chi tiết**, mặc định đóng.
 
-Backend kết nối [chatgpt-api-web](https://github.com/MrBalourd/chatgpt-api-web) qua
-`POST /v1/chat/completions`. Chạy bridge theo README của dự án và đăng nhập ChatGPT trong
-Chrome của bridge trước; cấu hình sau áp dụng trên **máy chạy backend DictaLab**:
+Backend gọi ShopAIKey trực tiếp qua HTTPS; không cần Chrome, đăng nhập ChatGPT hoặc bridge.
+Các cấu hình sau chỉ đặt trên **máy chạy backend DictaLab**:
 
 ```env
+SHOPAIKEY_API_KEY=<khóa riêng trên máy chủ>
+SHOPAIKEY_MODEL=claude-sonnet-4-5
+SHOPAIKEY_URL=https://api.shopaikey.com/v1/chat/completions
 DICTALAB_COACH_ENABLED=true
-DICTALAB_COACH_URL=http://127.0.0.1:3000/v1/chat/completions
-DICTALAB_COACH_MODEL=chatgpt-web
-DICTALAB_COACH_TIMEOUT=75s
-DICTALAB_COACH_API_KEY=
 ```
 
-Để chạy cả DictaLab và bridge trên Windows (cần Node.js 18.18+, Git, Chrome):
+Coach, chấm/làm rõ Hội thoại AI và Listening Comprehension dùng model `SHOPAIKEY_MODEL`.
+Sinh câu Hội thoại AI dùng riêng `DICTALAB_CONVERSATION_MODEL=gemini-2.5-flash`; giọng đọc vẫn dùng Cartesia.
+Khóa ShopAIKey không gửi xuống trình duyệt hoặc ghi vào prompt/log.
+
+Chạy local với `.env` đã cấu hình ShopAIKey:
 
 ```powershell
 pwsh -File .\scripts\run-local.ps1 -WithCoach
 ```
 
-Script tải bridge vào thư mục Git bỏ qua `data/chatgpt-api-web` nếu chưa có, cài dependencies,
-áp dụng `scripts/chatgpt-web-compat.patch` cho giao diện ChatGPT hiện tại rồi chạy bridge tại
-`127.0.0.1:3000`, Chrome CDP tại `127.0.0.1:9223`. Đăng nhập ChatGPT trong Chrome vừa mở;
-profile lưu ở `data/chatgpt-api-web/data/chrome-profile` để dùng lại. Không đưa profile vào Git.
-Nếu Chrome ở vị trí khác, đặt `DICTALAB_COACH_CHROME_PATH` trong `.env`.
-Log bridge ở `data/chatgpt-api-web/bridge.out.log` và `bridge.err.log`.
-Đây là bridge dùng tài khoản ChatGPT trên web; khi giao diện ChatGPT thay đổi, bản vá có thể cần cập nhật.
+`-WithCoach` chỉ bật Coach và kiểm tra có khóa, không cài hoặc khởi chạy browser.
+`scripts/check-coach-local.ps1` có thể kiểm tra thật bằng tài khoản QA mới trong database local;
+không chạy lên production chỉ để thử tích hợp.
 
-Kiểm tra thực tế sau khi đăng nhập (tạo tài khoản QA riêng và một bài hoàn thành có lỗi giả lập):
-
-```powershell
-pwsh -File .\scripts\check-coach-local.ps1
-```
-
-Check yêu cầu `source=AI`, giới hạn insight/action/review, lưu báo cáo và xác nhận điểm không đổi.
-Tài khoản QA tồn tại trong database local; script không thay đổi điểm của tài khoản đang dùng.
-
-Trên Windows VPS, bridge có thể chạy bằng `scripts/start-coach-bridge-vps.ps1` qua Scheduled Task
-`DictaLabCoachBridge` trong phiên Administrator tương tác. Sau khi đăng nhập ChatGPT trong Chrome
-của VPS, chạy `scripts/enable-coach-vps.ps1` trên VPS; script kiểm tra phản hồi ChatGPT thật trước
-khi bật AI Coach cho service và khôi phục cấu hình nếu app không lên health. Scheduled Task cần
-phiên Administrator đăng nhập lại sau khi máy khởi động; khi phiên đó chưa có, trang kết quả vẫn
-dùng Smart Review theo quy tắc backend.
-
-Nếu bridge chạy trên máy khác, đặt URL tới kết nối riêng có bảo vệ; `127.0.0.1` luôn là máy
-backend, không phải máy người học. Khóa tùy chọn chỉ dùng khi proxy trước bridge có xác thực.
+Trên Windows VPS, cấu hình `SHOPAIKEY_API_KEY` trong môi trường dịch vụ rồi dùng
+`scripts/enable-coach-vps.ps1` sau khi deploy bản mới. Script thử API với dữ liệu tổng hợp trước
+khi bật Coach, khôi phục môi trường dịch vụ nếu app không lên health. Các biến
+`DICTALAB_COACH_URL/MODEL/API_KEY/TIMEOUT` cũ không còn được đọc bởi ứng dụng.
+Các script/patch bridge cũ còn trong repository chỉ là công cụ lịch sử, không thuộc luồng
+khởi động/deploy hiện tại. Không cần dùng chúng cho bản mới; phiên bản JAR cũ có thể vẫn cần bridge.
 
 Kết quả được lưu trước khi gọi AI. Frontend lấy gợi ý deterministic bằng
 `GET /api/v1/practice-sessions/{id}/coach`, sau đó gọi `POST` cùng địa chỉ để bổ sung AI.
-Bridge không hỗ trợ JSON Schema enforcement: prompt yêu cầu JSON, backend parse nghiêm ngặt,
-kiểm tra số lượng/độ dài, pattern và evidence IDs; phản hồi free-text hoặc sai schema bị loại.
-Không gửi cookie, email, tên tài khoản hoặc lịch sử hội thoại; chỉ gửi level, điểm lần đầu,
-nhận xét tiến bộ và tối đa 40 lỗi/ngữ cảnh. Mỗi yêu cầu dùng hội thoại bridge mới.
+Backend parse JSON, kiểm tra số lượng/độ dài, pattern và evidence IDs; phản hồi sai schema bị loại.
+Không gửi cookie, email hoặc tên tài khoản; chỉ gửi level, điểm lần đầu,
+nhận xét tiến bộ và tối đa 40 lỗi/ngữ cảnh. Request độc lập, không có tab hay session provider.
 
 AI chọn ưu tiên và đề xuất bài ôn; backend vẫn tính điểm và xác định bằng chứng. Nhận xét tiến bộ
 so với tối đa 5 bài mới cùng cấp độ, học riêng và hoàn thành trước phiên đang xem; cần ít nhất
 2 bài để so sánh. Bài học lại/học chung được ghi rõ chưa thể so sánh. Phản hồi AI hợp lệ được
-lưu một lần cho mỗi phiên; bridge lỗi/timeout/đang bận thì giữ gợi ý deterministic và cho thử lại.
+lưu một lần cho mỗi phiên; API lỗi/timeout hoặc Coach đang bận thì giữ gợi ý deterministic và cho thử lại.
 `DICTALAB_COACH_ENABLED=false` tắt việc gửi dữ liệu sang AI nhưng vẫn dùng Smart Review/Error Bank.
 
 Migration V21 chỉ thêm bảng `dictation_coach_reports` và `dictation_error_bank`; không cập nhật
@@ -280,7 +285,7 @@ bỏ qua hai bảng này khi rollback. Kiểm tra sau deploy bằng phiên đã 
 Kiểm thử phần Coach:
 
 ```powershell
-mvn '-Dtest=CoachAnalysisTest,ChatGptWebCoachClientTest,CoachServiceIntegrationTest,PracticeServiceIntegrationTest' test
+mvn '-Dtest=CoachAnalysisTest,ShopAiKeyClientTest,CoachServiceIntegrationTest,PracticeServiceIntegrationTest' test
 node --test src/test/js/coach.test.cjs
 ```
 
@@ -367,7 +372,7 @@ tại `/support`. Admin xử lý người dùng tại `/admin/users`, yêu cầu
 Đổi mật khẩu, khóa tài khoản và đổi vai trò thu hồi phiên đăng nhập cũ. Xóa tài khoản theo yêu cầu
 sẽ xóa lịch sử học và dữ liệu hỗ trợ liên quan; thao tác này không thể hoàn tác.
 
-Tất cả API `/api/v1/**` yêu cầu đăng nhập. Backend lấy user ID từ session bảo mật; frontend không thể
+Tất cả API `/api/v1/**` yêu cầu đăng nhập. Backend lấy user ID từ principal đã xác minh JWT và phiên Redis; frontend không thể
 truyền một learner ID khác để xem hoặc sửa lịch sử của người khác. Các request thay đổi dữ liệu được
 bảo vệ bằng CSRF token.
 
@@ -396,17 +401,47 @@ Bản local đã dùng audio ELLLO người thật. API hiện vẫn gửi `spee
 ```powershell
 mvn test
 node --check src/main/resources/static/js/app.js
+node --test src/test/js/*.cjs
 ```
 
 Test hiện có bao phủ tokenizer, công thức chấm điểm, telemetry từng lần nhập/tốc độ, giới hạn 10 bài mới,
 phân loại lỗi, luồng hoàn thành, ràng buộc nghe lại sau khi reveal, đăng ký, session đăng nhập, CSRF và quyền truy cập API.
-Test dùng H2 in-memory riêng và không tác động tới dữ liệu PostgreSQL local.
+Mặc định test dùng H2 in-memory riêng. Chạy toàn bộ suite với PostgreSQL native riêng trên Windows:
+
+```powershell
+& ./scripts/test-postgres.ps1
+```
+
+Script cần PostgreSQL binaries trên PATH (hoặc truyền `-PostgresBin`), tạo cluster dưới `target/`,
+bind loopback cổng 15434 và dừng riêng cluster đó khi xong. Không tác động tới PostgreSQL local
+của ứng dụng. Không chạy `clean` hoặc xóa `target/` trong lúc cluster test đang chạy.
+
+### Backend portfolio evidence
+
+Room có kiểm thử tranh chấp create/join/cleanup; History phân trang tại database;
+Dashboard dùng SQL aggregate và giới hạn tám điểm trend. Đã chạy 126 kiểm thử Java đạt trên H2,
+126 đạt trên PostgreSQL 18.4 và 63 kiểm thử JavaScript đạt. Benchmark local với 10.000 phiên
+giảm p95 History khoảng 55%, Dashboard khoảng 34%; không phải phép đo tải đồng thời.
+
+Xem [báo cáo trước/sau và lệnh tái chạy](docs/backend-performance-2026-10-01.md) để kiểm tra phương pháp,
+dữ liệu gốc, giới hạn và câu mô tả CV phù hợp.
+
+### History API phân trang
+
+`GET /api/v1/history?page=0&size=10&level=A1` trả
+`{items, page, size, totalElements, totalPages}` thay cho mảng không giới hạn trước đây.
+`page` bắt đầu từ 0, tối đa 100000; `size` từ 1 đến 100 (mặc định 10); `level` tùy chọn A1/A2/B1/B2.
+Tham số không hợp lệ trả 400. Trang vượt cuối trả `items: []` kèm tổng số;
+frontend điều chỉnh deep link về trang cuối. Chi tiết `/api/v1/history/{sessionId}` không đổi.
+Đây là thay đổi contract: frontend kèm repository đã cập nhật; client bên ngoài phải đọc `items`.
 
 ## CI/CD lên Windows Server 2019
 
-Workflow `.github/workflows/deploy.yml` chạy khi có commit được push vào nhánh `main`:
+Workflow `.github/workflows/deploy.yml` kiểm thử khi có pull request hoặc push vào `main`,
+và khi chạy thủ công. Pull request không deploy. Deploy chỉ chạy từ `main`, sau job kiểm thử đạt:
 
-1. Chạy toàn bộ test và build JAR bằng Java 17.
+1. Chạy JavaScript, toàn bộ Java test trên H2 và PostgreSQL service container có Flyway,
+   build JAR bằng Java 17, lưu riêng báo cáo của hai database.
 2. Kết nối VPS bằng SSH deploy key, tải bản build và script triển khai lên thư mục staging.
 3. Tạo và xác minh bản sao PostgreSQL riêng tư trước khi chạy migration.
 4. Xác minh SHA-256, cập nhật Windows Service `DictaLab` và kiểm tra health endpoint.

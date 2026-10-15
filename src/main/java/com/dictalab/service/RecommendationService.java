@@ -8,6 +8,7 @@ import com.dictalab.dto.ApiDtos;
 import com.dictalab.repository.LessonRepository;
 import com.dictalab.repository.PracticeSessionRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
@@ -29,8 +30,13 @@ public class RecommendationService {
 
     public ApiDtos.Recommendation recommend(Long userId) {
         List<PracticeSession> completed = sessionRepository
-                .findByUserIdAndStatusAndRoomIdIsNullOrderByCompletedAtAsc(userId, SessionStatus.COMPLETED);
-        if (completed.isEmpty()) {
+                .findByUserIdAndStatusAndRoomIdIsNullOrderByCompletedAtDescIdDesc(
+                        userId, SessionStatus.COMPLETED, PageRequest.of(0, 1));
+        return recommend(userId, completed.isEmpty() ? null : completed.get(0));
+    }
+
+    ApiDtos.Recommendation recommend(Long userId, PracticeSession latest) {
+        if (latest == null) {
             return lessonRepository.findByLevelAndActiveTrueOrderByDisplayOrder(CefrLevel.A1).stream()
                     .findFirst()
                     .map(lesson -> toRecommendation(
@@ -40,13 +46,10 @@ public class RecommendationService {
                     .orElse(null);
         }
 
-        PracticeSession latest = completed.get(completed.size() - 1);
         CefrLevel currentLevel = latest.getLesson().getLevel();
-        List<PracticeSession> recentAtLevel = completed.stream()
-                .filter(session -> session.getLesson().getLevel() == currentLevel)
-                .skip(Math.max(0, completed.stream()
-                        .filter(session -> session.getLesson().getLevel() == currentLevel).count() - 3))
-                .toList();
+        List<PracticeSession> recentAtLevel = sessionRepository
+                .findByUserIdAndStatusAndRoomIdIsNullAndLessonLevelOrderByCompletedAtDescIdDesc(
+                        userId, SessionStatus.COMPLETED, currentLevel, PageRequest.of(0, 3));
         double recentFirstAccuracy = recentAtLevel.stream()
                 .mapToDouble(PracticeSession::getFirstAttemptAccuracy)
                 .average()
@@ -66,8 +69,8 @@ public class RecommendationService {
             reason = "Duy trì " + currentLevel + " để đưa first-attempt accuracy lên trên 85%.";
         }
 
-        Set<Long> completedLessonIds = new HashSet<>();
-        completed.forEach(session -> completedLessonIds.add(session.getLesson().getId()));
+        Set<Long> completedLessonIds = new HashSet<>(sessionRepository.completedSoloLessonIds(
+                userId, SessionStatus.COMPLETED, targetLevel));
         List<Lesson> candidates = lessonRepository.findByLevelAndActiveTrueOrderByDisplayOrder(targetLevel);
         Lesson selected = candidates.stream()
                 .filter(lesson -> !completedLessonIds.contains(lesson.getId()))

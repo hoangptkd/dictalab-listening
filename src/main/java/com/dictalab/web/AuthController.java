@@ -7,12 +7,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.web.context.SecurityContextRepository;
+import com.dictalab.security.JwtTokenService;
 import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,11 +23,39 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AccountService accountService;
-    private final SecurityContextRepository contextRepository;
+    private final JwtTokenService tokens;
+    private final CookieCsrfTokenRepository csrfTokens;
+    private final com.dictalab.security.GoogleIdentityService google;
 
-    public AuthController(AccountService accountService, SecurityContextRepository contextRepository) {
+    public AuthController(AccountService accountService, JwtTokenService tokens, CookieCsrfTokenRepository csrfTokens,
+                          com.dictalab.security.GoogleIdentityService google) {
         this.accountService = accountService;
-        this.contextRepository = contextRepository;
+        this.tokens = tokens;
+        this.csrfTokens = csrfTokens;
+        this.google = google;
+    }
+
+    @GetMapping("/google/config")
+    public AuthDtos.GoogleConfigResponse googleConfig(HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-store");
+        return new AuthDtos.GoogleConfigResponse(!google.clientId().isEmpty(), google.clientId());
+    }
+
+    @PostMapping("/google/challenge")
+    public AuthDtos.GoogleChallengeResponse googleChallenge(HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-store");
+        return new AuthDtos.GoogleChallengeResponse(google.challenge(response));
+    }
+
+    @PostMapping("/google")
+    public AuthDtos.CurrentUserResponse googleLogin(@Valid @RequestBody AuthDtos.GoogleLoginRequest request,
+            HttpServletRequest servletRequest, HttpServletResponse servletResponse) {
+        var identity = google.verify(request.credential(), servletRequest);
+        var account = accountService.loginGoogle(identity);
+        tokens.issue(account.user(), servletRequest, servletResponse);
+        csrfTokens.saveToken(null, servletRequest, servletResponse);
+        google.clearChallenge(servletResponse);
+        return AuthDtos.CurrentUserResponse.from(account.user());
     }
 
     @GetMapping("/csrf")
@@ -43,7 +69,8 @@ public class AuthController {
                                                   HttpServletRequest servletRequest,
                                                   HttpServletResponse servletResponse) {
         AccountService.AuthenticatedAccount account = accountService.register(request);
-        saveAuthentication(account.authentication(), servletRequest, servletResponse);
+        tokens.issue(account.user(), servletRequest, servletResponse);
+        csrfTokens.saveToken(null, servletRequest, servletResponse);
         return AuthDtos.CurrentUserResponse.from(account.user());
     }
 
@@ -52,7 +79,8 @@ public class AuthController {
                                                HttpServletRequest servletRequest,
                                                HttpServletResponse servletResponse) {
         AccountService.AuthenticatedAccount account = accountService.login(request);
-        saveAuthentication(account.authentication(), servletRequest, servletResponse);
+        tokens.issue(account.user(), servletRequest, servletResponse);
+        csrfTokens.saveToken(null, servletRequest, servletResponse);
         return AuthDtos.CurrentUserResponse.from(account.user());
     }
 
@@ -63,22 +91,14 @@ public class AuthController {
 
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void logout(HttpServletRequest request) {
-        SecurityContextHolder.clearContext();
-        if (request.getSession(false) != null) {
-            request.getSession(false).invalidate();
-        }
+    public void logout(HttpServletRequest request, HttpServletResponse response) {
+        tokens.logout(request, response);
+        csrfTokens.saveToken(null, request, response);
     }
 
-    private void saveAuthentication(Authentication authentication,
-                                    HttpServletRequest request,
-                                    HttpServletResponse response) {
-        if (request.getSession(false) != null) {
-            request.changeSessionId();
-        }
-        SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(authentication);
-        SecurityContextHolder.setContext(context);
-        contextRepository.saveContext(context, request, response);
+    @PostMapping("/refresh")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void refresh(HttpServletRequest request, HttpServletResponse response) {
+        tokens.refresh(request, response);
     }
 }

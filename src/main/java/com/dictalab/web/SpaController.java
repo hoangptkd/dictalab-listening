@@ -19,6 +19,9 @@ public class SpaController {
     private static final String INDEX = "forward:/index.html";
     private static final String ADMIN = "forward:/admin.html";
 
+    @GetMapping({"/privacy","/terms","/help"})
+    public String policies() { return "forward:/policies.html"; }
+
     /* ── Auth screens ─────────────────────────────────────────────────── */
 
     @GetMapping("/login")
@@ -45,6 +48,9 @@ public class SpaController {
     public String listening() {
         return INDEX;
     }
+
+    @GetMapping({"/conversation", "/conversation/{sessionId}"})
+    public String conversation() { return INDEX; }
 
     /* ── Practice ─────────────────────────────────────────────────────── */
 

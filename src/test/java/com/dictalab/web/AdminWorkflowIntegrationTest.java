@@ -78,6 +78,14 @@ class AdminWorkflowIntegrationTest {
         mvc.perform(put("/api/admin/support/tickets/"+id).with(user(admin)).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"RESOLVED\",\"adminNote\":\"Stale response\",\"version\":0}")).andExpect(status().isConflict());
         mvc.perform(put("/api/admin/support/tickets/"+id).with(user(admin)).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"RESOLVED\",\"adminNote\":\"Second response\",\"version\":1}")).andExpect(status().isOk());
         mvc.perform(get("/api/admin/support/tickets/"+id).with(user(admin))).andExpect(jsonPath("$.edit_version").value(2)).andExpect(jsonPath("$.events.length()").value(2)).andExpect(jsonPath("$.events[1].detail").value("First response"));
+        mvc.perform(get("/api/admin/support/tickets/page").with(user(admin)).param("q",prefix))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
+        mvc.perform(get("/api/admin/support/tickets/page").with(user(admin)).param("q",prefix).param("status",""))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1)).andExpect(jsonPath("$.items[0].status").value("RESOLVED"));
+        mvc.perform(get("/api/admin/support/tickets/page").with(user(admin)).param("q",prefix).param("status","RESOLVED"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1));
+        mvc.perform(get("/api/admin/support/tickets/page").with(user(admin)).param("status","INVALID"))
+                .andExpect(status().isBadRequest());
     }
     @Test void listeningDraftVersionAndArchiveReleaseSource() throws Exception {
         long source=db.queryForObject("SELECT u.id FROM listening_units u WHERE u.published=TRUE AND NOT EXISTS(SELECT 1 FROM listening_units d WHERE d.lesson_id=u.lesson_id AND d.audio_url=u.audio_url AND d.published=FALSE AND d.retired=FALSE) ORDER BY u.id LIMIT 1",Long.class);

@@ -47,8 +47,11 @@ class ListeningAssessmentIntegrationTest {
     private PreviewVocabularyService previewVocabularyService;
 
     @Test
-    void publishedLessonsNeverExposeAThinOneWordPreview() {
-        assertThat(lessonRepository.findByActiveTrueOrderByLevelAscDisplayOrderAsc())
+    void bundledLessonsNeverExposeAThinOneWordPreview() {
+        // Other integration tests deliberately create one-word ADMIN_UPLOAD fixtures.
+        assertThat(lessonRepository.findByActiveTrueOrderByLevelAscDisplayOrderAsc().stream()
+                .filter(lesson -> "BUNDLED".equals(lesson.getContentOrigin())).toList())
+                .isNotEmpty()
                 .allSatisfy(lesson -> assertThat(previewVocabularyService.wordsFor(lesson).stream()
                         .filter(word -> !word.properName()).count())
                         .isIn(0L, 2L, 3L, 4L, 5L));

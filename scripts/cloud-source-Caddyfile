@@ -1,0 +1,28 @@
+{
+    admin off
+    auto_https disable_redirects
+    https_port 18443
+    storage file_system C:\DictaLab\https\data
+}
+
+https://160.191.244.27:18443 {
+    tls {
+        issuer acme https://acme-v02.api.letsencrypt.org/directory {
+            profile shortlived
+            disable_tlsalpn_challenge
+        }
+    }
+    handle_path /bilingual/* {
+        reverse_proxy 127.0.0.1:8765
+    }
+    handle {
+        @oldApi path /api/* /ws /ws/*
+        header @oldApi Retry-After "300"
+        respond @oldApi "DictaLab has moved to https://184.194.89.90" 503
+        redir https://184.194.89.90{uri} 302
+    }
+}
+
+http://160.191.244.27:18081 {
+    redir https://184.194.89.90{uri} 302
+}

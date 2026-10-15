@@ -45,7 +45,7 @@ public class CatalogController {
             @AuthenticationPrincipal DictaLabPrincipal principal,
             @RequestParam CefrLevel level) {
         boolean administrator = principal != null && "ADMIN".equals(principal.role());
-        return catalogService.lessons(principal == null ? null : principal.id(), level, administrator);
+        return catalogService.lessons(principal == null ? 0L : principal.id(), level, administrator);
     }
 
     public record Preview(@NotNull @Positive Long lessonId, @NotBlank String audioUrl) {}
