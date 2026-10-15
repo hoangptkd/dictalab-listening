@@ -97,6 +97,8 @@ class ProductionReliabilityTest {
         assertThat(race(hint,hint)).containsOnly(1);
         assertThat(db.queryForObject("SELECT reveal_count FROM practice_sessions WHERE id=?",Integer.class,id)).isEqualTo(1);
         practice.replay(owner.getId(),id,sentence,new ApiDtos.ReplayRequest(com.dictalab.domain.ReplayEventType.COMPLETED));
+        db.update("UPDATE sentence_attempts SET started_at=? WHERE practice_session_id=?",
+                java.sql.Timestamp.from(java.time.Instant.now().minusSeconds(10)),id);
         Callable<Integer> finish=()->{
             try{practice.completeSentence(owner.getId(),id,sentence,new ApiDtos.CompleteSentenceRequest(5));return 1;}
             catch(com.dictalab.exception.InvalidPracticeStateException duplicate){return 0;}
@@ -131,7 +133,8 @@ class ProductionReliabilityTest {
         var pool=Executors.newFixedThreadPool(2);var start=new CountDownLatch(1);
         try{
             Callable<Void> call=()->{start.await(5,TimeUnit.SECONDS);practice.checkWord(owner.getId(),session.sessionId(),sentence,index,new ApiDtos.CheckWordRequest("wrong"));return null;};
-            var a=pool.submit(call);var b=pool.submit(call);start.countDown();a.get(10,TimeUnit.SECONDS);b.get(10,TimeUnit.SECONDS);
+            var a=pool.submit(call);var b=pool.submit(()->{start.await(5,TimeUnit.SECONDS);practice.checkWord(owner.getId(),session.sessionId(),sentence,index,new ApiDtos.CheckWordRequest("different"));return null;});
+            start.countDown();a.get(10,TimeUnit.SECONDS);b.get(10,TimeUnit.SECONDS);
             assertThat(db.queryForObject("""
                     SELECT w.attempt_count FROM word_attempts w JOIN sentence_attempts s ON s.id=w.sentence_attempt_id
                     WHERE s.practice_session_id=? AND w.word_index=?

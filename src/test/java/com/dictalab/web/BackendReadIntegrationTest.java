@@ -254,10 +254,10 @@ class BackendReadIntegrationTest {
     }
 
     @Test
-    void recommendationUsesOnlyLatestThreeSoloScoresAtTheLatestLevel() {
+    void recommendationUsesOnlyLatestThreeNewSoloScoresAtTheLatestLevel() {
         new TransactionTemplate(transactions).executeWithoutResult(status -> {
             completed(owner, a2, time, 60, 0, 0, 0, false, null);
-            for (int i = 1; i <= 3; i++) completed(owner, a1, time.plusSeconds(i), 60, 85, 90, 85, false, null);
+            for (int i = 1; i <= 3; i++) completed(owner, lesson(CefrLevel.A1), time.plusSeconds(i), 60, 85, 90, 85, true, null);
             completed(owner, a2, time.plusSeconds(10), 60, 0, 0, 0, false, "shared-room");
             em.flush();
             em.clear();
@@ -265,7 +265,7 @@ class BackendReadIntegrationTest {
         assertThat(recommendations.recommend(owner.getId()).level()).isEqualTo(CefrLevel.A2);
         assertThat(recommendations.recommend(owner.getId()).reason()).contains("85.0%");
         new TransactionTemplate(transactions).executeWithoutResult(status -> {
-            for (int i = 20; i < 23; i++) completed(owner, a2, time.plusSeconds(i), 60, 54, 60, 55, false, null);
+            for (int i = 20; i < 23; i++) completed(owner, lesson(CefrLevel.A2), time.plusSeconds(i), 60, 54, 60, 55, true, null);
             em.flush();
             em.clear();
         });

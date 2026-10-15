@@ -11,6 +11,12 @@ public interface LessonRepository extends JpaRepository<Lesson, Long> {
 
     List<Lesson> findByLevelAndActiveTrueOrderByDisplayOrder(CefrLevel level);
 
+    @org.springframework.data.jpa.repository.Query("""
+            select l from Lesson l where l.level=:level and l.active=true
+              and l.contentOrigin <> 'BRITISH_COUNCIL_PERSONAL' order by l.displayOrder,l.id
+            """)
+    List<Lesson> recommendationCandidates(@org.springframework.data.repository.query.Param("level") CefrLevel level);
+
     List<Lesson> findByActiveTrueOrderByLevelAscDisplayOrderAsc();
 
     List<Lesson> findAllByOrderByUpdatedAtDesc();
@@ -49,9 +55,9 @@ public interface LessonRepository extends JpaRepository<Lesson, Long> {
             FROM lessons l
             LEFT JOIN (SELECT p.lesson_id FROM practice_sessions p
                        WHERE p.user_id=:userId AND p.status='COMPLETED' GROUP BY p.lesson_id) done ON done.lesson_id=l.id
-            WHERE l.level=:level AND l.active=TRUE
+            WHERE (:level='ALL' OR l.level=:level) AND l.active=TRUE
               AND (:administrator=TRUE OR l.content_origin <> 'BRITISH_COUNCIL_PERSONAL')
-            ORDER BY l.display_order, l.id
+            ORDER BY l.level, l.display_order, l.id
             """, nativeQuery = true)
     List<CatalogLesson> catalog(@org.springframework.data.repository.query.Param("userId") Long userId,
                                @org.springframework.data.repository.query.Param("level") String level,

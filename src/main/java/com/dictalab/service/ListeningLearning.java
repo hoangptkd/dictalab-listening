@@ -157,10 +157,12 @@ public class ListeningLearning {
                         AND l.level=? AND s.audio_url IS NOT NULL
                     ORDER BY CASE WHEN s.id<>? AND s.audio_url<>?
                         AND NOT EXISTS (SELECT 1 FROM audio_exposure_events e WHERE e.user_id=? AND e.audio_url=s.audio_url)
+                        AND NOT EXISTS (SELECT 1 FROM practice_sessions p JOIN lesson_sentences ps ON ps.lesson_id=p.lesson_id WHERE p.user_id=? AND ps.audio_url=s.audio_url)
+                        AND NOT EXISTS (SELECT 1 FROM listening_sessions ls JOIN listening_units u ON u.id=ls.unit_id WHERE ls.user_id=? AND u.audio_url=s.audio_url)
                         AND NOT EXISTS (SELECT 1 FROM listening_review_attempts r WHERE r.card_id=? AND r.sentence_id=s.id)
                         THEN 0 ELSE 1 END,
                         CASE WHEN s.id<>? OR CAST(? AS BIGINT) IS NULL THEN 0 ELSE 1 END,s.id,t.word_index LIMIT 1
-                    """,card.get("target"),source.get("level"),source.get("id"),source.get("audio_url"),user,card.get("id"),card.get("last_sentence_id"),card.get("last_sentence_id"));
+                    """,card.get("target"),source.get("level"),source.get("id"),source.get("audio_url"),user,user,user,card.get("id"),card.get("last_sentence_id"),card.get("last_sentence_id"));
             if (candidates.isEmpty()) continue;
             var candidate=candidates.get(0);
             // Readers can coexist across lessons; publication/content writers must still wait until commit.
@@ -172,6 +174,10 @@ public class ListeningLearning {
             // A previously served context tests retention, not new-context transfer.
             if (db.queryForObject("SELECT COUNT(*) FROM listening_review_attempts WHERE card_id=? AND sentence_id=?",Integer.class,card.get("id"),candidate.get("id"))>0) newContext=false;
             if (db.queryForObject("SELECT COUNT(*) FROM audio_exposure_events WHERE user_id=? AND audio_url=?",Integer.class,user,candidate.get("audio_url"))>0) newContext=false;
+            if (db.queryForObject("""
+                    SELECT (SELECT COUNT(*) FROM practice_sessions p JOIN lesson_sentences s ON s.lesson_id=p.lesson_id WHERE p.user_id=? AND s.audio_url=?)
+                        + (SELECT COUNT(*) FROM listening_sessions ls JOIN listening_units u ON u.id=ls.unit_id WHERE ls.user_id=? AND u.audio_url=?)
+                    """,Integer.class,user,candidate.get("audio_url"),user,candidate.get("audio_url"))>0) newContext=false;
             String id=UUID.randomUUID().toString();
             int index=((Number)candidate.get("word_index")).intValue();
             String expected=tokenizer.words((String)candidate.get("transcript")).get(index);

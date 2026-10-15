@@ -73,6 +73,11 @@ public class PracticeSession {
     @Column(name = "overall_score", nullable = false)
     private double overallScore;
 
+    @Column(name = "scoring_version", nullable = false)
+    private int scoringVersion = 1;
+
+    public int getScoringVersion() { return scoringVersion; }
+
     @Column(name = "first_exposure", nullable = false)
     private boolean firstExposure;
 
@@ -202,5 +207,6 @@ public class PracticeSession {
         this.knownMissedCount = knownMissedCount;
         this.unknownCount = unknownCount;
         this.overallScore = overallScore;
+        this.scoringVersion = 2;
     }
 }

@@ -1,6 +1,5 @@
 package com.dictalab.service;
 
-import com.dictalab.domain.CefrLevel;
 import com.dictalab.dto.ApiDtos;
 import jakarta.validation.constraints.*;
 import org.springframework.http.HttpStatus;
@@ -9,7 +8,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -36,8 +34,7 @@ public class LessonLibrary {
                            List<Membership> memberships, List<Metadata> metadata, List<Active> activeSessions) {}
 
     public Snapshot snapshot(long userId, boolean administrator) {
-        List<ApiDtos.LessonSummary> lessons = new ArrayList<>();
-        for (CefrLevel level : CefrLevel.values()) lessons.addAll(catalog.lessons(userId, level, administrator));
+        List<ApiDtos.LessonSummary> lessons = catalog.lessons(userId, null, administrator);
         var courses = db.query("SELECT * FROM library_courses WHERE published=TRUE OR ?=TRUE ORDER BY goal,position_index,id",
                 (r, n) -> new Course(r.getString("id"), r.getString("goal"), r.getString("title"), r.getString("target_label"),
                         r.getString("description"), r.getString("criteria"), r.getString("coverage_note"),

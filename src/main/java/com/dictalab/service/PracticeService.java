@@ -119,9 +119,13 @@ public class PracticeService {
                 SELECT (SELECT COUNT(*) FROM listening_sessions s JOIN listening_units u ON u.id=s.unit_id
                     WHERE s.user_id=? AND u.audio_url IN
                         (SELECT audio_url FROM lesson_sentences WHERE lesson_id=?))
+                    + (SELECT COUNT(*) FROM practice_sessions p JOIN lesson_sentences s ON s.lesson_id=p.lesson_id
+                        WHERE p.user_id=? AND s.audio_url IN
+                            (SELECT audio_url FROM lesson_sentences WHERE lesson_id=?))
+                    + (SELECT COUNT(*) FROM lesson_sentences WHERE lesson_id=? AND (audio_url IS NULL OR TRIM(audio_url)=''))
                     + (SELECT COUNT(*) FROM audio_exposure_events e WHERE e.user_id=? AND e.audio_url IN
                         (SELECT audio_url FROM lesson_sentences WHERE lesson_id=?))
-                """, Integer.class, userId, lesson.getId(), userId, lesson.getId());
+                """, Integer.class, userId, lesson.getId(), userId, lesson.getId(), lesson.getId(), userId, lesson.getId());
         boolean firstExposure = !sessionRepository.existsByUserIdAndLessonId(userId, lesson.getId())
                 && otherExposure != null && otherExposure == 0;
         PracticeSession session = sessionRepository.save(new PracticeSession(user, lesson, now(), firstExposure));
@@ -227,6 +231,10 @@ public class PracticeService {
 
         WordAttempt wordAttempt = getOrCreateWordAttempt(attempt, wordIndex);
         String rawAnswer = request.answer().trim();
+        if (wordAttempt.isFinalCorrect() || wordAttempt.isRevealed()
+                || rawAnswer.equals(wordAttempt.getLastAnswer())) return toState(attempt, properNames);
+        if (wordAttempt.getAttemptCount() >= 50)
+            throw new InvalidPracticeStateException("Đã đạt giới hạn thử từ này. Hãy dùng gợi ý để tiếp tục.");
         String normalizedAnswer = tokenizer.normalize(rawAnswer);
         String expected = tokenizer.normalize(expectedWords.get(wordIndex));
         boolean correct = expected.equals(normalizedAnswer);
@@ -310,7 +318,8 @@ public class PracticeService {
             throw new InvalidPracticeStateException(message);
         }
 
-        attempt.setTimeSpentSeconds(request.timeSpentSeconds());
+        long elapsed = Math.max(0, java.time.Duration.between(attempt.getStartedAt(), now()).getSeconds());
+        attempt.setTimeSpentSeconds((int) Math.min(request.timeSpentSeconds(), Math.min(elapsed, 1800)));
         attempt.markCompleted();
         if (learningEnabled) {
             // Outbox is committed with sentence completion; broker availability is irrelevant here.
@@ -398,9 +407,9 @@ public class PracticeService {
                     finalCorrect++;
                 }
                 if (Boolean.FALSE.equals(word.getFirstAttemptCorrect())) {
-                    if (word.getErrorType() == LearnerErrorType.UNKNOWN) {
+                    if (word.getLearnerReportedErrorType() == LearnerErrorType.UNKNOWN) {
                         unknown++;
-                    } else {
+                    } else if (word.getLearnerReportedErrorType() == LearnerErrorType.KNOWN_BUT_MISSED) {
                         knownMissed++;
                     }
                 }
@@ -430,7 +439,8 @@ public class PracticeService {
                 session.getTotalReplays(), session.getHintCount(), session.getRevealCount(),
                 session.getKnownMissedCount(), session.getUnknownCount(), session.getTotalPracticeSeconds(),
                 session.getOverallScore(), session.getCompletedAt(), review,
-                includeAssessment ? assessmentService.assess(session.getUser().getId()) : null
+                includeAssessment ? assessmentService.assess(session.getUser().getId()) : null,
+                session.getScoringVersion()
         );
     }
 
@@ -487,7 +497,7 @@ public class PracticeService {
                             word == null ? null : word.getLastAnswer(),
                             word == null ? 0 : word.getAttemptCount(),
                             outcome,
-                            word == null ? null : word.getErrorType(),
+                            word == null ? null : word.getLearnerReportedErrorType(),
                             word == null ? null : word.getInferredErrorCategory(),
                             word == null ? List.of() : eventsByWord.getOrDefault(word.getId(), List.of()).stream()
                                     .map(event -> new ApiDtos.WordAttemptReview(
@@ -553,11 +563,12 @@ public class PracticeService {
                 : null;
         String revealedText = revealed ? expectedWord : null;
         String userInput = prefilled ? expectedWord : attempt == null ? null : attempt.getLastAnswer();
-        LearnerErrorType errorType = prefilled || attempt == null ? null : attempt.getErrorType();
+        LearnerErrorType errorType = prefilled || attempt == null ? null : attempt.getLearnerReportedErrorType();
         return new ApiDtos.WordSlot(
                 index, tokenizer.visibleLength(expectedWord), tokenizer.mask(expectedWord),
                 token.punctuationBefore(), token.punctuationAfter(),
-                firstLetter, revealedText, userInput, correct, revealed, prefilled, errorType
+                firstLetter, revealedText, userInput, correct, revealed, prefilled, errorType,
+                !prefilled && attempt != null && Boolean.FALSE.equals(attempt.getFirstAttemptCorrect())
         );
     }
 

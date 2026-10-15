@@ -37,7 +37,7 @@ public class RecommendationService {
 
     ApiDtos.Recommendation recommend(Long userId, PracticeSession latest) {
         if (latest == null) {
-            return lessonRepository.findByLevelAndActiveTrueOrderByDisplayOrder(CefrLevel.A1).stream()
+            return lessonRepository.recommendationCandidates(CefrLevel.A1).stream()
                     .findFirst()
                     .map(lesson -> toRecommendation(
                             lesson,
@@ -49,7 +49,8 @@ public class RecommendationService {
         CefrLevel currentLevel = latest.getLesson().getLevel();
         List<PracticeSession> recentAtLevel = sessionRepository
                 .findByUserIdAndStatusAndRoomIdIsNullAndLessonLevelOrderByCompletedAtDescIdDesc(
-                        userId, SessionStatus.COMPLETED, currentLevel, PageRequest.of(0, 3));
+                        userId, SessionStatus.COMPLETED, currentLevel, PageRequest.of(0, 3)).stream()
+                .filter(PracticeSession::isFirstExposure).toList();
         double recentFirstAccuracy = recentAtLevel.stream()
                 .mapToDouble(PracticeSession::getFirstAttemptAccuracy)
                 .average()
@@ -57,7 +58,9 @@ public class RecommendationService {
 
         CefrLevel targetLevel = currentLevel;
         String reason;
-        if (recentFirstAccuracy >= 85 && currentLevel != CefrLevel.B2) {
+        if (recentAtLevel.size() < 3) {
+            reason = "Tiếp tục luyện " + currentLevel + "; cần 3 bài mới gần đây để đề xuất đổi mức khó.";
+        } else if (recentFirstAccuracy >= 85 && currentLevel != CefrLevel.B2) {
             targetLevel = currentLevel.harder();
             reason = "First-attempt accuracy gần đây đạt " + round(recentFirstAccuracy)
                     + "%, phù hợp để tăng lên " + targetLevel + ".";
@@ -71,7 +74,7 @@ public class RecommendationService {
 
         Set<Long> completedLessonIds = new HashSet<>(sessionRepository.completedSoloLessonIds(
                 userId, SessionStatus.COMPLETED, targetLevel));
-        List<Lesson> candidates = lessonRepository.findByLevelAndActiveTrueOrderByDisplayOrder(targetLevel);
+        List<Lesson> candidates = lessonRepository.recommendationCandidates(targetLevel);
         Lesson selected = candidates.stream()
                 .filter(lesson -> !completedLessonIds.contains(lesson.getId()))
                 .findFirst()

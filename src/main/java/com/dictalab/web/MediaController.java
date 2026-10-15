@@ -17,8 +17,10 @@ public class MediaController {
     // Spring Security authenticates the JWT cookie before a private S3 link is issued.
     @GetMapping("/media/s3/{filename}")
     public ResponseEntity<Void> audio(@PathVariable String filename,
+                                     @org.springframework.security.core.annotation.AuthenticationPrincipal com.dictalab.security.DictaLabPrincipal user,
                                      jakarta.servlet.http.HttpServletRequest request,
                                      jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        media.requireLessonAudioAccess(filename, user.id(), "ADMIN".equals(user.role()));
         if (media.proxyAudioEnabled()) {
             media.serveManagedAudio(filename,request,response);
             return null;

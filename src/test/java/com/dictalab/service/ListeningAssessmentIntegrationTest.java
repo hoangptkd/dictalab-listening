@@ -70,7 +70,9 @@ class ListeningAssessmentIntegrationTest {
         );
         lesson.setPublished(true, now);
         lesson = lessonRepository.save(lesson);
-        sentenceRepository.save(new LessonSentence(lesson, 1, "special common", 1.0));
+        var audioSentence = new LessonSentence(lesson, 1, "special common", 1.0);
+        audioSentence.attachAudio("/audio/assessment-" + UUID.randomUUID() + ".mp3");
+        sentenceRepository.save(audioSentence);
         previewWordRepository.save(new LessonPreviewWord(lesson, 1, "special", null, null));
 
         ApiDtos.PracticeStartResponse session = practiceService.start(
@@ -128,7 +130,9 @@ class ListeningAssessmentIntegrationTest {
         );
         lesson.setPublished(true, now);
         lesson = lessonRepository.save(lesson);
-        sentenceRepository.save(new LessonSentence(lesson, 1, "hello", 1.0));
+        var audioSentence = new LessonSentence(lesson, 1, "hello", 1.0);
+        audioSentence.attachAudio("/audio/assessment-" + UUID.randomUUID() + ".mp3");
+        sentenceRepository.save(audioSentence);
         return lesson.getId();
     }
 

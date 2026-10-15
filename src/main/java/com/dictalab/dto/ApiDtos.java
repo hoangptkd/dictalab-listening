@@ -100,7 +100,8 @@ public final class ApiDtos {
             boolean correct,
             boolean revealed,
             boolean prefilled,
-            LearnerErrorType errorType
+            LearnerErrorType errorType,
+            boolean classificationAvailable
     ) {
     }
 
@@ -121,6 +122,10 @@ public final class ApiDtos {
             boolean requiresReplayAfterReveal,
             boolean canComplete
     ) {
+        public SentenceState {
+            // Also sanitizes receipts written by older application versions.
+            if (audioUrl != null && !audioUrl.isBlank()) speechText = null;
+        }
     }
 
     public record PracticeStartResponse(
@@ -148,7 +153,8 @@ public final class ApiDtos {
             double overallScore,
             Instant completedAt,
             LessonReview review,
-            ListeningAssessment assessment
+            ListeningAssessment assessment,
+            int scoringVersion
     ) {
     }
 

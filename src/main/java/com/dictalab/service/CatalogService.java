@@ -40,7 +40,7 @@ public class CatalogService {
     }
 
     public List<ApiDtos.LessonSummary> lessons(Long userId, CefrLevel level, boolean administrator) {
-        var lessons = summaryRead.record(() -> lessonRepository.catalog(userId, level.name(), administrator));
+        var lessons = summaryRead.record(() -> lessonRepository.catalog(userId, level == null ? "ALL" : level.name(), administrator));
         var ids = lessons.stream().map(LessonRepository.CatalogLesson::getId).toList();
         var preview = previewRead.record(() -> previewVocabularyService.wordsForLessons(ids));
         return lessons.stream()

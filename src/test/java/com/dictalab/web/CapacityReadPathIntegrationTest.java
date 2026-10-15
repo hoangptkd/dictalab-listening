@@ -175,6 +175,7 @@ class CapacityReadPathIntegrationTest {
             for (int i = 0; i < count; i++) {
                 Lesson lesson = lesson("Assessment", CefrLevel.B1);
                 var sentence = new LessonSentence(lesson, 1, "special common", 1);
+                sentence.attachAudio("/audio/capacity-" + UUID.randomUUID() + ".mp3");
                 em.persist(sentence);
                 em.persist(new LessonPreviewWord(lesson, 1, "special", null, null));
                 var session = completed(owner, lesson, i);
@@ -325,6 +326,7 @@ class CapacityReadPathIntegrationTest {
             session.moveToSentence(count); em.persist(session); sessionIds.add(session.getId());
             for (int i = 1; i <= count; i++) {
                 var sentence = new LessonSentence(lesson, i, "Anna common", 1);
+                sentence.attachAudio("/audio/capacity-" + UUID.randomUUID() + ".mp3");
                 em.persist(sentence); sentenceIds.add(sentence.getId());
                 var attempt = new SentenceAttempt(session, sentence, now);
                 attempt.incrementReplayCount(); attempt.setTimeSpentSeconds(2);
@@ -438,7 +440,7 @@ class CapacityReadPathIntegrationTest {
         assertQueries("catalog-long-history", 2);
         String sql = SqlCounter.statements.get().get(0);
         String plan = db.queryForObject("explain (analyze, buffers, format json) " + sql, String.class,
-                owner.getId(), owner.getId(), "A1", false);
+                owner.getId(), owner.getId(), "A1", "A1", false);
         var result = new tools.jackson.databind.ObjectMapper().readTree(plan).get(0);
         assertThat(result.path("Plan").path("Actual Rows").asInt()).isEqualTo(
                 db.queryForObject("select count(*) from lessons where level='A1' and active=true and content_origin <> 'BRITISH_COUNCIL_PERSONAL'", Integer.class));
