@@ -41,7 +41,7 @@
             if (s0 === "dashboard")            return { route: "dashboard", params: {}, query: q };
             if (s0 === "practice" && s1)       return { route: "practice", params: { sessionId: s1 }, query: q };
             if (s0 === "history" && !s1)       return { route: "history",  params: { level: q.get("level") || "all", page }, query: q };
-            if (s0 === "history" && s1)        return { route: "result",   params: { sessionId: s1 }, query: q };
+            if (s0 === "history" && s1)        return { route: "result",   params: { sessionId: s1, level: q.get("level") || "all", page }, query: q };
             if (s0 === "rooms" && !s1)         return { route: "room",     params: {}, query: q };
             if (s0 === "rooms" && s1 === "join" && s2) return { route: "room-join", params: { inviteCode: s2 }, query: q };
             if (s0 === "rooms" && s1)          return { route: "room-id",  params: { roomId: s1 }, query: q };
@@ -73,7 +73,7 @@
                     return `/listening?${new URLSearchParams({level: params.level || "", page: params.page || 1, view: params.view || "", edit: params.edit || ""})}`;
                 }
                 case "practice":    return `/practice/${encodeURIComponent(params.sessionId || "")}`;
-                case "result":      return `/history/${encodeURIComponent(params.sessionId || "")}`;
+                case "result":      return `/history/${encodeURIComponent(params.sessionId || "")}${params.level ? `?level=${encodeURIComponent(params.level)}&page=${encodeURIComponent(params.page || 1)}` : ""}`;
                 case "history":     return `/history?level=${encodeURIComponent(params.level || "all")}&page=${encodeURIComponent(params.page || 1)}`;
                 case "dashboard":   return "/dashboard";
                 case "room":        return "/rooms";
@@ -168,6 +168,8 @@
         historySessions: [],
         historyPage: null,
         historyLoadGeneration: 0,
+        historyDetailGeneration: 0,
+        historyReturnPage: 1,
         historyFilter: "all",
         historyViewingSession: false,
         // --- Room (Luyện cùng bạn) ---
@@ -887,15 +889,21 @@
             case "result": {
                 const { sessionId } = params;
                 if (!sessionId) { await resolveUrlAndNavigate({ route: "history", params: { level: "all" }, query }, pushHistory); return; }
+                const generation = ++state.historyDetailGeneration;
+                const location = window.location.href;
                 try {
                     const result = await api(`/api/v1/history/${encodeURIComponent(sessionId)}`);
+                    if (generation !== state.historyDetailGeneration || location !== window.location.href) return;
+                    state.historyFilter = router.validLevels.has(params.level) ? params.level : "all";
+                    state.historyReturnPage = params.page || 1;
                     renderResult(result, true);
-                    if (pushHistory) router.push("result", { sessionId });
-                    else router.replace("result", { sessionId });
+                    if (pushHistory) router.push("result", params);
+                    else router.replace("result", params);
                     await _showView("result");
                 } catch (error) {
+                    if (generation !== state.historyDetailGeneration || location !== window.location.href) return;
                     showToast(error.message || "Không tìm thấy kết quả.", true);
-                    await resolveUrlAndNavigate({ route: "history", params: { level: "all" }, query }, false);
+                    await resolveUrlAndNavigate({ route: "history", params: { level: router.validLevels.has(params.level) ? params.level : "all", page: params.page || 1 }, query }, false);
                 }
                 return;
             }
@@ -1078,17 +1086,19 @@
             window.DictaLabLibrary?.showAdmin();
         }
         if (viewId === "practice") roomPrepareStudyAudio();
+        const navigationView = viewId === "result" && state.historyViewingSession ? "history" : viewId;
         elements.mobileNavMenu?.hidePopover?.();
-        elements.mobileNavMore?.classList.toggle("is-active", ["history", "room", "support", "account"].includes(viewId));
+        elements.mobileNavMore?.classList.toggle("is-active", ["history", "room", "support", "account"].includes(navigationView));
         elements.mobileNavMore?.setAttribute("aria-label", {
             history: "Thêm, đang xem Lịch sử", room: "Thêm, đang xem Luyện cùng bạn", support: "Thêm, đang xem Hỗ trợ", account: "Thêm, đang xem Tài khoản"
-        }[viewId] || "Thêm");
+        }[navigationView] || "Thêm");
         updateNavigation(viewId);
         window.scrollTo({ top: 0, behavior: "smooth" });
         document.querySelector("#main-content").focus({ preventScroll: true });
     }
 
     function updateNavigation(viewId) {
+        if (viewId === "result" && state.historyViewingSession) viewId = "history";
         const library = viewId === "admin" && (new URLSearchParams(location.search).get("library") === "1"
             || location.hash === "#library-management");
         elements.navLinks.forEach(link => {
@@ -1251,7 +1261,7 @@
             catalog:   { route: "catalog",   params: { level: params.level || state.selectedLevel } },
             listening: { route: "listening", params: { sessionId: params.sessionId || null, level: params.level || "", page: params.page || 1, view: params.view || "", edit: params.edit || "" } },
             conversation: { route: "conversation", params: { sessionId: params.sessionId || null } },
-            history:   { route: "history",   params: { level: params.level || state.historyFilter || "all" } },
+            history:   { route: "history",   params: { level: params.level || state.historyFilter || "all", page: params.page || 1 } },
             dashboard: { route: "dashboard", params: {} },
             account:   { route: "account", params: {} },
             support:   { route: "support", params: {} },
@@ -2462,6 +2472,9 @@
         state.lastResult = result;
         state.historyViewingSession = isHistoryReview;
         state.reviewAudioDurations.clear();
+        document.querySelector("#result-view").classList.toggle("is-history-review", isHistoryReview);
+        document.querySelector("#result-heading").textContent = isHistoryReview ? result.lessonTitle : "Kết quả buổi luyện";
+        document.querySelector("#lesson-review-heading").textContent = isHistoryReview ? "Xem lại từng câu" : "Bạn đã nghe ra câu này như thế nào?";
         document.querySelector("#result-score").textContent = Math.round(result.overallScore);
         const scoreNote = document.querySelector("#result-score-note");
         if (scoreNote) scoreNote.textContent = `Công thức v${result.scoringVersion || 1} · Điểm luyện tập, không phải điểm thi chuẩn hóa.`;
@@ -2473,7 +2486,9 @@
         document.querySelector("#result-unknown").textContent = result.unknownWords;
         renderAssessment(elements.resultAssessment, result.assessment);
         document.querySelector("#coach-accuracy").textContent = `${formatPercent(result.firstAttemptAccuracy)}%`;
-        document.querySelector("#coach-lesson").textContent = `${result.lessonTitle} · ${result.level}`;
+        document.querySelector("#coach-lesson").textContent = isHistoryReview
+            ? `${result.level} · ${result.completedAt ? new Date(result.completedAt).toLocaleString("vi-VN", {dateStyle: "short", timeStyle: "short"}) : "Chưa có thời gian hoàn thành"}`
+            : `${result.lessonTitle} · ${result.level}`;
         document.querySelector("#result-message").textContent = result.firstAttemptAccuracy >= 85
             ? "Bạn nhận ra phần lớn từ ngay từ đầu. Ôn vài chỗ đã lỡ rồi thử một bài mới."
             : result.firstAttemptAccuracy >= 60
@@ -2483,12 +2498,12 @@
         const resultActions = document.querySelector(".coach-navigation");
         const existingBack = resultActions.querySelector(".history-back-link");
         if (existingBack) existingBack.remove();
-        resultActions.querySelector(".result-report-link")?.remove();
+        document.querySelector("#result-view .result-report-link")?.remove();
         const reportIssue = document.createElement("a");
         reportIssue.className = "text-button result-report-link";
         reportIssue.href = `/support?type=DICTATION&id=${encodeURIComponent(result.sessionId)}`;
         reportIssue.textContent = "Báo audio hoặc kết quả chưa đúng";
-        resultActions.appendChild(reportIssue);
+        (isHistoryReview ? document.querySelector("#result-view") : resultActions).appendChild(reportIssue);
         const dashboardButton = resultActions.querySelector("[data-route='dashboard']");
         const catalogButton = document.querySelector(".result-details .text-button[data-route='catalog']");
         if (isHistoryReview) {
@@ -2496,12 +2511,12 @@
             if (catalogButton) catalogButton.hidden = true;
             const backButton = document.createElement("a");
             backButton.className = "history-back-link";
-            backButton.href = router.toPath("history", {level: state.historyFilter || "all", page: 1});
+            backButton.href = router.toPath("history", {level: state.historyFilter || "all", page: state.historyReturnPage});
             backButton.innerHTML = `← Quay lại lịch sử`;
             backButton.addEventListener("click", event => {
                 if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                 event.preventDefault();
-                navigate("history", { level: state.historyFilter || "all" });
+                navigate("history", { level: state.historyFilter || "all", page: state.historyReturnPage });
             });
             resultActions.appendChild(backButton);
         } else {
@@ -2510,18 +2525,23 @@
         }
 
         const technical = document.querySelector("#result-technical");
-        technical.open = false;
+        technical.open = isHistoryReview;
         elements.reviewSentences.innerHTML = "";
         let loaded = false;
         technical.ontoggle = () => {
             if (!technical.open || loaded || state.lastResult !== result) return;
             loaded = true;
             renderLessonReview(result);
+            if (isHistoryReview) return;
             loadReviewAudioMetrics(result).catch(() => {
                 if (state.lastResult === result) elements.reviewAudioMetrics.textContent = "Không đo được thời lượng audio";
             });
         };
-        window.DictaLabCoach?.show(result);
+        if (isHistoryReview) {
+            loaded = true;
+            window.DictaLabCoach?.leave();
+            renderLessonReview(result);
+        } else window.DictaLabCoach?.show(result);
     }
 
     function renderLessonReview(result) {
@@ -2533,6 +2553,7 @@
             return;
         }
 
+        const compact = state.historyViewingSession;
         const sourceLink = review.sourceUrl
             ? `<a href="${escapeAttribute(review.sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(review.sourceName)}</a>`
             : escapeHtml(review.sourceName);
@@ -2542,6 +2563,7 @@
             ${review.speechRateWpm ? `≈ ${review.speechRateWpm} từ/phút · ` : ""}
             ${review.speakerCount || "?"} người nói · ${escapeHtml(review.accentProfile || "chưa gắn nhãn giọng")} · ${sourceLink}
         `;
+        if (compact) elements.reviewLessonMeta.textContent = `${review.totalSentences} câu · ${review.totalWords} từ`;
         elements.reviewAudioMetrics.innerHTML = "<span>Đang đo thời lượng audio…</span>";
 
         const allWords = review.sentences.flatMap(sentence => sentence.words);
@@ -2567,8 +2589,8 @@
                 <article class="review-sentence" id="review-sentence-${sentence.position}">
                     <div class="review-sentence-heading">
                         <div>
-                            <span class="review-sentence-number">${String(sentence.position).padStart(2, "0")}</span>
-                            <p>${sentence.replayCount} lượt nghe · tốc độ TB ${Number(sentence.averagePlaybackSpeed || 1).toFixed(2)}× · ${formatTime(sentence.timeSpentSeconds)} · ${escapeHtml(helpSummary)}</p>
+                            <span class="review-sentence-number">${compact ? `Câu ${sentence.position}` : String(sentence.position).padStart(2, "0")}</span>
+                            ${compact ? "" : `<p>${sentence.replayCount} lượt nghe · tốc độ TB ${Number(sentence.averagePlaybackSpeed || 1).toFixed(2)}× · ${formatTime(sentence.timeSpentSeconds)} · ${escapeHtml(helpSummary)}</p>`}
                         </div>
                         ${sentence.audioUrl ? `
                             <button class="review-audio-button" type="button"
@@ -2583,17 +2605,17 @@
                         ${renderReviewTranscript(sentence)}
                     </p>
                     ${attentionWords.length ? `
-                        <details class="word-evidence">
+                        <details class="word-evidence" ${compact ? "open" : ""}>
                             <summary>${attentionWords.length} từ cần chú ý</summary>
                             <ul>${attentionWords.map(word => `
                                 <li>
                                     <strong>${escapeHtml(word.expectedWord)}</strong>
                                     <span>${escapeHtml(outcomeLabels[word.outcome] || "Chưa phân loại")}</span>
                                     ${word.firstAnswer ? `<small>Nhập đầu: “${escapeHtml(word.firstAnswer)}”</small>` : ""}
-                                    ${word.attemptCount > 1 ? `<small>${word.attemptCount} lần thử</small>` : ""}
-                                    ${word.errorType ? `<small>${word.errorType === "UNKNOWN" ? "Từ chưa biết" : "Biết nhưng nghe lỡ"}</small>` : ""}
-                                    ${word.inferredErrorCategory ? `<small>${escapeHtml(errorCategoryLabel(word.inferredErrorCategory))}</small>` : ""}
-                                    ${word.attempts?.length ? `<small>${word.attempts.map(item => `#${item.attemptNumber} “${escapeHtml(item.rawAnswer)}” · ${item.responseTimeMs} ms`).join(" | ")}</small>` : ""}
+                                    ${!compact && word.attemptCount > 1 ? `<small>${word.attemptCount} lần thử</small>` : ""}
+                                    ${!compact && word.errorType ? `<small>${word.errorType === "UNKNOWN" ? "Từ chưa biết" : "Biết nhưng nghe lỡ"}</small>` : ""}
+                                    ${!compact && word.inferredErrorCategory ? `<small>${escapeHtml(errorCategoryLabel(word.inferredErrorCategory))}</small>` : ""}
+                                    ${!compact && word.attempts?.length ? `<small>${word.attempts.map(item => `#${item.attemptNumber} “${escapeHtml(item.rawAnswer)}” · ${item.responseTimeMs} ms`).join(" | ")}</small>` : ""}
                                 </li>`).join("")}</ul>
                         </details>` : ""}
                 </article>
@@ -3520,6 +3542,13 @@
         if (level !== "all") query.set("level", level);
         const focusLevel = document.activeElement?.dataset?.historyLevel;
         elements.historyList.setAttribute("aria-busy", "true");
+        elements.historyList.innerHTML = "";
+        elements.historyEmpty.hidden = true;
+        elements.historyCount.textContent = "";
+        renderHistoryLevelTabs();
+        if (focusLevel) elements.historyLevelTabs.querySelector(`[data-history-level="${level}"]`)?.focus();
+        const pagination = elements.historyList.nextElementSibling;
+        if (pagination?.matches(".pagination") && pagination.getAttribute("data-history-level") !== level) pagination.remove();
         const errorPanel = document.querySelector("#history-load-error");
         if (errorPanel) errorPanel.hidden = true;
         try {
@@ -3532,6 +3561,7 @@
             }
             state.historySessions = result.items;
             state.historyPage = result;
+            state.historyReturnPage = result.totalPages ? result.page + 1 : 1;
             router.replace("history", {level, page: result.totalPages ? result.page + 1 : 1});
             renderHistoryLevelTabs();
             renderHistoryList();
@@ -3602,38 +3632,24 @@
             : "";
 
         elements.historyList.innerHTML = filtered.map(session => {
-            const score = Math.round(session.overallScore);
-            const scoreClass = score >= 85 ? "is-excellent" : score >= 65 ? "is-good" : score >= 40 ? "is-fair" : "is-needs-work";
-            const date = session.completedAt ? new Date(session.completedAt) : new Date();
-            const dateStr = date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
-            const timeStr = date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
-            const practiceMinutes = Math.max(0, Math.round(session.practiceSeconds / 60));
+            const date = session.completedAt ? new Date(session.completedAt) : null;
+            const dateStr = date ? date.toLocaleString("vi-VN", {dateStyle: "short", timeStyle: "short"}) : "Chưa có thời gian hoàn thành";
             return `
-                <a class="history-card" href="${router.toPath("result", {sessionId: session.sessionId})}"
+                <a class="history-card" href="${router.toPath("result", {sessionId: session.sessionId, level: state.historyFilter, page: state.historyReturnPage})}"
                          data-history-session-id="${escapeAttribute(session.sessionId)}" aria-label="Xem lại ${escapeAttribute(session.lessonTitle)}">
-                    <div class="history-score-badge ${scoreClass}">${score}</div>
                     <div class="history-card-body">
                         <h3>
                             <span class="history-level-badge" data-level="${escapeAttribute(session.level)}">${escapeHtml(session.level)}</span>
                             ${escapeHtml(session.lessonTitle)}
                         </h3>
                         <p class="history-card-meta">
-                            <span>${escapeHtml(dateStr)} ${escapeHtml(timeStr)}</span>
-                            <span>${practiceMinutes ? `≈ ${practiceMinutes}` : "&lt;1"} phút</span>
-                            <span>${session.totalReplays} lượt nghe</span>
-                            <span class="history-exposure-badge ${session.firstExposure ? "is-first" : "is-redo"}">
-                                ${session.firstExposure ? "Lần đầu" : "Làm lại"}
-                            </span>
+                            <span>${escapeHtml(dateStr)}</span>
                         </p>
                     </div>
                     <div class="history-card-stats">
                         <div class="history-stat">
                             <strong>${formatPercent(session.firstAttemptAccuracy)}%</strong>
-                            <small>Đúng lần đầu</small>
-                        </div>
-                        <div class="history-stat">
-                            <strong>${formatPercent(session.finalAccuracy)}%</strong>
-                            <small>Sau khi sửa</small>
+                            <small>Đúng lần nhập đầu</small>
                         </div>
                     </div>
                 </a>
@@ -3647,10 +3663,11 @@
         const page = result.page + 1;
         const nav = document.createElement("nav");
         nav.className = "pagination";
+        nav.setAttribute("data-history-level", state.historyFilter);
         nav.setAttribute("aria-label", "Phân trang lịch sử luyện nghe");
         nav.hidden = result.totalPages <= 1;
         nav.innerHTML = `<button type="button" class="text-button" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>← Trang trước</button>
-            <span role="status" tabindex="-1">Trang ${page}/${Math.max(1, result.totalPages)} · ${result.totalElements} buổi luyện</span>
+            <span role="status" tabindex="-1">Trang ${page}/${Math.max(1, result.totalPages)}</span>
             <button type="button" class="text-button" data-page="${page + 1}" ${page >= result.totalPages ? "disabled" : ""}>Trang sau →</button>`;
         elements.historyList.after(nav);
         nav.querySelectorAll("button").forEach(button => button.addEventListener("click", () => {
@@ -3661,13 +3678,23 @@
     }
 
     async function viewHistorySession(sessionId) {
+        const generation = ++state.historyDetailGeneration;
+        const location = window.location.href;
+        const context = document.body.dataset.route === "history"
+            ? {level: state.historyFilter, page: state.historyReturnPage} : {};
         try {
             const result = await api(`/api/v1/history/${encodeURIComponent(sessionId)}`);
+            if (generation !== state.historyDetailGeneration || location !== window.location.href) return;
+            if (!context.level) {
+                state.historyFilter = "all";
+                state.historyReturnPage = 1;
+            }
             renderResult(result, true);
             // Push URL /history/{sessionId}
-            router.push("result", { sessionId });
+            router.push("result", { sessionId, ...context });
             _showView("result");
         } catch (error) {
+            if (generation !== state.historyDetailGeneration || location !== window.location.href) return;
             showToast(error.message, true);
         }
     }

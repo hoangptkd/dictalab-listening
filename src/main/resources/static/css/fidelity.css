@@ -360,11 +360,58 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; backg
 .history-level-tabs .level-tab strong { font: 600 14px var(--body); }
 .history-controls { padding: 0 0 24px; }
 .history-list { width: 100%; margin: 0; padding: 0; gap: 14px; }
-.history-card { min-height: 94px; padding: 20px; gap: 16px; background: #fff; box-shadow: var(--shadow); }
+.history-card { grid-template-columns: minmax(0,1fr) auto; min-height: 94px; padding: 20px; gap: 16px; background: var(--cream); box-shadow: none; }
+.history-card-body { min-width: 0; overflow-wrap: anywhere; }
+.history-card .history-card-meta { margin-bottom: 0; }
+.history-card .history-stat small { max-width: 100px; text-transform: none; letter-spacing: normal; font: 14px var(--body); }
+.history-card .history-stat strong { color: var(--coral-deep); font-size: 24px; }
 .history-card h3 { font: 600 20px/28px var(--display); }
 .history-card .history-score-badge { width: 52px; height: 56px; border: 2px solid var(--ink); border-radius: 12px; color: var(--ink); background: var(--paper); font: 400 22px var(--display); }
 .history-card .history-card-meta { font: 11px var(--mono); }
 .history-pagination { width: 100%; margin: 32px 0; padding-top: 24px; border-top: 1px solid var(--line); }
+
+/* History reuses the result view; keep its reading flow focused on the saved session. */
+#result-view.is-history-review { display: flex; flex-direction: column; gap: 24px; }
+.is-history-review .coach-navigation { order: -1; margin: 0; padding: 0; border: 0; }
+.is-history-review .coach-navigation > :not(.history-back-link):not(.result-report-link) { display: none; }
+.is-history-review .coach-navigation .history-back-link { order: -1; min-height: 44px; }
+.is-history-review .coach-hero .eyebrow,
+.is-history-review #result-message,
+.is-history-review #coach-status,
+.is-history-review #coach-panel,
+.is-history-review #result-technical > summary,
+.is-history-review #result-assessment,
+.is-history-review .result-layout,
+.is-history-review .section-index,
+.is-history-review #review-audio-metrics,
+.is-history-review .review-legend,
+.is-history-review #review-outcome-summary,
+.is-history-review .analysis-export { display: none; }
+.is-history-review .result-summary-layout { padding: 0; }
+.is-history-review #result-heading { overflow-wrap: anywhere; }
+.is-history-review .result-overview { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.is-history-review .result-overview .result-metric { padding: 16px; }
+.is-history-review .result-overview .result-metric p { display: none; }
+.is-history-review .result-overview .result-metric span { text-transform: none; letter-spacing: normal; }
+.is-history-review #result-technical { margin: 0; border: 0; padding: 0; }
+.is-history-review .lesson-review { margin: 0; padding: 0; border: 0; background: none; box-shadow: none; }
+.is-history-review .review-heading-row { margin-bottom: 16px; }
+.is-history-review .review-heading-row h2 { margin: 0 0 8px; font-size: 24px; line-height: 30px; letter-spacing: normal; }
+.is-history-review .colored-transcript { font-size: 22px; line-height: 1.7; }
+.is-history-review .review-word { margin: 0; padding: 0 2px; }
+.is-history-review .review-word[data-outcome="FIRST_ATTEMPT"] { padding: 0; border: 0; color: inherit; background: none; }
+.is-history-review .review-sentence-number { font: 600 14px var(--body); }
+.is-history-review .word-evidence summary,
+.is-history-review .word-evidence li,
+.is-history-review .word-evidence small { font-size: 14px; }
+.is-history-review .word-evidence li { overflow-wrap: anywhere; }
+.is-history-review > .result-report-link { align-self: flex-start; }
+@media (max-width: 760px) {
+    .is-history-review .result-summary-layout { display: block; }
+    .is-history-review .result-overview { margin-top: 20px; }
+    .history-card .history-card-stats { display: flex; grid-column: auto; }
+    .history-card h3 { font-size: 18px; line-height: 24px; }
+}
 
 /* Account, support, comprehension and conversation exports. */
 .account-page, .conversation-browser, .listening-browser { max-width: 1280px; margin: 0 auto; padding: 32px 24px; }
