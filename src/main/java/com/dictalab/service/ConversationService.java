@@ -45,6 +45,11 @@ public class ConversationService {
                     Match CEFR difficulty. Stay in the same scenario; react naturally to previous understanding.
                     Follow scenarioJourney for the current stage. Keep the same partner and setting across turns
                     1-3: this is ONE encounter, not unrelated mini-stories. Never switch a cafe order to a work meeting.
+                    Preserve established arrangements in history. Develop the encounter with NEW requested details,
+                    not silently different values for an existing arrangement. For example, if breakfast is in the
+                    garden, ask about its opening time or another hotel service; do not move it to a balcony.
+                    If an arrangement genuinely changes, utteranceEn must explicitly announce the change and
+                    distinguish the old value from the new one (for example, "now ... instead of ...").
                     practiceFocus is the learning target from the learner's previous session. Revisit that skill
                     with NEW values. If history shows difficulty, shorten sentences, not the requested meaning.
                     Never make this a vocabulary quiz or a yes/no question. Follow levelProfile, not a generic trap.
@@ -63,7 +68,9 @@ public class ConversationService {
                     Do not put answer values, translations of answer values or multiple-choice hints in the question.
                     Count utteranceEn words before returning and respect the supplied levelProfile.
                     Write real Vietnamese values for taskVi/questionVi/translationVi/skill/textVi, not schema placeholders.
-                    Do not repeat previous utterances or facts. Keep questions specific and without answers.
+                    Do not repeat previous utterances or test the same answer facts again. Previously established
+                    facts may remain as background for continuity; they do not need replacement values in turns 2-3.
+                    Keep questions specific and without answers.
                     If turnNumber=4 this is a NEW transfer check: test a previously missed/partial skill,
                     using new wording AND different numbers/details; never reuse the original answer.
                     Read history.facts as previous answer keys. Changing only the wording is not a new task.

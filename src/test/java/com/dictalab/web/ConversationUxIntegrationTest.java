@@ -84,6 +84,43 @@ class ConversationUxIntegrationTest {
         service.play(owner,id,1,"original",false); service.play(owner,id,1,"original",false);
         assertThat(service.get(owner,id).path("summary").path("firstAttemptFacts").asInt()).isZero();
     }
+    @Test void followupRepairsContradictionsWithoutLosingEstablishedContext() {
+        String id=service.create(owner,"hotel","A2").path("id").asText(); service.next(owner,id,0);
+        service.help(owner,id,1,"review");
+        var contradictory=json.readTree("""
+                {"taskVi":"Nghe giờ và nơi ăn sáng.","questionVi":"Ăn sáng từ mấy giờ và ở đâu?",
+                "skill":"Nắm thông tin cụ thể","utteranceEn":"Breakfast is ready from seven in the morning. You can eat it on the sunny balcony upstairs today.",
+                "translationVi":"Bữa sáng bắt đầu lúc bảy giờ sáng. Hôm nay bạn có thể ăn ở ban công trên lầu.",
+                "facts":[{"id":"f1","textVi":"Bảy giờ sáng","evidenceEn":"seven in the morning"},
+                {"id":"f2","textVi":"Ban công trên lầu","evidenceEn":"balcony upstairs"}]}
+                """);
+        var repaired=json.readTree("""
+                {"taskVi":"Nghe giờ ăn sáng và nơi trả chìa khóa.","questionVi":"Bữa sáng bắt đầu lúc mấy giờ và trả chìa khóa ở đâu?",
+                "skill":"Nắm thông tin cụ thể","utteranceEn":"Breakfast in the garden starts at seven in the morning. When you leave, please return your key at the front desk.",
+                "translationVi":"Bữa sáng ngoài vườn bắt đầu lúc bảy giờ sáng. Khi rời đi, xin trả chìa khóa tại quầy lễ tân.",
+                "facts":[{"id":"f1","textVi":"Bảy giờ sáng","evidenceEn":"seven in the morning"},
+                {"id":"f2","textVi":"Quầy lễ tân","evidenceEn":"at the front desk"}]}
+                """);
+        when(ai.completeJson(startsWith("You design"),anyString(),anyString(),any())).thenReturn(contradictory,repaired);
+        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any()))
+                .thenReturn(json.readTree("{\"valid\":false,\"reason\":\"Breakfast moves from garden to balcony without an announced change.\"}"),
+                        json.readTree("{\"valid\":true,\"reason\":\"\"}"));
+        var result=service.next(owner,id,1);
+        assertThat(result.path("turnNumber").asInt()).isEqualTo(2);
+        var instruction=org.mockito.ArgumentCaptor.forClass(String.class);
+        var inputs=org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(ai,times(4)).completeJson(instruction.capture(),inputs.capture(),anyString(),any());
+        assertThat(instruction.getAllValues().get(0)).contains("Preserve established arrangements in history",
+                "must explicitly announce the change", "Previously established");
+        var first=json.readTree(inputs.getAllValues().get(0));
+        var retry=json.readTree(inputs.getAllValues().get(2));
+        assertThat(first.path("history").path(0).path("utteranceEn").asText()).contains("in the garden");
+        assertThat(retry.path("history")).isEqualTo(first.path("history"));
+        assertThat(retry.path("previousInvalidPrompt")).isEqualTo(contradictory);
+        assertThat(retry.path("validationError").asText()).contains("without an announced change");
+        assertThat(service.help(owner,id,2,"review").path("turns").path(1).path("review").path("utteranceEn"))
+                .isEqualTo(repaired.path("utteranceEn"));
+    }
     @Test void generatedFollowupUsesStableSkillsAndOneSharedDeadline() {
         String id=service.create(owner,"cafe","A1").path("id").asText(); service.next(owner,id,0);
         service.help(owner,id,1,"review");
