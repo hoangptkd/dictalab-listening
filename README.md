@@ -247,6 +247,17 @@ Coach, chấm/làm rõ Hội thoại AI và Listening Comprehension dùng model 
 Sinh câu Hội thoại AI dùng riêng `DICTALAB_CONVERSATION_MODEL=gemini-2.5-flash`; giọng đọc vẫn dùng Cartesia.
 Khóa ShopAIKey không gửi xuống trình duyệt hoặc ghi vào prompt/log.
 
+Màn hình `/conversation` hiển thị **Nghe hiểu tình huống**: 24 tình huống trong 6 nhóm,
+nghe tiếng Anh và trả lời bằng tiếng Việt, không phải luyện nói. Phiên mới bắt đầu
+bằng một câu khởi động có sẵn cho mỗi tình huống (vẫn dùng TTS); các câu sau dùng AI
+với chuỗi tạo/kiểm tra/sửa giới hạn tổng 45 giây. Phiên cũ giữ phạm vi độ dài cũ.
+A1/A2/B1 có mô tả và câu nghe thử; đây không phải đánh giá CEFR được hiệu chuẩn.
+Lịch sử phân trang 12 phiên; thống kê tối đa 60 phiên gần nhất, không tính câu khởi động.
+Gợi ý giữ mức hiện tại và chuyển ngữ cảnh, gợi ý ôn lại sau 3 ngày; không tự nâng mức.
+Bản nháp lưu riêng theo người dùng trên thiết bị trong 24 giờ. Góp ý chấm điểm được
+lưu trong phiên, không tự thay đổi điểm và chưa có hàng đợi xử lý riêng cho quản trị.
+Migration V37 chỉ mở rộng CHECK tình huống; triển khai theo quy trình dừng ghi và sao lưu hiện có.
+
 Chạy local với `.env` đã cấu hình ShopAIKey:
 
 ```powershell

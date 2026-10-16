@@ -28,8 +28,17 @@ public class ConversationController {
     public record Answer(@Min(1) @Max(4) int turnNumber, @NotNull UUID requestId, @NotBlank @Size(max=1500) String answerVi) {}
     public record Help(@Min(1) @Max(4) int turnNumber, @NotBlank @Size(max=20) String kind) {}
     public record Play(@Min(1) @Max(4) int turnNumber, @NotBlank @Size(max=12) String variant, boolean slow) {}
+    public record Report(@Min(1) @Max(4) int turnNumber, @NotBlank @Size(max=1000) String reasonVi) {}
 
     @GetMapping public Map<String,Object> catalog(@AuthenticationPrincipal DictaLabPrincipal user) { return service.catalog(user.id()); }
+    @GetMapping("/sessions") public Map<String,Object> history(@AuthenticationPrincipal DictaLabPrincipal user,
+            @RequestParam(defaultValue="0") int offset, @RequestParam(defaultValue="12") int limit) {
+        return service.history(user.id(), offset, limit);
+    }
+    @PostMapping("/sessions/{id}/report") public Map<String,Boolean> report(@AuthenticationPrincipal DictaLabPrincipal user,
+            @PathVariable UUID id, @Valid @RequestBody Report input) {
+        return service.report(user.id(), id.toString(), input.turnNumber(), input.reasonVi());
+    }
     @PostMapping("/sessions") public ObjectNode create(@AuthenticationPrincipal DictaLabPrincipal user, @Valid @RequestBody Create input) {
         return service.create(user.id(), input.scenario(), input.difficulty(),
                 input.sourceSessionId() == null ? null : input.sourceSessionId().toString());

@@ -2316,36 +2316,56 @@
             throw new DOMException("Audio playback cancelled", "AbortError");
         }
         const segment = audioSegment(startSeconds, endSeconds, buffer.duration);
-        const source = state.audioContext.createBufferSource();
-        source.buffer = buffer;
-        source.playbackRate.value = playbackSpeed;
-        source.connect(state.audioContext.destination);
-
         return new Promise((resolve, reject) => {
-            let settled = false;
+            let settled = false, source = null, offset = segment.start, startedAt = 0, paused = false;
+            const speed = Number.isFinite(playbackSpeed) && playbackSpeed > 0 ? playbackSpeed : 1;
+            const position = () => Math.min(segment.start + segment.duration,
+                offset + (paused ? 0 : Math.max(0, state.audioContext.currentTime - startedAt) * speed));
+            const releaseSource = () => {
+                if (!source) return;
+                source.onended = null;
+                try { source.stop(); } catch (_) { /* Already ended. */ }
+                source.disconnect?.();
+            };
             const finish = callback => {
                 if (settled) return;
                 settled = true;
-                source.onended = null;
-                if (state.activeAudio?.source === source) {
-                    state.activeAudio = null;
-                }
+                releaseSource();
+                if (state.activeAudio === active) state.activeAudio = null;
                 callback();
             };
-            source.onended = () => finish(resolve);
-            state.activeAudio = {
-                source,
-                cancel: () => finish(() => {
-                    try {
-                        source.stop();
-                    } catch (_error) {
-                        // The source may already have stopped naturally.
-                    }
-                    reject(new DOMException("Audio playback cancelled", "AbortError"));
-                })
+            const start = (nextOffset, delay = 0) => {
+                releaseSource();
+                offset = nextOffset;
+                startedAt = state.audioContext.currentTime + delay;
+                source = state.audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.playbackRate.value = speed;
+                source.connect(state.audioContext.destination);
+                source.onended = () => finish(resolve);
+                source.start(startedAt, offset, Math.max(0, segment.start + segment.duration - offset));
             };
+            const active = {
+                getState: () => ({currentTime: position() - segment.start, duration: segment.duration,
+                    paused, playing: !paused && !settled}),
+                pause: () => { if (!paused && !settled) { offset = position(); paused = true; releaseSource(); } },
+                resume: () => {
+                    if (!paused || settled) return;
+                    paused = false;
+                    try { start(offset); } catch (error) { finish(() => reject(error)); }
+                },
+                seek: seconds => {
+                    if (!Number.isFinite(seconds) || settled) return;
+                    const next = segment.start + Math.max(0, Math.min(segment.duration, seconds));
+                    if (next >= segment.start + segment.duration) { finish(resolve); return; }
+                    if (paused) offset = next;
+                    else try { start(next); } catch (error) { finish(() => reject(error)); }
+                },
+                cancel: () => finish(() => reject(new DOMException("Audio playback cancelled", "AbortError")))
+            };
+            state.activeAudio = active;
             try {
-                source.start(state.audioContext.currentTime + startDelay, segment.start, segment.duration);
+                start(offset, startDelay);
             } catch (_error) {
                 finish(() => reject(new Error("Không thể bắt đầu phát file audio của bài nghe.")));
             }
@@ -2363,7 +2383,7 @@
             return cached;
         }
 
-        const pending = authenticatedFetch(url, {credentials: "same-origin"})
+        const pending = authenticatedFetch(url, {credentials: "same-origin", signal: AbortSignal.timeout(30000)})
             .then(response => {
                 if (!response.ok) throw new Error(`Audio HTTP ${response.status}`);
                 return response.arrayBuffer();
@@ -2392,12 +2412,35 @@
 
     function stopRecordedAudio() {
         state.audioPlaybackGeneration += 1;
+        if (state.conversationPreview) {
+            state.conversationPreview = false;
+            window.speechSynthesis?.cancel();
+        }
         if (!state.activeAudio) {
             return;
         }
         const activeAudio = state.activeAudio;
         state.activeAudio = null;
         activeAudio.cancel();
+    }
+
+    function getRecordedAudioState() {
+        return state.activeAudio?.getState?.() || {currentTime: 0, duration: 0, paused: true, playing: false};
+    }
+
+    function pauseRecordedAudio() { state.activeAudio?.pause?.(); }
+    function resumeRecordedAudio() { state.activeAudio?.resume?.(); }
+    function seekRecordedAudio(seconds) { state.activeAudio?.seek?.(Number(seconds)); }
+
+    async function playConversationPreview(text, rate = 1) {
+        stopRecordedAudio();
+        if (!window.speechSynthesis || typeof window.SpeechSynthesisUtterance !== "function") {
+            throw new Error("Thiết bị chưa hỗ trợ giọng mẫu. Bạn vẫn có thể đọc ví dụ bên dưới.");
+        }
+        state.conversationPreview = true;
+        const token = state.audioPlaybackGeneration;
+        try { await speak(String(text).slice(0, 1200), rate); }
+        finally { if (token === state.audioPlaybackGeneration) state.conversationPreview = false; }
     }
 
     function speak(text, rate) {
@@ -3789,6 +3832,11 @@
             },
             credentials: "same-origin"
         };
+        const timeoutMs = options.timeoutMs ?? (path.startsWith("/api/v1/conversation") ? 60000 : 0);
+        if (timeoutMs > 0) {
+            const deadline = AbortSignal.timeout(timeoutMs);
+            request.signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
+        } else if (options.signal) request.signal = options.signal;
         if (options.cache) request.cache = options.cache;
         if (options.headers) Object.assign(request.headers, options.headers);
         if (isAdminArea && !["GET","HEAD","OPTIONS"].includes(request.method) && /^\/api\/admin\/lessons\/\d+(?:\/|$)/.test(path) && state.adminSelectedLesson?.updatedAt) {
@@ -3807,6 +3855,9 @@
             response = navigator.locks && ["/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/logout"].includes(path)
                 ? await navigator.locks.request("dictalab-token-refresh", send) : await send();
         } catch (error) {
+            if (request.signal?.reason?.name === "TimeoutError") {
+                throw new Error("Kết nối chờ quá lâu. Hãy tải lại phiên để kiểm tra trạng thái đã lưu trước khi thử lại.", {cause: error});
+            }
             if (error.status === 401 && options.redirectOnUnauthorized !== false)
                 showAuthScreen("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
             throw error;
@@ -5267,7 +5318,8 @@
     }
 
     // ==================================================================== END ROOM MODULE
-    window.DictaLabListeningBridge = {api, navigate, playRecordedAudio, loadAudioBuffer, stopRecordedAudio, paginateList,
+    window.DictaLabListeningBridge = {api, navigate, playRecordedAudio, loadAudioBuffer, stopRecordedAudio,
+        getRecordedAudioState, pauseRecordedAudio, resumeRecordedAudio, seekRecordedAudio, playConversationPreview, paginateList,
         library: {setLessons: lessons => { state.lessons = lessons; },
             select: selectCatalogLesson, start: startLesson, busy: () => state.catalogStarting},
         showToast, isAdmin: () => state.currentUser?.role === "ADMIN",

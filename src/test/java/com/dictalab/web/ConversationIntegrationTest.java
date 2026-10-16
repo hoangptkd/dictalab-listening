@@ -34,7 +34,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties = {"dictalab.conversation.enabled=true", "dictalab.coach.enabled=false"})
+@SpringBootTest(properties = {"dictalab.conversation.enabled=true", "dictalab.coach.enabled=false", "dictalab.conversation.curated-starters=false"})
 @AutoConfigureMockMvc
 class ConversationIntegrationTest {
     @Test void recentSessionsReportCompletionWithoutExposingTheirStoredState() {
@@ -316,10 +316,10 @@ class ConversationIntegrationTest {
 
     @Test void challengeAndPreciseMeaningRulesReachTheProvider() {
         String id = start();
-        verify(ai).completeJson(contains("one plausible distractor"), anyString(), anyString());
-        verify(ai).completeJson(contains("A1: two concrete requested details"), anyString(), anyString());
-        verify(ai).completeJson(contains("A2: two to three details across sentences"), anyString(), anyString());
-        verify(ai).completeJson(contains("B1: two to three details requiring connection"), anyString(), anyString());
+        verify(ai).completeJson(contains("A small correction is optional, never mandatory"), anyString(), anyString());
+        verify(ai).completeJson(contains("A1: 8-35 words"), anyString(), anyString());
+        verify(ai).completeJson(contains("A2: 18-55 words"), anyString(), anyString());
+        verify(ai).completeJson(contains("B1: 30-90 words"), anyString(), anyString());
         when(ai.completeJson(anyString(), anyString())).thenReturn(grade("PARTIAL", "INCORRECT", "quán"));
         var result = service.answer(owner, id, 1, UUID.randomUUID(), "quán");
         assertThat(result.path("turns").path(0).path("done").asBoolean()).isFalse();

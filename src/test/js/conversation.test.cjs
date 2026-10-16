@@ -13,7 +13,7 @@ function state(answer, evaluation) {
 function storage() {
     return {getItem(key) { return this[key] || null; }, setItem(key, value) { this[key] = value; }, removeItem(key) { delete this[key]; }};
 }
-function harness(api, timers = {setTimeout}, sessionStorage = storage()) {
+function harness(api, timers = {setTimeout}, sessionStorage = storage(), preferences = storage()) {
     const nodes = new Map();
     const node = selector => {
         if (!nodes.has(selector)) nodes.set(selector, {value: '', dataset: {}, textContent: '', disabled: false, listeners: {},
@@ -34,10 +34,11 @@ function harness(api, timers = {setTimeout}, sessionStorage = storage()) {
             return [];
         }};
     let stopped = 0, played = 0;
-    const window = {DictaLabListeningBridge: {api, currentUser: () => ({id: 1}), navigate() {},
+    const navigations = [];
+    const window = {DictaLabListeningBridge: {api, currentUser: () => ({id: 1}), navigate(...args) { navigations.push(args); },
         stopRecordedAudio() { stopped++; }, async playRecordedAudio() { played++; }}};
-    vm.runInNewContext(source, {window, document: {querySelector: () => root}, sessionStorage, crypto: {randomUUID: () => 'new-request'}, ...timers});
-    return {module: window.DictaLabConversation, root, node, stopped: () => stopped, played: () => played};
+    vm.runInNewContext(source, {window, document: {querySelector: () => root}, sessionStorage, localStorage: preferences, crypto: {randomUUID: () => 'new-request'}, ...timers});
+    return {module: window.DictaLabConversation, root, node, navigations, preferences, bridge: window.DictaLabListeningBridge, stopped: () => stopped, played: () => played};
 }
 test('navigation ignores a late response and stops conversation audio', async () => {
     let resolve;
@@ -315,4 +316,80 @@ test('learner can explicitly end after three tasks without inventing a transfer 
     assert.match(h.root.innerHTML, /Đã lưu kết quả ba câu/);
     assert.doesNotMatch(h.root.innerHTML, /Hoàn thành phiên nghe/);
     assert.doesNotMatch(h.root.innerHTML, /✓ Câu mới/);
+});
+
+test('play and support restore the initiating control instead of opening the answer keyboard', async () => {
+    const h = harness(async (_url, options) => options ? {...state(), audioUrl: '/sample.wav'} : state());
+    await h.module.show('session');
+    await h.node('play').listeners.click();
+    assert.equal(h.node('play').focused, true);
+    assert.notEqual(h.node('textarea').focused, true);
+    await h.node('transcript').listeners.click();
+    assert.equal(h.node('transcript').focused, true);
+    assert.notEqual(h.node('textarea').focused, true);
+});
+
+test('next session preserves difficulty unless the learner explicitly changes it', async () => {
+    const completed = {...state(), scenario: 'cafe', completed: true, summary: {...summary, practiceVi: []}, turns: [doneTurn()]};
+    const h = harness(async () => completed);
+    await h.module.show('session');
+    await h.node('restart').listeners.click();
+    assert.equal(JSON.parse(h.preferences.getItem('dictalab:conversation-selection:1')).difficulty, 'A1');
+    await h.node('harder').listeners.click();
+    assert.equal(JSON.parse(h.preferences.getItem('dictalab:conversation-selection:1')).difficulty, 'A2');
+});
+
+test('pause saves the active answer and returns to the catalog without completing the task', async () => {
+    const calls = [], saved = storage();
+    const h = harness(async url => { calls.push(url); return state(); }, {setTimeout}, saved);
+    await h.module.show('session');
+    h.node('#conversation-answer').value = 'Tôi hiểu giờ hẹn';
+    await h.node('pause').listeners.click();
+    assert.equal(JSON.parse(saved.getItem('dictalab:conversation-draft:1:session:1')).value, 'Tôi hiểu giờ hẹn');
+    assert.equal(calls.length, 1);
+    assert.equal(h.navigations[0][0], 'conversation');
+});
+
+test('grading concerns use the owned session and do not overwrite its assessment', async () => {
+    const calls = [];
+    const h = harness(async (url, options) => { calls.push({url, options}); return options ? {reported: true} : {...state(), turns: [doneTurn()]}; });
+    await h.module.show('session');
+    h.node('#conversation-report-1').value = 'AI chưa tính ý giờ hẹn';
+    await h.node('report-1').listeners.click();
+    assert.equal(calls[1].url, '/api/v1/conversation/sessions/session/report');
+    assert.equal(calls[1].options.body.turnNumber, 1);
+    assert.equal(calls[1].options.body.reasonVi, 'AI chưa tính ý giờ hẹn');
+    assert.match(h.node('#conversation-report-status-1').textContent, /Đã lưu góp ý/);
+    assert.match(h.root.innerHTML, /Đã nắm đủ ý/);
+});
+
+test('catalog groups scenarios progressively and offers a clearly non-diagnostic level example', async () => {
+    const data = {enabled: true, scenarios: {cafe: 'Quán cà phê', tickets: 'Mua vé'}, sessions: [],
+        scenarioGroups: [{id: 'food', label: 'Ăn uống', scenarios: ['cafe']}, {id: 'travel', label: 'Di chuyển', scenarios: ['tickets']}],
+        scenarioCatalog: [{id: 'cafe', goalVi: 'Nghe món và số lượng'}],
+        levelProfiles: [{id: 'A1', descriptionVi: 'Thông tin trực tiếp'}],
+        levelExamples: {A1: {utteranceEn: 'One tea, please.', translationVi: 'Một trà.'}}};
+    const h = harness(async () => data);
+    await h.module.show();
+    assert.match(h.root.innerHTML, /Nhóm tình huống/);
+    const scenarioOptions = h.root.innerHTML.match(/id="conversation-scenario"[^>]*>(.*?)<\/select>/s)[1];
+    assert.match(scenarioOptions, /cafe/); assert.doesNotMatch(scenarioOptions, /tickets/);
+    assert.match(h.root.innerHTML, /không phải bài xác định trình độ CEFR/);
+    assert.equal(h.node('#conversation-sample-en').textContent, 'One tea, please.');
+    assert.equal(h.node('#conversation-goal').textContent, 'Nghe món và số lượng');
+});
+
+test('history loads read-only pages and keeps previous results on network failure', async () => {
+    const calls = [], catalog = {enabled: true, scenarios: {cafe: 'Quán'}, sessions: [], hasMore: true};
+    const h = harness(async url => {
+        calls.push(url);
+        if (url.includes('?')) throw new Error('Mất kết nối');
+        return catalog;
+    });
+    await h.module.show();
+    await h.node('#conversation-history-next').listeners.click();
+    assert.equal(calls[1], '/api/v1/conversation/sessions?offset=12&limit=12');
+    assert.match(h.node('#conversation-history-status').textContent, /Mất kết nối/);
+    assert.equal(h.node('#conversation-history-page').textContent, 'Trang 1');
+    assert.equal(h.node('#conversation-history-next').disabled, false);
 });

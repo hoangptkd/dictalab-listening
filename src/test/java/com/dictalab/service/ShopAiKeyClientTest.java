@@ -162,4 +162,21 @@ class ShopAiKeyClientTest {
         assertThat(client.completeJson("synthetic","synthetic").path("ok").asBoolean()).isTrue();
         assertThat(requests.get()).isEqualTo(2);
     }
+
+    @Test @org.junit.jupiter.api.Timeout(10)
+    void remainingConversationBudgetBoundsCallsAndRejectsExpiredWorkWithoutSending() {
+        assertThatThrownBy(() -> client.completeJson("synthetic", "synthetic", "fixture", java.time.Duration.ZERO))
+                .isInstanceOfSatisfying(ShopAiKeyClient.Failure.class, failure -> assertThat(failure.reason()).isEqualTo("TIMEOUT"));
+        assertThat(requests.get()).isZero();
+        var stalled = new java.util.concurrent.CountDownLatch(1);
+        gate.set(stalled);
+        long began = System.nanoTime();
+        try {
+            assertThatThrownBy(() -> client.completeJson("synthetic", "synthetic", "fixture", java.time.Duration.ofMillis(200)))
+                    .isInstanceOfSatisfying(ShopAiKeyClient.Failure.class, failure -> assertThat(failure.reason()).isEqualTo("TIMEOUT"));
+            assertThat(java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - began)).isLessThan(3000L);
+            assertThat(requests.get()).isEqualTo(1);
+        } finally { stalled.countDown(); }
+        assertThat(client.completeJson("synthetic", "synthetic", "fixture", java.time.Duration.ofSeconds(2)).path("ok").asBoolean()).isTrue();
+    }
 }

@@ -82,6 +82,13 @@ public class ShopAiKeyClient {
         return requestJson(instruction, input, requestModel, generationTimeout);
     }
 
+    public JsonNode completeJson(String instruction, String input, String requestModel, Duration remaining) {
+        if (remaining == null) throw new IllegalArgumentException("Missing request deadline");
+        if (remaining.toMillis() < 1) throw new Failure("TIMEOUT", "Đã hết thời gian tạo câu nghe. Phiên vẫn được lưu để thử lại.");
+        return requestJson(instruction, input, requestModel,
+                remaining.compareTo(generationTimeout) < 0 ? remaining : generationTimeout);
+    }
+
     private JsonNode requestJson(String instruction, String input, String requestModel, Duration timeout) {
         if (!configured()) throw new IllegalStateException("ShopAIKey chưa được cấu hình trên máy chủ.");
         if (requestModel == null || requestModel.isBlank()) throw new IllegalArgumentException("Missing ShopAIKey model");
