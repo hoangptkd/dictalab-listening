@@ -70,8 +70,8 @@ public class PayOsClient {
     }
 
     private String value(JsonNode node) {
-        if (node.isNull() || "null".equals(node.asText()) || "undefined".equals(node.asText())) return "";
         if (node.isObject() || node.isArray()) return json.writeValueAsString(sortedValue(node));
+        if (node.isNull() || "null".equals(node.asText()) || "undefined".equals(node.asText())) return "";
         return node.asText();
     }
 

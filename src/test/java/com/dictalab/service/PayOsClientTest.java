@@ -48,4 +48,21 @@ class PayOsClientTest {
         assertThatThrownBy(()->disabled.create(1,49000,1)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
         assertThatThrownBy(()->new BillingProperties(true,49000,30,3,10,"http://example.com","a","b","c")).isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test void verifiesLookupWithEmptyTransactionsAndNullCancellationFields() throws Exception {
+        var client=new PayOsClient(config,json);
+        var payload=json.readTree("""
+                {"id":"payment-link","orderCode":100000,"amount":49000,"amountPaid":0,"amountRemaining":49000,
+                "status":"PENDING","createdAt":"2026-10-16T17:48:03.000Z","transactions":[],"canceledAt":null,"cancellationReason":null}
+                """);
+        String canonical="amount=49000&amountPaid=0&amountRemaining=49000&canceledAt=&cancellationReason=&createdAt=2026-10-16T17:48:03.000Z&id=payment-link&orderCode=100000&status=PENDING&transactions=[]";
+        Mac independent=Mac.getInstance("HmacSHA256");
+        independent.init(new SecretKeySpec("checksum".getBytes(StandardCharsets.UTF_8),"HmacSHA256"));
+        String signature=HexFormat.of().formatHex(independent.doFinal(canonical.getBytes(StandardCharsets.UTF_8)));
+        assertThat(client.validSignature(payload,signature)).isTrue();
+        ((tools.jackson.databind.node.ObjectNode)payload).set("transactions",json.readTree("[{\"reference\":\"bank-ref\",\"amount\":49000}]"));
+        canonical=canonical.replace("transactions=[]","transactions=[{\"amount\":49000,\"reference\":\"bank-ref\"}]");
+        signature=HexFormat.of().formatHex(independent.doFinal(canonical.getBytes(StandardCharsets.UTF_8)));
+        assertThat(client.validSignature(payload,signature)).isTrue();
+    }
 }
