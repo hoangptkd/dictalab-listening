@@ -435,17 +435,22 @@ Tham số không hợp lệ trả 400. Trang vượt cuối trả `items: []` k�
 frontend điều chỉnh deep link về trang cuối. Chi tiết `/api/v1/history/{sessionId}` không đổi.
 Đây là thay đổi contract: frontend kèm repository đã cập nhật; client bên ngoài phải đọc `items`.
 
-## CI/CD lên Windows Server 2019
+## CI/CD lên Linux VPS
 
 Workflow `.github/workflows/deploy.yml` kiểm thử khi có pull request hoặc push vào `main`,
-và khi chạy thủ công. Pull request không deploy. Deploy chỉ chạy từ `main`, sau job kiểm thử đạt:
+và khi chạy thủ công. Pull request không deploy. Ba nhóm kiểm tra chạy độc lập;
+deploy chỉ chạy từ `main` sau khi tất cả nhóm đạt:
 
-1. Chạy JavaScript, toàn bộ Java test trên H2 và PostgreSQL service container có Flyway,
-   build JAR bằng Java 17, lưu riêng báo cáo của hai database.
-2. Kết nối VPS bằng SSH deploy key, tải bản build và script triển khai lên thư mục staging.
-3. Tạo và xác minh bản sao PostgreSQL riêng tư trước khi chạy migration.
-4. Xác minh SHA-256, cập nhật Windows Service `DictaLab` và kiểm tra health endpoint.
-5. Nếu backup thất bại, pipeline dừng trước migration; nếu bản mới không khởi động thành công,
+1. `test-build`: chạy JavaScript, Python, quét dependency, kiểm thử Java/H2 và build JAR
+   production bằng Java 17 một lần; xác minh đóng gói S3 trước khi lưu artifact.
+2. `postgres-tests`: chạy toàn bộ bộ test mặc định với PostgreSQL 17/18 và Flyway,
+   lưu báo cáo riêng cho từng phiên bản; không phải chờ H2/build.
+3. `reliability`: giữ kiểm thử concurrency, messaging và recovery bắt buộc trên
+   PostgreSQL 17/18 bằng Testcontainers; từ chối bằng chứng thiếu hoặc test bị bỏ qua.
+4. Kết nối VPS bằng SSH deploy key, tải JAR đã kiểm tra và script triển khai lên staging.
+5. Xác minh SHA-256, dừng service `dictalab`, tạo backup PostgreSQL và media nhất quán,
+   cập nhật JAR rồi khởi động, kiểm tra health nội bộ và public.
+6. Nếu backup thất bại, pipeline dừng trước migration; nếu bản mới không khởi động thành công,
    tự động phục hồi JAR trước đó.
 
 Khai báo bốn repository secrets tại **Settings → Secrets and variables → Actions**:
@@ -453,7 +458,7 @@ Khai báo bốn repository secrets tại **Settings → Secrets and variables �
 | Secret | Giá trị |
 |---|---|
 | `VPS_HOST` | Địa chỉ IP hoặc hostname của VPS |
-| `VPS_USER` | Tài khoản Windows dùng để deploy |
+| `VPS_USER` | Tài khoản Linux `ubuntu` dùng để deploy |
 | `VPS_SSH_KEY` | Toàn bộ nội dung private SSH key dành riêng cho deploy |
 | `VPS_KNOWN_HOSTS` | Public host key của VPS, lấy bằng `ssh-keyscan -H <VPS_HOST>` |
 
