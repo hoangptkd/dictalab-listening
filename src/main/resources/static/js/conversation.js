@@ -90,46 +90,26 @@
         const continuing = data.sessions.find(item => !item.completed);
         root().innerHTML = `<div class="conversation-setup">
             <section class="conversation-card conversation-start">
-            <div class="conversation-note"><h2>Hôm nay bạn muốn hiểu điều gì?</h2>
-                <p>Chọn tình huống và mức vừa sức. Mỗi phiên có 4 câu, khoảng 5–8 phút; có thể tạm dừng bất cứ lúc nào.</p></div>
-            ${continuing ? `<p class="conversation-continue"><a href="/conversation/${escape(continuing.id)}">Tiếp tục ${escape(scenarios[continuing.scenario])} · ${escape(continuing.difficulty)} →</a><small>${continuing.turnNumber || 0}/4 câu đã mở · Phiên đã lưu</small></p>` : ""}
-            ${recommendation ? `<div class="conversation-recommendation"><h3>${recommendation.due ? "Ôn lại với thông tin mới" : "Gợi ý cho bạn"}</h3><p>${escape(recommendation.reasonVi)}</p><button type="button" class="secondary-button" id="conversation-recommended">${escape(scenarios[recommendation.scenario])} · ${escape(recommendation.difficulty)}</button></div>` : ""}
-            <form id="conversation-setup-form">
-                <h3>Khám phá tình huống</h3>
+            ${continuing ? `<p class="conversation-continue"><a href="/conversation/${escape(continuing.id)}">Tiếp tục ${escape(scenarios[continuing.scenario])} · ${escape(continuing.difficulty)} →</a></p>` : ""}
+            ${recommendation ? `<div class="conversation-recommendation"><button type="button" class="secondary-button" id="conversation-recommended">${recommendation.due ? "Ôn lại" : "Gợi ý"}: ${escape(scenarios[recommendation.scenario])} · ${escape(recommendation.difficulty)}</button></div>` : ""}
+            <form id="conversation-setup-form" aria-label="Chọn bài luyện nghe">
                 ${groups.length ? `<label for="conversation-group">Nhóm tình huống</label><select id="conversation-group">${groups.map(group => `<option value="${escape(group.id)}" ${group.id === selectedGroup?.id ? "selected" : ""}>${escape(group.label)}</option>`).join("")}</select>` : ""}
                 <label for="conversation-scenario">Tình huống</label>
                 <select id="conversation-scenario" name="scenario">${Object.entries(scenarios).filter(([id]) => !selectedGroup || selectedGroup.scenarios.includes(id)).map(([id, label]) => `<option value="${escape(id)}">${escape(label)}</option>`).join("")}</select>
-                <p id="conversation-goal" class="conversation-goal"></p>
                 <label for="conversation-level">Độ khó</label>
                 <select id="conversation-level" name="difficulty"><option value="A1">A1 · Câu ngắn, thông tin trực tiếp</option><option value="A2">A2 · Nối chi tiết, theo dõi thay đổi</option><option value="B1">B1 · Ý chính, lý do và điều kiện</option></select>
-                <details class="ui-disclosure conversation-level-help"><summary>Chưa biết chọn mức nào? Nghe thử</summary><p>Chọn A1 nếu mới bắt đầu. Nghe một ví dụ rồi tự chọn mức vừa sức; đây không phải bài xác định trình độ CEFR.</p><p id="conversation-level-description"></p><button type="button" class="secondary-button" id="conversation-preview">Nghe ví dụ của mức này</button><p class="conversation-preview-note">Ví dụ dùng giọng đọc trên thiết bị, có thể khác giọng trong bài.</p><details><summary>Xem câu ví dụ và ý nghĩa</summary><p id="conversation-sample-en" lang="en"></p><p id="conversation-sample-vi"></p></details></details>
-                <p id="conversation-status" role="status">${data.enabled ? "Sẵn sàng khi bạn muốn bắt đầu." : "Luyện nghe tình huống chưa được bật trên máy chủ."}</p>
+                <p id="conversation-status" role="status">${data.enabled ? "" : "Luyện nghe tình huống chưa được bật trên máy chủ."}</p>
                 <button class="primary-button" ${data.enabled ? "" : "disabled"}>Bắt đầu nghe →</button>
             </form></section>
-            <section class="conversation-card conversation-recent"><h2>Hành trình nghe của bạn</h2>${data.progress ? `<p>${data.progress.completedSessions} phiên đã hoàn thành.</p><p>Hiểu ngay lần đầu: ${data.progress.firstAttemptFacts || 0} ý · Hiểu sau khi nghe/làm lại: ${data.progress.replayedFacts || 0} ý · Học với hỗ trợ: ${data.progress.assistedFacts || 0} ý.</p><p class="conversation-goal">${data.progress.sampleLimit ? `Tổng hợp tối đa ${Number(data.progress.sampleLimit)} phiên gần nhất. ` : ""}Các số này mô tả cách bạn đã luyện, không phải điểm trình độ.</p>` : ""}<h3>Lịch sử phiên nghe</h3><label for="conversation-history-filter">Hiển thị trong trang này</label><select id="conversation-history-filter"><option value="all">Tất cả</option><option value="active">Đang luyện</option><option value="completed">Đã hoàn thành</option></select><div id="conversation-history-list"></div><div class="conversation-history-pages"><button type="button" class="secondary-button" id="conversation-history-prev">Trang trước</button><span id="conversation-history-page"></span><button type="button" class="secondary-button" id="conversation-history-next">Trang sau</button></div><p id="conversation-history-status" role="status"></p></section></div>`;
+            <section class="conversation-card conversation-recent"><h2>Lịch sử</h2><select id="conversation-history-filter" aria-label="Lọc lịch sử trong trang này"><option value="all">Tất cả</option><option value="active">Đang luyện</option><option value="completed">Đã hoàn thành</option></select><div id="conversation-history-list"></div><div class="conversation-history-pages" id="conversation-history-pages"><button type="button" class="secondary-button" id="conversation-history-prev">Trang trước</button><span id="conversation-history-page"></span><button type="button" class="secondary-button" id="conversation-history-next">Trang sau</button></div><p id="conversation-history-status" role="status"></p></section></div>`;
         root().querySelector("#conversation-scenario").value = selection.scenario;
         root().querySelector("#conversation-level").value = selection.difficulty;
-        const updatePreview = () => {
-            const profile = data.levelProfiles?.find(item => item.id === selection.difficulty);
-            const example = data.levelExamples?.[selection.difficulty];
-            root().querySelector("#conversation-level-description").textContent = profile?.descriptionVi || "Nghe thử và chọn mức bạn hiểu được ý chính mà chưa cần mở bản dịch.";
-            root().querySelector("#conversation-sample-en").textContent = example?.utteranceEn || profile?.sampleEn || "";
-            root().querySelector("#conversation-sample-vi").textContent = example?.translationVi || profile?.sampleVi || "";
-            root().querySelector("#conversation-preview").disabled = !bridge().playConversationPreview || !(example?.utteranceEn || profile?.sampleEn);
-            root().querySelector("#conversation-goal").textContent = data.scenarioCatalog?.find(item => item.id === selection.scenario)?.goalVi || "Nghe ý chính, bắt chi tiết và thử vận dụng với câu mới.";
-        };
-        updatePreview();
         root().querySelector("#conversation-group")?.addEventListener("change", event => {
             selection.scenario = groups.find(group => group.id === event.target.value).scenarios[0]; recommendationSource = null; rememberSelection(); renderCatalog(data);
             root().querySelector("#conversation-group")?.focus({preventScroll: true});
         });
-        root().querySelector("#conversation-scenario").addEventListener("change", event => { selection.scenario = event.target.value; recommendationSource = null; rememberSelection(); updatePreview(); });
-        root().querySelector("#conversation-level").addEventListener("change", event => { stopAudio(); selection.difficulty = event.target.value; recommendationSource = null; rememberSelection(); updatePreview(); });
-        root().querySelector("#conversation-preview").addEventListener("click", async () => {
-            const token = revision;
-            try { await bridge().playConversationPreview(root().querySelector("#conversation-sample-en").textContent, selection.difficulty === "A1" ? 0.8 : 1); }
-            catch (error) { if (token === revision) root().querySelector("#conversation-status").textContent = error.message; }
-        });
+        root().querySelector("#conversation-scenario").addEventListener("change", event => { selection.scenario = event.target.value; recommendationSource = null; rememberSelection(); });
+        root().querySelector("#conversation-level").addEventListener("change", event => { stopAudio(); selection.difficulty = event.target.value; recommendationSource = null; rememberSelection(); });
         root().querySelector("#conversation-recommended")?.addEventListener("click", () => {
             selection = {scenario: recommendation.scenario, difficulty: recommendation.difficulty}; recommendationSource = recommendation.sourceSessionId || null; rememberSelection(); renderCatalog(data);
             root().querySelector("#conversation-scenario").focus({preventScroll: true});
@@ -175,6 +155,7 @@
         root().querySelector("#conversation-history-prev").disabled = historyOffset === 0;
         root().querySelector("#conversation-history-next").disabled = !hasMore;
         root().querySelector("#conversation-history-page").textContent = `Trang ${historyOffset / 12 + 1}`;
+        root().querySelector("#conversation-history-pages").hidden = historyOffset === 0 && !hasMore;
         bindSessionLinks();
     }
 
@@ -187,7 +168,7 @@
             const data = await request(`${apiRoot}/sessions?offset=${offset}&limit=12`);
             if (token !== revision) return;
             historyOffset = offset; catalog.sessions = data.sessions; catalog.hasMore = data.hasMore;
-            renderHistory(data.sessions, data.hasMore); root().querySelector("#conversation-history-status").textContent = "Đã tải lịch sử.";
+            renderHistory(data.sessions, data.hasMore); root().querySelector("#conversation-history-status").textContent = "";
         } catch (error) {
             if (token === revision) { renderHistory(catalog.sessions, catalog.hasMore ?? catalog.sessions.length === 12); root().querySelector("#conversation-history-status").textContent = error.message; }
         } finally { if (token === revision) busy = false; }
@@ -196,46 +177,42 @@
     function render() {
         const turn = current(), attempts = turn?.attempts || [], pending = attempts.at(-1) && !attempts.at(-1).evaluation;
         const helpOpen = root().querySelector("#conversation-assistance")?.open;
-        const guideOpen = root().querySelector("#conversation-guide")?.open;
         const openDetails = [...root().querySelectorAll("details[open][id]")].map(node => node.id);
         const reportDrafts = [...root().querySelectorAll(".conversation-report textarea")].map(node => [node.id, node.value]);
         root().closest?.(".conversation-browser")?.classList.add("has-session");
         if (pending) draft = attempts.at(-1).answerVi;
-        root().innerHTML = `<div class="conversation-session-layout ${session.completed ? "" : "is-active-session"}"><div class="conversation-session-main"><a href="/conversation" id="conversation-back">← Chọn tình huống</a>${session.completed ? "" : `<button type="button" class="text-button" data-action="pause">Tạm dừng · Phiên và bản nháp được lưu</button><details id="conversation-guide" class="ui-disclosure conversation-guide" ${guideOpen ? "open" : ""}><summary>Cách luyện nghe</summary><p>Nghe tiếng Anh, trả lời bằng tiếng Việt</p><p>Nghe trọn câu và gõ điều mình hiểu. Không cần dịch từng từ. Hỗ trợ giúp bạn học tiếp; kết quả sẽ phân biệt tự hiểu và hiểu với hỗ trợ.</p></details>`}<div class="conversation-session-header">
+        root().innerHTML = `<div class="conversation-session-layout ${session.completed ? "" : "is-active-session"}"><div class="conversation-session-main"><a href="/conversation" id="conversation-back">← Chọn tình huống</a>${session.completed ? "" : '<button type="button" class="text-button" data-action="pause">Lưu và tạm dừng</button>'}<div class="conversation-session-header">
             <div><span>${escape(session.scenarioVi)} · ${escape(session.difficulty)}</span>
             ${!session.completed ? `<h2 id="conversation-task">${escape(turn?.prompt.taskVi || "Đã tạo phiên luyện tập")}</h2>` : ""}</div></div>
-            ${session.practiceFocus ? `<p class="conversation-focus">Mục tiêu phiên này: ${escape(session.practiceFocus)}</p>` : ""}
-            ${turn?.warmup ? '<p class="conversation-focus">Khởi động có sẵn · Các câu sau theo mức bạn chọn. Câu khởi động ngắn này không đại diện đầy đủ cho độ khó của mức.</p>' : ""}
+            ${session.practiceFocus ? `<p class="conversation-focus">${escape(session.practiceFocus)}</p>` : ""}
+            ${turn?.warmup ? '<p class="conversation-focus">Câu khởi động · Các câu sau theo mức đã chọn.</p>' : ""}
             <div class="conversation-progress" role="group" aria-label="Tiến độ phiên">${[1, 2, 3, 4].map(n => `<span ${n === session.turnNumber && !session.completed ? 'aria-current="step"' : ""} class="${n <= session.turnNumber ? "is-current" : ""}">${session.turns[n - 1]?.done ? "✓ " : ""}${n === 4 ? "Câu mới" : `Bước ${n}`}</span>`).join("")}</div>
             ${session.completed ? summary(session.summary) + reviewHistory() : `<div class="conversation-workspace">
                 <section class="conversation-card conversation-listen" aria-labelledby="conversation-task">
-                    <p class="section-index">${session.turnNumber === 4 ? "Câu mới / Kiểm tra lại" : `Nhiệm vụ ${session.turnNumber || 1} / 4`}</p>
                     ${turn ? `<p>${escape(turn.prompt.questionVi)}</p>
                         <button type="button" class="primary-button" data-action="play">${turn.plays ? "Nghe lại" : "Nghe câu này"}</button>
                         <div class="conversation-audio-tools"><button type="button" class="secondary-button" data-action="slow">Nghe chậm · 0,8×</button>
                         <button type="button" class="secondary-button" data-action="toggle-audio" disabled>Tạm dừng audio</button><button type="button" class="text-button" data-action="stop">Dừng audio</button></div>
-                        <div class="conversation-audio-timeline"><label for="conversation-audio-seek">Vị trí audio</label><input id="conversation-audio-seek" type="range" min="0" max="0" step="0.1" value="0" disabled><output id="conversation-audio-time">0:00 / --:--</output></div>
-                        <small>Học theo cách phù hợp với bạn. Kết quả sẽ ghi rõ hỗ trợ đã dùng, không trừ điểm vì cần giúp đỡ.</small>
-                        <details id="conversation-assistance" class="ui-disclosure" ${helpOpen ? "open" : ""}><summary>Cần một chút hỗ trợ?</summary>
+                        <div class="conversation-audio-timeline"><input id="conversation-audio-seek" aria-label="Vị trí audio" type="range" min="0" max="0" step="0.1" value="0" disabled><output id="conversation-audio-time">0:00 / --:--</output></div>
+                        <details id="conversation-assistance" class="ui-disclosure" ${helpOpen ? "open" : ""}><summary>Hỗ trợ</summary><p>Kết quả ghi nhận hỗ trợ đã dùng.</p>
                         <div class="conversation-help"><button type="button" class="text-button" data-action="clarify">${turn.clarification ? "Nghe bản làm rõ" : "Nhờ AI nói rõ hơn"}</button>
                         <button type="button" class="text-button" data-action="transcript" aria-expanded="${!!turn.prompt.utteranceEn}" aria-controls="conversation-transcript">Mở transcript</button>
                         <button type="button" class="text-button" data-action="translation" aria-expanded="${!!turn.prompt.translationVi}" aria-controls="conversation-translation">Mở bản dịch</button></div>
                         <div id="conversation-transcript" ${turn.prompt.utteranceEn ? "" : "hidden"}><p lang="en">${escape(turn.prompt.utteranceEn)}</p>${turn.clarification?.utteranceEn ? `<p lang="en">${escape(turn.clarification.utteranceEn)}</p>` : ""}</div>
                         <div id="conversation-translation" ${turn.prompt.translationVi ? "" : "hidden"}><p>${escape(turn.prompt.translationVi)}</p>${turn.clarification?.translationVi ? `<p>${escape(turn.clarification.translationVi)}</p>` : ""}</div>
-                        ${!turn.done && !pending ? '<p>Chưa nghe ra? Mở lời giải để đối chiếu, nghe lại và tự nhắc lại ý. Câu này sẽ chuyển sang học với lời giải, không tính là tự hiểu.</p><button type="button" class="text-button" data-action="review">Học với lời giải câu này</button>' : ""}
+                        ${!turn.done && !pending ? '<p>Mở lời giải sẽ kết thúc câu này, không tính là tự hiểu.</p><button type="button" class="text-button" data-action="review">Xem lời giải</button>' : ""}
                         </details>` : `<p>Phiên này đã được lưu. Bạn không cần tạo phiên mới.</p>
                         <p id="conversation-status" role="status">${escape(message || "Câu nghe đầu tiên chưa sẵn sàng.")}</p>
                         <button type="button" class="primary-button" data-action="next" aria-describedby="conversation-status">${message ? "Thử lại" : "Tạo câu nghe đầu tiên"}</button>`}
                 </section>
                 <section class="conversation-card conversation-reply" aria-labelledby="conversation-reply-heading">
-                    <h2 id="conversation-reply-heading">Bạn hiểu được gì?</h2>
+                    <h2 id="conversation-reply-heading">Trả lời bằng tiếng Việt</h2>
                     ${turn && !turn.done ? `<p class="conversation-feedback-count">Đã nắm ${turn.capturedFacts || 0}/${turn.totalFacts || 2} ý · Còn ${3 - attempts.length} lượt bổ sung</p>` : ""}
                     <div class="conversation-chat">${attempts.map((a, i) => `${i < attempts.length - 1 ? `<details class="ui-disclosure"><summary>Lượt trả lời ${i + 1}</summary>` : ""}<div class="conversation-bubble learner"><span>Bạn</span><p>${escape(a.answerVi)}</p></div>
                         ${a.evaluation ? `<div class="conversation-bubble coach"><span>AI Coach</span><p>${escape(a.evaluation.feedbackVi)}</p>${!turn.done && a.evaluation.clarificationVi ? `<p><strong>${escape(a.evaluation.clarificationVi)}</strong></p>` : ""}</div>` : ""}${i < attempts.length - 1 ? "</details>" : ""}`).join("")}</div>
                     ${turn && !turn.done ? `<form id="conversation-answer-form"><label for="conversation-answer">Trả lời bằng tiếng Việt</label>
-                        <textarea id="conversation-answer" name="answerVi" rows="4" maxlength="1500" required aria-describedby="conversation-answer-hint conversation-status" ${pending ? "readonly" : ""}>${escape(draft)}</textarea>
-                        <small id="conversation-answer-hint">Trả lời các ý được hỏi bằng cách diễn đạt của bạn. Bản nháp được lưu trên thiết bị trong 24 giờ.</small>
-                        <div class="conversation-answer-actions"><button class="primary-button">${pending ? "Thử chấm lại câu đã lưu" : attempts.length ? "Gửi ý bổ sung →" : "Gửi điều mình hiểu →"}</button><button type="button" class="secondary-button" data-action="replay-${session.turnNumber}">↻ Nghe lại câu gốc</button></div></form>`
+                        <textarea id="conversation-answer" name="answerVi" rows="4" maxlength="1500" required aria-describedby="conversation-status" ${pending ? "readonly" : ""}>${escape(draft)}</textarea>
+                        <div class="conversation-answer-actions"><button class="primary-button">${pending ? "Thử chấm lại câu đã lưu" : attempts.length ? "Gửi ý bổ sung →" : "Gửi câu trả lời →"}</button></div></form>`
                         : turn ? `${reviewCard(turn, session.turnNumber, true)}<button type="button" class="primary-button" data-action="next">${session.turnNumber === 3 ? "Thử câu mới để kiểm tra lại →" : "Bước tiếp theo →"}</button>${session.turnNumber === 3 ? '<p>Không tạo được câu mới hoặc muốn dừng tại đây?</p><button type="button" class="text-button" data-action="finish">Kết thúc với ba câu · Chưa kiểm tra vận dụng</button>' : ""}`
                         : "<p>Bắt đầu bằng việc nghe. AI sẽ phản hồi sau khi bạn gửi ý hiểu.</p>"}
                 </section></div>${reviewHistory(true)}`}
@@ -283,7 +260,6 @@
         return `<details id="conversation-review-${number}" class="ui-disclosure conversation-review" ${open ? "open" : ""}><summary>Câu ${number} · ${correct ? "Đã nắm đủ ý" : "Đối chiếu và học lại"}</summary>
             <p>${escape(turn.prompt.questionVi)}</p><ul class="conversation-review-facts">${turn.review.facts.map(f => `<li><span>${escape(labels[f.status] || "Chưa rõ ý")}</span><strong>${escape(f.textVi)}</strong><q lang="en">${escape(f.evidenceEn)}</q></li>`).join("")}</ul>
             <button type="button" class="secondary-button" data-action="replay-${number}">↻ Nghe lại câu ${number}</button>
-            <p>Nghe lại và chú ý các cụm trên. Sau đó thử tự nhắc lại ý trước khi sang câu mới.</p>
             <details id="conversation-review-script-${number}" class="conversation-review-script"><summary>Toàn bộ transcript và bản dịch</summary><p lang="en">${escape(turn.review.utteranceEn)}</p><p>${escape(turn.review.translationVi)}</p></details>
             ${turn.attempts?.length ? `<details id="conversation-review-answers-${number}"><summary>Câu trả lời của bạn</summary>${turn.attempts.map(a => `<p>${escape(a.answerVi)}</p>${a.evaluation ? `<p>${escape(a.evaluation.feedbackVi)}</p>` : ""}`).join("")}</details><details id="conversation-report-panel-${number}" class="conversation-report"><summary>Tôi nghĩ AI chấm chưa đúng</summary><p>Góp ý được lưu để kiểm tra, không tự thay đổi kết quả. Không nhập thông tin nhạy cảm.</p><label for="conversation-report-${number}">Bạn thấy ý nào chưa được chấm phù hợp?</label><textarea id="conversation-report-${number}" rows="2" maxlength="1000"></textarea><button type="button" class="secondary-button" data-action="report-${number}">Gửi góp ý câu ${number}</button><p id="conversation-report-status-${number}" role="status"></p></details>` : ""}</details>`;
     }
@@ -294,15 +270,13 @@
     }
 
     function summary(data) {
-        return `<section class="conversation-card conversation-summary"><p class="section-index">${session.transferSkipped ? "Đã lưu kết quả ba câu" : "Hoàn thành phiên nghe"}</p><h2>${session.transferSkipped ? "Xem lại điều đã học." : "Mang điều đã hiểu sang câu mới."}</h2>
-            <p>Bạn nắm được ${data.independentFacts}/${data.totalFacts} ý không mở hỗ trợ; ${data.assistedFacts} ý với hỗ trợ. Nghe lại ở tốc độ thường vẫn được tính không mở hỗ trợ.</p>
-            ${Number.isFinite(data.firstAttemptFacts) ? `<p>Hiểu ngay lần đầu: ${data.firstAttemptFacts} ý. Hiểu sau khi nghe hoặc trả lời lại: ${data.replayedFacts || 0} ý. Đây là cách học, không phải điểm xếp hạng.</p>` : ""}
+        return `<section class="conversation-card conversation-summary"><h2>${session.transferSkipped ? "Đã lưu kết quả ba câu" : "Hoàn thành phiên nghe"}</h2>
+            <p>Tự hiểu: ${data.independentFacts}/${data.totalFacts} ý · Có hỗ trợ: ${data.assistedFacts} ý</p>
             <div class="conversation-summary-grid"><div><h3>Đã hiểu được</h3><ul>${data.understoodVi.map(t => `<li>${escape(t)}</li>`).join("") || "<li>Phiên này chưa đủ bằng chứng cho ý hiểu đầy đủ.</li>"}</ul></div>
             <div><h3>Cần luyện tiếp</h3><ul>${data.practiceVi.map(t => `<li>${escape(t)}</li>`).join("") || "<li>Thử thông tin dài hơn ở lần tiếp theo.</li>"}</ul></div></div>
-            <p class="conversation-transfer">${escape(data.transferVi)}</p><p><strong>Bước tiếp theo:</strong> ${escape(data.nextActionVi)}</p>
-            <p>Đây là kết quả của ${session.turns.length} câu trong phiên, không phải đánh giá trình độ CEFR.</p>
+            <p class="conversation-transfer">${escape(data.transferVi)}</p>
             ${data.practiceVi.length ? '<button type="button" class="primary-button" data-action="targeted">Luyện đúng điểm cần cải thiện →</button>' : ""}
-            <button type="button" class="${data.practiceVi.length ? "secondary-button" : "primary-button"}" data-action="restart">Chọn phiên tiếp theo · Giữ mức ${escape(session.difficulty)}</button><div class="conversation-next-level"><p>Muốn đổi độ khó? Chỉ áp dụng cho phiên tiếp theo.</p>${session.difficulty !== "A1" ? '<button type="button" class="text-button" data-action="easier">Chọn mức dễ hơn</button>' : ""}${session.difficulty !== "B1" ? '<button type="button" class="text-button" data-action="harder">Chọn mức khó hơn</button>' : ""}</div><p>Thử ôn lại sau vài ngày với thông tin mới. Kết quả một phiên chưa đủ để tự động tăng mức.</p></section>`;
+            <button type="button" class="${data.practiceVi.length ? "secondary-button" : "primary-button"}" data-action="restart">Luyện tiếp · ${escape(session.difficulty)}</button><div class="conversation-next-level" role="group" aria-label="Độ khó cho phiên tiếp theo">${session.difficulty !== "A1" ? '<button type="button" class="text-button" data-action="easier">Phiên sau dễ hơn</button>' : ""}${session.difficulty !== "B1" ? '<button type="button" class="text-button" data-action="harder">Phiên sau khó hơn</button>' : ""}</div></section>`;
     }
 
     async function mutate(operation, status, answerOperation = false, focusAction = null) {

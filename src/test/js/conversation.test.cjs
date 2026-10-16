@@ -67,7 +67,11 @@ test('assistance is collapsed without requesting help and playback controls rema
     for (const action of ['play', 'slow', 'stop']) {
         assert.ok(html.indexOf(`data-action="${action}"`) < html.indexOf('id="conversation-assistance"'));
     }
-    assert.ok(html.indexOf('Mở hỗ trợ sẽ được ghi nhận') < html.indexOf('id="conversation-assistance"'));
+    assert.match(html, /<summary>Hỗ trợ<\/summary><p>Kết quả ghi nhận hỗ trợ đã dùng/);
+    assert.match(html, /Mở lời giải sẽ kết thúc câu này, không tính là tự hiểu/);
+    assert.match(html, /id="conversation-audio-seek" aria-label="Vị trí audio"/);
+    assert.match(html, /<label for="conversation-answer">Trả lời bằng tiếng Việt<\/label>/);
+    assert.doesNotMatch(html, /conversation-guide|conversation-answer-hint|Học theo cách phù hợp/);
 });
 test('saved ungraded response is read-only and retry uses its existing request id', async () => {
     const requests = [];
@@ -247,6 +251,9 @@ test('summary reviews all tasks and replays an earlier task rather than the curr
     });
     await h.module.show('session');
     assert.equal((h.root.innerHTML.match(/data-action="replay-/g) || []).length, 4);
+    assert.match(h.root.innerHTML, /Tự hiểu: 2\/8 ý · Có hỗ trợ: 0 ý/);
+    assert.match(h.root.innerHTML, /aria-label="Độ khó cho phiên tiếp theo"/);
+    assert.doesNotMatch(h.root.innerHTML, /không phải điểm xếp hạng|Bước tiếp theo:|Muốn đổi độ khó|Kết quả một phiên/);
     await h.node('replay-1').listeners.click();
     assert.equal(calls[1].options.body.turnNumber, 1);
     assert.equal(h.played(), 1);
@@ -363,20 +370,33 @@ test('grading concerns use the owned session and do not overwrite its assessment
     assert.match(h.root.innerHTML, /Đã nắm đủ ý/);
 });
 
-test('catalog groups scenarios progressively and offers a clearly non-diagnostic level example', async () => {
+test('minimal catalog keeps named selections and history without previews or aggregate clutter', async () => {
     const data = {enabled: true, scenarios: {cafe: 'Quán cà phê', tickets: 'Mua vé'}, sessions: [],
         scenarioGroups: [{id: 'food', label: 'Ăn uống', scenarios: ['cafe']}, {id: 'travel', label: 'Di chuyển', scenarios: ['tickets']}],
         scenarioCatalog: [{id: 'cafe', goalVi: 'Nghe món và số lượng'}],
         levelProfiles: [{id: 'A1', descriptionVi: 'Thông tin trực tiếp'}],
-        levelExamples: {A1: {utteranceEn: 'One tea, please.', translationVi: 'Một trà.'}}};
+        levelExamples: {A1: {utteranceEn: 'One tea, please.', translationVi: 'Một trà.'}},
+        progress: {completedSessions: 1, sampleLimit: 60}};
     const h = harness(async () => data);
     await h.module.show();
     assert.match(h.root.innerHTML, /Nhóm tình huống/);
     const scenarioOptions = h.root.innerHTML.match(/id="conversation-scenario"[^>]*>(.*?)<\/select>/s)[1];
     assert.match(scenarioOptions, /cafe/); assert.doesNotMatch(scenarioOptions, /tickets/);
-    assert.match(h.root.innerHTML, /không phải bài xác định trình độ CEFR/);
-    assert.equal(h.node('#conversation-sample-en').textContent, 'One tea, please.');
-    assert.equal(h.node('#conversation-goal').textContent, 'Nghe món và số lượng');
+    assert.doesNotMatch(h.root.innerHTML, /Nghe thử|conversation-preview|conversation-sample|conversation-goal|Tổng hợp tối đa|Các số này|Hành trình nghe|Sẵn sàng khi/);
+    assert.match(h.root.innerHTML, /<label for="conversation-level">Độ khó<\/label>/);
+    assert.match(h.root.innerHTML, /aria-label="Lọc lịch sử trong trang này"/);
+    assert.equal(h.node('#conversation-history-pages').hidden, true);
+    h.node('#conversation-group').listeners.change({target: {value: 'travel'}});
+    assert.match(h.root.innerHTML.match(/id="conversation-scenario"[^>]*>(.*?)<\/select>/s)[1], /tickets/);
+    assert.equal(h.node('#conversation-scenario').value, 'tickets');
+    h.node('#conversation-level').listeners.change({target: {value: 'B1'}});
+    assert.equal(JSON.parse(h.preferences.getItem('dictalab:conversation-selection:1')).difficulty, 'B1');
+});
+
+test('conversation intro keeps only the exercise instruction', () => {
+    const html = fs.readFileSync(path.resolve(__dirname, '../../main/resources/static/index.html'), 'utf8');
+    assert.match(html, /<p class="conversation-intro">Nghe tiếng Anh, trả lời bằng tiếng Việt\.<\/p>/);
+    assert.doesNotMatch(html, /Không phải chế độ luyện nói với AI/);
 });
 
 test('history loads read-only pages and keeps previous results on network failure', async () => {

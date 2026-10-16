@@ -2412,10 +2412,6 @@
 
     function stopRecordedAudio() {
         state.audioPlaybackGeneration += 1;
-        if (state.conversationPreview) {
-            state.conversationPreview = false;
-            window.speechSynthesis?.cancel();
-        }
         if (!state.activeAudio) {
             return;
         }
@@ -2431,17 +2427,6 @@
     function pauseRecordedAudio() { state.activeAudio?.pause?.(); }
     function resumeRecordedAudio() { state.activeAudio?.resume?.(); }
     function seekRecordedAudio(seconds) { state.activeAudio?.seek?.(Number(seconds)); }
-
-    async function playConversationPreview(text, rate = 1) {
-        stopRecordedAudio();
-        if (!window.speechSynthesis || typeof window.SpeechSynthesisUtterance !== "function") {
-            throw new Error("Thiết bị chưa hỗ trợ giọng mẫu. Bạn vẫn có thể đọc ví dụ bên dưới.");
-        }
-        state.conversationPreview = true;
-        const token = state.audioPlaybackGeneration;
-        try { await speak(String(text).slice(0, 1200), rate); }
-        finally { if (token === state.audioPlaybackGeneration) state.conversationPreview = false; }
-    }
 
     function speak(text, rate) {
         return new Promise((resolve, reject) => {
@@ -5319,7 +5304,7 @@
 
     // ==================================================================== END ROOM MODULE
     window.DictaLabListeningBridge = {api, navigate, playRecordedAudio, loadAudioBuffer, stopRecordedAudio,
-        getRecordedAudioState, pauseRecordedAudio, resumeRecordedAudio, seekRecordedAudio, playConversationPreview, paginateList,
+        getRecordedAudioState, pauseRecordedAudio, resumeRecordedAudio, seekRecordedAudio, paginateList,
         library: {setLessons: lessons => { state.lessons = lessons; },
             select: selectCatalogLesson, start: startLesson, busy: () => state.catalogStarting},
         showToast, isAdmin: () => state.currentUser?.role === "ADMIN",

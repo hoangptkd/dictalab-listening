@@ -4710,9 +4710,6 @@ summary:focus-visible {
 .conversation-browser .section-index { color: var(--conversation-accent); }
 .conversation-intro { max-width: 620px; margin-bottom: 32px; }
 .conversation-setup, .conversation-workspace { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
-.conversation-note { padding: 24px 28px 24px 0; }
-.conversation-note h2 { font-size: clamp(1.7rem, 3vw, 2.4rem); line-height: 1.25; }
-.conversation-note p { max-width: 450px; }
 .conversation-card { min-width: 0; padding: clamp(20px, 3vw, 32px); border: 1px solid var(--line, #d7d9d1); border-radius: 16px; background: var(--paper, #fffdf6); }
 .conversation-card h2 { margin-top: 0; font-size: 1.55rem; line-height: 1.35; }
 .conversation-card label { display: block; font-weight: 600; margin-block: 16px 8px; }
