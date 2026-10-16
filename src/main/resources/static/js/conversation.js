@@ -113,7 +113,7 @@
         if (pending) draft = attempts.at(-1).answerVi;
         root().innerHTML = `<div class="conversation-session-layout ${session.completed ? "" : "is-active-session"}"><div class="conversation-session-main"><a href="/conversation" id="conversation-back">← Chọn tình huống</a>${session.completed ? "" : `<details class="ui-disclosure conversation-guide"><summary>Hướng dẫn luyện hội thoại</summary><p>Bốn nhiệm vụ nghe và phản hồi</p><p>Nghe trọn câu, nắm ý chính và gõ điều mình hiểu bằng tiếng Việt. Mở transcript hoặc bản dịch khi cần.</p></details>`}<div class="conversation-session-header">
             <div><span>${escape(session.scenarioVi)} · ${escape(session.difficulty)}</span>
-            ${!session.completed ? `<h2 id="conversation-task">${escape(turn?.prompt.taskVi || "Sẵn sàng cho câu nghe đầu tiên?")}</h2>` : ""}</div></div>
+            ${!session.completed ? `<h2 id="conversation-task">${escape(turn?.prompt.taskVi || "Đã tạo phiên luyện tập")}</h2>` : ""}</div></div>
             ${session.practiceFocus ? `<p class="conversation-focus">Mục tiêu phiên này: ${escape(session.practiceFocus)}</p>` : ""}
             <div class="conversation-progress" role="group" aria-label="Tiến độ phiên">${[1, 2, 3, 4].map(n => `<span ${n === session.turnNumber && !session.completed ? 'aria-current="step"' : ""} class="${n <= session.turnNumber ? "is-current" : ""}">${session.turns[n - 1]?.done ? "✓ " : ""}${n === 4 ? "Câu mới" : `Bước ${n}`}</span>`).join("")}</div>
             ${session.completed ? summary(session.summary) + reviewHistory() : `<div class="conversation-workspace">
@@ -132,7 +132,9 @@
                         <div id="conversation-transcript" ${turn.prompt.utteranceEn ? "" : "hidden"}><p lang="en">${escape(turn.prompt.utteranceEn)}</p>${turn.clarification?.utteranceEn ? `<p lang="en">${escape(turn.clarification.utteranceEn)}</p>` : ""}</div>
                         <div id="conversation-translation" ${turn.prompt.translationVi ? "" : "hidden"}><p>${escape(turn.prompt.translationVi)}</p>${turn.clarification?.translationVi ? `<p>${escape(turn.clarification.translationVi)}</p>` : ""}</div>
                         ${!turn.done && !pending ? '<p>Chưa nghe ra? Mở lời giải để học lại. Câu này sẽ kết thúc, không được tính là tự hiểu thêm.</p><button type="button" class="text-button" data-action="review">Xem lời giải và kết thúc câu này</button>' : ""}
-                        </details>` : '<button type="button" class="primary-button" data-action="next">Thử tạo lại câu đầu tiên →</button>'}
+                        </details>` : `<p>Phiên này đã được lưu. Bạn không cần tạo phiên mới.</p>
+                        <p id="conversation-status" role="status">${escape(message || "Câu nghe đầu tiên chưa sẵn sàng.")}</p>
+                        <button type="button" class="primary-button" data-action="next" aria-describedby="conversation-status">${message ? "Thử lại" : "Tạo câu nghe đầu tiên"}</button>`}
                 </section>
                 <section class="conversation-card conversation-reply" aria-labelledby="conversation-reply-heading">
                     <h2 id="conversation-reply-heading">Bạn hiểu được gì?</h2>
@@ -146,7 +148,7 @@
                         : turn ? `${reviewCard(turn, session.turnNumber, true)}<button type="button" class="primary-button" data-action="next">${session.turnNumber === 3 ? "Thử câu mới để kiểm tra lại →" : "Bước tiếp theo →"}</button>${session.turnNumber === 3 ? '<p>Không tạo được câu mới hoặc muốn dừng tại đây?</p><button type="button" class="text-button" data-action="finish">Kết thúc với ba câu · Chưa kiểm tra vận dụng</button>' : ""}`
                         : "<p>Bắt đầu bằng việc nghe. AI sẽ phản hồi sau khi bạn gửi ý hiểu.</p>"}
                 </section></div>${reviewHistory(true)}`}
-            <p id="conversation-status" role="status">${escape(message)}</p></div></div>`;
+            ${turn || session.completed ? `<p id="conversation-status" role="status">${escape(message)}</p>` : ""}</div></div>`;
         root().querySelector("#conversation-back").addEventListener("click", event => { event.preventDefault(); bridge().navigate("conversation"); });
         root().querySelectorAll("[data-action]").forEach(button => button.addEventListener("click", () => action(button.dataset.action)));
         const textarea = root().querySelector("textarea");
@@ -198,6 +200,7 @@
         if (textarea) textarea.readOnly = true;
         root().querySelectorAll("button").forEach(b => { if (b.dataset.action !== "stop") b.disabled = true; });
         root().querySelector("#conversation-status").textContent = status;
+        if (!current()) root().querySelector('[data-action="next"]').textContent = "Đang tạo câu nghe…";
         try {
             const data = await operation();
             if (token !== revision) return null;
@@ -221,7 +224,13 @@
                 }
                 session = data;
             } catch (_) { /* Preserve the visible draft if fetching the saved session also fails. */ }
-            if (token === revision) { message = error.message; render(); }
+            if (token === revision) {
+                // A lost response may hide a successfully saved first task; do not ask to generate it again.
+                message = oldTurn === 0 && session.turnNumber > 0 ? ""
+                    : !current() ? `Chưa tải được câu nghe đầu tiên. ${error.message}` : error.message;
+                render();
+                if (!current()) root().querySelector('[data-action="next"]')?.focus({preventScroll: true});
+            }
             return null;
         } finally {
             if (token === revision) { busy = false; root().removeAttribute("aria-busy"); }

@@ -17,16 +17,18 @@ function harness(api, timers = {setTimeout}, sessionStorage = storage()) {
     const nodes = new Map();
     const node = selector => {
         if (!nodes.has(selector)) nodes.set(selector, {value: '', dataset: {}, textContent: '', disabled: false, listeners: {},
-            addEventListener(name, handler) { this.listeners[name] = handler; }, focus() {}, setCustomValidity() {}, reportValidity() {}});
+            addEventListener(name, handler) { this.listeners[name] = handler; }, focus() { this.focused = true; }, setCustomValidity() {}, reportValidity() {}});
         return nodes.get(selector);
     };
-    const root = {innerHTML: '', setAttribute() {}, removeAttribute() {},
+    const attributes = new Map();
+    const root = {innerHTML: '', setAttribute(key, value) { attributes.set(key, value); }, removeAttribute(key) { attributes.delete(key); },
+        getAttribute(key) { return attributes.get(key); },
         querySelector(selector) {
             if (selector === 'textarea' && !this.innerHTML.includes('<textarea')) return null;
             if (selector === '#conversation-answer-form' && !this.innerHTML.includes('id="conversation-answer-form"')) return null;
-            return node(selector);
+            return node(selector.match(/^\[data-action="([^"]+)"\]$/)?.[1] || selector);
         }, querySelectorAll(selector) {
-            if (selector === '[data-action]') return [...root.innerHTML.matchAll(/data-action="([^"]+)"/g)].map(([,action]) => {
+            if (selector === '[data-action]' || selector === 'button') return [...root.innerHTML.matchAll(/data-action="([^"]+)"/g)].map(([,action]) => {
                 const button = node(action); button.dataset.action = action; return button;
             });
             return [];
@@ -154,6 +156,67 @@ test('opening an empty saved session creates its first task in the same session'
     assert.equal(calls[1].url, '/api/v1/conversation/sessions/session/next');
     assert.equal(calls[1].options.body.turnNumber, 0);
     assert.match(h.root.innerHTML, /Nghe giờ hẹn/);
+});
+
+test('first task failure keeps the saved session and retries only on user request', async () => {
+    const calls = [];
+    let fail;
+    const h = harness(async (url, options) => {
+        calls.push({url, options});
+        if (options) return calls.filter(call => call.options).length === 1
+            ? new Promise((_, reject) => { fail = reject; }) : state();
+        return {...state(), turnNumber: 0, turns: []};
+    });
+    const opening = h.module.show('session');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.root.getAttribute('aria-busy'), 'true');
+    assert.equal(h.node('next').disabled, true);
+    assert.match(h.node('next').textContent, /Đang tạo câu nghe/);
+    await h.node('next').listeners.click();
+    assert.equal(calls.filter(call => call.options).length, 1);
+    fail(new Error('AI tạm thời không phản hồi. <script>bad</script>'));
+    await opening;
+    assert.match(h.root.innerHTML, /Đã tạo phiên luyện tập/);
+    assert.match(h.root.innerHTML, /Phiên này đã được lưu/);
+    assert.match(h.root.innerHTML, /Chưa tải được câu nghe đầu tiên/);
+    assert.match(h.root.innerHTML, /aria-describedby="conversation-status">Thử lại/);
+    assert.equal((h.root.innerHTML.match(/id="conversation-status"/g) || []).length, 1);
+    assert.doesNotMatch(h.root.innerHTML, /<script>/);
+    assert.equal(h.node('next').focused, true);
+    assert.equal(h.root.getAttribute('aria-busy'), undefined);
+    assert.equal(calls.filter(call => call.options).length, 1);
+    await h.node('next').listeners.click();
+    assert.match(h.root.innerHTML, /Nghe giờ hẹn/);
+    assert.doesNotMatch(h.root.innerHTML, /Chưa tải được câu nghe đầu tiên/);
+    assert.ok(calls.every(call => call.url.startsWith('/api/v1/conversation/sessions/session')));
+    assert.deepEqual(calls.filter(call => call.options).map(call => call.options.body.turnNumber), [0, 0]);
+});
+
+test('a lost first-task response reconciles the saved task without a stale retry error', async () => {
+    let posts = 0;
+    const h = harness(async (_url, options) => {
+        if (options) { posts++; throw new Error('Response lost'); }
+        return posts ? state() : {...state(), turnNumber: 0, turns: []};
+    });
+    await h.module.show('session');
+    assert.equal(posts, 1);
+    assert.match(h.root.innerHTML, /Nghe giờ hẹn/);
+    assert.doesNotMatch(h.root.innerHTML, /Response lost|Chưa tải được|>Thử lại</);
+});
+
+test('leaving during first-task generation ignores the late failure and never retries', async () => {
+    let fail, posts = 0;
+    const h = harness(async (_url, options) => {
+        if (options) { posts++; return new Promise((_, reject) => { fail = reject; }); }
+        return {...state(), turnNumber: 0, turns: []};
+    });
+    const opening = h.module.show('session');
+    await new Promise(resolve => setImmediate(resolve));
+    h.module.leave();
+    fail(new Error('Late failure'));
+    await opening;
+    assert.equal(posts, 1);
+    assert.doesNotMatch(h.root.innerHTML, /Late failure/);
 });
 
 function doneTurn(captured = 2) {

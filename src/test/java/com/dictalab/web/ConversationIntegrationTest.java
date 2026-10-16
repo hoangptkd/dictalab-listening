@@ -274,6 +274,46 @@ class ConversationIntegrationTest {
         assertThat(service.get(owner, id).path("turnNumber").asInt()).isZero();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"next", "review"})
+    @org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
+    void firstTaskProviderFailureIsLoggedSafelyAndCanRetryTheSameSession(String operation,
+            org.springframework.boot.test.system.CapturedOutput output) {
+        String id = service.create(owner, "cafe", "A1").path("id").asText();
+        String instruction = operation.equals("next") ? "You design" : "Audit a listening task";
+        when(ai.completeJson(startsWith(instruction), anyString(), anyString()))
+                .thenThrow(new com.dictalab.service.ProviderGuard.Unavailable("PRIVATE_PROVIDER_FAILURE_MARKER", 30));
+        assertThatThrownBy(() -> service.next(owner, id, 0))
+                .isInstanceOfSatisfying(ResponseStatusException.class, e -> assertThat(e.getStatusCode().value()).isEqualTo(503));
+        assertThat(output.getOut()).contains("operation=" + operation, "reason=ADMISSION_OR_RATE_LIMIT")
+                .doesNotContain("PRIVATE_PROVIDER_FAILURE_MARKER");
+        assertThat(service.get(owner, id).path("turnNumber").asInt()).isZero();
+        assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?", String.class, id)).isNull();
+        verify(ai, times(1)).completeJson(startsWith(instruction), anyString(), anyString());
+        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("ten"));
+        when(ai.completeJson(startsWith("Audit a listening task"), anyString(), anyString()))
+                .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
+        assertThat(service.next(owner, id, 0).path("turnNumber").asInt()).isEqualTo(1);
+        assertThat(service.next(owner, id, 0).path("turnNumber").asInt()).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM ai_conversation_sessions WHERE user_id=?", Integer.class, owner)).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"TASK_MEANING", "TASK_REVIEW"})
+    @org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
+    void firstTaskValidationLogsFixedCodesWithoutProviderContent(String rule,
+            org.springframework.boot.test.system.CapturedOutput output) {
+        String id = service.create(owner, "cafe", "A1").path("id").asText();
+        when(ai.completeJson(startsWith("Audit a listening task"), anyString(), anyString()))
+                .thenReturn(json.readTree(rule.equals("TASK_MEANING")
+                        ? "{\"valid\":false,\"reason\":\"PRIVATE_TASK_REVIEW_MARKER\"}"
+                        : "{\"valid\":\"PRIVATE_TASK_REVIEW_MARKER\",\"reason\":\"\"}"));
+        assertThatThrownBy(() -> service.next(owner, id, 0)).isInstanceOf(ResponseStatusException.class);
+        assertThat(output.getOut()).contains("operation=next", "validationRule=" + rule)
+                .doesNotContain("PRIVATE_TASK_REVIEW_MARKER");
+        assertThat(service.get(owner, id).path("turnNumber").asInt()).isZero();
+    }
+
     @Test void challengeAndPreciseMeaningRulesReachTheProvider() {
         String id = start();
         verify(ai).completeJson(contains("one plausible distractor"), anyString(), anyString());

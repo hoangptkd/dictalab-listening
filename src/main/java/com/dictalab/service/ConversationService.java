@@ -236,7 +236,7 @@ public class ConversationService {
             addTurn(row, prompt);
             commit(row, lease);
         } catch (ResponseStatusException e) { release(row.id, lease); throw e;
-        } catch (RuntimeException e) { release(row.id, lease); unavailable("AI chưa tạo được câu nghe. Bạn có thể thử lại."); }
+        } catch (RuntimeException e) { release(row.id, lease); logFailure("next", e); unavailable("AI chưa tạo được câu nghe. Bạn có thể thử lại trên phiên này."); }
         warmAudio(row, turns(row).size(), "original");
         return get(userId, id);
     }
@@ -468,6 +468,7 @@ public class ConversationService {
             review = ai.completeJson(REVIEW_INSTRUCTION, json.writeValueAsString(
                     Map.of("prompt", prompt, "context", promptContext(row))), config.generationModel());
         } catch (RuntimeException providerFailure) {
+            logFailure("review", providerFailure);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "AI chưa kiểm tra được câu nghe. Hãy thử lại.");
         }
         shape(review, "valid", "reason");
@@ -845,7 +846,16 @@ public class ConversationService {
                     case "Invalid evaluation" -> "FACT";
                     case "Missing learner evidence" -> "LEARNER_EVIDENCE";
                     case "Confirmation missing" -> "CONFIRMATION_MISSING";
-                    default -> "NONE";
+                    case "Invalid task review" -> "TASK_REVIEW";
+                    case "Invalid facts" -> "FACTS";
+                    case "Ungrounded fact" -> "FACT_GROUNDING";
+                    case "Duplicate conversation fact" -> "DUPLICATE_FACT";
+                    case "Invalid utterance word count" -> "WORD_COUNT";
+                    case "A1 requires exactly two facts" -> "A1_FACT_COUNT";
+                    case "Repeated conversation prompt" -> "REPEATED_PROMPT";
+                    case "Repeated transfer fact" -> "REPEATED_TRANSFER_FACT";
+                    default -> failure.getMessage() != null && failure.getMessage().startsWith("Task meaning mismatch: ")
+                            ? "TASK_MEANING" : "NONE";
                 } : "NONE";
         log.warn("Conversation operation failed, operation={}, reason={}, validationRule={}, errorType={}, errorId={}",
                 operation,ShopAiKeyClient.reason(failure),validationRule,failure.getClass().getSimpleName(),UUID.randomUUID());
