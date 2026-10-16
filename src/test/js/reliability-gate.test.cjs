@@ -79,23 +79,54 @@ test('CI runs shared checks once and PostgreSQL suites independently before depl
     assert.doesNotMatch(build, /matrix:|services:|postgres-test/);
     for (const command of ['node --test src/test/js/*.cjs', 'node scripts/test-b1-expansion.cjs',
         'python3 -m unittest discover', 'python3 scripts/scan-dependencies.py',
-        '-Pproduction-s3 clean verify', 'python3 scripts/verify-production-jar.py']) {
+        '-Pproduction-s3,ci-unit clean verify', 'python3 scripts/verify-production-jar.py']) {
         assert.ok(build.includes(command), `Missing shared check: ${command}`);
         assert.equal(workflow.split(command).length - 1, command.includes('verify-production-jar') ? 2 : 1);
     }
     assert.match(build, /name: application\r?\n\s+path: target\/english-dictation-0\.1\.0-SNAPSHOT\.jar/);
     for (const section of [postgres, reliability]) {
-        assert.match(section, /postgres: \['17\.11-alpine', '18\.4-alpine'\]/);
+        assert.ok(section.includes(`postgres: \${{ fromJSON((github.event_name == 'schedule' || inputs.full_compatibility) && '["17.11-alpine","18.4-alpine"]' || '["18.4-alpine"]') }}`));
         assert.doesNotMatch(section, /^    needs:/m, 'Database tests must start independently of H2/build');
     }
     assert.match(postgres, /-Dspring\.profiles\.active=postgres-test/);
+    assert.match(postgres, /-Pci-integration/);
     assert.match(postgres, /-Dspring\.datasource\.hikari\.minimum-idle=0 -Dspring\.test\.context\.cache\.maxSize=4 test/);
     assert.match(postgres, /name: postgres-test-reports-\$\{\{ matrix\.postgres \}\}/);
     assert.match(reliability, /-Ddictalab\.race-evidence=target\/reliability\/concurrency-matrix\.csv test/);
     assert.match(deploy, /needs: \[test-build, postgres-tests, reliability\]/);
     for (const section of [build, deploy]) {
-        assert.match(section, /if: github\.event_name != 'pull_request' && github\.ref == 'refs\/heads\/main'/);
+        assert.ok(section.includes("if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main'"));
     }
+    assert.match(workflow, /cron: '23 20 \* \* 6'/);
+    assert.match(workflow, /full_compatibility:[\s\S]*?type: boolean/);
+    assert.ok(workflow.includes("&& 'compatibility' || 'production'"), 'Compatibility checks must not block the production concurrency group');
+});
+
+test('CI Java test partition covers every Spring context suite without duplicating unit tests', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const root = path.join(__dirname, '../../..');
+    const pom = fs.readFileSync(path.join(root, 'pom.xml'), 'utf8');
+    const unit = pom.match(/<id>ci-unit<\/id>([\s\S]*?)<\/profile>/)?.[1];
+    const integration = pom.match(/<id>ci-integration<\/id>([\s\S]*?)<\/profile>/)?.[1];
+    assert.ok(unit && integration, 'Missing CI test partition');
+    const excludes = [...unit.matchAll(/<exclude>(.*?)<\/exclude>/g)].map(match => match[1]).sort();
+    const includes = [...integration.matchAll(/<include>(.*?)<\/include>/g)].map(match => match[1]).sort();
+    assert.deepEqual(excludes, includes, 'Integration includes must cover every unit exclusion');
+    const matches = name => includes.some(pattern => new RegExp('^' + pattern.replace('**/', '').replaceAll('.', '\\.').replaceAll('*', '.*') + '$').test(name));
+    const files = fs.readdirSync(path.join(root, 'src/test/java'), {recursive: true})
+        .filter(name => /(?:Test|Tests|TestCase)\.java$/.test(name));
+    let contexts = 0;
+    for (const file of files) {
+        const source = fs.readFileSync(path.join(root, 'src/test/java', file), 'utf8');
+        const context = /@(?:SpringBootTest|DataJpaTest|WebMvcTest|JdbcTest|SpringJUnitConfig|ContextConfiguration)\b/.test(source);
+        if (context) {
+            contexts++;
+            assert.ok(matches(path.basename(file)), `Spring context test excluded from PostgreSQL: ${file}`);
+        }
+    }
+    assert.ok(contexts >= 39, 'Spring context inventory unexpectedly empty');
+    assert.ok(!matches('JwtTokenServiceTest.java'), 'Pure unit tests must not be repeated on PostgreSQL');
 });
 
 test('VPS preflight collectors run long enough to produce ten samples without weakening guards', () => {

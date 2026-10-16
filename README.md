@@ -439,19 +439,25 @@ frontend điều chỉnh deep link về trang cuối. Chi tiết `/api/v1/histor
 
 Workflow `.github/workflows/deploy.yml` kiểm thử khi có pull request hoặc push vào `main`,
 và khi chạy thủ công. Pull request không deploy. Ba nhóm kiểm tra chạy độc lập;
-deploy chỉ chạy từ `main` sau khi tất cả nhóm đạt:
+deploy chỉ chạy từ `main` sau khi tất cả nhóm đạt. Kiểm tra production ngày 16/10/2026
+xác nhận Neon PostgreSQL 18.6; CI thường dùng image 18.4 đã kiểm chứng, cùng major 18.
 
-1. `test-build`: chạy JavaScript, Python, quét dependency, kiểm thử Java/H2 và build JAR
+1. `test-build`: chạy JavaScript, Python, quét dependency, unit test Java (`ci-unit`) và build JAR
    production bằng Java 17 một lần; xác minh đóng gói S3 trước khi lưu artifact.
-2. `postgres-tests`: chạy toàn bộ bộ test mặc định với PostgreSQL 17/18 và Flyway,
-   lưu báo cáo riêng cho từng phiên bản; không phải chờ H2/build.
+2. `postgres-tests`: chạy integration test (`ci-integration`) với PostgreSQL 18 và Flyway;
+   không chạy lặp unit test hoặc integration test H2. `mvn test` local vẫn giữ bộ test mặc định.
 3. `reliability`: giữ kiểm thử concurrency, messaging và recovery bắt buộc trên
-   PostgreSQL 17/18 bằng Testcontainers; từ chối bằng chứng thiếu hoặc test bị bỏ qua.
+   PostgreSQL 18 bằng Testcontainers; từ chối bằng chứng thiếu hoặc test bị bỏ qua.
 4. Kết nối VPS bằng SSH deploy key, tải JAR đã kiểm tra và script triển khai lên staging.
 5. Xác minh SHA-256, dừng service `dictalab`, tạo backup PostgreSQL và media nhất quán,
    cập nhật JAR rồi khởi động, kiểm tra health nội bộ và public.
 6. Nếu backup thất bại, pipeline dừng trước migration; nếu bản mới không khởi động thành công,
    tự động phục hồi JAR trước đó.
+
+Mỗi Chủ nhật lúc 03:23 (UTC+7), workflow kiểm tra tương thích PostgreSQL 17/18,
+không deploy và dùng nhóm concurrency riêng. Có thể chạy đủ hai phiên bản trước nâng cấp DB
+bằng **Run workflow → full_compatibility**; lựa chọn này cũng không deploy.
+Các unit test được bộ reliability yêu cầu làm bằng chứng vẫn chạy trong bộ đó.
 
 Khai báo bốn repository secrets tại **Settings → Secrets and variables → Actions**:
 
