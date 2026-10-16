@@ -69,6 +69,18 @@ test('missed word classifications stay outside inputs and retain word associatio
     assert.match(read('app.js'), /wordClassificationList.addEventListener\("click", onClassifyWord\)/);
 });
 
+test('a first-letter hint remains visible without becoming an unsubmitted answer', () => {
+    const renderSource = read('app.js').match(/    function renderWordSlots\([\s\S]*?\n    }\n/)[0];
+    const state = {sentence: {words: [{index: 0, length: 6, mask: '______', firstLetter: 'm'}]}, wordDrafts: new Map()};
+    const elements = {wordSlots: {}, wordCompletion: {}};
+    vm.runInNewContext(renderSource + '\nrenderWordSlots();', {
+        state, elements, composingWords: new Set(), document: {}, escapeHtml: String, escapeAttribute: String,
+        refreshDictationCopy() {}, roomQueueDraft() {}
+    });
+    assert.match(elements.wordSlots.innerHTML, /Bắt đầu: m/);
+    assert.match(elements.wordSlots.innerHTML, /value=""/);
+});
+
 test('classification panel preserves expansion during saves and clears stale words on sentence changes', () => {
     const source = read('app.js').match(/    function renderWordClassifications\([\s\S]*?\n    }\n/)[0];
     const state = {sentence: {words: [{index: 0, mask: '___', errorType: 'UNKNOWN'}]}};
@@ -713,7 +725,7 @@ test('login initialization preserves the admin destination supplied by the serve
     const location = {origin: 'https://dictalab.test', pathname: '/login', search: '?next=%2Fadmin%2Fusers'};
     const notice = {};
     const showAuth = vm.runInNewContext(`${source}\nshowAuthScreen`, {
-        isAdminArea: false, state: {}, stopRecordedAudio() {}, stopTimer() {}, resetPracticeInput() {}, switchAuthMode() {},
+        isAdminArea: false, state: {}, stopRecordedAudio() {}, stopTimer() {}, resetPracticeInput() {}, clearPracticeDrafts() {}, switchAuthMode() {},
         document: {body: {dataset: {}}, querySelector: () => notice}, elements: {appShell: {}, authScreen: {}, authStatus: {}},
         URL, location,
         router: {parse: path => ({route: path.startsWith('/admin') ? 'admin-users' : 'login', query: new URLSearchParams(location.search)})},

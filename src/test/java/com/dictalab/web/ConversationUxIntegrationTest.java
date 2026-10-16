@@ -63,6 +63,119 @@ class ConversationUxIntegrationTest {
         assertThat(page.toString()).doesNotContain("state_json", "user_id", "plans");
         assertThatThrownBy(() -> service.history(owner,-1,12)).isInstanceOf(ResponseStatusException.class);
     }
+    tools.jackson.databind.node.ObjectNode state(String id) {
+        return (tools.jackson.databind.node.ObjectNode)json.readTree(db.queryForObject(
+                "SELECT state_json FROM ai_conversation_sessions WHERE id=?",String.class,id));
+    }
+    @Test void openingsRotateBeforeRecyclingAndReloadNeverRerolls() {
+        var branches=new ArrayList<String>();
+        var openings=new HashSet<String>();
+        for(int i=0;i<9;i++) {
+            String id=service.create(owner,"hotel","A2").path("id").asText();
+            var saved=state(id);
+            String branch=saved.path("sessionBlueprint").path("branchId").asText();
+            branches.add(branch);
+            if(i<8) assertThat(openings.add(saved.path("openingPrompt").path("utteranceEn").asText())).isTrue();
+            var first=service.next(owner,id,0);
+            assertThat(service.next(owner,id,0)).isEqualTo(first);
+            assertThat(state(id).path("sessionBlueprint")).isEqualTo(saved.path("sessionBlueprint"));
+            assertThat(state(id).path("turns").path(0).path("prompt")).isEqualTo(saved.path("openingPrompt"));
+            assertThat(service.get(owner,id).toString()).doesNotContain("sessionBlueprint","recentPractice","openingPrompt");
+        }
+        assertThat(branches.subList(0,8)).doesNotHaveDuplicates();
+        assertThat(branches.get(8)).isEqualTo(branches.get(0));
+        String other=service.create(user(),"hotel","A2").path("id").asText();
+        assertThat(state(other).path("recentPractice")).isEmpty();
+        assertThat(state(other).path("sessionBlueprint").path("branchId").asText()).isEqualTo("standard");
+        String differentLevel=service.create(owner,"hotel","B1").path("id").asText();
+        assertThat(state(differentLevel).path("recentPractice")).isEmpty();
+    }
+    @Test void concurrentStartsReserveDistinctBranches() throws Exception {
+        var executor=java.util.concurrent.Executors.newFixedThreadPool(4);
+        var ready=new java.util.concurrent.CountDownLatch(4);
+        var start=new java.util.concurrent.CountDownLatch(1);
+        try {
+            var futures=new ArrayList<java.util.concurrent.Future<String>>();
+            for(int i=0;i<4;i++) futures.add(executor.submit(() -> {
+                ready.countDown(); start.await();
+                return service.create(owner,"directions","A1").path("id").asText();
+            }));
+            assertThat(ready.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue(); start.countDown();
+            var branches=new HashSet<String>();
+            for(var future:futures) assertThat(branches.add(state(future.get(20,java.util.concurrent.TimeUnit.SECONDS))
+                    .path("sessionBlueprint").path("branchId").asText())).isTrue();
+        } finally { start.countDown(); executor.shutdownNow(); }
+    }
+    @Test void recentTasksArePrivateBoundedAndRejectedWithinExistingRepairDeadline() {
+        String old=service.create(owner,"cafe","A1").path("id").asText(); service.next(owner,old,0);
+        var previous=state(old);
+        ((tools.jackson.databind.node.ArrayNode)previous.path("turns").path(0).path("attempts"))
+                .addObject().put("answerVi","PRIVATE_LEARNER_REPLY");
+        db.update("UPDATE ai_conversation_sessions SET state_json=? WHERE id=?",previous.toString(),old);
+        service.create(user(),"cafe","A1");
+        String id=service.create(owner,"cafe","A1").path("id").asText(); service.next(owner,id,0);
+        service.help(owner,id,1,"review");
+        var fresh=json.readTree("""
+                {"taskVi":"Nghe cách đóng gói và nơi lấy hàng.","questionVi":"Đồ ăn được đựng bằng gì và lấy ở đâu?",
+                "skill":"Nắm thông tin cụ thể","utteranceEn":"We will pack your salad in a paper box. Please collect it at the counter.",
+                "translationVi":"Chúng tôi sẽ đựng salad trong hộp giấy. Xin lấy tại quầy.",
+                "facts":[{"id":"f1","textVi":"Hộp giấy","evidenceEn":"a paper box"},
+                {"id":"f2","textVi":"Tại quầy","evidenceEn":"at the counter"}]}
+                """);
+        when(ai.completeJson(startsWith("You design"),anyString(),anyString(),any()))
+                .thenReturn(previous.path("turns").path(0).path("prompt"),fresh);
+        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any()))
+                .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
+        service.next(owner,id,1);
+        var inputs=org.mockito.ArgumentCaptor.forClass(String.class);
+        var deadlines=org.mockito.ArgumentCaptor.forClass(java.time.Duration.class);
+        verify(ai,times(3)).completeJson(anyString(),inputs.capture(),anyString(),deadlines.capture());
+        var context=json.readTree(inputs.getAllValues().get(0));
+        assertThat(context.path("recentPractice").size()).isEqualTo(1);
+        assertThat(context.path("recentPractice").path(0).path("tasks").path(0).path("answersVi").size()).isEqualTo(2);
+        assertThat(inputs.getAllValues()).allSatisfy(input -> assertThat(input).doesNotContain("PRIVATE_LEARNER_REPLY"));
+        assertThat(state(id).path("recentPractice").toString()).doesNotContain("PRIVATE_LEARNER_REPLY");
+        assertThat(json.readTree(inputs.getAllValues().get(1)).path("validationError").asText()).isEqualTo("Repeated recent task");
+        assertThat(deadlines.getAllValues()).allSatisfy(d -> assertThat(d).isPositive().isLessThanOrEqualTo(java.time.Duration.ofSeconds(45)));
+        for(int i=0;i<10;i++) service.create(owner,"cafe","A1");
+        String latest=service.create(owner,"cafe","A1").path("id").asText();
+        assertThat(state(latest).path("recentPractice").size()).isEqualTo(10);
+    }
+    @Test void legacySavedSessionWithoutBlueprintKeepsItsOriginalOpening() {
+        String id=service.create(owner,"hotel","A2").path("id").asText();
+        var saved=state(id); saved.remove("sessionBlueprint"); saved.remove("openingPrompt"); saved.remove("recentPractice");
+        db.update("UPDATE ai_conversation_sessions SET state_json=? WHERE id=?",saved.toString(),id);
+        service.next(owner,id,0);
+        assertThat(state(id).path("turns").path(0).path("prompt").path("utteranceEn").asText()).contains("number eight","in the garden");
+    }
+    @Test void disablingDiversityAffectsOnlyNewSessions() {
+        String existing=service.create(owner,"hotel","A2").path("id").asText();
+        var saved=state(existing);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"sessionDiversity",false);
+        try {
+            String legacy=service.create(owner,"hotel","A2").path("id").asText();
+            assertThat(state(legacy).has("sessionBlueprint")).isFalse();
+            service.next(owner,existing,0);
+            assertThat(state(existing).path("sessionBlueprint")).isEqualTo(saved.path("sessionBlueprint"));
+            assertThat(state(existing).path("turns").path(0).path("prompt")).isEqualTo(saved.path("openingPrompt"));
+        } finally { org.springframework.test.util.ReflectionTestUtils.setField(service,"sessionDiversity",true); }
+    }
+    @Test void duplicateRulesRejectNearCopiesAndRepeatedAnswerSetsButAllowOneSharedDetail() {
+        var previous=(tools.jackson.databind.node.ObjectNode)json.readTree("""
+                {"utteranceEn":"Please collect the parcel at the front desk tomorrow before lunch and bring your ticket with you.",
+                "facts":[{"textVi":"Quầy lễ tân","evidenceEn":"front desk"},
+                {"textVi":"Trước bữa trưa","evidenceEn":"before lunch"}]}
+                """);
+        var near=previous.deepCopy();
+        near.put("utteranceEn",previous.path("utteranceEn").asText().replace("tomorrow","today"));
+        near.withArray("facts").removeAll().addObject().put("textVi","Hôm nay").put("evidenceEn","today");
+        assertThat((Boolean)org.springframework.test.util.ReflectionTestUtils.invokeMethod(service,"repeatedTask",previous,near)).isTrue();
+        var paraphrase=previous.deepCopy().put("utteranceEn","You can pick it up from reception ahead of your midday meal.");
+        assertThat((Boolean)org.springframework.test.util.ReflectionTestUtils.invokeMethod(service,"repeatedTask",previous,paraphrase)).isTrue();
+        var fresh=previous.deepCopy().put("utteranceEn","Leave your key at the front desk. The airport bus leaves at five.");
+        ((tools.jackson.databind.node.ObjectNode)fresh.path("facts").path(1)).put("textVi","Năm giờ").put("evidenceEn","at five");
+        assertThat((Boolean)org.springframework.test.util.ReflectionTestUtils.invokeMethod(service,"repeatedTask",previous,fresh)).isFalse();
+    }
     @Test void reportDoesNotChangeGradeAndCrossContextPracticeRetainsLevel() {
         String id=service.create(owner,"cafe","A1").path("id").asText(); service.next(owner,id,0);
         when(ai.completeJson(anyString(),anyString())).thenReturn(json.readTree("""

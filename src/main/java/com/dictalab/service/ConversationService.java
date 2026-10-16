@@ -70,6 +70,12 @@ public class ConversationService {
                     Write real Vietnamese values for taskVi/questionVi/translationVi/skill/textVi, not schema placeholders.
                     Do not repeat previous utterances or test the same answer facts again. Previously established
                     facts may remain as background for continuity; they do not need replacement values in turns 2-3.
+                    If sessionBlueprint is present, follow its saved journey; never reroll its goal or setting.
+                    recentPractice contains tasks from this learner's recent sessions in the same scenario/level.
+                    Practise the same listening skills with DIFFERENT communicative purposes and requested meanings.
+                    Do not reproduce a recent question/answer combination with paraphrasing or only new names/numbers.
+                    A common word, one incidental detail or a repeated skill alone is NOT a duplicate task.
+                    Previously learned facts may be background, but do not ask the learner to recall them again.
                     Keep questions specific and without answers.
                     If turnNumber=4 this is a NEW transfer check: test a previously missed/partial skill,
                     using new wording AND different numbers/details; never reuse the original answer.
@@ -128,6 +134,9 @@ public class ConversationService {
                     even if spelling, language or wording differs. Do not rewrite or add facts.
                     Check scenarioJourney: reject unrelated settings or partners in turns 1-3. The same encounter
                     should progress naturally. At turn 4 stay in the scenario but use a new encounter and fresh details.
+                    Follow sessionBlueprint when supplied. Compare with recentPractice: reject a semantically
+                    repeated task/answer combination, including cosmetic name/number changes or paraphrases.
+                    Do not reject merely sharing a skill, a common word or one background detail.
                     """;
     private final JdbcTemplate db;
     private final ObjectMapper json;
@@ -145,6 +154,8 @@ public class ConversationService {
     private int audioRetentionDays = 30;
     @org.springframework.beans.factory.annotation.Value("${dictalab.conversation.curated-starters:true}")
     private boolean curatedStarters = true;
+    @org.springframework.beans.factory.annotation.Value("${dictalab.conversation.session-diversity:true}")
+    private boolean sessionDiversity = true;
     // Legacy mode only. RabbitMQ mode never submits paid work to these local workers.
     private final ExecutorService audioWorkers = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(8), new ThreadPoolExecutor.AbortPolicy());
@@ -254,12 +265,45 @@ public class ConversationService {
         String createdId = UUID.randomUUID().toString();
         var state = json.createObjectNode();
         state.put("completed", false); state.put("curatedStarter", curatedStarters); state.putArray("turns");
+        if (curatedStarters && sessionDiversity) diversify(userId, scenario, difficulty, state);
         if (!focus.isBlank()) state.put("practiceFocus", focus);
         db.update("INSERT INTO ai_conversation_sessions(id,user_id,scenario,difficulty,state_json) VALUES(?,?,?,?,?)",
                 createdId, userId, scenario, difficulty, state.toString());
           return createdId;
         });
         return get(userId, id);
+    }
+
+    // Called under the existing user-row lock: concurrent starts reserve different openings.
+    private void diversify(long userId, String scenario, String difficulty, ObjectNode state) {
+        var recent = db.query("""
+                SELECT state_json FROM ai_conversation_sessions WHERE user_id=? AND scenario=? AND difficulty=?
+                ORDER BY created_at DESC,id DESC LIMIT 10
+                """, (rs, n) -> json.readTree(rs.getString(1)), userId, scenario, difficulty);
+        var memory = state.putArray("recentPractice");
+        for (JsonNode previous : recent) {
+            var entry = memory.addObject();
+            entry.put("branchId", previous.path("sessionBlueprint").path("branchId").asText(
+                    previous.path("curatedStarter").asBoolean() ? "standard" : "legacy"));
+            var tasks = entry.putArray("tasks");
+            for (JsonNode turn : previous.path("turns")) {
+                var prompt = turn.path("prompt");
+                if (!prompt.isObject()) continue;
+                var task = tasks.addObject();
+                for (String field : List.of("questionVi", "utteranceEn", "skill", "facts")) task.set(field, prompt.path(field).deepCopy());
+            }
+        }
+        ConversationContent.Branch selected = null;
+        int oldest = -1;
+        for (var branch : ConversationContent.branches(scenario)) {
+            int lastSeen = memory.size();
+            for (int i = 0; i < memory.size(); i++) {
+                if (memory.path(i).path("branchId").asText().equals(branch.id())) { lastSeen = i; break; }
+            }
+            if (lastSeen > oldest) { selected = branch; oldest = lastSeen; }
+        }
+        state.putObject("sessionBlueprint").put("contentVersion", 1).put("branchId", selected.id()).put("journey", selected.journey());
+        state.set("openingPrompt", ConversationContent.starter(json, selected.opening(), difficulty));
     }
 
     public ObjectNode get(long userId, String id) { return view(load(userId, id)); }
@@ -329,8 +373,12 @@ public class ConversationService {
                 catch (AiUsageBudget.Rejected budgetFailure) { throw budgetFailure; }
                 catch (RuntimeException invalidCachedPrompt) { prompt = null; }
             }
-            if (prompt == null) prompt = turns.isEmpty() && row.state.path("curatedStarter").asBoolean()
-                    ? ConversationContent.starter(json, row.scenario, row.difficulty) : generatePrompt(row);
+            if (prompt == null) {
+                if (turns.isEmpty() && row.state.path("curatedStarter").asBoolean()) {
+                    prompt = row.state.has("openingPrompt") ? row.state.path("openingPrompt")
+                            : ConversationContent.starter(json, row.scenario, row.difficulty);
+                } else prompt = generatePrompt(row);
+            }
             validateNextPrompt(row, prompt);
             addTurn(row, prompt);
             commit(row, lease);
@@ -542,11 +590,21 @@ public class ConversationService {
             default -> "Same two partners throughout one encounter about " + SCENARIOS.get(row.scenario)
                     + ": 1 establish the need; 2 develop that same arrangement; 3 confirm practical details; 4 a new encounter in this scenario.";
         };
-        return Map.of("scenario", SCENARIOS.get(row.scenario), "difficulty", row.difficulty,
+        var context = new LinkedHashMap<String,Object>(Map.of("scenario", SCENARIOS.get(row.scenario), "difficulty", row.difficulty,
                 "scenarioJourney", journey, "practiceFocus", row.state.path("practiceFocus").asText(),
                 "turnNumber", turns(row).size() + 1, "history", history,
                 "levelProfile", row.state.path("curatedStarter").asBoolean() ? levelBounds(row.difficulty) : Map.of("minWords", 20, "maxWords", 65),
-                "listeningSkills", ConversationContent.SKILLS);
+                "listeningSkills", ConversationContent.SKILLS));
+        if (row.state.has("sessionBlueprint")) {
+            context.put("sessionBlueprint", row.state.path("sessionBlueprint"));
+            context.put("scenarioJourney", row.state.path("sessionBlueprint").path("journey").asText());
+            // Send task meanings only, not learner replies or full historical transcripts.
+            context.put("recentPractice", row.state.path("recentPractice").valueStream().map(s -> Map.of(
+                    "branchId", s.path("branchId"), "tasks", s.path("tasks").valueStream().map(t -> Map.of(
+                            "questionVi", t.path("questionVi"), "skill", t.path("skill"),
+                            "answersVi", t.path("facts").valueStream().map(f -> f.path("textVi")).toList())).toList())).toList());
+        }
+        return context;
     }
 
     private JsonNode generatePrompt(Row row) {
@@ -628,6 +686,12 @@ public class ConversationService {
                 .equalsIgnoreCase(prompt.path("utteranceEn").asText()))) {
             throw new IllegalStateException("Repeated conversation prompt");
         }
+        // Curated banks deliberately recycle after exhaustion; cross-session checks apply to AI turns.
+        if (!turns(row).isEmpty() && row.state.has("sessionBlueprint")) {
+            for (JsonNode session : row.state.path("recentPractice")) for (JsonNode previous : session.path("tasks")) {
+                if (repeatedTask(previous, prompt)) throw new IllegalStateException("Repeated recent task");
+            }
+        }
         if (turns(row).size() == 3) {
             for (JsonNode previous : turns(row)) for (JsonNode oldFact : previous.path("prompt").path("facts")) {
                 for (JsonNode fact : prompt.path("facts")) {
@@ -638,6 +702,21 @@ public class ConversationService {
                 }
             }
         }
+    }
+
+    private boolean repeatedTask(JsonNode previous, JsonNode prompt) {
+        String oldText = normalized(previous.path("utteranceEn").asText());
+        String newText = normalized(prompt.path("utteranceEn").asText());
+        if (oldText.equals(newText)) return true;
+        Set<String> oldWords = new HashSet<>(Arrays.asList(oldText.split("\\s+")));
+        Set<String> newWords = new HashSet<>(Arrays.asList(newText.split("\\s+")));
+        Set<String> common = new HashSet<>(oldWords); common.retainAll(newWords);
+        Set<String> union = new HashSet<>(oldWords); union.addAll(newWords);
+        if (common.size() >= 8 && (double) common.size() / union.size() >= 0.85) return true;
+        long repeatedFacts = prompt.path("facts").valueStream().filter(f -> previous.path("facts").valueStream().anyMatch(old ->
+                normalized(old.path("textVi").asText()).equals(normalized(f.path("textVi").asText()))
+                || normalized(old.path("evidenceEn").asText()).equals(normalized(f.path("evidenceEn").asText())))).count();
+        return repeatedFacts == prompt.path("facts").size();
     }
 
     private void addTurn(Row row, JsonNode prompt) {
@@ -1016,6 +1095,7 @@ public class ConversationService {
                     case "A1 requires exactly two facts" -> "A1_FACT_COUNT";
                     case "Repeated conversation prompt" -> "REPEATED_PROMPT";
                     case "Repeated transfer fact" -> "REPEATED_TRANSFER_FACT";
+                    case "Repeated recent task" -> "REPEATED_RECENT_TASK";
                     default -> failure.getMessage() != null && failure.getMessage().startsWith("Task meaning mismatch: ")
                             ? "TASK_MEANING" : "NONE";
                 } : "NONE";

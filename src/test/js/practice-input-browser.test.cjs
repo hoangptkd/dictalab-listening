@@ -18,27 +18,31 @@ const chrome = [process.env.CHROME_BIN,
 test('native practice rendering preserves active inputs and does not grade partial drafts', {
     timeout: 30000, skip: chrome ? false : 'Set CHROME_BIN to run the native browser regression'
 }, async () => {
-    const functions = ['renderWordSlots', 'captureWordFocus', 'restoreWordFocus', 'focusNextWord', 'focusWord', 'escapeHtml', 'escapeAttribute']
+    const functions = ['renderWordSlots', 'captureWordFocus', 'restoreWordFocus', 'focusNextWord', 'focusWord', 'escapeHtml', 'escapeAttribute',
+        'practiceElapsedSeconds', 'startTimer', 'resetTimer', 'stopTimer']
         .map(name => {
             const fn = source.match(new RegExp(`^    function ${name}\\([^]*?^    }`, 'm'));
             assert.ok(fn, name); return fn[0];
         }).join('\n');
     const handlers = source.slice(source.indexOf('    const wordChecks = new Map();'), source.indexOf('    async function useHint('));
     const journal = source.slice(source.indexOf('    const pendingPracticeSubmissions = new Map();'), source.indexOf('    function escapeHtml('));
+    const lifecycle = source.slice(source.indexOf('    window.addEventListener("pagehide"'), source.indexOf('    async function init('));
     const script = `
     const state = {currentUser: {id: 1}, session: {sessionId: 'browser-test'},
         wordDrafts: new Map(), wordAttemptStartedAt: new Map(), checkingWords: new Set(),
         inputInteractionRevision: 0, practiceMutationQueue: Promise.resolve(), activeWordIndex: 0};
-    const elements = {wordSlots: document.querySelector('#slots'), wordCompletion: document.querySelector('#completion')};
+    const elements = {wordSlots: document.querySelector('#slots'), wordCompletion: document.querySelector('#completion'), sentenceTimer: document.createElement('span')};
     const requests = [];
     const api = (url, options) => new Promise(resolve => requests.push({url, options, resolve}));
     const practicePath = suffix => '/practice/' + state.sentence.sentenceId + suffix;
     const refreshDictationCopy = () => {}, roomQueueDraft = () => {}, updatePracticeControls = () => {};
     const stopRecordedAudio = () => {}, setPracticeStatus = () => {}, completeSentence = async () => {};
+    const formatTime = seconds => String(seconds);
     const renderPractice = (fresh, index) => renderWordSlots(fresh, index);
     ${functions}
     ${journal}
     ${handlers}
+    ${lifecycle}
     elements.wordSlots.addEventListener('focusin', onWordFocus);
     elements.wordSlots.addEventListener('input', onWordInput);
     elements.wordSlots.addEventListener('focusout', onWordBlur);
@@ -64,6 +68,17 @@ test('native practice rendering preserves active inputs and does not grade parti
     }
     (async () => {
         await new Promise(resolve => window.addEventListener('load', () => setTimeout(resolve, 0), {once: true}));
+        if (sessionStorage.getItem('draft-reload-phase') === 'restore') {
+            state.sentence = {sentenceId: 13, hasListened: true, words: [{index: 0, length: 6, mask: '______', firstLetter: 'm'}]};
+            restorePracticeDraft(); renderWordSlots(true); startTimer();
+            check(input(0).value === 'ma', 'reload lost the partial draft');
+            check(state.timerSeconds >= 12 && state.timerId != null, 'reload did not resume the saved clock');
+            check(requests.length === 0, 'reload graded a restored draft');
+            resetPracticeInput(); clearPracticeDrafts(); sessionStorage.removeItem('draft-reload-phase');
+            document.querySelector('#result').dataset.status = 'pass';
+            document.querySelector('#result').textContent = 'Native input, hints, partial drafts and real reload recovery passed';
+            return;
+        }
         const answers = ['I', 'like', 'hot', 'pizza', 'and', 'salad', 'for', 'dinner'];
         state.sentence = {sentenceId: 10, hasListened: true, canComplete: false, hintCount: 0, revealCount: 0,
             words: answers.map((word, index) => ({index, length: word.length, mask: '_'.repeat(word.length), userInput: '', correct: false}))};
@@ -108,10 +123,12 @@ test('native practice rendering preserves active inputs and does not grade parti
         check(requests.length === 9 && requests[8].options.body.answer === 'do', 'explicit blur was not graded');
         second.focus(); second.setSelectionRange(1, 2);
         state.sentence.words[0].firstLetter = 'c'; renderWordSlots();
-        check(input(0) === first && first.value === 'c', 'hint replaced its input or lost its value');
+        check(input(0) === first && first.value === '', 'hint became an unsubmitted answer');
         check(first.closest('.word-slot').querySelector('.slot-hint').textContent.includes('c'), 'hint text missing');
         check(first.labels[0].textContent.includes('c'), 'accessible hint label missing');
         check(input(1) === second && second.selectionStart === 1 && second.selectionEnd === 2, 'hint interrupted another input');
+        first.focus(); second.focus(); await flush();
+        check(requests.length === 9, 'blurring a hint-only control submitted an answer');
 
         onWordCompositionStart({target: second}); renderWordSlots();
         check(input(1) === second && document.activeElement === second, 'composition input replaced');
@@ -129,8 +146,13 @@ test('native practice rendering preserves active inputs and does not grade parti
         check(input(0) !== first && input(0).value === '', 'new sentence retained an old control');
         check(requests.length === 9, 'sentence change graded an old hint');
         resetPracticeInput();
-        document.querySelector('#result').dataset.status = 'pass';
-        document.querySelector('#result').textContent = '8 words: 8 checks; native focus, selection, blur, hints, reveal and composition passed';
+        state.wordDrafts.clear(); resetTimer();
+        state.sentence = {sentenceId: 13, hasListened: true, words: [{index: 0, length: 6, mask: '______', firstLetter: 'm'}]};
+        restorePracticeDraft(); renderWordSlots(true); type(0, 'ma'); await flush();
+        check(requests.length === 9, 'saving a partial draft graded it');
+        state.timerSeconds = 12; startTimer();
+        sessionStorage.setItem('draft-reload-phase', 'restore');
+        location.reload();
     })().catch(error => {
         document.querySelector('#result').dataset.status = 'fail';
         document.querySelector('#result').textContent = error.stack;

@@ -6,13 +6,14 @@ const vm = require('node:vm');
 const source = fs.readFileSync(process.env.DICTALAB_APP_JS || path.resolve(__dirname, '../../main/resources/static/js/app.js'), 'utf8');
 
 // Deterministic event/timer/API harness. Native IME, layout and audio still need browser tests.
-function harness() {
+function harness(storage = new Map()) {
     let now = 1000, nextTimer = 0, active = 0, completed = 0;
-    const timers = new Map(), requests = [], statuses = [], inputs = new Map();
+    const timers = new Map(), intervals = new Map(), requests = [], statuses = [], inputs = new Map();
     const state = {currentUser: {id: 1}, session: {sessionId: 'session-a'},
         sentence: {sentenceId: 10, hasListened: true, canComplete: false, replayCount: 1, hintCount: 0, revealCount: 0,
             words: [0, 1, 2].map(index => ({index, length: 3, userInput: '', correct: false}))},
         wordDrafts: new Map(), wordAttemptStartedAt: new Map(), checkingWords: new Set(),
+        practiceDraftKey: null, timerSeconds: 0, sentenceStartedAt: null, timerId: null,
         inputInteractionRevision: 0, practiceMutationQueue: Promise.resolve()};
     const input = index => {
         if (!inputs.has(index)) inputs.set(index, {dataset: {wordIndex: String(index)}, value: '',
@@ -23,13 +24,17 @@ function harness() {
     };
     const context = vm.createContext({state, Map, Set, DOMException, document: {body: {dataset: {route: 'practice'}}}, Date: {now: () => now},
         window: {setTimeout(fn, delay) {const id = ++nextTimer; timers.set(id, {fn, at: now + delay}); return id;},
-            clearTimeout: id => timers.delete(id)},
-        elements: {wordSlots: {querySelectorAll: () => [...inputs.values()]}},
+            clearTimeout: id => timers.delete(id),
+            setInterval(fn) {const id = ++nextTimer; intervals.set(id, fn); return id;},
+            clearInterval: id => intervals.delete(id)},
+        elements: {wordSlots: {querySelectorAll: () => [...inputs.values()]}, sentenceTimer: {}},
         Event: class {constructor(type, options) {this.type = type; Object.assign(this, options);}},
         refreshDictationCopy() {}, roomQueueDraft() {}, updatePracticeControls() {}, stopRecordedAudio() {},
         practicePath: suffix => `/api/v1/practice-sessions/${state.session.sessionId}/sentences/${state.sentence.sentenceId}${suffix}`,
         api: (url, options) => new Promise((resolve, reject) => requests.push({url, options, resolve, reject})),
-        sessionStorage: {getItem: () => null, setItem() {}}, crypto: {randomUUID: () => `key-${requests.length}-${now}`},
+        sessionStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value),
+            removeItem: key => storage.delete(key), key: index => [...storage.keys()][index], get length() {return storage.size;}},
+        formatTime: seconds => String(seconds), crypto: {randomUUID: () => `key-${requests.length}-${now}`},
         captureWordFocus: () => active === null ? null : {index: active, selectionStart: input(active).selectionStart, selectionEnd: input(active).selectionEnd},
         restoreWordFocus: focus => {
             active = focus.index;
@@ -49,7 +54,8 @@ function harness() {
     });
     const handlers = source.slice(source.indexOf('    const wordChecks = new Map();'), source.indexOf('    async function useHint('));
     const journal = source.slice(source.indexOf('    const pendingPracticeSubmissions = new Map();'), source.indexOf('    function escapeHtml('));
-    vm.runInContext(journal + '\n' + handlers, context);
+    const clock = source.slice(source.indexOf('    function practiceElapsedSeconds('), source.indexOf('    async function refreshAdminLessons('));
+    vm.runInContext(journal + '\n' + handlers + '\n' + clock, context);
     const flush = async () => {for (let n = 0; n < 16; n++) await Promise.resolve();};
     return {state, context, requests, timers, input, statuses, flush,
         active: () => active, completed: () => completed,
@@ -68,7 +74,7 @@ function harness() {
                 const [id, timer] = [...timers].filter(([, item]) => item.at <= until).sort((a, b) => a[1].at - b[1].at)[0];
                 now = timer.at; timers.delete(id); timer.fn(); await flush();
             }
-            now = until; await flush();
+            now = until; for (const tick of intervals.values()) tick(); await flush();
         },
         async reply(requestIndex, correct = false, compact = true) {
             const request = requests[requestIndex], wordIndex = Number(request.url.match(/words\/(\d+)/)[1]);
@@ -487,10 +493,126 @@ test('an old shared-audio failure cannot clear the new sentence audio-ready stat
     h.context.elements.speechSupportNote = {};
     h.context.elements.listeningConsole = {classList: {add() {}, remove() {}}};
     h.context.roomSendWs = () => {};
+    let rejectAudio;
+    h.context.playRecordedAudio = () => new Promise((resolve, reject) => {rejectAudio = reject;});
     vm.runInContext(source.match(/^    async function playSentence\([^]*?^    }/m)[0], h.context);
     const pending = h.context.playSentence({startsAt: 'fixture', localStartsAt: 1000, position: 1, sequence: 1, speed: 1});
     await h.flush(); h.context.resetPracticeInput(); h.state.roomAudioPreparedKey = 'new-sentence-ready';
-    h.requests[0].reject(new TypeError('Audio request lost')); await pending;
+    rejectAudio(new TypeError('Audio request lost')); await pending;
     assert.equal(h.state.roomAudioPreparedKey, 'new-sentence-ready');
     assert.equal(h.state.speaking, false); assert.equal(h.statuses.length, 0);
+});
+
+test('hint-only input stays empty and blur cannot create a wrong attempt', async () => {
+    const h = harness();
+    h.state.sentence.words[0].firstLetter = 'm';
+    h.state.sentence.words[0].length = 6;
+    h.context.onWordBlur({target: h.input(0)});
+    await h.flush();
+    assert.equal(h.requests.length, 0);
+});
+
+test('partial and intentionally empty drafts survive reload without being graded', async () => {
+    const storage = new Map(), first = harness(storage);
+    first.context.restorePracticeDraft();
+    first.type(0, 'ca'); first.type(1, '');
+    first.context.startTimer();
+    await first.advance(12500);
+    first.context.resetPracticeInput();
+    await first.advance(60000);
+    const reloaded = harness(storage);
+    reloaded.state.sentence.words[1].userInput = 'old';
+    reloaded.context.restorePracticeDraft();
+    reloaded.context.renderPractice();
+    reloaded.context.startTimer();
+    assert.equal(reloaded.input(0).value, 'ca');
+    assert.equal(reloaded.input(1).value, '');
+    assert.equal(reloaded.state.timerSeconds, 12);
+    await reloaded.advance(3000);
+    assert.equal(reloaded.state.timerSeconds, 15);
+    assert.equal(first.requests.length + reloaded.requests.length, 0);
+});
+
+test('restored drafts cannot override resolved server words or cross user/session/sentence boundaries', () => {
+    const storage = new Map(), first = harness(storage);
+    first.context.restorePracticeDraft();
+    first.type(0, 'ca'); first.type(1, 'do'); first.type(2, 'pi');
+    for (const change of [h => h.state.currentUser.id++, h => h.state.session.sessionId = 'other',
+        h => h.state.sentence.sentenceId++]) {
+        const other = harness(storage); change(other); other.context.restorePracticeDraft();
+        assert.equal(other.state.wordDrafts.size, 0);
+    }
+    const reloaded = harness(storage);
+    reloaded.state.sentence.words[0].correct = true;
+    reloaded.state.sentence.words[1].revealed = true;
+    reloaded.state.sentence.words[2].prefilled = true;
+    reloaded.context.restorePracticeDraft();
+    assert.equal(reloaded.state.wordDrafts.size, 0);
+});
+
+test('blocked and malformed draft storage do not interrupt typing or restore invalid values', async () => {
+    const h = harness();
+    h.context.restorePracticeDraft();
+    h.context.sessionStorage.setItem = () => {throw Error('blocked');};
+    h.type(0, 'cat'); await h.flush();
+    assert.equal(h.requests.length, 1);
+    const saved = new Map([['dictalab.practice-draft.1.session-a.10',
+        JSON.stringify({drafts: [null, [-1, 'bad'], [0, {}], [1, 'x'.repeat(201)]], elapsedSeconds: -100})]]);
+    const malformed = harness(saved); malformed.context.restorePracticeDraft();
+    assert.equal(malformed.state.wordDrafts.size, 0);
+    assert.equal(malformed.state.timerSeconds, 0);
+});
+
+test('completion removes only its draft and logout clears only the current learner drafts', () => {
+    const storage = new Map(), h = harness(storage);
+    h.context.restorePracticeDraft(); h.type(0, 'ca');
+    storage.set('dictalab.practice-draft.2.other.10', 'private');
+    storage.set('dictalab.practice.1', 'retry-journal');
+    const key = h.state.practiceDraftKey;
+    h.context.discardPracticeDraft(); h.context.resetPracticeInput();
+    assert.equal(storage.has(key), false);
+    h.context.restorePracticeDraft(); h.type(0, 'ca');
+    storage.set('dictalab.practice-draft.1.another.20', 'draft');
+    h.context.clearPracticeDrafts();
+    assert.equal([...storage.keys()].some(key => key.startsWith('dictalab.practice-draft.1.')), false);
+    assert.equal(storage.get('dictalab.practice-draft.2.other.10'), 'private');
+    assert.equal(storage.get('dictalab.practice.1'), 'retry-journal');
+});
+
+function playbackHarness() {
+    const h = harness();
+    Object.assign(h.state, {playbackSpeed: 1, activeWordIndex: 0});
+    Object.assign(h.state.sentence, {hasListened: false, replayCount: 0, audioUrl: '/fixture.mp3'});
+    Object.assign(h.context.elements, {speechSupportNote: {}, replayCount: {},
+        listeningConsole: {classList: {add() {}, remove() {}}}});
+    vm.runInContext(source.match(/^    async function playSentence\([^]*?^    }/m)[0], h.context);
+    return h;
+}
+
+test('failed audio loading cannot record a heard event or start the practice clock', async () => {
+    const h = playbackHarness();
+    h.context.playRecordedAudio = async () => {throw Error('Audio failed');};
+    await h.context.playSentence();
+    assert.equal(h.requests.length, 0);
+    assert.equal(h.state.sentence.hasListened, false);
+    assert.equal(h.state.timerId, null);
+    assert.equal(h.state.speaking, false);
+});
+
+test('playback registration precedes completion and resumes the clock only after audio starts', async () => {
+    const h = playbackHarness();
+    let begin;
+    h.context.playRecordedAudio = (...args) => new Promise((resolve, reject) => {
+        begin = () => args[5]().then(resolve, reject);
+    });
+    const playing = h.context.playSentence(); await h.flush();
+    assert.equal(h.requests.length, 0);
+    const started = begin(); await h.flush();
+    assert.equal(h.requests[0].options.body.event, 'STARTED');
+    h.requests[0].resolve({...h.state.sentence, replayCount: 1, hasListened: true});
+    await started; await h.flush();
+    assert.notEqual(h.state.timerId, null);
+    assert.equal(h.requests[1].options.body.event, 'COMPLETED');
+    h.requests[1].resolve({...h.state.sentence}); await playing;
+    assert.equal(h.state.speaking, false);
 });

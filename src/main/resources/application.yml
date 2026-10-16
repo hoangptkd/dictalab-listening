@@ -224,6 +224,7 @@ dictalab:
   conversation:
     enabled: ${DICTALAB_CONVERSATION_ENABLED:false}
     generation-model: ${DICTALAB_CONVERSATION_MODEL:gemini-2.5-flash}
+    session-diversity: ${DICTALAB_CONVERSATION_DIVERSITY:true}
     audio-retention-days: ${CONVERSATION_AUDIO_RETENTION_DAYS:30}
     cartesia-api-key: ${CARTESIA_API_KEY:}
     cartesia-voice: ${CARTESIA_VOICE:db6b0ed5-d5d3-463d-ae85-518a07d3c2b4}
