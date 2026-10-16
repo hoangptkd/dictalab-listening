@@ -121,6 +121,16 @@ public class BillingService {
     private void settle(long code,String link,long amount,String reference) {
         transaction.executeWithoutResult(status -> {
             Long userId = db.queryForObject("SELECT user_id FROM payment_orders WHERE order_code=?",Long.class,code);
+            if (userId == null) {
+                // Account deletion removes entitlement/usage; financial reconciliation survives without its owner.
+                var removed = db.queryForMap("SELECT * FROM payment_orders WHERE order_code=? FOR UPDATE",code);
+                if ("PAID".equals(removed.get("status"))) return;
+                if (!link.equals(removed.get("payment_link_id")) || amount != ((Number)removed.get("amount_vnd")).longValue())
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Giao dịch không khớp đơn hàng.");
+                db.update("UPDATE payment_orders SET status='PAID',paid_at=?,payment_reference=? WHERE order_code=?",
+                        Timestamp.from(Instant.now()),reference,code);
+                return;
+            }
             access.lockUser(userId);
             var order = find(code,userId);
             if ("PAID".equals(order.get("status"))) return;

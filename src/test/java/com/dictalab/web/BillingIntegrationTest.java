@@ -106,6 +106,32 @@ class BillingIntegrationTest {
                 .andExpect(status().isPayloadTooLarge());
     }
 
+    @Test void accountDeletionRemovesAccessAndKeepsDetachedOrdersForLatePaymentReconciliation() throws Exception {
+        var user=learner();
+        access.takePractice(user.getId());
+        db.update("INSERT INTO premium_accounts(user_id,premium_until) VALUES (?,?)",user.getId(),Timestamp.from(Instant.now().plusSeconds(86400)));
+        String link="deleted"+UUID.randomUUID();
+        long code=pending(user,49000,link);
+        var admin=learner(); admin.promoteToAdmin(Instant.now()); users.saveAndFlush(admin);
+        var ticket=mvc.perform(post("/api/support/tickets").with(user(DictaLabPrincipal.from(user))).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("category","ACCOUNT_DELETE",
+                        "subject","Delete account","description","Please delete my account and learning data"))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        mvc.perform(post("/api/admin/support/tickets/"+json.readTree(ticket).path("id").asLong()+"/delete-account")
+                .with(user(DictaLabPrincipal.from(admin))).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("email",user.getEmail())))).andExpect(status().isOk());
+        assertThat(users.existsById(user.getId())).isFalse();
+        for (String table: java.util.List.of("premium_accounts","premium_daily_usage"))
+            assertThat(db.queryForObject("SELECT COUNT(*) FROM "+table+" WHERE user_id=?",Integer.class,user.getId())).isZero();
+        assertThat(db.queryForObject("SELECT user_id FROM payment_orders WHERE order_code=?",Long.class,code)).isNull();
+        acceptSignature();
+        var payload=event(code,49000,link,"late"+UUID.randomUUID());
+        billing.webhook(payload); billing.webhook(payload);
+        assertThat(db.queryForObject("SELECT status FROM payment_orders WHERE order_code=?",String.class,code)).isEqualTo("PAID");
+        assertThat(users.existsById(user.getId())).isFalse();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM premium_accounts WHERE user_id=?",Integer.class,user.getId())).isZero();
+    }
+
     @Test void unknownCreateOutcomeIsKeptAndRecoveredWithoutRepeatingTheCreate() {
         var user=learner();
         when(payos.create(anyLong(),eq(49000),anyLong())).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE));

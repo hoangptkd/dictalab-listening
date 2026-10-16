@@ -42,6 +42,7 @@ DICTALAB_PREMIUM_DAILY_AI=10
 - Không tự lặp lệnh tạo đơn khi kết nối lỗi. Đơn `CREATING` được giữ để truy vấn cùng mã đơn qua **Kiểm tra thanh toán**. Không thanh toán thêm cho tới khi rõ kết quả.
 - Chỉ chữ ký HMAC hợp lệ và giao dịch đúng mã đơn, mã link, số tiền, VND mới cấp quyền; URL quay về không có quyền xác nhận.
 - Đơn thanh toán đến muộn vẫn được đối soát và cộng hạn nếu payOS xác nhận hợp lệ. Dữ liệu giao dịch, mã tham chiếu duy nhất và cập nhật hạn nằm trong cùng transaction.
+- Khi xử lý yêu cầu xóa tài khoản, hạn Premium và hạn mức bị xóa; đơn thanh toán được tách khỏi tài khoản để giữ đối soát. Thông báo đến muộn chỉ cập nhật giao dịch, không tạo lại tài khoản hoặc quyền học.
 - Không tự động hoàn tiền, cấp khuyến mại, hoặc thu định kỳ. Sai số tiền và giao dịch không khớp phải được kiểm tra thủ công trên payOS; không sửa thành `PAID` bằng tay để bỏ kiểm tra.
 - Tắt `DICTALAB_BILLING_ENABLED` sẽ dừng tạo/kiểm tra đơn và áp hạn mức, webhook trả lỗi tạm thời. Giữ ứng dụng và dữ liệu để payOS có thể gửi lại sau khi bật. Không xóa bảng thanh toán để quay lui.
 
