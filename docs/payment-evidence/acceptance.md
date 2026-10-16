@@ -24,9 +24,10 @@ Ngày 17/10/2026 · Người kiểm tra: Codex (tự động). Tách bằng ch�
 ## Kết quả chạy đã có
 
 - PostgreSQL 18.4: 31 tests, không fail/error/skip (18 operations + 7 billing + 6 provider), chạy từ schema rỗng.
-- Testcontainers PostgreSQL 18.4 + Redis + Rabbit: 26 tests, không fail/error/skip; có `pg_dump`/`pg_restore` thật và phục hồi khoảng mất sự kiện.
-- JavaScript billing: 3/3. Release tests: 6 pass; 1 filesystem POSIX test bỏ qua trên Windows, bắt buộc chạy trên CI Linux.
-- Chrome/jev-ultrafast: đã mở 7 màn với dữ liệu giả; sửa tràn header/form mobile sau lần xem đầu. Bằng chứng cuối cần chụp lại sau CSS fix.
+- Testcontainers PostgreSQL 18.4 + Redis + Rabbit: 29 tests (21 operations + 1 restore + 7 billing), không fail/error/skip; có `pg_dump`/`pg_restore` thật và phục hồi khoảng mất sự kiện. Có regression cho xóa tài khoản, duyệt mở lại báo cáo, lease hết lượt và yêu cầu đối soát trùng.
+- Java unit sau merge: 103 tests, không fail/error, 2 conditional skips hiện có. JavaScript toàn bộ: 305/305. Python scripts: 30 tests, 29 pass và 1 filesystem POSIX test bỏ qua trên Windows, chạy trên CI Linux.
+- Bằng chứng máy đọc được đã khử định danh: `local-concurrency.json`, `local-restore.json`, `local-test-summary.json`. Timing concurrency đo service call với fake provider, không phải HTTP ACK SLO production.
+- Chrome/jev-ultrafast: đã mở 7 màn với dữ liệu giả; sửa và chụp lại mobile, viewport/layout/body đều 390px. Bảng cuộn ngang trong vùng riêng.
 - Không tạo thanh toán/hoàn tiền thật trong toàn bộ bộ test này.
 
 ## Cổng production giữ đóng

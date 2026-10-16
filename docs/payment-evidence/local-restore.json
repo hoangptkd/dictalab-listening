@@ -1,0 +1,8 @@
+{
+  "pgDumpRestore": true,
+  "missingProviderEventRecovered": true,
+  "expiredInboxRecovered": true,
+  "duplicateGrants": 0,
+  "journalImbalances": 0,
+  "sourceDatabaseUnchangedByRecovery": true
+}

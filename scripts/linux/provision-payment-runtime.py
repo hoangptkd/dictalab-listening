@@ -13,6 +13,7 @@ import secrets
 import shlex
 import subprocess
 import tempfile
+import shutil
 from urllib.parse import urlparse
 
 
@@ -68,6 +69,9 @@ def provision():
     content = '\n'.join(line for line in lines if line.split('=', 1)[0] not in updates) + '\n'
     content += '\n'.join(key + '=' + shlex.quote(value) for key, value in updates.items()) + '\n'
     os.umask(0o077)
+    snapshot=Path(tempfile.mkdtemp(prefix='payment-config-',dir='/var/lib/dictalab/backups'))
+    shutil.copy2(path,snapshot/'app.env')
+    os.chmod(snapshot/'app.env',0o600)
     descriptor, temporary = tempfile.mkstemp(prefix='.payment-config-', dir=path.parent)
     try:
         with os.fdopen(descriptor, 'w', encoding='utf-8') as output:
@@ -80,7 +84,7 @@ def provision():
         if Path(temporary).exists():
             Path(temporary).unlink()
     print(json.dumps({'runtimeRole': runtime, 'migrationOwnerSeparate': True,
-                      'refundsEnabled': False, 'configMode': oct(path.stat().st_mode & 0o777)}))
+                      'refundsEnabled': False, 'configMode': oct(path.stat().st_mode & 0o777),'configBackup':str(snapshot)}))
 
 
 if __name__ == '__main__':

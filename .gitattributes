@@ -1,0 +1,3 @@
+# Browser regression fixtures parse function boundaries; keep checkout line endings stable.
+*.js text eol=lf
+*.cjs text eol=lf

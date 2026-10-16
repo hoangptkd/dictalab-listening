@@ -70,7 +70,7 @@ public class PaymentOperationsController {
         return operations.allocateReviewed(actor.id(),code,body.receiptId(),body.expectedVersion(),body.reason(),body.challenge(),security);
     }
     @PostMapping("/orders/{code}/reconcile") public Map<String,String> reconcile(@AuthenticationPrincipal DictaLabPrincipal actor,@PathVariable long code,@Valid @RequestBody Reason reason) {
-        security.require(actor.id(),"PAYMENT_RECONCILE");return Map.of("jobId",worker.request(code,actor.id()),"status","QUEUED");
+        security.require(actor.id(),"PAYMENT_RECONCILE");return Map.of("jobId",worker.request(code,actor.id(),reason.reason()),"status","QUEUED");
     }
     @GetMapping("/reconciliation-cases") public Map<String,Object> cases(@AuthenticationPrincipal DictaLabPrincipal actor,@RequestParam(defaultValue="0") int page) {
         security.require(actor.id(),"PAYMENT_VIEW");if(page<0 || page>100000)throw error(HttpStatus.BAD_REQUEST,"PAYMENT_PAGE_INVALID");

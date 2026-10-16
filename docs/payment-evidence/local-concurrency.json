@@ -1,0 +1,10 @@
+{
+  "callbacks": 100,
+  "parallelism": 8,
+  "receipts": 1,
+  "fixture": "synthetic signed-data mock; service calls, no HTTP latency claim",
+  "grants": 1,
+  "callbackServiceP95Ms": 56.1017,
+  "concurrentLookups": 5,
+  "batchMs": 458.004
+}

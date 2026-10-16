@@ -40,7 +40,11 @@ public class PaymentWorker {
     public void tick() {
         if(!billing.enabled() || !config.workerEnabled()) return;
         operations.backfill();
-        db.update("UPDATE payment_inbox SET status='QUARANTINED',last_error='RETRY_EXHAUSTED' WHERE status='PROCESSING' AND locked_until<? AND attempts>=8",ts(clock.instant()));
+        for(var expired:rows(db,"SELECT event_id FROM payment_inbox WHERE status='PROCESSING' AND locked_until<? AND attempts>=8 ORDER BY event_id LIMIT 20",ts(clock.instant())))tx.executeWithoutResult(s->{
+            db.queryForObject("SELECT id FROM payment_mutex WHERE id=1 FOR UPDATE",Integer.class);
+            if(db.update("UPDATE payment_inbox SET status='QUARANTINED',last_error='RETRY_EXHAUSTED',lease_id=NULL,locked_until=NULL WHERE event_id=? AND status='PROCESSING' AND locked_until<? AND attempts>=8",expired.get("event_id"),ts(clock.instant()))==1)
+                operations.caseFor("inbox:"+expired.get("event_id"),null,"RETRY_EXHAUSTED","Expired final processing lease; event="+expired.get("event_id"));
+        });
         for(var row:rows(db,"SELECT event_id FROM payment_inbox WHERE attempts<8 AND ((status IN ('RECEIVED','RETRY') AND next_attempt<=?) OR (status='PROCESSING' AND locked_until<?)) ORDER BY next_attempt,event_id LIMIT 20",ts(clock.instant()),ts(clock.instant())))
             operations.process((String)row.get("event_id"));
     }
@@ -50,11 +54,14 @@ public class PaymentWorker {
         for(var row:rows(db,"SELECT order_code FROM payment_orders WHERE next_check_at<=? AND (check_until IS NULL OR check_until<?) ORDER BY next_check_at,order_code LIMIT 20",ts(clock.instant()),ts(clock.instant())))
             reconcile(number(row,"order_code"),"SCHEDULED");
     }
-    public String request(long code,long actor) {
+    public String request(long code,long actor,String reason) {
+        text(reason,1000);
         return tx.execute(s->{
-            one(db,"SELECT order_code FROM payment_orders WHERE order_code=? FOR UPDATE",code);
+            if(operations.lockOrder(code).isEmpty())throw error(org.springframework.http.HttpStatus.NOT_FOUND,"PAYMENT_RESOURCE_NOT_FOUND");
+            var queued=rows(db,"SELECT id FROM reconciliation_runs WHERE order_code=? AND status='QUEUED' ORDER BY created_at,id LIMIT 1",code);
+            if(!queued.isEmpty())return (String)queued.get(0).get("id");
             db.update("UPDATE payment_orders SET next_check_at=? WHERE order_code=?",ts(clock.instant()),code);
-            operations.audit(actor,"RECONCILIATION_REQUESTED",Long.toString(code),"Queued fresh provider evidence");
+            operations.audit(actor,"RECONCILIATION_REQUESTED",Long.toString(code),reason);
             String run=id();db.update("INSERT INTO reconciliation_runs(id,order_code,source,status,created_at) VALUES (?,?,?,'QUEUED',?)",run,code,"OPERATOR",ts(clock.instant()));return run;
         });
     }

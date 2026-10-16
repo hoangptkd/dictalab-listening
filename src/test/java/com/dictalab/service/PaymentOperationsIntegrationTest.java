@@ -60,6 +60,8 @@ class PaymentOperationsIntegrationTest {
     @Autowired ObjectMapper json;
     @Autowired MockMvc mvc;
     @Autowired PlatformTransactionManager manager;
+    @Autowired com.dictalab.config.BillingProperties billingConfig;
+    @Autowired io.micrometer.core.instrument.MeterRegistry metrics;
     @MockitoBean PayOsClient payos;
     @MockitoSpyBean PaymentLedger ledger;
     @BeforeEach void time(){clock.now=Instant.parse("2030-01-02T01:00:00Z");when(payos.validSignature(any(),anyString())).thenReturn(true);}
@@ -127,9 +129,23 @@ class PaymentOperationsIntegrationTest {
     }
     @Test void reconciliationFetchesPaidOrdersAndRestoresOnlyTheGrantProjection(){
         var u=account();long code=paid(u);Instant original=(Instant)access.status(u.getId()).get("premiumUntil");db.update("DELETE FROM premium_accounts WHERE user_id=?",u.getId());
+        String job=worker.request(code,u.getId(),"Investigate missing projection");
+        assertThat(worker.request(code,u.getId(),"Retry same request")).isEqualTo(job);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM reconciliation_runs WHERE order_code=? AND status='QUEUED'",Long.class,code)).isEqualTo(1);
         when(payos.lookup(code)).thenReturn(lookup(code,"PAID",List.of(Map.of("reference",ref(code),"amount",49000))));
         worker.reconcile(code,"TEST");verify(payos).lookup(code);
+        assertThat(db.queryForObject("SELECT status FROM reconciliation_runs WHERE id=?",String.class,job)).isEqualTo("SUCCESS");
         assertThat(access.status(u.getId()).get("premiumUntil")).isEqualTo(original);assertThat(count("premium_grants",code)).isEqualTo(1);
+    }
+    @Test void exhaustedFinalInboxLeaseCreatesOneCaseAndDoesNotGrant(){
+        var u=account();long code=pending(u);String event=operations.receive(event(code,49000,ref(code)));
+        db.update("UPDATE payment_inbox SET status='PROCESSING',attempts=8,lease_id=?,locked_until=? WHERE event_id=?",id(),ts(clock.instant().minusSeconds(1)),event);
+        var config=new com.dictalab.config.PaymentOperationsProperties(true,true,true,false,false,false,"","","MANUAL_REVIEW_V1");
+        var dispatcher=new PaymentWorker(db,operations,payos,billingConfig,config,clock,manager,metrics);
+        dispatcher.tick();dispatcher.tick();
+        assertThat(db.queryForObject("SELECT status FROM payment_inbox WHERE event_id=?",String.class,event)).isEqualTo("QUARANTINED");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM reconciliation_cases WHERE case_key=?",Long.class,"inbox:"+event)).isEqualTo(1);
+        assertThat(count("premium_grants",code)).isZero();
     }
     @Test void missingWebhookRecoveryRequiresReferencesAndLatePaymentGetsFullDuration(){
         var u=account();long code=pending(u);db.update("UPDATE payment_orders SET status='EXPIRED' WHERE order_code=?",code);clock.advance(4000);
@@ -268,5 +284,31 @@ class PaymentOperationsIntegrationTest {
         var result=operations.allocateReviewed(maker.getId(),code,receipt,version,"verified intended order",fixtureChallenge(maker,hash("ALLOCATE|"+receipt+"|"+code+"|"+version+"|49000")),security);
         assertThat(result.get("surplusVnd")).isEqualTo(11000L);assertThat(count("premium_grants",code)).isEqualTo(1);
         assertThat(db.queryForObject("SELECT amount_vnd FROM payment_allocations WHERE order_code=?",Long.class,code)).isEqualTo(49000L);
+    }
+    @Test void accountDeletionDetachesEntitlementButKeepsFinancialMakerAndEvidence() throws Exception {
+        var maker=operator();long code=paid(maker);
+        var r=refunds.request(maker.getId(),code,49000,"deleted owner fixture",hash("970422|123456789"),"MB ••••6789",id(),true);
+        var admin=account();admin.promoteToAdmin(clock.instant());users.saveAndFlush(admin);
+        var ticket=mvc.perform(post("/api/support/tickets").with(user(DictaLabPrincipal.from(maker))).with(csrf()).contentType("application/json")
+                .content(json.writeValueAsString(Map.of("category","ACCOUNT_DELETE","subject","Delete fixture account","description","Delete synthetic learning data"))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        mvc.perform(post("/api/admin/support/tickets/"+json.readTree(ticket).path("id").asLong()+"/delete-account").with(user(DictaLabPrincipal.from(admin))).with(csrf()).contentType("application/json")
+                .content(json.writeValueAsString(Map.of("email",maker.getEmail())))).andExpect(status().isOk());
+        assertThat(one(db,"SELECT user_id FROM payment_orders WHERE order_code=?",code).get("user_id")).isNull();
+        assertThat(one(db,"SELECT user_id FROM premium_grants WHERE order_code=?",code).get("user_id")).isNull();
+        assertThat(one(db,"SELECT requested_by FROM refund_requests WHERE id=?",r.get("id")).get("requested_by")).isEqualTo(maker.getId());
+        assertThat(count("payment_receipts",code)).isEqualTo(1);assertThat(security.permissions(maker.getId())).isEmpty();
+    }
+    @Test void dailyCloseReopeningRequiresAnotherActorAndCreatesANewImmutableVersion() throws Exception {
+        var maker=operator();var checker=operator();clock.advance(86400);
+        var first=reporting.close(maker.getId(),LocalDate.of(2030,1,2),"day boundary fixture",null);
+        String reopen=reporting.requestReopen(maker.getId(),(String)first.get("id"),"late evidence correction");
+        assertThatThrownBy(()->reporting.approveReopen(maker.getId(),reopen,"unused","self review")).hasMessageContaining("PAYMENT_CLOSE_INDEPENDENT_CHECKER_REQUIRED");
+        String binding=hash("REOPEN|"+reopen+"|"+first.get("id")+"|late evidence correction");
+        reporting.approveReopen(checker.getId(),reopen,fixtureChallenge(checker,binding),"independent review");
+        var second=reporting.close(checker.getId(),LocalDate.of(2030,1,2),"new close version",reopen);
+        assertThat(number(second,"version")).isEqualTo(number(first,"version")+1);
+        assertThat(one(db,"SELECT digest FROM payment_daily_closes WHERE id=?",first.get("id")).get("digest")).isEqualTo(first.get("digest"));
+        assertThatThrownBy(()->reporting.close(checker.getId(),LocalDate.of(2030,1,2),"cannot reuse old approval",reopen)).hasMessageContaining("PAYMENT_RESOURCE_NOT_FOUND");
     }
 }

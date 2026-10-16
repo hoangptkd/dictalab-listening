@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-17",
+  "environment": "isolated Testcontainers PostgreSQL 18.4, Redis, RabbitMQ; fake payOS; no real transfers",
+  "suites": [
+    {
+      "name": "com.dictalab.service.PaymentOperationsIntegrationTest",
+      "tests": "21",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "59.739"
+    },
+    {
+      "name": "com.dictalab.service.PaymentRestoreIntegrationTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "8.698"
+    },
+    {
+      "name": "com.dictalab.web.BillingIntegrationTest",
+      "tests": "7",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "3.979"
+    }
+  ]
+}
