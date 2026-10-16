@@ -1140,3 +1140,101 @@ body[data-route="admin-users"] .admin-table td:last-child a { white-space: nowra
     .conversation-summary-grid { grid-template-columns: 1fr; gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+
+/* =============================================================
+   UI REFINEMENTS — đồng bộ, cân xứng, tối giản
+   Nguyên tắc: bỏ trang trí thừa, giữ thứ bậc rõ ràng, không màu mè
+   ============================================================= */
+
+/* ① Xóa watermark pseudo-elements trang trí (không có giá trị UX)
+      "LISTEN" 130px nền listening console
+      "NEXT"   96px nền recommendation card
+      "LISTEN" 15rem nền auth story (đã bị fidelity ẩn, thêm chắc chắn) */
+.listening-console::after,
+.recommendation-card::after,
+.auth-story::after { display: none !important; }
+
+/* ② Catalog hero khi đã đăng nhập — thu gọn, bỏ khoảng trắng lãng phí
+      Fidelity đã set display:block + compact header; tăng thêm aligned logged-in state */
+.catalog-hero.is-signed-in { padding-top: 16px; padding-bottom: 12px; }
+.catalog-hero.is-signed-in h1 { font-size: clamp(1.6rem, 3vw, 2rem); line-height: 1.2; }
+
+/* ③ Method card — border-radius đồng nhất, bỏ vòng tròn trang trí
+      app.css dùng 160px 160px 20px 20px — không nhất quán với phong cách chung */
+.method-card { border-radius: 14px !important; }
+.method-card::before { display: none !important; }
+
+/* ④ Streak pill — ẩn hoàn toàn (chỉ visible trên desktop lớn trong app.css,
+      inconsistent với mobile/tablet; thông tin đã có trong Dashboard) */
+.streak-pill { display: none !important; }
+
+/* ⑤ Auth rules — ẩn trên desktop lớn khi form đăng nhập đang hiển thị
+      (fidelity đã ẩn mobile; đồng bộ nốt cho desktop khi có tabs) */
+.auth-screen:has(.auth-tabs:not([hidden])) .auth-rules { display: none; }
+
+/* ⑥ Dashboard breadcrumb — bỏ trên desktop; không có navigation hierarchy thực sự
+      Mobile đã được fidelity xử lý (span display:none, reorder) */
+@media (min-width: 761px) {
+    .dashboard-breadcrumb > span { display: none; }
+    .dashboard-breadcrumb {
+        padding-bottom: 8px;
+        margin-bottom: 24px;
+        border-bottom: 0;
+    }
+}
+
+/* ⑦ Listening stats — cân bằng visual: bỏ border-right cuối thừa,
+      đảm bảo 3 stat đều có spacing đồng đều */
+.listening-stats { gap: 0; }
+.listening-stats div { flex: 1; }
+
+/* ⑧ Result view — đảm bảo coach-panel không bị đẩy xuống bởi technical details
+      Thứ tự hiển thị: score overview → coach insights → review (khi non-history) */
+#result-view:not(.is-history-review) .result-summary-layout { margin-bottom: 8px; }
+#result-view:not(.is-history-review) #coach-panel { margin-top: 0; }
+
+/* ⑨ Hint buttons — làm đồng đều chiều cao, bỏ min-height thừa trên mobile */
+@media (max-width: 760px) {
+    .hint-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+    .hint-button { min-height: 70px; }
+}
+
+/* ⑩ Auth footer — gọn hơn, không nổi bật */
+.auth-footer { gap: 16px; font-size: 11px; opacity: 0.75; }
+.auth-footer:hover { opacity: 1; transition: opacity 200ms ease; }
+
+/* ⑪ Nav secondary items desktop — group separator rõ ràng hơn để phân biệt
+      primary (Phòng luyện / Nghe hiểu / Hội thoại AI / Tiến bộ)
+      vs secondary (Lịch sử / Luyện cùng bạn / Hỗ trợ) */
+@media (min-width: 761px) {
+    .nav-group:last-child .nav-link:not([data-route="dashboard"]) {
+        font-size: 13px;
+        opacity: 0.75;
+    }
+    .nav-group:last-child .nav-link:not([data-route="dashboard"]):hover {
+        opacity: 1;
+    }
+}
+
+/* ⑫ Practice topbar — căn chỉnh tiêu đề bài ở giữa rõ ràng hơn */
+.practice-progress-copy { gap: 8px; }
+.practice-topbar .level-stamp { flex-shrink: 0; }
+
+/* ⑬ Listening console — stats luôn visible, không bị overflow ẩn */
+.listening-stats { overflow: visible; }
+
+/* ⑭ Primary button — loại bỏ box-shadow khi đã có fidelity reset
+      (fidelity đã set box-shadow: none nhưng app.css thêm lại ở dark variant) */
+.primary-button.dark { box-shadow: none; }
+
+/* ⑮ Review sentence — padding đồng đều hơn */
+.review-sentence { padding: 20px 22px; }
+
+/* ⑯ Card heading trong dashboard — spacing cân đối */
+.card-heading { margin-bottom: 0; }
+.dashboard-grid .card-heading { margin-bottom: 0; }
+
+/* ⑰ History card — bỏ shadow thừa (đã có border), giữ nhất quán */
+.history-card { box-shadow: none; }
+.history-card:hover { box-shadow: var(--shadow); }
+
