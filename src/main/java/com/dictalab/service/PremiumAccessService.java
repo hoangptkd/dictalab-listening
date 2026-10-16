@@ -17,9 +17,10 @@ import java.util.Map;
 public class PremiumAccessService {
     private final JdbcTemplate db;
     private final BillingProperties config;
+    private final java.time.Clock clock;
     private static final ZoneId ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
-    public PremiumAccessService(JdbcTemplate db, BillingProperties config) { this.db=db; this.config=config; }
+    public PremiumAccessService(JdbcTemplate db, BillingProperties config, java.time.Clock paymentClock) { this.db=db; this.config=config; this.clock=paymentClock; }
 
     public Map<String,Object> status(long userId) {
         var result = new HashMap<String,Object>();
@@ -27,7 +28,7 @@ public class PremiumAccessService {
         Instant until = account.isEmpty() ? null : instant(account.get(0).get("premium_until"));
         boolean admin = "ADMIN".equals(db.queryForObject("SELECT role FROM app_users WHERE id=?", String.class, userId));
         result.put("enabled", config.enabled());
-        result.put("premium", admin || until != null && until.isAfter(Instant.now()));
+        result.put("premium", admin || until != null && until.isAfter(clock.instant()));
         result.put("administrator", admin);
         result.put("premiumUntil", until);
         result.put("priceVnd", config.priceVnd());
@@ -76,13 +77,13 @@ public class PremiumAccessService {
                 SELECT CASE WHEN role='ADMIN' OR EXISTS (
                     SELECT 1 FROM premium_accounts WHERE user_id=? AND premium_until>?) THEN TRUE ELSE FALSE END
                 FROM app_users WHERE id=?
-                """, Boolean.class, userId, java.sql.Timestamp.from(Instant.now()), userId));
+                """, Boolean.class, userId, java.sql.Timestamp.from(clock.instant()), userId));
     }
     private void ensureUsage(long userId, Date today) {
         if (db.queryForObject("SELECT COUNT(*) FROM premium_daily_usage WHERE user_id=? AND usage_day=?", Integer.class, userId, today) == 0)
             db.update("INSERT INTO premium_daily_usage(user_id,usage_day) VALUES (?,?)", userId, today);
     }
-    private Date day() { return Date.valueOf(LocalDate.now(ZONE)); }
+    private Date day() { return Date.valueOf(LocalDate.now(clock.withZone(ZONE))); }
     static Instant instant(Object value) {
         if (value instanceof java.time.OffsetDateTime at) return at.toInstant();
         return ((java.sql.Timestamp)value).toInstant();

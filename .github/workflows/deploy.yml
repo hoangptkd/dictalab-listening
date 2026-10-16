@@ -164,6 +164,8 @@ jobs:
             target/reliability/worker-recovery-*/
             target/reliability/ai-worker-recovery/
             target/reliability/restore-isolation/
+            target/reliability/payment-restore/
+            target/reliability/payment-concurrency.json
             target/reliability/concurrency-matrix.csv
           if-no-files-found: error
 

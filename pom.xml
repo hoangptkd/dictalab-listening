@@ -30,6 +30,9 @@
 
     <dependencies>
         <dependency>
+            <groupId>com.eatthepath</groupId><artifactId>java-otp</artifactId><version>1.0.0</version>
+        </dependency>
+        <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>s3</artifactId>
             <version>${aws-sdk.version}</version>
@@ -270,6 +273,9 @@
                                 <include>**/ApiExceptionHandlerTest.java</include>
                                 <include>**/MessagingLifecycleConfigTest.java</include>
                                 <include>**/RestoreIsolationIntegrationTest.java</include>
+                                <include>**/PaymentOperationsIntegrationTest.java</include>
+                                <include>**/PaymentRestoreIntegrationTest.java</include>
+                                <include>**/BillingIntegrationTest.java</include>
                             </includes>
                         </configuration>
                     </plugin>

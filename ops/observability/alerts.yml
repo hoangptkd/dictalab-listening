@@ -1,6 +1,26 @@
 groups:
   - name: dictalab
     rules:
+      - alert: DictaLabPaymentJournalImbalance
+        expr: dictalab_payment_journal_imbalances{job="dictalab"} > 0
+        labels: {severity: critical}
+        annotations:
+          summary: A posted payment journal is unbalanced
+          action: Pause checkout and refunds; preserve intake evidence and investigate before resuming financial writes.
+      - alert: DictaLabPaymentInboxStalled
+        expr: dictalab_payment_inbox_oldest_seconds{job="dictalab"} > 300
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: Payment processing backlog exceeds five minutes
+          action: Check database locks and inbox leases; replay one reviewed case after fixing the cause.
+      - alert: DictaLabPaymentReviewOverdue
+        expr: dictalab_payment_cases_overdue{job="dictalab"} > 0 or dictalab_payment_refunds_unknown{job="dictalab"} > 0
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: Payment review or unknown refund needs an operator
+          action: Use independent bank evidence; retain refund reservation and never repeat an uncertain transfer.
       - alert: DictaLabUnavailable
         expr: up{job="dictalab"} == 0
         for: 2m

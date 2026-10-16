@@ -20,9 +20,13 @@
         let busy = false;
         let message = "";
         let messageError = false;
+        const purchaseKey=()=>{
+            let key=sessionStorage.getItem("dictalab-purchase-key");
+            if(!key){key=crypto.randomUUID();sessionStorage.setItem("dictalab-purchase-key",key);}return key;
+        };
         async function render() {
             try {
-                const [plan, orders] = await Promise.all([api("/api/billing/status"), api("/api/billing/orders")]);
+                const [plan, orders, refunds] = await Promise.all([api("/api/billing/status"), api("/api/billing/orders"),api("/api/billing/refund-requests")]);
                 if (!root.isConnected) return;
                 section.innerHTML = `<div class="billing-summary"><div><p class="section-index">Gói học của bạn</p>
                     <h2 id="billing-heading">${plan.premium ? "Premium đang hoạt động" : "Thêm thời gian cho việc học."}</h2>
@@ -41,6 +45,7 @@
                         <ol class="billing-orders">${orders.map(order => `<li><div><strong>Đơn ${escape(order.orderCode)} · ${escape(money(order.amountVnd))}</strong>
                         <p>${escape(labels[order.status] || order.status)} · ${escape(order.durationDays)} ngày · ${escape(date(order.createdAt))}</p></div>
                         <div class="billing-order-actions">${order.status === "PENDING" && checkout(order.checkoutUrl) ? `<a class="text-button" href="${escape(checkout(order.checkoutUrl))}">Mở QR thanh toán</a>` : ""}
+                        ${order.status === "PAID" ? `<button class="text-button" type="button" data-refund="${escape(order.orderCode)}" data-amount="${escape(order.amountVnd)}">Yêu cầu xem xét hoàn tiền</button>` : ""}
                         ${plan.enabled && order.status !== "PAID" ? `<button class="text-button" type="button" data-check="${escape(order.orderCode)}" ${busy ? "disabled" : ""}>Kiểm tra thanh toán</button>` : ""}</div></li>`).join("")}</ol></details>` : ""}`;
                 section.querySelector("[data-buy]")?.addEventListener("click", async () => {
                     if (busy) return;
@@ -48,13 +53,16 @@
                     section.querySelector("[data-buy]").disabled = true;
                     section.querySelector("[data-billing-status]").textContent = "Đang chuẩn bị trang thanh toán…";
                     try {
-                        const order = await api("/api/billing/orders", {method: "POST"});
+                        const order = await api("/api/billing/orders", {method: "POST",headers:{"Idempotency-Key":purchaseKey()}});
                         const url = checkout(order.checkoutUrl);
                         if (!url) throw new Error("Đơn đang đồng bộ. Hãy kiểm tra trạng thái trước khi tạo đơn mới.");
+                        sessionStorage.removeItem("dictalab-purchase-key");
                         location.assign(url);
                     } catch (error) { message = error.message; messageError = true; busy = false; await render(); }
                 });
                 section.querySelectorAll("[data-check]").forEach(button => button.addEventListener("click", () => check(button.dataset.check)));
+                section.querySelectorAll("[data-refund]").forEach(button => button.addEventListener("click", () => refundRequest(button.dataset.refund,Number(button.dataset.amount))));
+                if(refunds.length)section.insertAdjacentHTML("beforeend",`<details class="ui-disclosure"><summary>Hồ sơ xem xét hoàn tiền (${refunds.length})</summary><ul>${refunds.map(r=>`<li>Đơn ${escape(r.order_code)} · ${escape(money(r.amount_vnd))} · ${escape(({REQUESTED:"Chờ xem xét",APPROVED:"Đã duyệt",UNKNOWN:"Đang xác minh kết quả",SUCCEEDED:"Đã hoàn",REJECTED:"Từ chối",CANCELLED:"Đã hủy"})[r.status]||r.status)} · Hồ sơ hỗ trợ ${escape(r.ticket_id??r.id)}</li>`).join("")}</ul></details>`);
             } catch (error) {
                 section.innerHTML = `<h2 id="billing-heading">Gói Premium</h2><p role="alert">${escape(error.message)}</p><button type="button" class="text-button">Thử lại</button>`;
                 section.querySelector("button").addEventListener("click", render);
@@ -71,6 +79,31 @@
                 messageError = false;
             } catch (error) { message = error.message; messageError = true; }
             finally { busy = false; await render(); }
+        }
+        function refundRequest(code,amount) {
+            section.querySelector("[data-refund-form]")?.remove();
+            const form=document.createElement("form");form.dataset.refundForm="true";form.className="account-panel";
+            form.innerHTML=`<h3>Yêu cầu xem xét đơn ${escape(code)}</h3><p>Đây là hồ sơ hỗ trợ, chưa phải xác nhận được hoàn tiền. Người vận hành sẽ kiểm tra nguồn chuyển và liên hệ qua hồ sơ.</p>
+                <label>Số tiền đề nghị (đ)<input name="amountVnd" type="number" min="1" max="${amount}" step="1" value="${amount}" required></label>
+                <label>Mã ngân hàng nguồn chuyển (BIN)<input name="bank" pattern="[A-Za-z0-9]{3,20}" maxlength="20" placeholder="Ví dụ: 970422" required></label>
+                <label>Số tài khoản đã chuyển tiền<input name="account" pattern="[0-9]{4,30}" maxlength="30" inputmode="numeric" autocomplete="off" required></label>
+                <label>Lý do<textarea name="reason" maxlength="1000" required></textarea></label><p data-preview role="status"></p><div class="billing-order-actions"><button type="button" class="text-button" data-preview-button>Xem tác động quyền lợi</button><button type="submit" class="primary-button">Gửi yêu cầu hỗ trợ</button><button type="button" class="text-button" data-cancel>Đóng</button></div><p role="alert" data-error></p>`;
+            section.appendChild(form);form.querySelector("input").focus();
+            let previewed=null;const key=crypto.randomUUID();
+            const preview=async()=>{const result=await api(`/api/billing/orders/${code}/refund-preview?amountVnd=${Number(form.elements.amountVnd.value)}`);previewed=Number(form.elements.amountVnd.value);form.querySelector("[data-preview]").textContent=`Nếu được duyệt và hoàn thành: tối đa ${result.secondsToRevoke} giây chưa sử dụng được điều chỉnh. Chính sách ${result.policyVersion}.`;};
+            form.elements.amountVnd.addEventListener("input",()=>{previewed=null;});
+            form.querySelector("[data-cancel]").onclick=()=>form.remove();
+            form.querySelector("[data-preview-button]").onclick=()=>preview().catch(e=>{form.querySelector("[data-error]").textContent=e.message;});
+            form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('[type="submit"]');if(button.disabled)return;
+                if(previewed!==Number(form.elements.amountVnd.value)){await preview().catch(e=>{form.querySelector("[data-error]").textContent=e.message;});return;}
+                button.disabled=true;
+                try{const account=form.elements.account.value,bank=form.elements.bank.value;
+                    const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(bank+"|"+account));
+                    const recipientFingerprint=[...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,"0")).join("");
+                    const result=await api(`/api/billing/orders/${code}/refund-requests`,{method:"POST",headers:{"Idempotency-Key":key},body:{amountVnd:previewed,reason:form.elements.reason.value,recipientFingerprint,recipientMask:bank+" · ••••"+account.slice(-4)}});
+                    form.innerHTML=`<p role="status">Đã gửi hồ sơ hỗ trợ ${escape(result.ticket_id??result.id)}. Bạn có thể theo dõi tại mục Hỗ trợ.</p>`;
+                }catch(e){form.querySelector("[data-error]").textContent=e.message;button.disabled=false;}
+            };
         }
         await render();
         const code = new URLSearchParams(location.search).get("orderCode");

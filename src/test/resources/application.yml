@@ -11,6 +11,9 @@ management:
     export:
       enabled: false
 spring:
+  jackson:
+    deserialization:
+      accept-float-as-int: false
   datasource:
     url: jdbc:h2:mem:dictalabtest;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
     username: sa
@@ -25,6 +28,11 @@ spring:
     locations: classpath:db/migration,classpath:db/vendor/{vendor}
 
 dictalab:
+  payment-operations:
+    worker-enabled: false
+    reconcile-enabled: false
+    dispatch-delay-ms: 600000
+    reconcile-delay-ms: 600000
   ai:
     budget:
       enabled: false

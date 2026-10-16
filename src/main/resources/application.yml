@@ -1,4 +1,7 @@
 spring:
+  jackson:
+    deserialization:
+      accept-float-as-int: false
   application:
     name: dictalab
   datasource:
@@ -145,6 +148,16 @@ management:
         include: health,info,prometheus,metrics
 
 dictalab:
+  payment-operations:
+    checkout-enabled: ${PAYMENT_CHECKOUT_ENABLED:true}
+    intake-enabled: ${PAYMENT_INTAKE_ENABLED:true}
+    worker-enabled: ${PAYMENT_WORKER_ENABLED:true}
+    reconcile-enabled: ${PAYMENT_RECONCILE_ENABLED:true}
+    refunds-enabled: ${PAYMENT_REFUNDS_ENABLED:false}
+    partial-refunds-enabled: ${PAYMENT_PARTIAL_REFUNDS_ENABLED:false}
+    encryption-key: ${PAYMENT_ENCRYPTION_KEY:}
+    bootstrap-email: ${PAYMENT_BOOTSTRAP_EMAIL:}
+    policy-version: ${PAYMENT_POLICY_VERSION:MANUAL_REVIEW_V1}
   billing:
     enabled: ${DICTALAB_BILLING_ENABLED:false}
     price-vnd: ${DICTALAB_PREMIUM_PRICE_VND:49000}

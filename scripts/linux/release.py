@@ -14,6 +14,8 @@ import subprocess
 import tempfile
 import time
 import urllib.request
+import zipfile
+import importlib.util
 
 APP = pathlib.Path('/opt/dictalab/app/dictalab.jar')
 ENV = pathlib.Path('/etc/dictalab/app.env')
@@ -47,6 +49,24 @@ def wait_ready():
             return
         time.sleep(3)
     raise RuntimeError('Release readiness deadline exceeded')
+
+
+def rollback_safe(previous, candidate):
+    marker = 'BOOT-INF/classes/com/dictalab/service/PaymentOperations.class'
+    def understands_payments(path):
+        if not zipfile.is_zipfile(path):
+            return False
+        with zipfile.ZipFile(path) as archive:
+            return marker in archive.namelist()
+    if understands_payments(previous) or not understands_payments(candidate):
+        return True
+    spec = importlib.util.spec_from_file_location('payment_release_database', TOOLS / 'migrate-audio-s3.py')
+    storage = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(storage)
+    exists = storage.database("SELECT to_regclass('public.ledger_journals') IS NOT NULL;").strip()
+    if exists == 'f':
+        return True
+    return storage.database('SELECT count(*) FROM ledger_journals;').strip() == '0'
 
 
 def replace(source, destination):
@@ -102,6 +122,15 @@ def activate(candidate, expected):
         run(['systemctl', 'start', 'dictalab'])
         wait_ready()
     except Exception:
+        if switched:
+            # Stop the new writer before evaluating rollback compatibility or changing its JAR.
+            run(['systemctl', 'stop', 'dictalab'])
+            try:
+                compatible = rollback_safe(backup / 'dictalab.jar', candidate)
+            except Exception:
+                compatible = False
+            if not compatible:
+                raise RuntimeError('Release needs forward repair: financial writes exist or could not be ruled out; new artifact retained, service stopped, backup preserved') from None
         try:
             if switched:
                 replace(backup / 'dictalab.jar', APP)

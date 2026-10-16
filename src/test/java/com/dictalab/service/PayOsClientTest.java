@@ -65,4 +65,29 @@ class PayOsClientTest {
         signature=HexFormat.of().formatHex(independent.doFinal(canonical.getBytes(StandardCharsets.UTF_8)));
         assertThat(client.validSignature(payload,signature)).isTrue();
     }
+    @Test void fakeHttpProviderBoundsResponsesAndHonorsRetryAfterWithoutRetryingCreate() throws Exception {
+        var calls=new java.util.concurrent.atomic.AtomicInteger();
+        var server=com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/v2/payment-requests",exchange->{
+            calls.incrementAndGet();exchange.getResponseHeaders().add("Retry-After","9999");exchange.sendResponseHeaders(429,-1);exchange.close();
+        });server.start();
+        try {
+            var client=new PayOsClient(config,json,java.net.URI.create("http://127.0.0.1:"+server.getAddress().getPort()));
+            assertThatThrownBy(()->client.create(123,49000,1900000000)).isInstanceOfSatisfying(PayOsClient.RateLimited.class,e->assertThat(e.retryAfter()).isEqualTo(900));
+            assertThat(calls).hasValue(1);
+        }finally{server.stop(0);}
+    }
+    @Test void fakeHttpProviderRejectsInvalidSignatureMalformedAndOversizedBodies() throws Exception {
+        var body=new java.util.concurrent.atomic.AtomicReference<>("{\"code\":\"00\",\"data\":{},\"signature\":\""+"0".repeat(64)+"\"}");
+        var status=new java.util.concurrent.atomic.AtomicInteger(200);
+        var server=com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/v2/payment-requests",exchange->{byte[] bytes=body.get().getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(status.get(),bytes.length);try(var out=exchange.getResponseBody()){out.write(bytes);}catch(java.io.IOException closed){}finally{exchange.close();}});server.start();
+        try {
+            var client=new PayOsClient(config,json,java.net.URI.create("http://127.0.0.1:"+server.getAddress().getPort()));
+            for(String invalid:java.util.List.of(body.get(),"not-json","[]","null","x".repeat(140000))) {
+                body.set(invalid);assertThatThrownBy(()->client.lookup(123)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+            }
+            status.set(503);body.set("unavailable");assertThatThrownBy(()->client.lookup(123)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        }finally{server.stop(0);}
+    }
 }

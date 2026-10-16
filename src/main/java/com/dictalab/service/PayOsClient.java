@@ -24,9 +24,12 @@ import java.util.stream.Collectors;
 public class PayOsClient {
     private final BillingProperties config;
     private final ObjectMapper json;
+    private final URI origin;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
-    public PayOsClient(BillingProperties config, ObjectMapper json) { this.config=config; this.json=json; }
+    @org.springframework.beans.factory.annotation.Autowired
+    public PayOsClient(BillingProperties config, ObjectMapper json) { this(config,json,URI.create("https://api-merchant.payos.vn")); }
+    PayOsClient(BillingProperties config,ObjectMapper json,URI origin) { this.config=config;this.json=json;this.origin=origin; }
 
     public JsonNode create(long code, int amount, long expiresAt) {
         if (!config.enabled()) throw unavailable();
@@ -44,17 +47,24 @@ public class PayOsClient {
 
     private JsonNode request(String method, String path, String body) {
         if (!config.enabled()) throw unavailable();
-        var request = HttpRequest.newBuilder(URI.create("https://api-merchant.payos.vn" + path))
+        var request = HttpRequest.newBuilder(origin.resolve(path))
                 .timeout(Duration.ofSeconds(12)).header("x-client-id", config.clientId())
                 .header("x-api-key", config.apiKey()).header("Content-Type", "application/json")
                 .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body)).build();
         try {
             var response = http.send(request, ignored -> BoundedProviderBody.bytes(128 * 1024));
+            if(response.statusCode()==429) {
+                int delay=60;
+                try { delay=Math.max(1,Math.min(900,Integer.parseInt(response.headers().firstValue("Retry-After").orElse("60")))); }
+                catch(NumberFormatException ignored) {}
+                throw new RateLimited(delay);
+            }
             if (response.statusCode() != 200) throw unavailable();
             var payload = json.readTree(response.body());
             if (!"00".equals(payload.path("code").asText()) || !validSignature(payload.path("data"), payload.path("signature").asText()))
                 throw unavailable();
             return payload.path("data");
+        } catch (RateLimited limited) { throw limited;
         } catch (InterruptedException failure) {
             Thread.currentThread().interrupt(); throw unavailable();
         } catch (Exception failure) { throw unavailable(); }
@@ -100,5 +110,10 @@ public class PayOsClient {
     static ResponseStatusException unavailable() {
         return new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                 "Chưa thể kết nối payOS. Đơn hàng được giữ lại; vui lòng kiểm tra lại trước khi tạo đơn mới.");
+    }
+    public static class RateLimited extends ResponseStatusException {
+        private final int retryAfter;
+        public RateLimited(int retryAfter) { super(HttpStatus.SERVICE_UNAVAILABLE,"PAYMENT_PROVIDER_RATE_LIMITED");this.retryAfter=retryAfter; }
+        public int retryAfter() { return retryAfter; }
     }
 }

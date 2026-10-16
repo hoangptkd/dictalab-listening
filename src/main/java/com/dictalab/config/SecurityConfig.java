@@ -94,7 +94,7 @@ public class SecurityConfig {
                             if (path.equals("/api/billing/payos/webhook")) return null;
                             // Public auth endpoints must work when an expired access cookie is still present.
                             if (path.startsWith("/api/auth/") && !path.equals("/api/auth/me")) return null;
-                            if (!path.startsWith("/api/") && !path.startsWith("/admin")
+                            if (!path.startsWith("/api/") && !path.startsWith("/admin") && !path.startsWith("/payments")
                                     && !path.startsWith("/media/")
                                     && !path.startsWith("/private-media/") && !path.startsWith("/ws/")) return null;
                             try { return JwtTokenService.cookie(request, JwtTokenService.ACCESS_COOKIE); }
@@ -165,6 +165,7 @@ public class SecurityConfig {
                                 "/dashboard",
                                 "/rooms", "/rooms/*", "/rooms/join/*"
                         ).permitAll()
+                        .requestMatchers("/payments", "/payments.html", "/api/admin/payments/**").authenticated()
                         .requestMatchers("/admin", "/admin/**", "/admin.html").hasRole("ADMIN")
                         // Private media — chỉ ADMIN
                         .requestMatchers("/private-media/**").hasRole("ADMIN")

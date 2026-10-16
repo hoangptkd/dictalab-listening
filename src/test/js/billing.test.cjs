@@ -18,6 +18,7 @@ function harness(api, search = '') {
     const redirects = [];
     const window = {DictaLabListeningBridge: {api}};
     vm.runInNewContext(source, {window, document: {createElement: () => section}, URL, URLSearchParams,
+        crypto:require('node:crypto').webcrypto,sessionStorage:(()=>{const data=new Map();return {getItem:k=>data.get(k),setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k)};})(),
         Intl, Date, location: {search, assign: value => redirects.push(value)}});
     return {mount: () => window.DictaLabBilling.mount(root), section, handlers, buy, status, redirects};
 }

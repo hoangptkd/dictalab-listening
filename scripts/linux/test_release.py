@@ -101,6 +101,18 @@ class ReleaseTest(unittest.TestCase):
         self.assertEqual(b'new-artifact', self.app.read_bytes())
         self.assertTrue(pathlib.Path(result['rollbackDirectory']).is_dir())
 
+    def test_financial_writer_never_rolls_back_to_an_incompatible_jar(self):
+        with patch.object(release, 'health', return_value=True), \
+             patch.object(release, 'run', side_effect=lambda cmd: self.calls.append(cmd)), \
+             patch.object(release, 'replace', side_effect=self.replace), \
+             patch.object(release, 'wait_ready', side_effect=RuntimeError('not ready')), \
+             patch.object(release, 'rollback_safe', return_value=False):
+            with self.assertRaisesRegex(RuntimeError, 'forward repair'):
+                release.activate(self.candidate, release.digest(self.candidate))
+        self.assertEqual(b'new-artifact', self.app.read_bytes())
+        self.assertEqual(['systemctl', 'stop', 'dictalab'], self.calls[-1])
+        self.assertTrue(any(self.backups.iterdir()))
+
 
 if __name__ == '__main__':
     unittest.main()

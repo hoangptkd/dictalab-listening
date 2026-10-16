@@ -91,7 +91,8 @@ class BillingIntegrationTest {
                 .content(json.writeValueAsString(event(code,49000,"wrong","ref")))).andExpect(status().isUnauthorized());
         acceptSignature();
         mvc.perform(post("/api/billing/payos/webhook").contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(event(code,1,"wrong","ref")))).andExpect(status().isBadRequest());
+                .content(json.writeValueAsString(event(code,1,"wrong","ref")))).andExpect(status().isOk());
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM reconciliation_cases WHERE order_code=?",Integer.class,code)).isEqualTo(1);
         assertThat(access.status(user.getId()).get("premium")).isEqualTo(false);
         mvc.perform(post("/api/billing/orders").with(user(principal))).andExpect(status().isForbidden());
         mvc.perform(get("/api/billing/status")).andExpect(status().isUnauthorized());
@@ -139,7 +140,8 @@ class BillingIntegrationTest {
         assertThatThrownBy(()->billing.create(user.getId())).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
         verify(payos,times(1)).create(anyLong(),eq(49000),anyLong());
         long code=((Number)billing.orders(user.getId()).get(0).get("orderCode")).longValue();
-        when(payos.lookup(code)).thenReturn(json.valueToTree(Map.of("orderCode",code,"amount",49000,"amountPaid",49000,"status","PAID","id","recovered"+code)));
+        when(payos.lookup(code)).thenReturn(json.valueToTree(Map.of("orderCode",code,"amount",49000,"amountPaid",49000,"status","PAID","id","recovered"+code,
+                "transactions",java.util.List.of(Map.of("amount",49000,"reference","recover-ref-"+code)))));
         assertThat(billing.check(user.getId(),code).get("status")).isEqualTo("PAID");
         assertThat(access.status(user.getId()).get("premium")).isEqualTo(true);
     }

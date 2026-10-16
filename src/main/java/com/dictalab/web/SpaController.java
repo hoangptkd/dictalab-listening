@@ -18,6 +18,8 @@ public class SpaController {
 
     private static final String INDEX = "forward:/index.html";
     private static final String ADMIN = "forward:/admin.html";
+    @GetMapping("/payments")
+    public String payments() { return "forward:/payments.html"; }
 
     @GetMapping({"/privacy","/terms","/help"})
     public String policies() { return "forward:/policies.html"; }

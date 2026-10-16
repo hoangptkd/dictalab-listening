@@ -30,7 +30,10 @@ public class BillingController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(billing.orders(user.id()));
     }
     @PostMapping("/api/billing/orders")
-    public Map<String,Object> create(@AuthenticationPrincipal DictaLabPrincipal user) { return billing.create(user.id()); }
+    public Map<String,Object> create(@AuthenticationPrincipal DictaLabPrincipal user,
+            @RequestHeader(value="Idempotency-Key",required=false) String key,@RequestBody(required=false) JsonNode body) {
+        return billing.create(user.id(),key,body==null?"{}":json.writeValueAsString(body));
+    }
     @PostMapping("/api/billing/orders/{code}/check")
     public Map<String,Object> check(@AuthenticationPrincipal DictaLabPrincipal user,@PathVariable long code) {
         return billing.check(user.id(),code);

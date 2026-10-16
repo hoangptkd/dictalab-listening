@@ -26,6 +26,9 @@ const required = {
     ApiExceptionHandlerTest: 10,
     MessagingLifecycleConfigTest: 1,
     RestoreIsolationIntegrationTest: 7,
+    PaymentOperationsIntegrationTest: 18,
+    PaymentRestoreIntegrationTest: 1,
+    BillingIntegrationTest: 7,
 };
 
 function parseReport(xml) {
