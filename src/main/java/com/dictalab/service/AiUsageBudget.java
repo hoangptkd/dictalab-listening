@@ -79,5 +79,10 @@ public class AiUsageBudget {
         });
     }
 
-    private ProviderGuard.Unavailable rejected(String message) { return new ProviderGuard.Unavailable(message,60,false); }
+    /** Only server-authored budget messages may reach the learner without being generalized. */
+    public static final class Rejected extends ProviderGuard.Unavailable {
+        public Rejected(String message) { super(message,60,false); }
+    }
+
+    private Rejected rejected(String message) { return new Rejected(message); }
 }

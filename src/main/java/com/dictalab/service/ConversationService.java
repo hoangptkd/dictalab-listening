@@ -326,6 +326,7 @@ public class ConversationService {
             JsonNode prompt = row.state.remove("nextPrompt");
             if (prompt != null) {
                 try { validateNextPrompt(row, prompt); reviewPrompt(row, prompt); }
+                catch (AiUsageBudget.Rejected budgetFailure) { throw budgetFailure; }
                 catch (RuntimeException invalidCachedPrompt) { prompt = null; }
             }
             if (prompt == null) prompt = turns.isEmpty() && row.state.path("curatedStarter").asBoolean()
@@ -333,6 +334,7 @@ public class ConversationService {
             validateNextPrompt(row, prompt);
             addTurn(row, prompt);
             commit(row, lease);
+        } catch (AiUsageBudget.Rejected e) { release(row.id, lease); logFailure("next",e); throw e;
         } catch (ResponseStatusException e) { release(row.id, lease); throw e;
         } catch (RuntimeException e) { release(row.id, lease); logFailure("next", e); unavailable("AI chưa tạo được câu nghe. Bạn có thể thử lại trên phiên này."); }
         warmAudio(row, turns(row).size(), "original");
@@ -378,6 +380,7 @@ public class ConversationService {
             turn.put("done", captured || attempts.size() >= 3);
             if (turns(row).size() == 4 && turn.path("done").asBoolean()) row.state.put("completed", true);
             commit(row, lease);
+        } catch (AiUsageBudget.Rejected e) { release(row.id, lease); logFailure("grade",e); throw e;
         } catch (ResponseStatusException e) { release(row.id, lease); throw e;
         } catch (RuntimeException e) { release(row.id, lease); logFailure("grade",e); unavailable("Chưa chấm được. Câu trả lời đã được lưu; hãy thử chấm lại."); }
         return get(userId, id);
@@ -427,6 +430,7 @@ public class ConversationService {
                 turn.set("clarification", clarification);
             }
             commit(row, lease);
+        } catch (AiUsageBudget.Rejected e) { release(row.id, lease); logFailure("clarify",e); throw e;
         } catch (RuntimeException e) { release(row.id, lease); logFailure("clarify",e); unavailable("Chưa tạo được hỗ trợ. Hãy thử lại."); }
         if (kind.equals("clarify")) warmAudio(row, turns(row).size(), "clarify");
         return get(userId, id);
@@ -557,6 +561,7 @@ public class ConversationService {
                 validateNextPrompt(row, prompt);
                 reviewPrompt(row, prompt, row.state.path("curatedStarter").asBoolean() ? deadline : 0);
                 return prompt;
+            } catch (AiUsageBudget.Rejected budgetFailure) { throw budgetFailure;
             } catch (IllegalStateException invalidPrompt) {
                 if (attempt == 1) throw invalidPrompt;
                 // One bounded repair of rejected output; do not retry network failures.
@@ -582,6 +587,7 @@ public class ConversationService {
             String input = json.writeValueAsString(Map.of("prompt", prompt, "context", promptContext(row)));
             review = deadline == 0 ? ai.completeJson(REVIEW_INSTRUCTION, input, config.generationModel())
                     : ai.completeJson(REVIEW_INSTRUCTION, input, config.generationModel(), remaining(deadline));
+        } catch (AiUsageBudget.Rejected budgetFailure) { logFailure("review",budgetFailure); throw budgetFailure;
         } catch (RuntimeException providerFailure) {
             logFailure("review", providerFailure);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "AI chưa kiểm tra được câu nghe. Hãy thử lại.");

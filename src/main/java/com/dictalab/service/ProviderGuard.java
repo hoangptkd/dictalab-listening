@@ -78,7 +78,7 @@ public final class ProviderGuard {
         }
     }
 
-    public static final class Unavailable extends IllegalStateException {
+    public static class Unavailable extends IllegalStateException {
         private final int retryAfter;
         private final boolean retrySafe;
         public Unavailable(String message,int retryAfter){this(message,retryAfter,false);}

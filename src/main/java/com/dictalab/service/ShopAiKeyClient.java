@@ -41,6 +41,7 @@ public class ShopAiKeyClient {
 
     static String reason(RuntimeException failure) {
         if (failure instanceof Failure provider) return provider.reason();
+        if (failure instanceof AiUsageBudget.Rejected) return "BUDGET_REJECTED";
         if (failure instanceof ProviderGuard.Unavailable) return "ADMISSION_OR_RATE_LIMIT";
         return "VALIDATION_OR_INTERNAL";
     }

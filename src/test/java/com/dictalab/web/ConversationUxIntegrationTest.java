@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -25,6 +26,7 @@ class ConversationUxIntegrationTest {
     @Autowired ObjectMapper json;
     @MockitoBean ShopAiKeyClient ai;
     @MockitoBean CartesiaClient tts;
+    @MockitoSpyBean AiUsageBudget budget;
     long owner;
     long user() { return users.saveAndFlush(new AppUser("ux-" + UUID.randomUUID() + "@test.local", "Learner", "unused", Instant.now())).getId(); }
     @BeforeEach void setup() {
@@ -83,6 +85,24 @@ class ConversationUxIntegrationTest {
         assertThat(summary.path("warmupFacts").asInt()).isEqualTo(2);
         service.play(owner,id,1,"original",false); service.play(owner,id,1,"original",false);
         assertThat(service.get(owner,id).path("summary").path("firstAttemptFacts").asInt()).isZero();
+    }
+    @Test void exhaustedBudgetExplainsWhyAndPreservesTheSessionAndPendingAnswer() {
+        String message="Đã đạt giới hạn AI trong ngày. Bạn vẫn có thể luyện dictation.";
+        String id=service.create(owner,"hotel","A2").path("id").asText(); service.next(owner,id,0);
+        service.help(owner,id,1,"review");
+        doThrow(new AiUsageBudget.Rejected(message)).when(budget).reserve(owner,false);
+        assertThatThrownBy(() -> service.next(owner,id,1)).isInstanceOfSatisfying(AiUsageBudget.Rejected.class,
+                e -> assertThat(e.getMessage()).isEqualTo(message));
+        assertThat(service.get(owner,id).path("turnNumber").asInt()).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?",String.class,id)).isNull();
+        String pending=service.create(owner,"hotel","A2").path("id").asText(); service.next(owner,pending,0);
+        assertThatThrownBy(() -> service.answer(owner,pending,1,UUID.randomUUID(),"Phòng tám"))
+                .isInstanceOf(AiUsageBudget.Rejected.class);
+        assertThat(service.get(owner,pending).path("turns").path(0).path("attempts").path(0).path("answerVi").asText())
+                .isEqualTo("Phòng tám");
+        assertThatThrownBy(() -> service.help(owner,pending,1,"clarify")).isInstanceOf(AiUsageBudget.Rejected.class);
+        verify(ai,never()).completeJson(anyString(),anyString());
+        verify(ai,never()).completeJson(anyString(),anyString(),anyString(),any());
     }
     @Test void followupRepairsContradictionsWithoutLosingEstablishedContext() {
         String id=service.create(owner,"hotel","A2").path("id").asText(); service.next(owner,id,0);
