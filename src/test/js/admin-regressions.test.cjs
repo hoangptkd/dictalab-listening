@@ -35,6 +35,19 @@ test('submit works for a browser implicit submit button and restores it after fa
     await handler({preventDefault(){},submitter:button});
     assert.equal(called,true);assert.equal(button.disabled,false);
 });
+
+test('submit respects the form disabled state after a successful save', async () => {
+    const code = source('account.js');
+    const submit = vm.runInNewContext(code.slice(code.indexOf('    const submit ='), code.indexOf('    function showPublic(')) + '\nsubmit', {
+        status() {}, FormData: class { entries() { return []; } }
+    });
+    let handler, saved = false;
+    const button = {disabled: false};
+    const form = {addEventListener(_event, fn) { handler = fn; }, closest() { return {}; }, hasAttribute() { return false; }};
+    submit(form, async () => { saved = true; }, () => saved);
+    await handler({preventDefault() {}, submitter: button});
+    assert.equal(button.disabled, true);
+});
 test('saved fields stop being dirty while other edited fields survive a rerender',()=>{
     let allow=false;
     const nodes=()=>({dataset:{adminDirty:'lesson'},isConnected:true,closest(){return null;},fields:[{name:'title',value:'Original'},{name:'description',value:'Original description'},{name:'checked',type:'checkbox',checked:false}],querySelectorAll(){return this.fields;}});

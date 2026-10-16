@@ -1,7 +1,154 @@
 diff --git a/index.js b/index.js
+index cbf7652..cba54ea 100644
 --- a/index.js
 +++ b/index.js
-@@ -866,10 +866,7 @@ async function getPromptInput(
+@@ -75,6 +75,16 @@ const CHROME_PATH =
+   process.env.CHROME_PATH ||
+   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+ 
++// Chrome runtime settings. Keep the same persistent profile in both modes.
++for (const name of ["CHROME_HEADLESS", "BRIDGE_DEBUG"]) {
++  if (process.env[name] !== undefined && !["true", "false"].includes(process.env[name])) {
++    throw new Error(`${name} must be true or false.`);
++  }
++}
++const CHROME_HEADLESS = process.env.CHROME_HEADLESS === "true";
++const BRIDGE_DEBUG = process.env.BRIDGE_DEBUG === "true";
++// End Chrome runtime settings.
++
+ /* =========================================================
+    INITIALISATION
+ ========================================================= */
+@@ -117,6 +127,38 @@ let chromeProcess = null;
+ let shuttingDown = false;
+ 
+ const conversationPages = new Map();
++const pageLastUsed = new Map();
++const MAX_CONVERSATION_TABS = 4;
++const TAB_IDLE_MS = 10 * 60 * 1000;
++
++async function closeConversationPage(id) {
++  const page = conversationPages.get(id);
++  if (page && !page.isClosed()) await page.close();
++  conversationPages.delete(id);
++  pageLastUsed.delete(id);
++}
++
++async function trimConversationPages(limit = MAX_CONVERSATION_TABS, keepId = null) {
++  for (const [id, page] of conversationPages) {
++    if (id !== keepId && (page.isClosed() || Date.now() - (pageLastUsed.get(id) || 0) >= TAB_IDLE_MS)) {
++      await closeConversationPage(id);
++    }
++  }
++  for (const [id] of [...pageLastUsed].sort((a, b) => a[1] - b[1])) {
++    if (conversationPages.size <= limit) break;
++    if (id !== keepId) await closeConversationPage(id);
++  }
++}
++
++// Run cleanup in the same queue as prompts, so an active response is never closed.
++let tabCleanupPending = false;
++const tabCleanupTimer = setInterval(() => {
++  if (shuttingDown || tabCleanupPending) return;
++  tabCleanupPending = true;
++  withQueue(() => trimConversationPages()).catch(error => console.error("[TAB CLEANUP]", error.message))
++    .finally(() => { tabCleanupPending = false; });
++}, 60000);
++tabCleanupTimer.unref();
+ 
+ let queue = Promise.resolve();
+ 
+@@ -240,7 +282,7 @@ async function startChrome() {
+   if (
+     await isChromeRunning()
+   ) {
+-    console.log("Chrome CDP already available.");
++    if (BRIDGE_DEBUG) console.log("Chrome CDP already available; launch settings apply on Chrome restart.");
+ 
+     return;
+   }
+@@ -259,17 +301,20 @@ async function startChrome() {
+     );
+   }
+ 
++  const chromeArgs = [
++    `--remote-debugging-port=${CDP_PORT}`,
++    "--remote-debugging-address=127.0.0.1",
++    `--user-data-dir=${PROFILE_DIR}`,
++    "--no-first-run",
++    "--no-default-browser-check",
++    "--disable-backgrounding-occluded-windows",
++    ...(CHROME_HEADLESS ? ["--headless"] : []),
++    CHATGPT_URL
++  ];
+   chromeProcess =
+     spawn(
+       CHROME_PATH,
+-      [
+-        `--remote-debugging-port=${CDP_PORT}`,
+-        `--user-data-dir=${PROFILE_DIR}`,
+-        "--no-first-run",
+-        "--no-default-browser-check",
+-        "--disable-backgrounding-occluded-windows",
+-        CHATGPT_URL
+-      ],
++      chromeArgs,
+       {
+         detached: false,
+         stdio: [
+@@ -300,7 +345,7 @@ async function startChrome() {
+   }
+ 
+   console.log(
+-    "Chrome started."
++    `Chrome started (${CHROME_HEADLESS ? "headless" : "visible"}); managed tabs=${MAX_CONVERSATION_TABS}, idle=${TAB_IDLE_MS}ms.`
+   );
+ 
+   console.log(
+@@ -311,7 +356,7 @@ async function startChrome() {
+ async function connectToChrome() {
+   await startChrome();
+ 
+-  if (browser) {
++  if (browser && browser.isConnected()) {
+     try {
+       const contexts =
+         browser.contexts();
+@@ -346,6 +391,16 @@ async function connectToChrome() {
+     );
+   }
+ 
++  // Recover managed tabs when Node restarts while Chrome keeps running.
++  conversationPages.clear();
++  pageLastUsed.clear();
++  for (const conversation of Object.values(loadConversations())) {
++    const page = conversation.url && contexts[0].pages().find(candidate => candidate.url() === conversation.url);
++    if (page) {
++      conversationPages.set(conversation.id, page);
++      pageLastUsed.set(conversation.id, Date.now());
++    }
++  }
+   return contexts[0];
+ }
+ 
+@@ -738,6 +793,8 @@ async function getConversationPage(
+   const context =
+     await connectToChrome();
+ 
++  await trimConversationPages(MAX_CONVERSATION_TABS, conversation.id);
++  pageLastUsed.set(conversation.id, Date.now());
+   let page =
+     conversationPages.get(
+       conversation.id
+@@ -803,6 +860,7 @@ async function getConversationPage(
+     !page
+   ) {
+ 
++    await trimConversationPages(MAX_CONVERSATION_TABS - 1, conversation.id);
+     page =
+       await context.newPage();
+ 
+@@ -866,10 +924,7 @@ async function getPromptInput(
  ) {
  
    const selectors = [
@@ -13,7 +160,7 @@ diff --git a/index.js b/index.js
    ];
  
    const deadline =
-@@ -891,7 +888,7 @@ async function getPromptInput(
+@@ -891,7 +946,7 @@ async function getPromptInput(
  
          if (
            await locator.count() >
@@ -22,7 +169,7 @@ diff --git a/index.js b/index.js
          ) {
  
            return locator;
-@@ -914,10 +911,13 @@ async function getPromptInput(
+@@ -914,10 +969,13 @@ async function getPromptInput(
  async function getAssistantMessages(
    page
  ) {
@@ -37,19 +184,201 @@ diff --git a/index.js b/index.js
  
    const count =
      await locator.count();
-@@ -1049,9 +1049,12 @@ async function submitPrompt(
-     150
-   );
+@@ -1037,21 +1095,30 @@ async function submitPrompt(
+     );
+   } catch {}
  
+-  await input.fill(
+-    prompt,
+-    {
+-      force:
+-        true
++  // A freshly loaded composer may hydrate after fill and erase the draft.
++  // Retry only before sending, after confirming that no prompt remains.
++  await page.waitForTimeout(2000);
++  for (let attempt = 0; attempt < 3; attempt++) {
++    // Native typing updates ProseMirror state; fill can leave only a DOM draft
++    // which the next React render removes.
++    await input.click();
++    await input.press('ControlOrMeta+A');
++    await page.keyboard.insertText(prompt);
++    await page.waitForTimeout(1000);
++    const entered = await input.evaluate(element => element.value ?? element.innerText ?? '');
++    const normalize = value => value.replace(/\s+/g, ' ').trim();
++    if (normalize(entered) !== normalize(prompt)) continue;
++    const send = page.getByRole('button', { name: /^(Send|Envoyer|Gửi)$/ }).first();
++    if (await send.count() > 0) {
++      if (!await send.isEnabled()) continue;
++      await send.click({ timeout: 5000 });
++      return;
++    } else {
++      await input.press("Enter");
++      return;
+     }
+-  );
+-
+-  await page.waitForTimeout(
+-    150
+-  );
+-
 -  await page.keyboard.press(
 -    "Enter"
 -  );
-+  const send = page.getByRole('button', { name: /^(Send|Envoyer|Gửi)$/ }).first();
-+  if (await send.count() > 0) {
-+    await send.click({ timeout: 10000 });
-+  } else {
-+    await input.press("Enter");
 +  }
++  throw new Error('ChatGPT composer did not retain the prompt.');
  
  }
  
+@@ -1131,7 +1198,7 @@ async function waitForResponse(
+           stableSince =
+             Date.now();
+ 
+-          console.log(
++          if (BRIDGE_DEBUG) console.log(
+             `[WAIT] Response: ${text.length} caractères`
+           );
+         }
+@@ -1218,7 +1285,7 @@ async function streamResponse(
+         page
+       );
+ 
+-    console.log(
++    if (BRIDGE_DEBUG) console.log(
+       `[STREAM DEBUG] assistant=${snapshot.count} before=${snapshotBefore.count} last=${snapshot.last?.text?.length || 0}`
+     );
+ 
+@@ -1277,7 +1344,7 @@ async function streamResponse(
+           lastChangeAt =
+             Date.now();
+ 
+-          console.log(
++          if (BRIDGE_DEBUG) console.log(
+             `[STREAM] delta ${delta.length} caractères`
+           );
+ 
+@@ -1299,7 +1366,7 @@ async function streamResponse(
+         lastChangeAt =
+           Date.now();
+ 
+-        console.log(
++        if (BRIDGE_DEBUG) console.log(
+           `[STREAM] premier morceau ${current.length} caractères`
+         );
+ 
+@@ -1312,7 +1379,7 @@ async function streamResponse(
+        * Réécriture du DOM.
+        */
+       else {
+-        console.log(
++        if (BRIDGE_DEBUG) console.log(
+           `[STREAM DEBUG] texte non-prefixe : ${accumulated.length} -> ${current.length}`
+         );
+ 
+@@ -1357,7 +1424,7 @@ async function streamResponse(
+           if (
+             delta
+           ) {
+-            console.log(
++            if (BRIDGE_DEBUG) console.log(
+               `[STREAM] delta complémentaire ${delta.length} caractères`
+             );
+ 
+@@ -1380,7 +1447,7 @@ async function streamResponse(
+         page
+       );
+ 
+-    console.log(
++    if (BRIDGE_DEBUG) console.log(
+       `[STREAM DEBUG] generating=${generating}`
+     );
+ 
+@@ -1681,8 +1748,24 @@ function buildPrompt(
+ 
+ function resolveConversation(
+   conversationId,
+-  chatgptId
++  chatgptId,
++  sessionId
+ ) {
++  if (sessionId !== undefined) {
++    if (typeof sessionId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)
++        || conversationId || chatgptId) {
++      const error = new Error("Invalid session_id or conflicting conversation identifiers.");
++      error.status = 400;
++      throw error;
++    }
++    const id = `session:${sessionId.toLowerCase()}`;
++    const existing = getConversation(id);
++    if (existing) return existing;
++    const conversation = createConversationRecord();
++    conversation.id = id;
++    updateConversation(conversation);
++    return conversation;
++  }
+   if (
+     conversationId
+   ) {
+@@ -2024,6 +2107,18 @@ app.get(
+    CHAT COMPLETIONS
+ ========================================================= */
+ 
++app.post("/v1/sessions/:sessionId/close", async (req, res) => {
++  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.sessionId)) {
++    return res.status(400).json({success: false});
++  }
++  try {
++    await withQueue(() => closeConversationPage(`session:${req.params.sessionId.toLowerCase()}`));
++    res.json({success: true});
++  } catch (error) {
++    res.status(500).json({success: false});
++  }
++});
++
+ app.post(
+   "/v1/chat/completions",
+   async (
+@@ -2047,6 +2142,8 @@ app.post(
+ 
+       chatgpt_id,
+ 
++      session_id,
++
+       stream_options
+     } =
+       req.body || {};
+@@ -2088,7 +2185,8 @@ app.post(
+       conversation =
+         resolveConversation(
+           conversation_id,
+-          chatgpt_id
++          chatgpt_id,
++          session_id
+         );
+ 
+       const {
+@@ -2530,7 +2628,7 @@ app.post(
+ 
+           if (
+             conversation.message_count ===
+-            0
++            0 && session_id === undefined
+           ) {
+             deleteConversationRecord(
+               conversation.id
+@@ -2615,7 +2713,7 @@ app.post(
+       if (
+         conversation &&
+         conversation.message_count ===
+-          0
++          0 && session_id === undefined
+       ) {
+         deleteConversationRecord(
+           conversation.id
+@@ -3072,6 +3170,7 @@ async function shutdown(
+ 
+   shuttingDown =
+     true;
++  clearInterval(tabCleanupTimer);
+ 
+   console.log(
+     `\n${signal} reçu.`

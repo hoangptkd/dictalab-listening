@@ -1,4 +1,6 @@
-# Hồ sơ dự án DictaLab — dùng để đánh giá portfolio/CV
+# Hồ sơ portfolio DictaLab — bản lịch sử
+
+> **Bản này đã được thay thế về hiện trạng hệ thống.** Hãy tải [docs/current-system-reference.md](docs/current-system-reference.md) lên ChatGPT để nhận mô tả đầy đủ cập nhật 02/10/2026. Nội dung bên dưới được giữ làm hồ sơ portfolio trước đây; địa chỉ production, module AI/Listening, API, kiểm thử và một số mô tả thuật toán đã lỗi thời. Không dùng phần dưới như nguồn hiện trạng khi khác tài liệu mới.
 
 ## 1. Tóm tắt dự án
 

@@ -1,0 +1,86 @@
+--- before/app.css
++++ src/main/resources/static/css/app.css
+@@ -4525,7 +4525,7 @@
+ 
+ .pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 1rem; margin-block: 1.5rem; }
+ .pagination button { min-height: 44px; }
+-.pagination button:disabled { opacity: .5; cursor: default; }
++.pagination button:disabled, .account-pager button:disabled { opacity: .5; cursor: default; }
+ .pagination [role="status"] { color: var(--ink-soft); }
+ .listening-grid > .listening-card {
+     display: grid;
+--- before/fidelity.css
++++ src/main/resources/static/css/fidelity.css
+@@ -142,15 +142,21 @@
+ .lesson-preview-heading strong { font-size: 12px; text-transform: uppercase; }
+ .lesson-preview-heading small { font: 10px/15px var(--mono); color: var(--ink-soft); }
+ .catalog-library .pagination { padding: 16px 8px; border-top: 1px solid var(--line); margin-top: 20px; font-size: 12px; }
+-body[data-route="catalog"] .site-header { min-height: 58px; background: var(--paper); }
+-body[data-route="catalog"] .brand strong { font-size: 18px; }
+-body[data-route="catalog"] .brand-mark { background: var(--lime); color: var(--ink); }
+-body[data-route="catalog"] .main-nav { gap: 4px; }
+-body[data-route="catalog"] .nav-group { gap: 0; }
+-body[data-route="catalog"] .nav-group + .nav-group { border: 0; padding: 0; }
+-body[data-route="catalog"] .main-nav .nav-link { font-size: 12px; padding: 6px 12px; min-height: 28px; border-radius: 100px; }
+-body[data-route="catalog"] .main-nav .nav-link.is-active { color: var(--cream); background: var(--ink); }
+-body[data-route="catalog"] .main-nav .nav-link::after { display: none; }
++@media (min-width: 761px) {
++    body[data-route="catalog"] .site-header { --body: "Source Sans 3", "Segoe UI", sans-serif; --cream: #fff; --line: #c2c8c7; padding-inline: max(24px,calc((100vw - 1280px)/2 + 24px)); }
++    body[data-route="catalog"] .main-nav .nav-link { padding-inline: 0; }
++}
++@media (max-width: 760px) {
++    body[data-route="catalog"] .site-header { min-height: 58px; background: var(--paper); }
++    body[data-route="catalog"] .brand strong { font-size: 18px; }
++    body[data-route="catalog"] .brand-mark { background: var(--lime); color: var(--ink); }
++    body[data-route="catalog"] .main-nav { gap: 4px; }
++    body[data-route="catalog"] .nav-group { gap: 0; }
++    body[data-route="catalog"] .nav-group + .nav-group { border: 0; padding: 0; }
++    body[data-route="catalog"] .main-nav .nav-link { font-size: 12px; padding: 6px 12px; min-height: 28px; border-radius: 100px; }
++    body[data-route="catalog"] .main-nav .nav-link.is-active { color: var(--cream); background: var(--ink); }
++    body[data-route="catalog"] .main-nav .nav-link::after { display: none; }
++}
+ 
+ /* Listening and typing workspaces. */
+ #practice-view { max-width: 1280px; margin-block: 0; padding-bottom: 0; animation: none; transform: none; position: relative; }
+@@ -434,6 +440,9 @@
+ .conversation-session-main .conversation-reply h2 { font: 700 12px/18px var(--body); text-transform: uppercase; margin: 0 0 12px; }
+ .conversation-session-main .conversation-reply label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+ .conversation-setup { grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 32px; margin-top: 32px; }
++@media (min-width: 761px) {
++    .conversation-setup > .conversation-recent { margin-block: 0; }
++}
+ .conversation-workspace { gap: 32px; }
+ .conversation-card { padding: 24px; border-color: var(--line); }
+ .conversation-card h2 { font: 500 24px/30px var(--display); }
+@@ -573,9 +582,9 @@
+     body[data-route="admin-users"] .admin-shell .account-page { padding: 24px 40px 24px 0; }
+     body[data-route="admin-listening"] .admin-shell { grid-template-columns: 256px minmax(0,1fr); }
+     body[data-route="admin-listening"] .admin-shell .account-page { padding: 40px; }
+-    body[data-route="admin-support"] .admin-shell { grid-template-columns: 256px minmax(0,1fr); }
++    body[data-route="admin-support"] .admin-shell { grid-template-columns: 256px minmax(0,1fr); grid-template-rows: 64px minmax(0,1fr); }
+     body[data-route="admin-support"] .admin-shell > .admin-sidebar { grid-row: 1 / -1; height: 100dvh; top: 0; }
+-    body[data-route="admin-support"] .admin-topbar { grid-column: 2; min-height: 64px; padding-inline: 40px; }
++    body[data-route="admin-support"] .admin-topbar { grid-column: 2; min-height: 64px; height: 64px; align-self: start; padding-inline: 40px; }
+     body[data-route="admin-support"] .admin-shell .account-page { padding: 24px 40px; }
+     body[data-route="admin"] .admin-hero { padding: 40px 48px 0; }
+ }
+@@ -656,6 +665,8 @@
+ .admin-form-grid small { font-size: 11px; }
+ .admin-view:has(#admin-editor-content:not([hidden])) .admin-metadata legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+ .admin-view:has(#admin-editor-content:not([hidden])) .admin-form-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; }
++.admin-view:has(#admin-editor-content:not([hidden])) .admin-form-grid > label { align-content: start; }
++.admin-view:has(#admin-editor-content:not([hidden])) .admin-form-grid > label :is(input,select) { height: 44px; }
+ .admin-metadata:first-child .admin-form-grid > label:nth-child(-n+4) { grid-column: span 2; }
+ .admin-metadata:nth-child(2) .admin-form-grid > label { grid-column: span 2; }
+ .admin-metadata:nth-child(2) .admin-form-grid > .admin-field-wide { grid-column: 1 / -1; }
+@@ -678,6 +689,10 @@
+ .admin-usage-summary #admin-usage > label select { width: auto; min-height: 36px; font-size: 12px; }
+ .admin-usage-summary [data-usage-result] > p { font: 11px var(--mono); margin: 0 0 20px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+ .admin-records { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 24px; align-items: start; }
++body[data-route="admin-users"] .admin-records:has(.admin-detail > .admin-empty:only-child) { grid-template-columns: minmax(0,1fr); }
++body[data-route="admin-users"] .admin-records:has(.admin-detail > .admin-empty:only-child) > .admin-detail { border: 0; padding: 0; background: transparent; }
++body[data-route="admin-users"] .admin-records:has(.admin-detail > .admin-empty:only-child) .admin-detail .admin-empty { padding: 12px 16px; }
++body[data-route="admin-users"] .admin-table td:last-child a { white-space: nowrap; }
+ .admin-master, .admin-detail { min-width: 0; }
+ .admin-detail { border: 2px solid var(--ink); border-radius: 12px; padding: 20px; background: var(--paper); }
+ .admin-detail .admin-panel { padding: 16px; margin: 16px 0 0; }

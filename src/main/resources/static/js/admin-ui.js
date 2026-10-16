@@ -48,7 +48,8 @@
     }
     function url(params, replace = false) {
         const url = new URL(location.href);
-        url.search = new URLSearchParams(Object.entries(params).filter(([,v]) => v !== "" && v != null)).toString();
+        url.search = new URLSearchParams(Object.entries(params).filter(([k,v]) => v != null
+            && (v !== "" || (k === "status" && url.pathname === "/admin/support")))).toString();
         history[replace ? "replaceState" : "pushState"]({}, "", url);
         rememberUrl();
     }

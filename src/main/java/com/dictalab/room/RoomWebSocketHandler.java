@@ -25,7 +25,7 @@ import com.dictalab.security.DictaLabPrincipal;
  * WebSocket handler cho phòng gọi thoại.
  *
  * Luồng chính:
- *  1. Handshake: xác thực session, kiểm tra roomId và quyền thành viên.
+ *  1. Handshake: xác thực JWT cookie, kiểm tra roomId và quyền thành viên.
  *  2. Khi cả hai thành viên kết nối WS: gửi signal "peer-joined" cho mỗi bên.
  *  3. Relay message (offer/answer/ice-candidate/ready/mic-state) chỉ giữa hai thành viên cùng phòng.
  *  4. Disconnect: ghi nhận, giữ chỗ 60s; peer nhận "peer-disconnected".
@@ -48,11 +48,14 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
 
     /** Các message type được phép relay giữa hai peer */
     private static final Set<String> RELAY_TYPES = Set.of(
-            "offer", "answer", "ice-candidate", "ready", "mic-state", "renegotiate", "draft", "call-ready"
+            "offer", "answer", "ice-candidate", "ready", "mic-state", "renegotiate", "draft", "call-ready",
+            "audio-ready", "lesson-play", "lesson-played"
     );
 
     private final RoomRegistry registry;
     private final ObjectMapper objectMapper;
+    private final com.dictalab.repository.AppUserRepository users;
+    private final com.dictalab.security.JwtTokenService tokens;
 
     /** roomId → (userId → WebSocketSession) */
     private final ConcurrentHashMap<String, ConcurrentHashMap<Long, WebSocketSession>> roomSessions
@@ -61,9 +64,51 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
     /** sessionId → rate limiter (simple token bucket) */
     private final ConcurrentHashMap<String, RateLimiter> rateLimiters = new ConcurrentHashMap<>();
 
-    public RoomWebSocketHandler(RoomRegistry registry, ObjectMapper objectMapper) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public RoomWebSocketHandler(RoomRegistry registry, ObjectMapper objectMapper,
+                                com.dictalab.repository.AppUserRepository users,
+                                com.dictalab.security.JwtTokenService tokens) {
         this.registry = registry;
         this.objectMapper = objectMapper;
+        this.users = users;
+        this.tokens = tokens;
+    }
+
+    public RoomWebSocketHandler(RoomRegistry registry, ObjectMapper objectMapper,
+                                com.dictalab.repository.AppUserRepository users) {
+        this(registry, objectMapper, users, null);
+    }
+
+    public RoomWebSocketHandler(RoomRegistry registry, ObjectMapper objectMapper) {
+        this(registry,objectMapper,null);
+    }
+
+    private boolean accountValid(WebSocketSession session) {
+        var principal=extractPrincipal(session);
+        return principal!=null && (tokens==null || tokens.active(principal)) && (users==null || users.findById(principal.id())
+                .filter(current -> current.isEnabled() && current.getAuthVersion()==principal.authVersion()
+                        && current.getEmail().equals(principal.email()) && current.getRole().equals(principal.role())).isPresent());
+    }
+
+    /** Idle sockets must also stop accepting signals after expiry, logout or account revocation. */
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 20000)
+    public void checkAuthentication() {
+        for (var peers : roomSessions.values()) for (var session : peers.values()) {
+            if (!session.isOpen()) continue;
+            try {
+                if (!accountValid(session)) closeWithError(session, "Phiên đăng nhập không còn hợp lệ.");
+            } catch (RuntimeException unavailable) {
+                closeWithError(session, "Không thể kiểm tra phiên đăng nhập. Vui lòng kết nối lại.");
+            }
+        }
+    }
+
+    public void roomChanged(String roomId) {
+        var sessions=roomSessions.get(roomId);
+        if(sessions==null)return;
+        for(var session:sessions.values()) if(session.isOpen()) {
+            sendJson(session,buildSignal("room-changed",Map.of()));
+        }
     }
 
     // ----------------------------------------------------------------------- lifecycle
@@ -71,7 +116,7 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         DictaLabPrincipal principal = extractPrincipal(session);
-        if (principal == null) {
+        if (principal == null || !accountValid(session)) {
             closeWithError(session, "Phiên đăng nhập không hợp lệ.");
             return;
         }
@@ -145,6 +190,7 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
         Long userId = (Long) session.getAttributes().get("userId");
         String roomId = (String) session.getAttributes().get("roomId");
         if (userId == null || roomId == null) return;
+        if (roomSessions.getOrDefault(roomId, new ConcurrentHashMap<>()).get(userId) != session) return;
 
         // Rate limiting
         RateLimiter limiter = rateLimiters.get(session.getId());
@@ -169,6 +215,23 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
 
         String type = json.path("type").asText("");
 
+        CallRoom room = registry.findById(roomId).orElse(null);
+        if (room == null || room.isClosed() || !room.isMember(userId)) {
+            closeWithError(session, "Phòng đã đóng hoặc bạn không còn là thành viên.");
+            return;
+        }
+        // A live WebSocket outlasts HTTP authentication; revalidate on heartbeat, at most every 20s.
+        long now=System.nanoTime();
+        Long checked=(Long)session.getAttributes().get("accountCheckedAt");
+        if (checked==null || now-checked>java.time.Duration.ofSeconds(20).toNanos()) {
+            try {
+                if(!accountValid(session)) { closeWithError(session,"Phiên đăng nhập không còn hợp lệ."); return; }
+            } catch (RuntimeException unavailable) {
+                closeWithError(session, "Không thể kiểm tra phiên đăng nhập. Vui lòng kết nối lại."); return;
+            }
+            session.getAttributes().put("accountCheckedAt",now);
+        }
+
         // Ping/pong — không relay
         if ("ping".equals(type)) {
             sendJson(session, buildSignal("pong", Map.of()));
@@ -182,13 +245,27 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
         }
 
         // Kiểm tra membership vẫn hợp lệ
-        CallRoom room = registry.findById(roomId).orElse(null);
-        if (room == null || room.isClosed() || !room.isMember(userId)) {
-            closeWithError(session, "Phòng đã đóng hoặc bạn không còn là thành viên.");
-            return;
-        }
         if (room.getStatus() != RoomStatus.ACTIVE) {
             sendJson(session, buildSignal("error", Map.of("message", "Phòng chưa kích hoạt.")));
+            return;
+        }
+
+        if (Set.of("audio-ready", "lesson-play", "lesson-played").contains(type)) {
+            WebSocketSession peer = findPeer(roomId, userId);
+            if ("lesson-play".equals(type) && (peer == null || !peer.isOpen())) {
+                sendJson(session, buildSignal("error", Map.of("message", "Bạn học chưa kết nối. Hãy chờ kết nối lại.")));
+                return;
+            }
+            var playback = registry.updatePlayback(roomId, userId, type, json.path("position").asInt(-1),
+                    json.path("sequence").asLong(-1), json.path("speed").asDouble(0),
+                    json.path("ready").asBoolean(false));
+            if (playback == null) {
+                sendJson(session, buildSignal("error", Map.of("message", "Chưa thể phát chung. Cả hai cần bật nghe và chờ lượt trước kết thúc.")));
+                return;
+            }
+            String signal = buildSignal("lesson-audio", Map.of("playback", playback, "serverNow", Instant.now().toString()));
+            sendJson(session, signal);
+            if (peer != null && peer.isOpen()) sendJson(peer, signal);
             return;
         }
 

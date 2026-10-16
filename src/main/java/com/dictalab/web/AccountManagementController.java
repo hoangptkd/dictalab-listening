@@ -6,6 +6,8 @@ import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.AccountManagementService;
 import com.dictalab.service.AdminQueryService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import com.dictalab.security.JwtTokenService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -22,17 +24,18 @@ import java.util.Map;
 public class AccountManagementController {
     private final AccountManagementService service;
     private final AdminQueryService queries;
-    public AccountManagementController(AccountManagementService service, AdminQueryService queries) { this.service = service; this.queries=queries; }
+    private final JwtTokenService tokens;
+    public AccountManagementController(AccountManagementService service, AdminQueryService queries, JwtTokenService tokens) {
+        this.service = service; this.queries=queries; this.tokens=tokens;
+    }
 
     public record Name(@NotBlank @Size(min = 2, max = 80) String displayName) {}
     public record Password(@NotBlank String currentPassword,
-                           @NotBlank @Size(min = 8, max = 72)
-                           @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d).+$") String newPassword) {}
+                           @com.dictalab.dto.PasswordPolicy String newPassword) {}
     public record EmailRequest(@NotBlank @Email @Size(max = 160) String email) {}
     public record EmailChange(@NotBlank @Email @Size(max = 160) String email, @NotBlank String password) {}
     public record TokenRequest(@NotBlank @Size(max = 128) String token) {}
-    public record Reset(@NotBlank @Size(max = 128) String token, @NotBlank @Size(min = 8, max = 72)
-                        @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d).+$") String password) {}
+    public record Reset(@NotBlank @Size(max = 128) String token, @com.dictalab.dto.PasswordPolicy String password) {}
     public record AccountView(long id, String email, String displayName, String role,
                               boolean enabled, boolean emailVerified, java.time.Instant createdAt,
                               java.time.Instant lastLoginAt) {
@@ -45,6 +48,26 @@ public class AccountManagementController {
     public record State(boolean enabled, @NotBlank @Size(max = 500) String reason) {}
     public record Role(@NotBlank @Pattern(regexp = "USER|ADMIN") String role) {}
     public record Revoke(@NotBlank @Size(max=500) String reason) {}
+    @GetMapping("/api/admin/usage")
+    public AdminQueryService.Usage usage(@RequestParam(defaultValue="30") int days) {
+        return queries.usage(days);
+    }
+
+    @GetMapping(value="/api/admin/usage/export", produces="text/csv;charset=UTF-8")
+    public org.springframework.http.ResponseEntity<String> exportUsage(@RequestParam(defaultValue="30") int days) {
+        var data = queries.usage(days);
+        String csv = "\uFEFFChỉ số,Giá trị,Từ thời điểm,Đến thời điểm\r\n"
+                + "Tài khoản hiện có," + data.registeredUsers() + ",," + data.to() + "\r\n"
+                + "Tài khoản đăng ký mới," + data.newUsers() + "," + data.from() + "," + data.to() + "\r\n"
+                + "Buổi chép chính tả cá nhân hoàn thành," + data.completedDictationSessions() + "," + data.from() + "," + data.to() + "\r\n"
+                + "Phút chép chính tả cá nhân," + data.dictationMinutes() + "," + data.from() + "," + data.to() + "\r\n"
+                + "Buổi nghe hiểu hoàn thành," + data.completedListeningSessions() + "," + data.from() + "," + data.to() + "\r\n"
+                + "Phiên hội thoại được tạo," + data.conversationSessions() + "," + data.from() + "," + data.to() + "\r\n";
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"dictalab-usage-" + days + "-days.csv\"")
+                .header("Cache-Control", "no-store").body(csv);
+    }
+
     @GetMapping("/api/admin/users/page")
     public AdminQueryService.Page page(@RequestParam(defaultValue="") String q, @RequestParam(defaultValue="") String role,
             @RequestParam(required=false) Boolean enabled, @RequestParam(required=false) Boolean verified,
@@ -67,16 +90,16 @@ public class AccountManagementController {
     @PostMapping("/api/account/password")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void password(@AuthenticationPrincipal DictaLabPrincipal user, @Valid @RequestBody Password body,
-                         HttpServletRequest request) {
+                         HttpServletResponse response) {
         service.changePassword(user.id(), body.currentPassword(), body.newPassword());
-        request.getSession(false).invalidate();
+        tokens.clearCookies(response);
     }
 
     @PostMapping("/api/account/logout-all")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void logoutAll(@AuthenticationPrincipal DictaLabPrincipal user, HttpServletRequest request) {
+    public void logoutAll(@AuthenticationPrincipal DictaLabPrincipal user, HttpServletResponse response) {
         service.revokeSessions(user.id());
-        request.getSession(false).invalidate();
+        tokens.clearCookies(response);
     }
 
     @PostMapping("/api/account/email/verification")

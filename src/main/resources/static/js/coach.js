@@ -2,8 +2,11 @@
     "use strict";
     const root = document.querySelector("#coach-panel");
     if (!root) return;
+    const resultParent = root.parentNode, resultNext = root.nextSibling;
+    const coachStatus = root.querySelector("#coach-status") || document.querySelector("#coach-status");
+    const statusParent = coachStatus.parentNode, statusNext = coachStatus.nextSibling;
     const bridge = window.DictaLabListeningBridge;
-    const $ = selector => root.querySelector(selector);
+    const $ = selector => selector === "#coach-status" ? coachStatus : root.querySelector(selector);
     const escape = value => String(value ?? "").replace(/[&<>"']/g, char => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
     }[char]));
@@ -17,13 +20,21 @@
         sessionId = null;
         report = null;
         bank = [];
+        learningBank = [];
         drill = [];
         saved.clear();
         bridge.stopRecordedAudio();
+        $("#coach-bank-items").innerHTML = "";
+        $("#coach-practice").innerHTML = "";
     }
 
     async function show(result) {
         leave();
+        if (resultParent && root.parentNode !== resultParent) resultParent.insertBefore(root, resultNext);
+        if (statusParent && coachStatus.parentNode !== statusParent) statusParent.insertBefore(coachStatus, statusNext);
+        $("#coach-insights").hidden = false;
+        const smartReview = $(".smart-review");
+        if (smartReview) smartReview.hidden = false;
         sessionId = result.sessionId;
         const current = generation;
         $("#coach-insights").innerHTML = "";
@@ -37,7 +48,8 @@
             const data = await bridge.api(`/api/v1/practice-sessions/${encodeURIComponent(sessionId)}/coach`);
             if (current !== generation) return;
             render(data);
-            if (data.aiEnabled && data.source !== "AI" && data.reviewItems.length) await generate(current);
+            if (data.source === "QUEUED") await pollReport(current, sessionId);
+            else if (data.aiEnabled && data.source === "RULES" && data.reviewItems.length) await generate(current);
         } catch (error) {
             if (current !== generation) return;
             $("#coach-status").textContent = "Kết quả đã lưu. Chưa tải được Coach; bạn vẫn có thể xem Phân tích chi tiết.";
@@ -53,11 +65,37 @@
             const data = await bridge.api(`/api/v1/practice-sessions/${encodeURIComponent(id)}/coach`, {method: "POST"});
             if (current !== generation) return;
             render(data);
+            $("#coach-insights").removeAttribute("aria-busy");
+            if (data.source === "QUEUED") await pollReport(current, id);
         } catch (error) {
             if (current !== generation) return;
             $("#coach-status").textContent = "AI chưa sẵn sàng. Các gợi ý hiện tại dựa trên lỗi đã ghi nhận.";
         } finally {
             if (current === generation) $("#coach-insights").removeAttribute("aria-busy");
+        }
+    }
+
+    async function pollReport(current, id) {
+        // Read-only polling never repeats a paid AI request. Leaving the session cancels updates.
+        for (let attempt = 0; attempt < 90; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            if (current !== generation || id !== sessionId) return;
+            let data;
+            try {
+                data = await bridge.api(`/api/v1/practice-sessions/${encodeURIComponent(id)}/coach`);
+            } catch (error) {
+                if (current === generation && id === sessionId) {
+                    $("#coach-status").textContent = "Chưa cập nhật được báo cáo. Các gợi ý hiện tại vẫn dùng được; hãy tải lại Coach sau.";
+                    $("#coach-insights").insertAdjacentHTML("beforeend", '<button class="text-button" type="button" data-coach-reload>Tải lại Coach</button>');
+                }
+                return;
+            }
+            if (current !== generation || id !== sessionId) return;
+            if (data.source !== "QUEUED") { render(data); return; }
+        }
+        if (current === generation) {
+            $("#coach-status").textContent = "Báo cáo vẫn đang chờ. Bạn có thể luyện ngay và tải lại Coach sau.";
+            $("#coach-insights").insertAdjacentHTML("beforeend", '<button class="text-button" type="button" data-coach-reload>Tải lại Coach</button>');
         }
     }
 
@@ -70,6 +108,9 @@
     function render(data) {
         report = data;
         $("#coach-status").textContent = data.source === "AI" ? "AI Coach · gợi ý từ buổi luyện của bạn"
+            : data.source === "QUEUED" ? "AI đang chuẩn bị báo cáo. Bạn có thể luyện các lỗi đã chọn ngay."
+            : data.source === "RETRY_REQUIRED" ? "Chưa xác nhận được báo cáo AI. Hệ thống không tự gọi lại; bạn có thể chủ động thử lại."
+            : data.source === "EXHAUSTED" ? "Đã hết lượt thử AI cho buổi này. Bạn vẫn có thể luyện các lỗi đã ghi nhận."
             : data.source === "BUSY" ? "AI đang bận. Bạn có thể luyện các lỗi đã chọn và thử AI sau."
                 : data.source === "UNAVAILABLE" ? "AI chưa sẵn sàng. Gợi ý dưới đây dựa trên lỗi đã ghi nhận."
                     : "Gợi ý từ lỗi đã ghi nhận trong buổi luyện.";
@@ -90,9 +131,10 @@
                 ${actions.length > 1 ? `<details><summary>Thêm ${actions.length - 1} cách luyện</summary><ul>${actions.slice(1).map(action => `
                     <li>${escape(action.instruction)} <button class="text-button" type="button" data-coach-practice="${escape(action.pattern)}">Bắt đầu</button></li>`).join("")}</ul></details>` : ""}
             </section>` : ""}
-            ${["BUSY", "UNAVAILABLE"].includes(data.source) ? '<button class="text-button" type="button" data-coach-retry>Thử AI lại</button>' : ""}`;
+            ${["BUSY", "UNAVAILABLE", "RETRY_REQUIRED"].includes(data.source) ? '<button class="text-button" type="button" data-coach-retry>Thử AI lại</button>' : ""}`;
         $("#smart-review-count").textContent = data.reviewItems.length ? `${data.reviewItems.length} lỗi ưu tiên · không cần ôn lại tất cả` : "Không có lỗi cần ưu tiên";
-        $("#smart-review-items").innerHTML = data.reviewItems.map(item => itemCard(item, sessionId)).join("");
+        $("#smart-review-items").innerHTML = data.reviewItems.slice(0, 3).map(item => itemCard(item, sessionId)).join("")
+            + (data.reviewItems.length > 3 ? `<details class="ui-disclosure smart-review-more"><summary>Xem thêm ${data.reviewItems.length - 3} điểm cần ôn</summary>${data.reviewItems.slice(3).map(item => itemCard(item, sessionId)).join("")}</details>` : "");
     }
 
     function itemCard(item, sourceSession, inBank = false) {
@@ -118,7 +160,13 @@
         button.disabled = true;
         const text = button.textContent;
         button.textContent = "Đang phát…";
-        try { await bridge.playRecordedAudio(item.audioUrl, item.audioStartSeconds, item.audioEndSeconds); }
+        try {
+            await bridge.playRecordedAudio(item.audioUrl, item.audioStartSeconds, item.audioEndSeconds);
+            if (item.reviewId && current === generation) {
+                await bridge.api(`/api/v1/listening-learning/reviews/${encodeURIComponent(item.reviewId)}/played`, {method: "POST"});
+                item.played = true;
+            }
+        }
         catch (error) {
             if (current === generation && error.name !== "AbortError") bridge.showToast(error.message, true);
         } finally {
@@ -142,10 +190,11 @@
         panel.hidden = false;
         const tokens = /[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu;
         let index = 0;
-        const masked = item.transcript.replace(tokens, word => index++ === item.wordIndex ? "_____" : word);
+        const masked = item.reviewId ? item.prompt : item.transcript.replace(tokens, word => index++ === item.wordIndex ? "_____" : word);
         panel.innerHTML = `<div class="coach-section-heading"><h2>Luyện ${drillIndex + 1}/${drill.length} · ${escape(item.label)}</h2>
             <button type="button" class="text-button" data-coach-close>Đóng bài luyện</button></div>
             <p>Nghe cả câu, rồi điền từ còn thiếu. Bài ôn này không thay đổi điểm đã lưu.</p>
+            ${item.reviewId ? `<p>${item.newContext ? "Audio khác · kiểm tra nghe trong ngữ cảnh mới." : "Audio ôn lại · không dùng để kết luận khả năng nghe ngữ cảnh mới."}</p>` : ""}
             <p class="coach-drill-context" lang="en">${escape(masked)}</p>
             <button class="text-button" type="button" data-drill-listen>▶ Nghe câu</button>
             <form id="coach-drill-form"><label for="coach-drill-answer">Từ bạn nghe được</label>
@@ -156,11 +205,50 @@
             <button class="text-button" type="button" data-drill-next hidden>${drillIndex + 1 < drill.length ? "Câu tiếp theo →" : "Hoàn tất lượt ôn"}</button>`;
         panel.scrollIntoView({block: "center", behavior: "auto"});
         $("[data-drill-listen]").focus({preventScroll: true});
+        if (item.result) renderReviewResult(item.result);
     }
 
-    root.addEventListener("submit", event => {
+    function pendingReview(value) {
+        const user = bridge.currentUser?.()?.id;
+        if (!user) return null;
+        const key = `dictalab.review.${user}`;
+        try {
+            if (value === null) sessionStorage.removeItem(key);
+            else if (value !== undefined) sessionStorage.setItem(key, JSON.stringify(value));
+            return JSON.parse(sessionStorage.getItem(key) || "null");
+        } catch (_) { return null; }
+    }
+
+    function renderReviewResult(result) {
+        $("#coach-drill-feedback").textContent = `${result.correct ? "Đúng rồi." : "Đáp án: " + result.expected + "."} Lần ôn tiếp: ${new Date(result.dueAt).toLocaleString("vi-VN")}.`;
+        $("#coach-drill-answer").disabled = true;
+        $("[data-drill-next]").hidden = false;
+    }
+
+    async function submitReview(reveal = false) {
+        const current = generation, item = drill[drillIndex];
+        if (!item.played) { $("#coach-drill-feedback").textContent = "Hãy nghe hết audio trước khi nộp."; return; }
+        if (item.submitting || item.result) return;
+        item.submitting = true;
+        // Preserve an uncertain submission, including reveal, until its committed outcome is recovered.
+        item.pendingAnswer ||= {answer: reveal ? "" : $("#coach-drill-answer").value, reveal};
+        pendingReview({id: item.reviewId, body: item.pendingAnswer});
+        try {
+            const result = await bridge.api(`/api/v1/listening-learning/reviews/${encodeURIComponent(item.reviewId)}/answer`,
+                {method: "POST", body: item.pendingAnswer});
+            if (current !== generation) return;
+            item.result = result;
+            pendingReview(null); renderReviewResult(result);
+        } catch (error) {
+            if (current === generation) $("#coach-drill-feedback").textContent = error.message + " Nộp lại để xác nhận kết quả; lịch ôn không bị ghi trùng.";
+            if (error.status && error.status < 500) { item.pendingAnswer = null; pendingReview(null); }
+        } finally { item.submitting = false; }
+    }
+
+    root.addEventListener("submit", async event => {
         if (event.target.id !== "coach-drill-form") return;
         event.preventDefault();
+        if (drill[drillIndex].reviewId) { await submitReview(); return; }
         const input = $("#coach-drill-answer");
         const correct = normalize(input.value) === normalize(drill[drillIndex].expected);
         input.setAttribute("aria-invalid", String(!correct));
@@ -172,6 +260,38 @@
     root.addEventListener("click", async event => {
         const button = event.target.closest("button");
         if (!button || button.disabled) return;
+        if (button.hasAttribute("data-spaced-review")) {
+            button.disabled = true;
+            const current = generation;
+            try {
+                const pending = pendingReview();
+                if (pending) {
+                    const state = await bridge.api(`/api/v1/listening-learning/reviews/${encodeURIComponent(pending.id)}`);
+                    if (current !== generation) return;
+                    drill = [{...state.challenge, reviewId: pending.id, label: "Khôi phục lượt ôn", result: state.result, pendingAnswer: pending.body}];
+                    drillIndex = 0; renderDrill();
+                    if (state.result) pendingReview(null);
+                    return;
+                }
+                const items = await bridge.api("/api/v1/listening-learning/reviews", {method: "POST"});
+                if (current !== generation) return;
+                if (!items.length) { bridge.showToast("Chưa có câu ôn đến hạn có audio phù hợp."); return; }
+                drill = items.map(item => ({...item, reviewId: item.id, label: "Ôn nghe cách quãng"}));
+                drillIndex = 0; renderDrill();
+            } catch (error) {
+                if (current === generation) {
+                    if (error.status === 404) pendingReview(null);
+                    bridge.showToast(error.message, true);
+                }
+            }
+            finally { button.disabled = false; }
+            return;
+        }
+        if (button.hasAttribute("data-learning-listen")) {
+            const item = learningBank.find(item => String(item.id) === button.dataset.learningListen);
+            if (item) await listen({audioUrl:item.audio_url,audioStartSeconds:item.audio_start_seconds,audioEndSeconds:item.audio_end_seconds},button);
+            return;
+        }
         if (button.hasAttribute("data-coach-reload")) { if (sessionId) await show({sessionId}); return; }
         if (button.hasAttribute("data-coach-retry")) {
             button.disabled = true;
@@ -187,6 +307,7 @@
         }
         if (button.hasAttribute("data-drill-listen")) { await listen(drill[drillIndex], button); return; }
         if (button.hasAttribute("data-drill-reveal")) {
+            if (drill[drillIndex].reviewId) { await submitReview(true); return; }
             $("#coach-drill-feedback").textContent = `Đáp án: ${drill[drillIndex].expected}. Nghe lại rồi đọc theo cả câu.`;
             $("[data-drill-next]").hidden = false; return;
         }
@@ -226,6 +347,18 @@
         }
     });
 
+    let learningBank = [];
+    async function openBank(target) {
+        leave();
+        target.appendChild(root);
+        root.prepend(coachStatus);
+        $("#coach-status").textContent = "Kho lỗi nghe cá nhân · Ôn từ đến hạn";
+        $("#coach-insights").hidden = true;
+        $(".smart-review").hidden = true;
+        $("#coach-practice").hidden = true;
+        $("#coach-error-bank").open = true;
+        await loadBank();
+    }
     async function loadBank() {
         const current = generation;
         $("#coach-bank-items").textContent = "Đang tải lỗi đã lưu…";
@@ -240,6 +373,31 @@
         } catch (error) {
             if (current === generation) $("#coach-bank-items").textContent = "Chưa tải được Error Bank. Đóng rồi mở lại để thử.";
         }
+        if (current === generation) await loadAutomaticBank(current);
+    }
+    async function loadAutomaticBank(current) {
+        try {
+            const data = await bridge.api("/api/v1/listening-learning");
+            if (current !== generation) return;
+            learningBank = data.items;
+            const observations = {NO_ANSWER: "Chưa nhập trước khi xem đáp án · chưa rõ nguyên nhân",
+                SPELLING: "Khác biệt chữ viết · chưa đủ dữ liệu kết luận lỗi chính tả",
+                SUBSTITUTION: "Nhập từ khác", WORD_FORM: "Khác dạng từ", WORD_ORDER: "Từ ở vị trí khác", OMISSION: "Đáp án trống"};
+            const content = `<h3>Kho lỗi tự động</h3><p>${data.due} từ đến hạn ôn.${data.pending ? ` ${data.pending} câu đang chờ tổng hợp; bài làm đã lưu.` : ""}</p>
+                ${data.failed ? `<p role="status">${data.failed} câu chưa tổng hợp được. Kết quả bài làm vẫn được giữ; hệ thống cần phục hồi tác vụ phụ.</p>` : ""}
+                <button type="button" class="primary-button" data-spaced-review ${data.due || pendingReview() ? "" : "disabled"}>${pendingReview() ? "Khôi phục lượt ôn vừa gửi" : "Ôn nghe hôm nay"}</button>
+                ${data.targets.slice(0, 10).map(target => `<p><strong lang="en">${escape(target.target)}</strong> · ${target.errors} lần cần ôn; ${target.comparable_opportunities} cơ hội nghe đầu độc lập đã ghi nhận.</p>`).join("")}
+                ${(data.progress || []).filter(card => card.completed_reviews > 0).slice(0,10).map(card => `<p><strong lang="en">${escape(card.target)}</strong> · ${card.completed_reviews} lượt ôn đã lưu; mức lịch ôn ${card.stage}/4. Lần tiếp: ${new Date(card.due_at).toLocaleString("vi-VN")}. Đây là lịch ôn, không phải chứng nhận năng lực.</p>`).join("")}
+                ${data.items.length ? data.items.map(item => `<article class="smart-review-item">
+                    <p>${escape(observations[item.observation] || "Khác đáp án")}${item.possible_pattern ? " · Cấu trúc có thể cần chú ý, chưa xác nhận nguyên nhân nghe sai" : ""}</p>
+                    ${item.learner_reported_error_type ? `<p>Bạn tự đánh giá: ${item.learner_reported_error_type === "UNKNOWN" ? "chưa biết từ" : "biết nhưng nghe lỡ"} · không phải kết luận tự động.</p>` : ""}
+                    <div class="coach-answer-pair"><div><span>Lần nhập đầu</span><p lang="en">${escape(item.heard || "Chưa nhập")}</p></div><div><span>Đáp án</span><p lang="en">${escape(item.expected)}</p></div></div>
+                    <p lang="en">${escape(item.transcript)}</p>${item.audio_url ? `<button type="button" class="text-button" data-learning-listen="${escape(item.id)}">▶ Nghe câu gốc</button>` : "<p>Chưa có audio.</p>"}</article>`).join("") : "<p>Chưa có lỗi tự động. Hoàn thành một câu luyện để ghi nhận.</p>"}`;
+            $("#coach-bank-items").insertAdjacentHTML("afterbegin", content);
+        } catch (error) {
+            if (current === generation && error.status !== 503)
+                $("#coach-bank-items").insertAdjacentHTML("afterbegin", "<p role=\"status\">Chưa tải được kho tự động. Đóng rồi mở lại để thử; lỗi lưu thủ công vẫn dùng được.</p>");
+        }
     }
     function refreshSavedButtons() {
         root.querySelectorAll("[data-coach-save]").forEach(button => {
@@ -251,5 +409,5 @@
         });
     }
     $("#coach-error-bank").addEventListener("toggle", () => { if ($("#coach-error-bank").open && sessionId) loadBank(); });
-    window.DictaLabCoach = {show, leave};
+    window.DictaLabCoach = {show, leave, openBank};
 })();

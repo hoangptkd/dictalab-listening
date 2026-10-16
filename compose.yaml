@@ -17,5 +17,44 @@ services:
       timeout: 3s
       retries: 20
 
+  redis:
+    profiles: [messaging]
+    image: redis:8.10.2-alpine
+    container_name: dictalab-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    mem_limit: 256m
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-16379}:6379"
+    volumes:
+      - dictalab_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    profiles: [messaging]
+    image: rabbitmq:4.3.6-management-alpine
+    container_name: dictalab-rabbitmq
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-dictalab}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-change-this-local-rabbit-password}
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT:-15672}:5672"
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-25672}:15672"
+    volumes:
+      - dictalab_rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
 volumes:
   dictalab_postgres_data:
+  dictalab_redis_data:
+  dictalab_rabbitmq_data:

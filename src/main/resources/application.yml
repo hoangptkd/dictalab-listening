@@ -6,6 +6,37 @@ spring:
     username: ${DB_USERNAME:dictalab_app}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      connection-timeout: ${DB_POOL_WAIT_MS:3000}
+      validation-timeout: 1000
+      # Bounds SQL/lock waits (not just pool acquisition). PostgreSQL sessions, including Flyway.
+      connection-init-sql: ${DB_SESSION_INIT_SQL:SET statement_timeout=15000; SET lock_timeout=3000; SET idle_in_transaction_session_timeout=60000}
+  data:
+    redis:
+      url: ${REDIS_URL:}
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:16379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 500ms
+      connect-timeout: 500ms
+      repositories:
+        enabled: false
+  rabbitmq:
+    addresses: ${RABBITMQ_URL:}
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:15672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    connection-timeout: 3s
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        default-requeue-rejected: false
+        prefetch: 1
   jpa:
     open-in-view: false
     hibernate:
@@ -16,7 +47,13 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations: classpath:db/migration,classpath:db/vendor/{vendor}
+  task:
+    scheduling:
+      pool:
+        size: 4
+  lifecycle:
+    timeout-per-shutdown-phase: 75s
   servlet:
     multipart:
       max-file-size: 25MB
@@ -29,9 +66,25 @@ spring:
     properties:
       mail.smtp.auth: ${SMTP_AUTH:true}
       mail.smtp.starttls.enable: ${SMTP_STARTTLS:true}
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
 
 server:
+  forward-headers-strategy: native
   port: ${PORT:18081}
+  shutdown: graceful
+  compression:
+    enabled: true
+    min-response-size: 1024
+  tomcat:
+    remoteip:
+      internal-proxies: '127\.0\.0\.1|0:0:0:0:0:0:0:1|::1'
+    threads:
+      max: ${HTTP_THREADS:100}
+      min-spare: 10
+    max-connections: ${HTTP_MAX_CONNECTIONS:4096}
+    accept-count: 100
   servlet:
     session:
       timeout: 12h
@@ -44,24 +97,126 @@ server:
     include-stacktrace: never
 
 management:
+  otlp:
+    metrics:
+      export:
+        enabled: false
+  logging:
+    export:
+      otlp:
+        enabled: false
+  tracing:
+    export:
+      otlp:
+        enabled: ${TRACE_EXPORT_ENABLED:false}
+    sampling:
+      probability: ${TRACE_SAMPLE_RATE:0.1}
+  opentelemetry:
+    tracing:
+      export:
+        max-queue-size: 256
+        max-batch-size: 64
+        timeout: 2s
+        otlp:
+          endpoint: ${TRACE_ENDPOINT:http://127.0.0.1:4318/v1/traces}
+          connect-timeout: 2s
+          timeout: 2s
+      limits:
+        max-attributes: 32
+  server:
+    port: ${MANAGEMENT_PORT:18183}
+    address: 127.0.0.1
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        dictalab.provider.duration: true
+        dictalab.listening.job: true
   health:
+    redis:
+      enabled: false
+    rabbit:
+      enabled: ${dictalab.listening.queue.enabled:false}
     mail:
       enabled: false
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics
 
 dictalab:
+  learning:
+    enabled: ${DICTALAB_LEARNING_ENABLED:false}
+    queue-enabled: ${DICTALAB_LEARNING_QUEUE_ENABLED:false}
+    dispatch-delay-ms: 5000
+    index-delay-ms: 10000
+  ai:
+    budget:
+      enabled: ${AI_BUDGET_ENABLED:true}
+      global-microusd: ${AI_GLOBAL_DAILY_MICROUSD:5000000}
+      user-microusd: ${AI_USER_DAILY_MICROUSD:2000000}
+      llm-reservation-microusd: ${AI_LLM_RESERVATION_MICROUSD:50000}
+      tts-reservation-microusd: ${AI_TTS_RESERVATION_MICROUSD:50000}
+      global-calls: ${AI_GLOBAL_DAILY_CALLS:100}
+      user-calls: ${AI_USER_DAILY_CALLS:40}
+    queue:
+      enabled: ${DICTALAB_AI_QUEUE_ENABLED:false}
+      exchange: ${DICTALAB_AI_EXCHANGE:dictalab.ai.jobs}
+      audio-queue: ${DICTALAB_AUDIO_QUEUE:dictalab.conversation.audio}
+      coach-queue: ${DICTALAB_COACH_QUEUE:dictalab.coach.reports}
+      audio-workers: ${DICTALAB_AUDIO_WORKERS:2}
+      coach-workers: ${DICTALAB_COACH_WORKERS:1}
+  auth:
+    google-client-id: ${GOOGLE_CLIENT_ID:}
+    signing-key: ${JWT_SIGNING_KEY:}
+    previous-signing-key: ${JWT_PREVIOUS_SIGNING_KEY:}
+    key-id: ${JWT_KEY_ID:1}
+    previous-key-id: ${JWT_PREVIOUS_KEY_ID:0}
+    issuer: ${JWT_ISSUER:dictalab}
+    access-lifetime: ${JWT_ACCESS_LIFETIME:10m}
+    refresh-lifetime: ${JWT_REFRESH_LIFETIME:7d}
+    cookie-secure: ${JWT_COOKIE_SECURE:${SESSION_COOKIE_SECURE:true}}
+    maximum-sessions: ${JWT_MAXIMUM_SESSIONS:20000}
+    sessions-per-user: ${JWT_SESSIONS_PER_USER:10}
+  backup:
+    success-marker: ${BACKUP_SUCCESS_MARKER:./backups/backup-success.json}
+  provider:
+    circuit-failures: ${PROVIDER_CIRCUIT_FAILURES:5}
+    circuit-open-seconds: ${PROVIDER_CIRCUIT_OPEN_SECONDS:30}
+  listening:
+    workers: ${LISTENING_WORKERS:2}
+    dispatch-delay-ms: ${LISTENING_DISPATCH_MS:1000}
+    queue:
+      enabled: ${DICTALAB_LISTENING_QUEUE_ENABLED:false}
+      name: ${DICTALAB_LISTENING_QUEUE:dictalab.listening.grading}
+      exchange: ${DICTALAB_LISTENING_EXCHANGE:dictalab.jobs}
+      dead-letter-queue: ${DICTALAB_LISTENING_DLQ:dictalab.listening.grading.dlq}
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    backend: ${DICTALAB_RATE_LIMIT_BACKEND:memory}
+    auth-burst: ${AUTH_RATE_BURST:120}
+    ai-burst: ${AI_RATE_BURST:60}
+    upload-burst: ${UPLOAD_RATE_BURST:20}
+    maximum-entries: ${RATE_LIMIT_MAX_ENTRIES:20000}
+  conversation:
+    enabled: ${DICTALAB_CONVERSATION_ENABLED:false}
+    generation-model: ${DICTALAB_CONVERSATION_MODEL:gemini-2.5-flash}
+    audio-retention-days: ${CONVERSATION_AUDIO_RETENTION_DAYS:30}
+    cartesia-api-key: ${CARTESIA_API_KEY:}
+    cartesia-voice: ${CARTESIA_VOICE:db6b0ed5-d5d3-463d-ae85-518a07d3c2b4}
+    cartesia-model: ${CARTESIA_MODEL:sonic-3.6}
+    cartesia-version: ${CARTESIA_VERSION:2026-08-14}
+    tts-concurrency: ${TTS_CONCURRENCY:2}
+    tts-url: ${TTS_URL:https://api.cartesia.ai/tts/bytes}
   coach:
     enabled: ${DICTALAB_COACH_ENABLED:false}
-    url: ${DICTALAB_COACH_URL:http://127.0.0.1:3000/v1/chat/completions}
-    model: ${DICTALAB_COACH_MODEL:chatgpt-web}
-    api-key: ${DICTALAB_COACH_API_KEY:}
-    timeout: ${DICTALAB_COACH_TIMEOUT:75s}
   public-url: ${DICTALAB_PUBLIC_URL:http://localhost:18081}
+  support-email: ${DICTALAB_SUPPORT_EMAIL:}
   mail-from: ${DICTALAB_MAIL_FROM:}
   shopaikey:
+    assessment-timeout-seconds: ${AI_ASSESSMENT_TIMEOUT_SECONDS:25}
+    generation-timeout-seconds: ${AI_GENERATION_TIMEOUT_SECONDS:25}
+    concurrency: ${AI_CONCURRENCY:8}
     api-key: ${SHOPAIKEY_API_KEY:}
     model: ${SHOPAIKEY_MODEL:claude-sonnet-4-5}
     url: ${SHOPAIKEY_URL:https://api.shopaikey.com/v1/chat/completions}
@@ -73,6 +228,16 @@ dictalab:
   media:
     root: ${DICTALAB_MEDIA_ROOT:./data/media}
     max-file-size: 25MB
+    s3:
+      enabled: ${DICTALAB_MEDIA_S3_ENABLED:false}
+      all-audio: ${DICTALAB_MEDIA_S3_ALL_AUDIO:false}
+      proxy-audio: ${DICTALAB_MEDIA_S3_PROXY_AUDIO:false}
+      bucket: ${DICTALAB_MEDIA_S3_BUCKET:}
+      region: ${DICTALAB_MEDIA_S3_REGION:}
+      prefix: ${DICTALAB_MEDIA_S3_PREFIX:dictalab/audio/}
+      signed-url-duration: ${DICTALAB_MEDIA_S3_SIGNED_URL_DURATION:30m}
+      cleanup-enabled: ${DICTALAB_MEDIA_S3_CLEANUP_ENABLED:false}
+      cleanup-retention-days: ${DICTALAB_MEDIA_S3_CLEANUP_RETENTION_DAYS:7}
   personal-content:
     enabled: ${DICTALAB_PERSONAL_CONTENT_ENABLED:false}
     root: ${DICTALAB_PERSONAL_CONTENT_ROOT:./data/personal-content}
@@ -86,7 +251,21 @@ dictalab:
     sentence-reveal-penalty: 20.0
     extra-replay-penalty: 1.5
   room:
+    maximum-rooms: ${ROOM_MAXIMUM:200}
     allowed-origins: ${DICTALAB_ALLOWED_ORIGINS:http://localhost:18081,http://127.0.0.1:18081,https://160.191.244.27:18443}
     turn-url: ${DICTALAB_TURN_URL:}
     turn-secret: ${DICTALAB_TURN_SECRET:}
     turn-ttl-seconds: ${DICTALAB_TURN_TTL_SECONDS:3600}
+
+logging:
+  structured:
+    format:
+      console: ecs
+      file: ecs
+  file:
+    name: ${DICTALAB_LOG_FILE:./logs/dictalab.json}
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 7
+      total-size-cap: 100MB

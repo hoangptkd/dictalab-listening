@@ -7,6 +7,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -32,8 +35,24 @@ public class PreviewVocabularyService {
                 )).toList();
     }
 
+    public java.util.Map<Long,List<ApiDtos.PreviewWord>> wordsForLessons(java.util.Collection<Long> ids) {
+        java.util.Map<Long,List<ApiDtos.PreviewWord>> result=new java.util.HashMap<>();
+        if(!ids.isEmpty()) previewWordRepository.findForLessons(ids).forEach(word ->
+                result.computeIfAbsent(word.lessonKey(), ignored -> new java.util.ArrayList<>()).add(
+                        new ApiDtos.PreviewWord(word.getWord(),word.getAudioStartSeconds(),word.getAudioEndSeconds(),word.isProperName())));
+        return result;
+    }
+
     public Set<String> normalizedWordsFor(Lesson lesson) {
         return wordsFor(lesson).stream().flatMap(word -> tokenizer.words(word.word()).stream())
                 .map(tokenizer::normalize).collect(Collectors.toSet());
+    }
+
+    public Map<Long, Set<String>> normalizedWordsForLessons(Collection<Long> ids) {
+        Map<Long, Set<String>> result = new HashMap<>();
+        wordsForLessons(ids).forEach((id, words) -> result.put(id,
+                words.stream().flatMap(word -> tokenizer.words(word.word()).stream())
+                        .map(tokenizer::normalize).collect(Collectors.toSet())));
+        return result;
     }
 }

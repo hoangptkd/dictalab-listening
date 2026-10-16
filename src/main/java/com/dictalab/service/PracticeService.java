@@ -54,6 +54,7 @@ public class PracticeService {
     private final AppUserRepository userRepository;
     private final JdbcTemplate db;
     private final Clock clock;
+    private final boolean learningEnabled;
 
     public PracticeService(LessonRepository lessonRepository,
                            LessonPreviewWordRepository previewWordRepository,
@@ -67,7 +68,8 @@ public class PracticeService {
                            ScoringService scoringService,
                            ListeningErrorClassifier errorClassifier,
                            ListeningAssessmentService assessmentService,
-                           JdbcTemplate db) {
+                           JdbcTemplate db,
+                           @org.springframework.beans.factory.annotation.Value("${dictalab.learning.enabled:false}") boolean learningEnabled) {
         this.lessonRepository = lessonRepository;
         this.previewWordRepository = previewWordRepository;
         this.sentenceRepository = sentenceRepository;
@@ -82,11 +84,12 @@ public class PracticeService {
         this.assessmentService = assessmentService;
         this.db = db;
         this.clock = Clock.systemUTC();
+        this.learningEnabled = learningEnabled;
     }
 
     @Transactional
     public ApiDtos.PracticeStartResponse start(Long userId, ApiDtos.StartSessionRequest request) {
-        AppUser user = userRepository.findById(userId)
+        AppUser user = userRepository.lockById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản."));
         Lesson lesson = lessonRepository.findById(request.lessonId())
                 .filter(Lesson::isActive)
@@ -116,9 +119,13 @@ public class PracticeService {
                 SELECT (SELECT COUNT(*) FROM listening_sessions s JOIN listening_units u ON u.id=s.unit_id
                     WHERE s.user_id=? AND u.audio_url IN
                         (SELECT audio_url FROM lesson_sentences WHERE lesson_id=?))
+                    + (SELECT COUNT(*) FROM practice_sessions p JOIN lesson_sentences s ON s.lesson_id=p.lesson_id
+                        WHERE p.user_id=? AND s.audio_url IN
+                            (SELECT audio_url FROM lesson_sentences WHERE lesson_id=?))
+                    + (SELECT COUNT(*) FROM lesson_sentences WHERE lesson_id=? AND (audio_url IS NULL OR TRIM(audio_url)=''))
                     + (SELECT COUNT(*) FROM audio_exposure_events e WHERE e.user_id=? AND e.audio_url IN
                         (SELECT audio_url FROM lesson_sentences WHERE lesson_id=?))
-                """, Integer.class, userId, lesson.getId(), userId, lesson.getId());
+                """, Integer.class, userId, lesson.getId(), userId, lesson.getId(), lesson.getId(), userId, lesson.getId());
         boolean firstExposure = !sessionRepository.existsByUserIdAndLessonId(userId, lesson.getId())
                 && otherExposure != null && otherExposure == 0;
         PracticeSession session = sessionRepository.save(new PracticeSession(user, lesson, now(), firstExposure));
@@ -138,6 +145,8 @@ public class PracticeService {
 
     @Transactional
     public ApiDtos.PracticeStartResponse startShared(Long userId, String roomId, Long lessonId) {
+        userRepository.lockById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản."));
         PracticeSession existing = sessionRepository.findFirstByUserIdAndRoomIdOrderByStartedAtDesc(userId, roomId)
                 .orElse(null);
         if (existing != null) {
@@ -192,9 +201,9 @@ public class PracticeService {
                                         ApiDtos.ReplayRequest request) {
         PracticeSession session = getSession(userId, sessionId);
         SentenceAttempt attempt = currentAttempt(session, sentenceId);
+        ApiDtos.SentenceState state = toState(attempt);
         if (request.event() == ReplayEventType.STARTED) {
-            boolean sentenceReadyToComplete = toState(attempt).canComplete();
-            if (!sentenceReadyToComplete) {
+            if (!state.canComplete()) {
                 double playbackSpeed = request.playbackSpeed() == null ? 1.0 : request.playbackSpeed();
                 attempt.incrementReplayCount();
                 attempt.recordPlayback(playbackSpeed);
@@ -203,23 +212,77 @@ public class PracticeService {
         } else if (attempt.hasAnswerReveal()) {
             attempt.markReplayCompleted();
         }
-        return toState(attempt);
+        // Playback changes counters/replay eligibility, not the word slots or lesson size.
+        return toState(attempt, state.words(), state.totalSentences());
     }
 
     @Transactional
     public ApiDtos.SentenceState checkWord(Long userId, String sessionId, Long sentenceId,
                                            int wordIndex, ApiDtos.CheckWordRequest request) {
-        PracticeSession session = getSession(userId, sessionId);
+        return checkLockedWord(getSession(userId, sessionId), sentenceId, wordIndex, request);
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public ApiDtos.SentenceState checkLockedWord(PracticeSession session, Long sentenceId,
+                                                 int wordIndex, ApiDtos.CheckWordRequest request) {
+        CheckedWord checked = gradeWord(session, sentenceId, wordIndex, request);
+        List<ApiDtos.WordSlot> slots = java.util.stream.IntStream.range(0, checked.tokens().size())
+                .mapToObj(index -> toWordSlot(index, checked.tokens().get(index), checked.attempts().get(index),
+                        checked.properNames().contains(index))).toList();
+        int totalSentences = Math.toIntExact(sentenceRepository.countByLessonId(
+                checked.attempt().getSentence().getLesson().getId()));
+        return toState(checked.attempt(), slots, totalSentences);
+    }
+
+    @Transactional
+    public ApiDtos.WordCheckResult checkWordResult(Long userId, String sessionId, Long sentenceId,
+                                                   int wordIndex, ApiDtos.CheckWordRequest request) {
+        return checkLockedWordResult(getSession(userId, sessionId), sentenceId, wordIndex, request);
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public ApiDtos.WordCheckResult checkLockedWordResult(PracticeSession session, Long sentenceId,
+                                                        int wordIndex, ApiDtos.CheckWordRequest request) {
+        CheckedWord checked = gradeWord(session, sentenceId, wordIndex, request);
+        SentenceAttempt attempt = checked.attempt();
+        long resolved = java.util.stream.IntStream.range(0, checked.tokens().size()).filter(index -> {
+            WordAttempt word = checked.attempts().get(index);
+            return checked.properNames().contains(index) || word != null && (word.isFinalCorrect() || word.isRevealed());
+        }).count();
+        boolean requiresReplay = attempt.hasAnswerReveal() && !attempt.isReplayedAfterReveal();
+        return new ApiDtos.WordCheckResult(sentenceId,
+                toWordSlot(wordIndex, checked.tokens().get(wordIndex), checked.attempts().get(wordIndex),
+                        checked.properNames().contains(wordIndex)),
+                Math.toIntExact(resolved), attempt.getReplayCount(),
+                attempt.getFirstLetterHintCount() + attempt.getWordRevealCount(), attempt.isFullRevealUsed() ? 1 : 0,
+                attempt.getReplayCount() > 0, requiresReplay,
+                resolved == checked.tokens().size() && !requiresReplay, attempt.isCompleted());
+    }
+
+    private CheckedWord gradeWord(PracticeSession session, Long sentenceId,
+                                  int wordIndex, ApiDtos.CheckWordRequest request) {
         SentenceAttempt attempt = currentAttempt(session, sentenceId);
         requireListening(attempt);
-        List<String> expectedWords = tokenizer.words(attempt.getSentence().getTranscript());
+        List<TranscriptTokenizer.TranscriptToken> tokens = tokenizer.tokens(attempt.getSentence().getTranscript());
+        List<String> expectedWords = tokens.stream().map(TranscriptTokenizer.TranscriptToken::word).toList();
         validateWordIndex(wordIndex, expectedWords);
-        if (properNameIndices(attempt.getSentence()).contains(wordIndex)) {
-            return toState(attempt);
-        }
+        Set<Integer> properNames = properNameIndices(expectedWords, properNameTokens(session.getLesson().getId()));
+        Map<Integer, WordAttempt> attempts = new HashMap<>();
+        wordAttemptRepository.findBySentenceAttemptIdOrderByWordIndex(attempt.getId())
+                .forEach(word -> attempts.put(word.getWordIndex(), word));
+        CheckedWord checked = new CheckedWord(attempt, tokens, properNames, attempts);
+        if (properNames.contains(wordIndex)) return checked;
 
-        WordAttempt wordAttempt = getOrCreateWordAttempt(attempt, wordIndex);
+        WordAttempt wordAttempt = attempts.get(wordIndex);
+        if (wordAttempt == null) {
+            wordAttempt = wordAttemptRepository.save(new WordAttempt(attempt, wordIndex));
+            attempts.put(wordIndex, wordAttempt);
+        }
         String rawAnswer = request.answer().trim();
+        if (wordAttempt.isFinalCorrect() || wordAttempt.isRevealed()
+                || rawAnswer.equals(wordAttempt.getLastAnswer())) return checked;
+        if (wordAttempt.getAttemptCount() >= 50)
+            throw new InvalidPracticeStateException("Đã đạt giới hạn thử từ này. Hãy dùng gợi ý để tiếp tục.");
         String normalizedAnswer = tokenizer.normalize(rawAnswer);
         String expected = tokenizer.normalize(expectedWords.get(wordIndex));
         boolean correct = expected.equals(normalizedAnswer);
@@ -237,7 +300,11 @@ public class PracticeService {
                 wordAttempt, wordAttempt.getAttemptCount(), rawAnswer, normalizedAnswer,
                 correct, responseTimeMs, errorCategory, now()
         ));
-        return toState(attempt);
+        return checked;
+    }
+
+    private record CheckedWord(SentenceAttempt attempt, List<TranscriptTokenizer.TranscriptToken> tokens,
+                               Set<Integer> properNames, Map<Integer, WordAttempt> attempts) {
     }
 
     @Transactional
@@ -249,16 +316,18 @@ public class PracticeService {
         List<String> words = tokenizer.words(attempt.getSentence().getTranscript());
 
         if (request.type() == HintType.REVEAL_SENTENCE) {
-            revealSentence(session, attempt, words);
-            return toState(attempt);
+            Set<Integer> properNames = properNameIndices(attempt.getSentence());
+            revealSentence(session, attempt, words, properNames);
+            return toState(attempt, properNames);
         }
 
         if (request.wordIndex() == null) {
             throw new InvalidPracticeStateException("Hãy chọn một ô từ trước khi dùng gợi ý này.");
         }
         validateWordIndex(request.wordIndex(), words);
-        if (properNameIndices(attempt.getSentence()).contains(request.wordIndex())) {
-            return toState(attempt);
+        Set<Integer> properNames = properNameIndices(attempt.getSentence());
+        if (properNames.contains(request.wordIndex())) {
+            return toState(attempt, properNames);
         }
         WordAttempt wordAttempt = getOrCreateWordAttempt(attempt, request.wordIndex());
 
@@ -270,7 +339,7 @@ public class PracticeService {
             attempt.requireReplayAfterReveal();
             session.incrementHints();
         }
-        return toState(attempt);
+        return toState(attempt, properNames);
     }
 
     @Transactional
@@ -301,9 +370,15 @@ public class PracticeService {
             throw new InvalidPracticeStateException(message);
         }
 
-        attempt.setTimeSpentSeconds(request.timeSpentSeconds());
+        long elapsed = Math.max(0, java.time.Duration.between(attempt.getStartedAt(), now()).getSeconds());
+        attempt.setTimeSpentSeconds((int) Math.min(request.timeSpentSeconds(), Math.min(elapsed, 1800)));
         attempt.markCompleted();
-        int totalSentences = Math.toIntExact(sentenceRepository.countByLessonId(session.getLesson().getId()));
+        if (learningEnabled) {
+            // Outbox is committed with sentence completion; broker availability is irrelevant here.
+            db.update("INSERT INTO learning_jobs(id,attempt_id) VALUES (?,?)",
+                    java.util.UUID.randomUUID().toString(), attempt.getId());
+        }
+        int totalSentences = state.totalSentences();
         if (attempt.getSentence().getPosition() >= totalSentences) {
             ApiDtos.LessonResult result = finishSession(session);
             return new ApiDtos.CompleteSentenceResponse(true, null, result);
@@ -317,17 +392,22 @@ public class PracticeService {
         return new ApiDtos.CompleteSentenceResponse(false, toState(nextAttempt), null);
     }
 
-    private void revealSentence(PracticeSession session, SentenceAttempt attempt, List<String> words) {
+    private void revealSentence(PracticeSession session, SentenceAttempt attempt, List<String> words,
+                                Set<Integer> properNames) {
         if (!attempt.isFullRevealUsed()) {
             attempt.markFullRevealUsed();
             session.incrementReveals();
         } else {
             attempt.requireReplayAfterReveal();
         }
-        Set<Integer> properNames = properNameIndices(attempt.getSentence());
+        Map<Integer, WordAttempt> attemptsByIndex = new HashMap<>();
+        wordAttemptRepository.findBySentenceAttemptIdOrderByWordIndex(attempt.getId())
+                .forEach(word -> attemptsByIndex.put(word.getWordIndex(), word));
         for (int index = 0; index < words.size(); index++) {
             if (!properNames.contains(index)) {
-                getOrCreateWordAttempt(attempt, index).reveal(HintType.REVEAL_SENTENCE);
+                WordAttempt word = attemptsByIndex.get(index);
+                if (word == null) word = wordAttemptRepository.save(new WordAttempt(attempt, index));
+                word.reveal(HintType.REVEAL_SENTENCE);
             }
         }
     }
@@ -352,12 +432,17 @@ public class PracticeService {
                         .computeIfAbsent(event.getWordAttempt().getId(), ignored -> new ArrayList<>())
                         .add(event));
 
+        Map<Long, List<WordAttempt>> wordsBySentence = new HashMap<>();
+        wordAttemptRepository.findBySessionIds(List.of(session.getId())).forEach(word ->
+                wordsBySentence.computeIfAbsent(word.getSentenceAttempt().getId(), ignored -> new ArrayList<>()).add(word));
+        wordsBySentence.values().forEach(words -> words.sort(java.util.Comparator.comparingInt(WordAttempt::getWordIndex)));
+        List<List<String>> properNamesForLesson = properNameTokens(session.getLesson().getId());
+
         for (SentenceAttempt attempt : attempts) {
             List<String> expectedWords = tokenizer.words(attempt.getSentence().getTranscript());
-            List<WordAttempt> wordAttempts = wordAttemptRepository
-                    .findBySentenceAttemptIdOrderByWordIndex(attempt.getId());
+            List<WordAttempt> wordAttempts = wordsBySentence.getOrDefault(attempt.getId(), List.of());
             totalWords += expectedWords.size();
-            Set<Integer> properNames = properNameIndices(attempt.getSentence());
+            Set<Integer> properNames = properNameIndices(expectedWords, properNamesForLesson);
             scoreableWords += expectedWords.size() - properNames.size();
             practiceSeconds += attempt.getTimeSpentSeconds();
             firstLetterHints += attempt.getFirstLetterHintCount();
@@ -374,9 +459,9 @@ public class PracticeService {
                     finalCorrect++;
                 }
                 if (Boolean.FALSE.equals(word.getFirstAttemptCorrect())) {
-                    if (word.getErrorType() == LearnerErrorType.UNKNOWN) {
+                    if (word.getLearnerReportedErrorType() == LearnerErrorType.UNKNOWN) {
                         unknown++;
-                    } else {
+                    } else if (word.getLearnerReportedErrorType() == LearnerErrorType.KNOWN_BUT_MISSED) {
                         knownMissed++;
                     }
                 }
@@ -396,13 +481,18 @@ public class PracticeService {
     }
 
     ApiDtos.LessonResult toResult(PracticeSession session, ApiDtos.LessonReview review) {
+        return toResult(session, review, true);
+    }
+
+    ApiDtos.LessonResult toResult(PracticeSession session, ApiDtos.LessonReview review, boolean includeAssessment) {
         return new ApiDtos.LessonResult(
                 session.getId(), session.getLesson().getId(), session.getLesson().getTitle(),
                 session.getLesson().getLevel(), session.getFirstAttemptAccuracy(), session.getFinalAccuracy(),
                 session.getTotalReplays(), session.getHintCount(), session.getRevealCount(),
                 session.getKnownMissedCount(), session.getUnknownCount(), session.getTotalPracticeSeconds(),
                 session.getOverallScore(), session.getCompletedAt(), review,
-                assessmentService.assess(session.getUser().getId())
+                includeAssessment ? assessmentService.assess(session.getUser().getId()) : null,
+                session.getScoringVersion()
         );
     }
 
@@ -459,7 +549,7 @@ public class PracticeService {
                             word == null ? null : word.getLastAnswer(),
                             word == null ? 0 : word.getAttemptCount(),
                             outcome,
-                            word == null ? null : word.getErrorType(),
+                            word == null ? null : word.getLearnerReportedErrorType(),
                             word == null ? null : word.getInferredErrorCategory(),
                             word == null ? List.of() : eventsByWord.getOrDefault(word.getId(), List.of()).stream()
                                     .map(event -> new ApiDtos.WordAttemptReview(
@@ -481,9 +571,12 @@ public class PracticeService {
     }
 
     private ApiDtos.SentenceState toState(SentenceAttempt attempt) {
+        return toState(attempt, properNameIndices(attempt.getSentence()));
+    }
+
+    private ApiDtos.SentenceState toState(SentenceAttempt attempt, Set<Integer> properNames) {
         LessonSentence sentence = attempt.getSentence();
         List<TranscriptTokenizer.TranscriptToken> expectedTokens = tokenizer.tokens(sentence.getTranscript());
-        Set<Integer> properNames = properNameIndices(sentence);
         Map<Integer, WordAttempt> attemptsByIndex = new HashMap<>();
         if (attempt.getId() != null) {
             wordAttemptRepository.findBySentenceAttemptIdOrderByWordIndex(attempt.getId())
@@ -494,9 +587,14 @@ public class PracticeService {
                 .mapToObj(index -> toWordSlot(index, expectedTokens.get(index), attemptsByIndex.get(index),
                         properNames.contains(index)))
                 .toList();
+        int totalSentences = Math.toIntExact(sentenceRepository.countByLessonId(sentence.getLesson().getId()));
+        return toState(attempt, slots, totalSentences);
+    }
+
+    private ApiDtos.SentenceState toState(SentenceAttempt attempt, List<ApiDtos.WordSlot> slots, int totalSentences) {
+        LessonSentence sentence = attempt.getSentence();
         boolean resolved = slots.stream().allMatch(slot -> slot.correct() || slot.revealed());
         boolean requiresReplay = attempt.hasAnswerReveal() && !attempt.isReplayedAfterReveal();
-        int totalSentences = Math.toIntExact(sentenceRepository.countByLessonId(sentence.getLesson().getId()));
         return new ApiDtos.SentenceState(
                 sentence.getId(), sentence.getPosition(), totalSentences, slots,
                 sentence.getTranscript(), sentence.getAudioUrl(),
@@ -517,34 +615,42 @@ public class PracticeService {
                 : null;
         String revealedText = revealed ? expectedWord : null;
         String userInput = prefilled ? expectedWord : attempt == null ? null : attempt.getLastAnswer();
-        LearnerErrorType errorType = prefilled || attempt == null ? null : attempt.getErrorType();
+        LearnerErrorType errorType = prefilled || attempt == null ? null : attempt.getLearnerReportedErrorType();
         return new ApiDtos.WordSlot(
                 index, tokenizer.visibleLength(expectedWord), tokenizer.mask(expectedWord),
                 token.punctuationBefore(), token.punctuationAfter(),
-                firstLetter, revealedText, userInput, correct, revealed, prefilled, errorType
+                firstLetter, revealedText, userInput, correct, revealed, prefilled, errorType,
+                !prefilled && attempt != null && Boolean.FALSE.equals(attempt.getFirstAttemptCorrect())
         );
     }
 
     private Set<Integer> properNameIndices(LessonSentence sentence) {
-        List<String> words = tokenizer.words(sentence.getTranscript());
+        return properNameIndices(tokenizer.words(sentence.getTranscript()), properNameTokens(sentence.getLesson().getId()));
+    }
+
+    private List<List<String>> properNameTokens(Long lessonId) {
+        return previewWordRepository.findByLessonIdOrderByPositionAsc(lessonId).stream()
+                .filter(word -> word.isProperName()).map(preview -> tokenizer.words(preview.getWord())).toList();
+    }
+
+    private Set<Integer> properNameIndices(List<String> words, List<List<String>> names) {
         Set<Integer> indices = new HashSet<>();
-        previewWordRepository.findByLessonIdOrderByPositionAsc(sentence.getLesson().getId()).stream()
-                .filter(word -> word.isProperName())
-                .forEach(preview -> {
-                    List<String> name = tokenizer.words(preview.getWord());
-                    for (int start = 0; start + name.size() <= words.size(); start++) {
-                        if (!name.isEmpty() && words.subList(start, start + name.size()).equals(name)) {
-                            for (int index = start; index < start + name.size(); index++) {
-                                indices.add(index);
-                            }
-                        }
-                    }
-                });
+        for (List<String> name : names) {
+            if (name.isEmpty()) continue;
+            for (int start = 0; start + name.size() <= words.size(); start++) {
+                if (words.subList(start, start + name.size()).equals(name)) {
+                    for (int index = start; index < start + name.size(); index++) indices.add(index);
+                }
+            }
+        }
         return indices;
     }
 
     private PracticeSession getSession(Long userId, String sessionId) {
-        return sessionRepository.findByIdAndUserId(sessionId, userId)
+        boolean readOnly = org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+        // A write locks the aggregate even when only child word/sentence rows change.
+        return (readOnly ? sessionRepository.findByIdAndUserId(sessionId, userId)
+                : sessionRepository.lockOwned(sessionId, userId))
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phiên luyện tập."));
     }
 
@@ -562,11 +668,9 @@ public class PracticeService {
 
     private SentenceAttempt currentAttempt(PracticeSession session, Long sentenceId) {
         ensureInProgress(session);
-        LessonSentence current = currentSentence(session);
-        if (!current.getId().equals(sentenceId)) {
-            throw new InvalidPracticeStateException("Câu này không phải câu hiện tại của phiên luyện tập.");
-        }
-        return getOrFailAttempt(session, sentenceId);
+        return sentenceAttemptRepository.findCurrent(session.getId(), sentenceId,
+                        session.getCurrentSentencePosition(), session.getLesson().getId())
+                .orElseThrow(() -> new InvalidPracticeStateException("Câu này không phải câu hiện tại của phiên luyện tập."));
     }
 
     private SentenceAttempt getOrFailAttempt(PracticeSession session, Long sentenceId) {

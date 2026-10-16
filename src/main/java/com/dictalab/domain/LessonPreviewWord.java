@@ -59,6 +59,8 @@ public class LessonPreviewWord {
         return word;
     }
 
+    public Long lessonKey() { return lesson.getId(); }
+
     public Double getAudioStartSeconds() {
         return audioStartSeconds;
     }

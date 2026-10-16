@@ -20,14 +20,16 @@ public class AccountStateFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
-        Object principal = SecurityContextHolder.getContext().getAuthentication() == null ? null
-                : SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (principal instanceof DictaLabPrincipal user && users.findById(user.id())
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        Object principal = authentication == null ? null : authentication.getPrincipal();
+        // JWT principals already reflect the database row checked during this request.
+        // Keep validation for other authentication paths, including stale supplied principals.
+        if (!(authentication instanceof JwtTokenService.AccountCheckedAuthentication)
+                && principal instanceof DictaLabPrincipal user && users.authenticationState(user.id())
                 .filter(current -> current.isEnabled() && current.getAuthVersion() == user.authVersion()
                         && current.getEmail().equals(user.email()) && current.getRole().equals(user.role()))
                 .isEmpty()) {
             SecurityContextHolder.clearContext();
-            if (request.getSession(false) != null) request.getSession(false).invalidate();
         }
         chain.doFilter(request, response);
     }

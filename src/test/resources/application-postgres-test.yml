@@ -1,0 +1,6 @@
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:postgresql://127.0.0.1:15434/dictalab_test}
+    username: ${TEST_DB_USERNAME:dictalab_test}
+    password: ${TEST_DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver

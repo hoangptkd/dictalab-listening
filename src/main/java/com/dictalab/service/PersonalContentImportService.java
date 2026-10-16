@@ -32,18 +32,20 @@ public class PersonalContentImportService {
     private final LessonSentenceRepository sentenceRepository;
     private final LessonPreviewWordRepository previewWordRepository;
     private final ObjectMapper objectMapper;
+    private final MediaStorageService media;
     private final Clock clock = Clock.systemUTC();
 
     public PersonalContentImportService(PersonalContentProperties properties,
                                         LessonRepository lessonRepository,
                                         LessonSentenceRepository sentenceRepository,
                                         LessonPreviewWordRepository previewWordRepository,
-                                        ObjectMapper objectMapper) {
+                                        ObjectMapper objectMapper, MediaStorageService media) {
         this.properties = properties;
         this.lessonRepository = lessonRepository;
         this.sentenceRepository = sentenceRepository;
         this.previewWordRepository = previewWordRepository;
         this.objectMapper = objectMapper;
+        this.media = media;
     }
 
     @Transactional
@@ -75,6 +77,9 @@ public class PersonalContentImportService {
                 throw new IllegalStateException("Personal audio was not found under configured root: " + item.audioPath());
             }
             validateSentences(item);
+            String audioUrl = "/private-media/" + item.audioPath().replace('\\', '/');
+            if (media.s3Enabled() && media.legacyAudioLocation(audioUrl).isEmpty())
+                throw new IllegalStateException("Upload personal audio with migrate-audio-s3.py before importing: " + item.audioPath());
             Instant now = Instant.now(clock);
             Lesson lesson = new Lesson(
                     item.slug(), item.title(), item.description(), item.level(), item.topic(),
@@ -86,7 +91,6 @@ public class PersonalContentImportService {
             );
             lesson.setPublished(true, now);
             lessonRepository.save(lesson);
-            String audioUrl = "/private-media/" + item.audioPath().replace('\\', '/');
             for (PersonalSentence sentenceItem : item.sentences()) {
                 LessonSentence sentence = new LessonSentence(
                         lesson, sentenceItem.position(), sentenceItem.transcript(), sentenceItem.speechRate()

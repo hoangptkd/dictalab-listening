@@ -1,0 +1,16 @@
+[Unit]
+Description=DictaLab Neon logical database backup
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/dictalab/tools/cloud-backup.py
+TimeoutStartSec=240
+UMask=0077
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dictalab/backups

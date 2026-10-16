@@ -41,7 +41,7 @@ while ($sentence) {
     $sentence = $done.nextSentence
 }
 $report = Post-Json "$sessionPath/coach" @{}
-if ($report.source -ne 'AI') { throw "Expected real AI, received $($report.source). Check the bridge log/login." }
+if ($report.source -ne 'AI') { throw "Expected real AI, received $($report.source). Check SHOPAIKEY_API_KEY and DICTALAB_COACH_ENABLED." }
 if ($report.weaknesses.Count -gt 3 -or $report.nextActions.Count -gt 3 -or $report.reviewItems.Count -gt 12) {
     throw 'Coach output exceeded UX limits.'
 }

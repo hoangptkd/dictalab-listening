@@ -34,16 +34,19 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "      -> Ket noi thanh cong voi user: $($whoamiResult.Trim())" -ForegroundColor Green
 
-# 3. Dong goi ung dung (mvn clean package)
-Write-Host "[2/5] Dong goi ung dung (mvn clean package)..." -ForegroundColor Yellow
+# 3. Isolate build output from other checks and preserve retained evidence in target.
+Write-Host "[2/5] Dong goi ung dung..." -ForegroundColor Yellow
 Push-Location $projectRoot
 try {
-    & mvn --batch-mode --no-transfer-progress clean package -DskipTests
+    & node --test src/test/js/*.test.cjs
+    if ($LASTEXITCODE -ne 0) { throw 'JavaScript tests failed.' }
+    $buildDirectory=Join-Path $projectRoot ('target\deploy-'+[guid]::NewGuid().ToString('N'))
+    & mvn --batch-mode --no-transfer-progress "-Ddictalab.build.directory=$buildDirectory" package
     if ($LASTEXITCODE -ne 0) {
         throw "Build Maven that bai (exit code $LASTEXITCODE)."
     }
 
-    $jarFile = Get-ChildItem -Path "target" -Filter "*.jar" |
+    $jarFile = Get-ChildItem -LiteralPath $buildDirectory -Filter "*.jar" |
         Where-Object { $_.Name -notmatch "\.original$" -and $_.Name -notmatch "-sources\.jar$" -and $_.Name -notmatch "-javadoc\.jar$" } |
         Select-Object -First 1
 
@@ -62,18 +65,27 @@ try {
     # 4. Dam bao thu muc staging tren VPS va upload
     Write-Host "[3/5] Tai ban build len VPS (C:\DictaLab\staging)..." -ForegroundColor Yellow
     & ssh @sshCommonArgs "$VpsUser@$VpsHost" "powershell.exe -Command md -Force C:\DictaLab\staging" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not create VPS staging directory.' }
 
     $updateScriptLocal = Join-Path $projectRoot "scripts\update-windows-vps.ps1"
     $configScriptLocal = Join-Path $projectRoot "scripts\configure-admin-windows-vps.ps1"
+    $backupScriptLocal = Join-Path $projectRoot "scripts\backup-windows-vps.ps1"
+    $restoreScriptLocal = Join-Path $projectRoot "scripts\restore-drill-windows-vps.ps1"
+    $preflightLocal = Join-Path $projectRoot "scripts\readiness-preflight.sql"
+    & javac --release 17 -d $buildDirectory (Join-Path $projectRoot 'scripts\load\RedisIsolationCheck.java')
+    if ($LASTEXITCODE -ne 0) { throw 'Redis restore checker compilation failed.' }
+    $redisCheckerLocal = Join-Path $buildDirectory 'RedisIsolationCheck.class'
 
     $remoteDestination = "${VpsUser}@${VpsHost}:C:/DictaLab/staging/"
-    & scp @sshCommonArgs $stagingJarLocal $updateScriptLocal $configScriptLocal $remoteDestination
+    & scp @sshCommonArgs $stagingJarLocal $updateScriptLocal $configScriptLocal $backupScriptLocal $restoreScriptLocal $preflightLocal $redisCheckerLocal $remoteDestination
     if ($LASTEXITCODE -ne 0) {
         throw "Upload file len VPS that bai qua scp (exit code $LASTEXITCODE)."
     }
     Write-Host "      -> Da tai len staging thanh cong." -ForegroundColor Green
 
     # 5. Kich hoat phien ban moi tren VPS
+    & ssh @sshCommonArgs "$VpsUser@$VpsHost" 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\DictaLab\staging\backup-windows-vps.ps1'
+    if ($LASTEXITCODE -ne 0) { throw 'Database backup failed; deployment stopped.' }
     Write-Host "[4/5] Kich hoat phien ban moi tren VPS (update-windows-vps.ps1)..." -ForegroundColor Yellow
     $remoteCommand = "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\DictaLab\staging\update-windows-vps.ps1 -ArtifactPath C:\DictaLab\staging\dictalab-new.jar -ExpectedSha256 $fileHash"
     & ssh @sshCommonArgs "$VpsUser@$VpsHost" $remoteCommand
@@ -89,7 +101,7 @@ try {
     if ($healthResponse.status -eq "UP") {
         Write-Host "      -> Health check UP thanh cong!" -ForegroundColor Green
     } else {
-        Write-Warning "      -> Health check tra ve: $($healthResponse.status)"
+        throw "Public health check did not return UP: $($healthResponse.status)"
     }
 
     Write-Host ""

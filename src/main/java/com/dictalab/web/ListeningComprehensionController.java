@@ -133,4 +133,11 @@ public class ListeningComprehensionController {
     public List<Map<String, Object>> history(@AuthenticationPrincipal DictaLabPrincipal user) {
         return service.history(user.id());
     }
+
+    @GetMapping("/history/page")
+    public ListeningComprehensionService.HistoryPage historyPage(@AuthenticationPrincipal DictaLabPrincipal user,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue="0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue="10") int size) {
+        return service.historyPage(user.id(),page,size);
+    }
 }

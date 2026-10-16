@@ -5,20 +5,36 @@ import com.dictalab.exception.MediaStorageException;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import software.amazon.awssdk.core.exception.SdkException;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class MediaStorageService {
+
+    private static final String S3_URL_PREFIX = "/media/s3/";
+    private static final java.util.regex.Pattern S3_FILENAME = java.util.regex.Pattern.compile(
+            "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(mp3|m4a|wav)");
 
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/mp4",
@@ -27,10 +43,149 @@ public class MediaStorageService {
 
     private final Path root;
     private final long maxBytes;
+    private final MediaStorageProperties.S3 config;
+    private final Optional<S3Client> s3;
+    private final Optional<S3Presigner> presigner;
+    private final org.springframework.beans.factory.ObjectProvider<S3MediaLifecycle> lifecycle;
+    private final org.springframework.jdbc.core.JdbcTemplate db;
+    @org.springframework.beans.factory.annotation.Value("${dictalab.media.s3.proxy-audio:false}")
+    private boolean proxyAudio;
 
-    public MediaStorageService(MediaStorageProperties properties) {
+    public MediaStorageService(MediaStorageProperties properties, Optional<S3Client> s3,
+                               Optional<S3Presigner> presigner) {
+        this(properties, s3, presigner, null);
+    }
+
+    public MediaStorageService(MediaStorageProperties properties, Optional<S3Client> s3,
+                               Optional<S3Presigner> presigner,
+                               org.springframework.beans.factory.ObjectProvider<S3MediaLifecycle> lifecycle) {
+        this(properties, s3, presigner, lifecycle, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public MediaStorageService(MediaStorageProperties properties, Optional<S3Client> s3,
+                               Optional<S3Presigner> presigner,
+                               org.springframework.beans.factory.ObjectProvider<S3MediaLifecycle> lifecycle,
+                               org.springframework.jdbc.core.JdbcTemplate db) {
         this.root = properties.root().toAbsolutePath().normalize();
         this.maxBytes = properties.maxFileSize().toBytes();
+        this.config = properties.s3();
+        this.s3 = s3;
+        this.presigner = presigner;
+        this.lifecycle = lifecycle;
+        this.db = db;
+    }
+
+    public boolean s3Enabled() { return config.enabled(); }
+
+    public boolean proxyAudioEnabled() { return proxyAudio; }
+
+    public void requireLessonAudioAccess(String filename, long user, boolean administrator) {
+        validateS3Filename(filename);
+        if (administrator) return;
+        String url = S3_URL_PREFIX + filename;
+        Integer visible = db.queryForObject("""
+                SELECT (SELECT COUNT(*) FROM lesson_sentences s JOIN lessons l ON l.id=s.lesson_id
+                    WHERE s.audio_url=? AND l.content_origin<>'BRITISH_COUNCIL_PERSONAL'
+                      AND (l.active=TRUE OR EXISTS (SELECT 1 FROM sentence_attempts a
+                        JOIN practice_sessions p ON p.id=a.practice_session_id
+                        WHERE a.sentence_id=s.id AND p.user_id=?)))
+                    + (SELECT COUNT(*) FROM listening_units u JOIN lessons l ON l.id=u.lesson_id
+                        WHERE u.audio_url=? AND l.content_origin<>'BRITISH_COUNCIL_PERSONAL'
+                          AND ((u.published=TRUE AND l.active=TRUE) OR EXISTS (
+                              SELECT 1 FROM listening_sessions s WHERE s.unit_id=u.id AND s.user_id=?)))
+                """, Integer.class, url, user, url, user);
+        if (visible == null || visible == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+    }
+
+    public void serveLegacyAudio(String url, jakarta.servlet.http.HttpServletRequest request,
+                                 jakarta.servlet.http.HttpServletResponse response) throws IOException {
+        var names = db.queryForList("SELECT object_name FROM audio_s3_aliases WHERE audio_url=?", String.class, url);
+        if (names.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        serveObject(names.get(0), request, response);
+    }
+
+    public void serveManagedAudio(String filename, jakarta.servlet.http.HttpServletRequest request,
+                                  jakarta.servlet.http.HttpServletResponse response) throws IOException {
+        validateS3Filename(filename);
+        serveObject(filename, request, response);
+    }
+
+    public void serveConversationAudio(String url, jakarta.servlet.http.HttpServletRequest request,
+                                       jakarta.servlet.http.HttpServletResponse response) throws IOException {
+        conversationAudioLocation(url); // Validates the private namespace, never expose it as a public route.
+        serveObject("conversation/" + url.substring("/conversation-media/s3/".length()), request, response);
+    }
+
+    private void serveObject(String name, jakarta.servlet.http.HttpServletRequest request,
+                             jakarta.servlet.http.HttpServletResponse response) throws IOException {
+        requireS3();
+        if (!name.matches("(?:(?:legacy|conversation)/)?[0-9a-f-]{36}\\.(mp3|m4a|wav)"))
+            throw new IllegalArgumentException("Invalid S3 audio object");
+        String range = request.getHeader("Range");
+        if (range != null && (!range.matches("bytes=(?:[0-9]{1,18}-[0-9]{0,18}|-[0-9]{1,18})"))) {
+            response.setStatus(416);
+            return;
+        }
+        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("Accept-Ranges", "bytes");
+        try {
+            if (request.getMethod().equals("HEAD")) {
+                var head=s3.orElseThrow().headObject(software.amazon.awssdk.services.s3.model.HeadObjectRequest.builder()
+                        .bucket(config.bucket()).key(config.prefix()+name).range(range).build());
+                response.setContentType(head.contentType());
+                response.setContentLengthLong(head.contentLength());
+                response.setStatus(head.sdkHttpResponse().statusCode());
+                return;
+            }
+            try (var input=s3.orElseThrow().getObject(GetObjectRequest.builder().bucket(config.bucket())
+                    .key(config.prefix()+name).range(range).build())) {
+                var info=input.response();
+                response.setContentType(info.contentType());
+                response.setContentLengthLong(info.contentLength());
+                response.setStatus(info.contentRange()!=null ? 206 : info.sdkHttpResponse().statusCode());
+                if(info.contentRange()!=null) response.setHeader("Content-Range",info.contentRange());
+                input.transferTo(response.getOutputStream());
+            }
+        } catch (software.amazon.awssdk.services.s3.model.S3Exception error) {
+            if (!response.isCommitted()) response.setStatus(error.statusCode()==416 ? 416 : error.statusCode()==404 ? 404 : 503);
+            else throw new IOException("Audio stream interrupted");
+        } catch (SdkException error) {
+            if (!response.isCommitted()) response.setStatus(503);
+            else throw new IOException("Audio stream interrupted");
+        }
+    }
+
+    public Optional<URI> legacyAudioLocation(String url) {
+        if (!config.enabled()) return Optional.empty();
+        return db.queryForList("SELECT object_name FROM audio_s3_aliases WHERE audio_url=?", String.class, url)
+                .stream().findFirst().map(this::signedObjectUrl);
+    }
+
+    public String storeConversationAudio(byte[] wave) {
+        requireS3();
+        if (wave == null || wave.length < 44 || wave.length > maxBytes
+                || !text(wave, 0, 4).equals("RIFF") || !text(wave, 8, 4).equals("WAVE"))
+            throw new MediaStorageException("Invalid conversation WAV");
+        String filename = UUID.randomUUID() + ".wav";
+        String url = "/conversation-media/s3/" + filename;
+        lifecycle.getObject().stage(url);
+        try {
+            s3.orElseThrow().putObject(PutObjectRequest.builder().bucket(config.bucket())
+                    .key(config.prefix() + "conversation/" + filename).contentType("audio/wav").build(),
+                    RequestBody.fromBytes(wave));
+            return url;
+        } catch (SdkException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Audio storage unavailable", exception);
+        }
+    }
+
+    public URI conversationAudioLocation(String url) {
+        if (url == null || !url.startsWith("/conversation-media/s3/"))
+            throw new IllegalArgumentException("Invalid conversation audio location");
+        String filename = url.substring("/conversation-media/s3/".length());
+        validateS3Filename(filename);
+        return signedObjectUrl("conversation/" + filename);
     }
 
     @PostConstruct
@@ -63,17 +218,33 @@ public class MediaStorageService {
             try (InputStream input = file.getInputStream()) {
                 Files.copy(input, temporary, StandardCopyOption.REPLACE_EXISTING);
             }
+            if (Files.size(temporary) > maxBytes) {
+                throw new MediaStorageException("File audio vượt quá giới hạn cho phép.");
+            }
             String detectedExtension = detectAudioExtension(temporary);
             if (!detectedExtension.equals(originalExtension)) {
                 throw new MediaStorageException("Phần mở rộng file không khớp với nội dung audio thực tế.");
             }
             String storedName = UUID.randomUUID() + "." + detectedExtension;
+            if (config.enabled()) {
+                if (lifecycle != null) lifecycle.getObject().stage(S3_URL_PREFIX + storedName);
+                s3.orElseThrow(() -> new IllegalStateException("Missing media S3 client"))
+                        .putObject(PutObjectRequest.builder().bucket(config.bucket())
+                                .key(config.prefix() + storedName).contentType(audioContentType(detectedExtension))
+                                .build(), RequestBody.fromFile(temporary));
+                // Persist the stable application URL, never an expiring S3 signature.
+                return new StoredMedia(S3_URL_PREFIX + storedName);
+            }
             Path destination = safeResolve(storedName);
             moveAtomically(temporary, destination);
             temporary = null;
             return new StoredMedia("/media/" + storedName);
         } catch (MediaStorageException exception) {
             throw exception;
+        } catch (SdkException exception) {
+            // Do not fall back to disk: an S3 outage must not silently change storage location.
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Chưa lưu được audio lên S3. Vui lòng thử lại.", exception);
         } catch (IOException exception) {
             throw new MediaStorageException("Không thể lưu file audio. Vui lòng thử lại.", exception);
         } finally {
@@ -88,6 +259,26 @@ public class MediaStorageService {
     }
 
     public void deleteIfManaged(String audioUrl) {
+        if (audioUrl != null && audioUrl.startsWith("/conversation-media/s3/")) {
+            String filename = audioUrl.substring("/conversation-media/s3/".length());
+            validateS3Filename(filename);
+            requireS3();
+            s3.orElseThrow().deleteObject(DeleteObjectRequest.builder().bucket(config.bucket())
+                    .key(config.prefix() + "conversation/" + filename).build());
+            return;
+        }
+        if (audioUrl != null && audioUrl.startsWith(S3_URL_PREFIX)) {
+            String storedName = audioUrl.substring(S3_URL_PREFIX.length());
+            validateS3Filename(storedName);
+            requireS3();
+            try {
+                s3.orElseThrow().deleteObject(DeleteObjectRequest.builder().bucket(config.bucket())
+                        .key(config.prefix() + storedName).build());
+            } catch (SdkException exception) {
+                throw new MediaStorageException("Không thể dọn file audio cũ trên S3.", exception);
+            }
+            return;
+        }
         if (audioUrl == null || !audioUrl.startsWith("/media/")) {
             return;
         }
@@ -100,6 +291,47 @@ public class MediaStorageService {
         } catch (IOException exception) {
             throw new MediaStorageException("Không thể dọn file audio cũ.", exception);
         }
+    }
+
+    public URI signedAudioUrl(String filename) {
+        validateS3Filename(filename);
+        return signedObjectUrl(filename);
+    }
+
+    private URI signedObjectUrl(String objectName) {
+        if (!objectName.matches("(?:(?:legacy|conversation)/)?[0-9a-f-]{36}\\.(mp3|m4a|wav)"))
+            throw new IllegalArgumentException("Invalid S3 audio object");
+        requireS3();
+        try {
+            return URI.create(presigner.orElseThrow().presignGetObject(GetObjectPresignRequest.builder()
+                    .signatureDuration(config.signedUrlDuration())
+                    .getObjectRequest(GetObjectRequest.builder().bucket(config.bucket())
+                            .key(config.prefix() + objectName).build()).build()).url().toExternalForm());
+        } catch (SdkException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Chưa tải được audio từ S3. Vui lòng thử lại.", exception);
+        }
+    }
+
+    private void requireS3() {
+        if (!config.enabled() || s3.isEmpty() || presigner.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Lưu trữ audio S3 chưa được cấu hình.");
+        }
+    }
+
+    private void validateS3Filename(String filename) {
+        if (filename == null || !S3_FILENAME.matcher(filename).matches()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy audio.");
+        }
+    }
+
+    private String audioContentType(String extension) {
+        return switch (extension) {
+            case "mp3" -> "audio/mpeg";
+            case "m4a" -> "audio/mp4";
+            case "wav" -> "audio/wav";
+            default -> throw new IllegalArgumentException("Unsupported audio extension");
+        };
     }
 
     private String extensionOf(String filename) {
@@ -115,11 +347,11 @@ public class MediaStorageService {
     }
 
     private String detectAudioExtension(Path file) throws IOException {
-        byte[] header = new byte[12];
-        int length;
+        byte[] header;
         try (InputStream input = Files.newInputStream(file)) {
-            length = input.read(header);
+            header = input.readNBytes(12);
         }
+        int length = header.length;
         if (length >= 3 && header[0] == 'I' && header[1] == 'D' && header[2] == '3') {
             return "mp3";
         }

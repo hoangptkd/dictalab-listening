@@ -204,10 +204,10 @@ class PracticeServiceIntegrationTest {
                 .flatExtracting(ApiDtos.SentenceReview::words)
                 .extracting(ApiDtos.WordReview::outcome)
                 .containsOnly(WordLearningOutcome.FIRST_ATTEMPT);
-        assertThat(completion.result().assessment().evidenceLessons()).isEqualTo(1);
+        assertThat(completion.result().assessment().evidenceLessons()).isZero();
         assertThat(completion.result().assessment().provisional()).isTrue();
         assertThat(completion.result().assessment().confidence()).isLessThanOrEqualTo(49);
-        assertThat(completion.result().assessment().metrics().unassistedFirstPassAccuracy()).isEqualTo(100);
+        assertThat(completion.result().assessment().estimatedLevel()).isNull();
         assertThat(completion.result().assessment().metrics().averageReplayPerSentence()).isZero();
 
         ApiDtos.LessonSummary completed = catalogLesson(1L);
@@ -243,7 +243,7 @@ class PracticeServiceIntegrationTest {
                         sentence.sentenceId(), 0, new ApiDtos.CheckWordRequest("wrong"));
                 assertThat(unchanged.words().get(0).userInput()).isEqualTo("Anna");
             }
-            List<String> expected = tokenizer.words(sentence.speechText());
+            List<String> expected = tokenizer.words(sentenceRepository.findById(sentence.sentenceId()).orElseThrow().getTranscript());
             for (int index = 0; index < expected.size(); index++) {
                 if (!sentence.words().get(index).prefilled()) {
                     sentence = practiceService.checkWord(userId, session.sessionId(), sentence.sentenceId(),
@@ -312,7 +312,7 @@ class PracticeServiceIntegrationTest {
                 new ApiDtos.CheckWordRequest("fresh"));
         for (int attempt = 0; attempt < 6; attempt++) {
             practiceService.checkWord(userId, session.sessionId(), firstSentenceId, 3,
-                    new ApiDtos.CheckWordRequest("apple"));
+                    new ApiDtos.CheckWordRequest("apple" + attempt));
         }
         practiceService.checkWord(userId, session.sessionId(), firstSentenceId, 3,
                 new ApiDtos.CheckWordRequest("apples"));

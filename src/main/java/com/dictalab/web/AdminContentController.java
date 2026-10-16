@@ -124,13 +124,12 @@ public class AdminContentController {
 
     @PostMapping(path = "/{lessonId}/sentences/{sentenceId}/audio",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public AdminDtos.LessonResponse uploadAudio(@PathVariable Long lessonId,
                                                  @PathVariable Long sentenceId,
             @RequestPart("file") MultipartFile file, @RequestHeader(value="X-Edit-Version",required=false) String revision,
             @AuthenticationPrincipal DictaLabPrincipal actor) {
-        queries.verifyLesson(lessonId,revision);
-        var result = adminContentService.uploadAudio(lessonId, sentenceId, file);
-        queries.event(actor.id(),"LESSON",lessonId,"UPLOAD_AUDIO","Câu #"+sentenceId); return result;
+        return adminContentService.uploadAudio(lessonId, sentenceId, file, revision, actor.id());
     }
 
     @PutMapping("/{lessonId}/publication")

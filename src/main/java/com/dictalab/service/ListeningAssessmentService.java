@@ -14,10 +14,10 @@ import com.dictalab.repository.SentenceAttemptRepository;
 import com.dictalab.repository.WordAttemptEventRepository;
 import com.dictalab.repository.WordAttemptRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -69,12 +69,10 @@ public class ListeningAssessmentService {
             wordsBySentence.computeIfAbsent(word.getSentenceAttempt().getId(), ignored -> new ArrayList<>()).add(word);
         }
         Map<String, Signal> signals = new HashMap<>();
-        Map<Long, Set<String>> previewWordsByLesson = new HashMap<>();
+        Map<Long, Set<String>> previewWordsByLesson = previewVocabularyService.normalizedWordsForLessons(
+                evidence.stream().map(session -> session.getLesson().getId()).distinct().toList());
         for (PracticeSession session : evidence) {
             signals.put(session.getId(), new Signal());
-            previewWordsByLesson.computeIfAbsent(session.getLesson().getId(), lessonId ->
-                    previewVocabularyService.normalizedWordsFor(session.getLesson())
-            );
         }
         for (SentenceAttempt sentenceAttempt : sentenceAttempts) {
             Signal signal = signals.get(sentenceAttempt.getPracticeSession().getId());
@@ -88,10 +86,16 @@ public class ListeningAssessmentService {
                     ));
         }
 
+        evidence = evidence.stream().filter(s -> signals.get(s.getId()).totalWords > 0).toList();
+        if (evidence.isEmpty()) return emptyAssessment();
+        var eligibleIds = evidence.stream().map(PracticeSession::getId).collect(java.util.stream.Collectors.toSet());
+        signals.keySet().retainAll(eligibleIds);
+        wordAttempts = wordAttempts.stream().filter(w -> eligibleIds.contains(w.getSentenceAttempt().getPracticeSession().getId())).toList();
+        events = events.stream().filter(e -> eligibleIds.contains(e.getWordAttempt().getSentenceAttempt().getPracticeSession().getId())).toList();
         Signal total = new Signal();
         signals.values().forEach(total::merge);
-        long responseTimeSum = events.stream().mapToLong(WordAttemptEvent::getResponseTimeMs).sum();
-        long averageResponseTime = events.isEmpty() ? 0 : Math.round(responseTimeSum / (double) events.size());
+        long averageResponseTime = Math.round(events.stream().mapToLong(WordAttemptEvent::getResponseTimeMs)
+                .filter(ms -> ms > 0).average().orElse(0));
         ApiDtos.AssessmentMetrics metrics = new ApiDtos.AssessmentMetrics(
                 percent(total.unassistedFirstCorrect, total.totalWords),
                 percent(total.firstCorrect, total.totalWords),
@@ -149,20 +153,8 @@ public class ListeningAssessmentService {
     }
 
     private List<PracticeSession> selectEvidence(Long userId) {
-        List<PracticeSession> completed = new ArrayList<>(sessionRepository
-                .findByUserIdAndStatusAndRoomIdIsNullOrderByCompletedAtAsc(userId, SessionStatus.COMPLETED));
-        Collections.reverse(completed);
-        List<PracticeSession> evidence = new ArrayList<>();
-        Set<Long> lessonIds = new HashSet<>();
-        for (PracticeSession session : completed) {
-            if (session.isFirstExposure() && lessonIds.add(session.getLesson().getId())) {
-                evidence.add(session);
-                if (evidence.size() == properties.maximumUnseenLessons()) {
-                    break;
-                }
-            }
-        }
-        return evidence;
+        return sessionRepository.assessmentEvidence(userId, SessionStatus.COMPLETED,
+                PageRequest.of(0, properties.maximumUnseenLessons()));
     }
 
     private void addSentenceSignal(Signal signal, SentenceAttempt sentenceAttempt,
@@ -298,7 +290,7 @@ public class ListeningAssessmentService {
         if (evidenceLessons < properties.minimumUnseenLessons()) {
             int remaining = properties.minimumUnseenLessons() - evidenceLessons;
             return "Ước lượng tạm thời từ " + evidenceLessons + " bài mới; cần thêm " + remaining
-                    + " bài chưa từng học để tăng độ tin cậy.";
+                    + " bài chưa từng học để bổ sung dữ liệu. Đây không phải kết quả thi chuẩn hóa.";
         }
         if (calibratedLessons < evidenceLessons) {
             return "Đã đủ số bài mới, nhưng một số bài chưa được hiệu chỉnh chuẩn; kết quả dùng để chẩn đoán nội bộ.";

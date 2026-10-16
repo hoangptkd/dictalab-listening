@@ -27,6 +27,9 @@ public class AppUser {
     @Column(name = "password_hash", nullable = false, length = 100)
     private String passwordHash;
 
+    @Column(name = "google_subject", unique = true, length = 255)
+    private String googleSubject;
+
     @Column(nullable = false, length = 20)
     private String role;
 
@@ -89,6 +92,10 @@ public class AppUser {
     }
 
     public boolean isEmailVerified() { return emailVerified; }
+
+    public String getGoogleSubject() { return googleSubject; }
+
+    public void linkGoogle(String subject, Instant now) { this.googleSubject = subject; this.updatedAt = now; }
 
     public long getAuthVersion() { return authVersion; }
 

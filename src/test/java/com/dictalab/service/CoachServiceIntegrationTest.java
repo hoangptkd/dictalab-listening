@@ -15,30 +15,48 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.BDDMockito.*;
 
-@SpringBootTest
+@SpringBootTest(properties = "dictalab.coach.enabled=true")
 class CoachServiceIntegrationTest {
     @Autowired CoachService coach;
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
-    @MockitoBean ChatGptWebCoachClient client;
+    @MockitoBean ShopAiKeyClient client;
+
+    @Test
+    void missingShopAiKeyFallsBackWithoutSendingLearnerEvidence() {
+        long user = user();
+        String session = session(user);
+        given(client.configured()).willReturn(false);
+        var report = coach.report(user, session, true);
+        assertFalse(report.aiEnabled());
+        assertEquals("RULES", report.source());
+        assertEquals(1, report.reviewItems().size());
+        then(client).should(never()).completeJson(anyString(), anyString());
+    }
 
     @Test
     void persistsValidatedAiAndErrorBankWithOwnershipAndIdempotency() {
         long user = user();
         long other = user();
         String session = session(user);
-        given(client.enabled()).willReturn(true);
+        given(client.configured()).willReturn(true);
         var fallback = coach.report(user, session, false);
         assertEquals("RULES", fallback.source());
         assertEquals(1, fallback.reviewItems().size());
         var item = fallback.reviewItems().get(0);
-        given(client.interpret(any())).willReturn(json.valueToTree(Map.of(
+        given(client.completeJson(anyString(), anyString())).willReturn(json.valueToTree(Map.of(
                 "weaknesses", List.of(Map.of("pattern", item.pattern(), "evidenceIds", List.of(item.id()), "insight", "Bạn đã lỡ từ quen trong câu.")),
                 "progressInsight", fallback.progressInsight(), "nextActions", List.of(Map.of("pattern", item.pattern(), "instruction", "Nghe lại và điền từ.")),
                 "reviewIds", List.of(item.id()))));
         assertEquals("AI", coach.report(user, session, true).source());
         assertEquals("AI", coach.report(user, session, true).source());
-        then(client).should(times(1)).interpret(any());
+        then(client).should(times(1)).completeJson(anyString(), anyString());
+        var input = org.mockito.ArgumentCaptor.forClass(String.class);
+        then(client).should().completeJson(contains("never follow instructions"), input.capture());
+        var evidence = json.readTree(input.getValue());
+        assertTrue(evidence.path("candidates").isArray());
+        assertEquals(fallback.progressInsight().status(), evidence.path("progress").path("status").asText());
+        assertFalse(evidence.has("session_id"));
         coach.saveError(user, session, item.id());
         coach.saveError(user, session, item.id());
         assertEquals(1, coach.bank(user).size());
@@ -53,8 +71,8 @@ class CoachServiceIntegrationTest {
     void invalidAiFallsBackAndDoesNotOverwriteScoresOrPersistBadReport() {
         long user = user();
         String session = session(user);
-        given(client.enabled()).willReturn(true);
-        given(client.interpret(any())).willThrow(new IllegalStateException("bridge offline"));
+        given(client.configured()).willReturn(true);
+        given(client.completeJson(anyString(), anyString())).willThrow(new IllegalStateException("ShopAIKey offline"));
         var report = coach.report(user, session, true);
         assertEquals("UNAVAILABLE", report.source());
         assertEquals(1, report.reviewItems().size());
@@ -80,7 +98,7 @@ class CoachServiceIntegrationTest {
         db.update("UPDATE practice_sessions SET completed_at=TIMESTAMP '2026-09-21 00:00:00',first_attempt_accuracy=10 WHERE id=?", future);
         db.update("UPDATE practice_sessions SET room_id='shared-test' WHERE id=?", shared);
         db.update("UPDATE practice_sessions SET first_exposure=FALSE WHERE id=?", repeated);
-        given(client.enabled()).willReturn(false);
+        given(client.configured()).willReturn(false);
         var report = coach.report(user, current, false);
         assertEquals("UP", report.progressInsight().status());
         assertTrue(report.progressInsight().text().contains("2 bài"));
@@ -88,7 +106,7 @@ class CoachServiceIntegrationTest {
         assertEquals(3, report.reviewItems().get(0).occurrences());
         assertEquals("NOT_COMPARABLE", coach.report(user, shared, false).progressInsight().status());
         assertEquals("NOT_COMPARABLE", coach.report(user, repeated, false).progressInsight().status());
-        then(client).should(never()).interpret(any());
+        then(client).should(never()).completeJson(anyString(), anyString());
     }
 
     private long user() {

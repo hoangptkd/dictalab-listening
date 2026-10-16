@@ -100,7 +100,8 @@ public final class ApiDtos {
             boolean correct,
             boolean revealed,
             boolean prefilled,
-            LearnerErrorType errorType
+            LearnerErrorType errorType,
+            boolean classificationAvailable
     ) {
     }
 
@@ -120,6 +121,24 @@ public final class ApiDtos {
             boolean hasListened,
             boolean requiresReplayAfterReveal,
             boolean canComplete
+    ) {
+        public SentenceState {
+            // Also sanitizes receipts written by older application versions.
+            if (audioUrl != null && !audioUrl.isBlank()) speechText = null;
+        }
+    }
+
+    public record WordCheckResult(
+            Long sentenceId,
+            WordSlot word,
+            int resolvedWords,
+            int replayCount,
+            int hintCount,
+            int revealCount,
+            boolean hasListened,
+            boolean requiresReplayAfterReveal,
+            boolean canComplete,
+            boolean completed
     ) {
     }
 
@@ -148,7 +167,8 @@ public final class ApiDtos {
             double overallScore,
             Instant completedAt,
             LessonReview review,
-            ListeningAssessment assessment
+            ListeningAssessment assessment,
+            int scoringVersion
     ) {
     }
 
@@ -228,6 +248,7 @@ public final class ApiDtos {
     }
 
     public record TrendPoint(
+            String sessionId,
             LocalDate date,
             CefrLevel level,
             String lessonTitle,
@@ -305,6 +326,9 @@ public final class ApiDtos {
             Recommendation recommendation,
             ListeningAssessment assessment
     ) {
+    }
+
+    public record HistoryPage(List<HistoryEntry> items, int page, int size, long totalElements, int totalPages) {
     }
 
     public record HistoryEntry(

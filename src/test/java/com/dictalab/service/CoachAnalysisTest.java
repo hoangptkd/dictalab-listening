@@ -93,6 +93,6 @@ class CoachAnalysisTest {
     static ApiDtos.LessonResult result(List<ApiDtos.SentenceReview> sentences) {
         return new ApiDtos.LessonResult("test", 1L, "Test", CefrLevel.A1, 50, 100, 2, 0, 0, 1, 0, 10, 70,
                 Instant.parse("2026-09-30T00:00:00Z"), new ApiDtos.LessonReview("Test", null, "Test", 3.0, 100, 1, "",
-                1, 1, 1, false, sentences.size(), sentences.size(), sentences), null);
+                1, 1, 1, false, sentences.size(), sentences.size(), sentences), null, 2);
     }
 }
