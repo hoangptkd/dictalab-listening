@@ -23,7 +23,7 @@ public class ConversationController {
     public void privateResponse(jakarta.servlet.http.HttpServletResponse response) {
         response.setHeader("Cache-Control", "no-store");
     }
-    public record Create(@NotBlank @Size(max=30) String scenario, @NotBlank @Size(max=10) String difficulty) {}
+    public record Create(@NotBlank @Size(max=30) String scenario, @NotBlank @Size(max=10) String difficulty, UUID sourceSessionId) {}
     public record Next(@Min(0) @Max(4) int turnNumber) {}
     public record Answer(@Min(1) @Max(4) int turnNumber, @NotNull UUID requestId, @NotBlank @Size(max=1500) String answerVi) {}
     public record Help(@Min(1) @Max(4) int turnNumber, @NotBlank @Size(max=20) String kind) {}
@@ -31,7 +31,8 @@ public class ConversationController {
 
     @GetMapping public Map<String,Object> catalog(@AuthenticationPrincipal DictaLabPrincipal user) { return service.catalog(user.id()); }
     @PostMapping("/sessions") public ObjectNode create(@AuthenticationPrincipal DictaLabPrincipal user, @Valid @RequestBody Create input) {
-        return service.create(user.id(), input.scenario(), input.difficulty());
+        return service.create(user.id(), input.scenario(), input.difficulty(),
+                input.sourceSessionId() == null ? null : input.sourceSessionId().toString());
     }
     @GetMapping("/sessions/{id}") public ObjectNode get(@AuthenticationPrincipal DictaLabPrincipal user, @PathVariable UUID id) {
         return service.get(user.id(), id.toString());

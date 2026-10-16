@@ -67,6 +67,8 @@ class ConversationIntegrationTest {
         when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("ten"));
         when(ai.completeJson(startsWith("Audit a listening task"), anyString(), anyString()))
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
+        when(ai.completeJson(startsWith("Audit a clarification"), anyString(), anyString()))
+                .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
     }
     private JsonNode prompt(String detail) {
         return json.readTree("""
@@ -88,6 +90,143 @@ class ConversationIntegrationTest {
     private String start() {
         String id = service.create(owner, "cafe", "A1").path("id").asText();
         service.next(owner, id, 0); return id;
+    }
+
+    private void reviewRemaining(String id, int from) {
+        for (int number = from; number <= 4; number++) {
+            when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("review" + number));
+            service.next(owner, id, number - 1);
+            service.help(owner, id, number, "review");
+        }
+    }
+
+    @Test void reviewIsHiddenUntilDoneAndAllowsLearningWithoutInventingCredit() {
+        String id = start();
+        assertThat(service.get(owner, id).path("turns").path(0).has("review")).isFalse();
+        var reviewed = service.help(owner, id, 1, "review").path("turns").path(0);
+        assertThat(reviewed.path("done").asBoolean()).isTrue();
+        assertThat(reviewed.path("review").path("facts").size()).isEqualTo(2);
+        assertThat(reviewed.path("review").path("utteranceEn").asText()).contains("ten cafe");
+        assertThat(reviewed.path("review").path("facts").path(0).path("status").asText()).isEqualTo("MISSED");
+        assertThat(reviewed.path("prompt").has("facts")).isFalse();
+        reviewRemaining(id, 2);
+        var summary = service.get(owner, id).path("summary");
+        assertThat(summary.path("totalFacts").asInt()).isEqualTo(8);
+        assertThat(summary.path("independentFacts").asInt()).isZero();
+        assertThat(summary.path("assistedFacts").asInt()).isZero();
+        assertThat(summary.path("transferVi").asText()).contains("còn thiếu ý");
+        verify(ai, never()).completeJson(anyString(), anyString());
+    }
+
+    @Test void exhaustedAnswersRevealGroundedReviewAndCapturedCounts() {
+        String id = start();
+        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "MISSED", "quán"));
+        for (int n = 1; n <= 3; n++) {
+            var turn = service.answer(owner, id, 1, UUID.randomUUID(), "quán").path("turns").path(0);
+            assertThat(turn.path("capturedFacts").asInt()).isEqualTo(1);
+            assertThat(turn.has("review")).isEqualTo(n == 3);
+            assertThat(turn.path("attempts").path(n - 1).path("evaluation").has("facts")).isFalse();
+        }
+        assertThat(service.get(owner, id).path("turns").path(0).path("review").path("facts").path(1).path("evidenceEn").asText())
+                .isEqualTo("at ten tomorrow");
+    }
+
+    @Test void pendingAnswerCannotBeSkippedByRevealingTheKey() {
+        String id = start();
+        when(ai.completeJson(anyString(), anyString())).thenThrow(new IllegalStateException("offline"));
+        assertThatThrownBy(() -> service.answer(owner, id, 1, UUID.randomUUID(), "quán")).isInstanceOf(ResponseStatusException.class);
+        assertThatThrownBy(() -> service.help(owner, id, 1, "review")).isInstanceOf(ResponseStatusException.class);
+        assertThat(service.get(owner, id).path("turns").path(0).has("review")).isFalse();
+    }
+
+    @Test void supportIsAttributedToEachFactWhenItWasFirstCaptured() {
+        String id = start();
+        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "MISSED", "quán"));
+        service.answer(owner, id, 1, UUID.randomUUID(), "quán");
+        service.help(owner, id, 1, "translation");
+        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
+        service.answer(owner, id, 1, UUID.randomUUID(), "quán");
+        reviewRemaining(id, 2);
+        var summary = service.get(owner, id).path("summary");
+        assertThat(summary.path("independentFacts").asInt()).isEqualTo(1);
+        assertThat(summary.path("assistedFacts").asInt()).isEqualTo(1);
+        assertThat(summary.path("understoodVi").path(0).asText()).isEqualTo("Nghe giờ và địa điểm");
+    }
+
+    @Test void laterContradictionResetsIndependentEvidence() {
+        String id = start();
+        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "MISSED", "quán"));
+        service.answer(owner, id, 1, UUID.randomUUID(), "quán");
+        service.help(owner, id, 1, "translation");
+        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("INCORRECT", "CAPTURED", "quán"));
+        service.answer(owner, id, 1, UUID.randomUUID(), "quán");
+        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
+        service.answer(owner, id, 1, UUID.randomUUID(), "quán");
+        reviewRemaining(id, 2);
+        var summary = service.get(owner, id).path("summary");
+        assertThat(summary.path("independentFacts").asInt()).isZero();
+        assertThat(summary.path("assistedFacts").asInt()).isEqualTo(2);
+    }
+
+    @Test void targetedPracticeUsesOwnedCompletedSessionAndPassesJourneyToGenerator() {
+        String id = start();
+        service.help(owner, id, 1, "review");
+        assertThatThrownBy(() -> service.create(owner, "cafe", "A1", id)).isInstanceOf(ResponseStatusException.class);
+        reviewRemaining(id, 2);
+        String followup = service.create(owner, "cafe", "A1", id).path("id").asText();
+        assertThat(service.get(owner, followup).path("practiceFocus").asText()).isEqualTo("Nghe giờ và địa điểm");
+        service.next(owner, followup, 0);
+        var input = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(ai, times(5)).completeJson(startsWith("You design"), input.capture(), anyString());
+        var context = json.readTree(input.getAllValues().get(4));
+        assertThat(context.path("scenarioJourney").asText()).contains("Same customer and server");
+        assertThat(context.path("practiceFocus").asText()).isEqualTo("Nghe giờ và địa điểm");
+        assertThatThrownBy(() -> service.create(owner, "tickets", "B1", id)).isInstanceOf(ResponseStatusException.class);
+        long other = users.saveAndFlush(new AppUser("other-" + UUID.randomUUID() + "@test.local", "Other", "unused", Instant.now())).getId();
+        assertThatThrownBy(() -> service.create(other, "cafe", "A1", id))
+                .isInstanceOfSatisfying(ResponseStatusException.class, e -> assertThat(e.getStatusCode().value()).isEqualTo(404));
+    }
+
+    @Test void previousAudioCanBeReplayedWithoutChangingCurrentTask() {
+        String id = start();
+        service.help(owner, id, 1, "review");
+        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("eleven"));
+        service.next(owner, id, 1);
+        var result = service.play(owner, id, 1, "original", false);
+        assertThat(result.path("turnNumber").asInt()).isEqualTo(2);
+        assertThat(result.path("audioUrl").asText()).endsWith("/audio/1/original");
+        assertThat(service.audioStatus(owner, id, 1, "original").get("status")).isEqualTo("READY");
+        assertThatThrownBy(() -> service.audioStatus(owner, id, 0, "original")).isInstanceOf(ResponseStatusException.class);
+        assertThatThrownBy(() -> service.play(owner, id, 3, "original", false)).isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test void earlyFinishRetainsThreeTasksAndDoesNotClaimTransferSuccess() {
+        String id = start();
+        assertThatThrownBy(() -> service.help(owner, id, 1, "finish")).isInstanceOf(ResponseStatusException.class);
+        service.help(owner, id, 1, "review");
+        for (int n = 2; n <= 3; n++) {
+            when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("step" + n));
+            service.next(owner, id, n - 1); service.help(owner, id, n, "review");
+        }
+        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenThrow(new IllegalStateException("offline"));
+        assertThatThrownBy(() -> service.next(owner, id, 3)).isInstanceOf(ResponseStatusException.class);
+        var result = service.help(owner, id, 3, "finish");
+        assertThat(result.path("completed").asBoolean()).isTrue();
+        assertThat(result.path("turnNumber").asInt()).isEqualTo(3);
+        assertThat(result.path("summary").path("totalFacts").asInt()).isEqualTo(6);
+        assertThat(result.path("summary").path("transferVi").asText()).contains("Chưa làm câu mới");
+        assertThat(result.path("summary").path("nextActionVi").asText()).contains("cùng tình huống và độ khó");
+        assertThat(service.next(owner, id, 3).path("turnNumber").asInt()).isEqualTo(3);
+    }
+
+    @Test void changedFactsInClarificationAreNeverPublished() {
+        String id = start();
+        when(ai.completeJson(anyString(), anyString())).thenReturn(json.valueToTree(Map.of(
+                "utteranceEn", prompt("eleven").path("utteranceEn").asText(), "translationVi", "Đến quán khác.")));
+        when(ai.completeJson(startsWith("Audit a clarification"), anyString(), anyString()))
+                .thenReturn(json.readTree("{\"valid\":false,\"reason\":\"Changed final decision\"}"));
+        assertThatThrownBy(() -> service.help(owner, id, 1, "clarify")).isInstanceOf(ResponseStatusException.class);
+        assertThat(service.get(owner, id).path("turns").path(0).has("clarification")).isFalse();
     }
 
     @Test void missingApiKeyDisablesConversationWithoutWritingASession() {

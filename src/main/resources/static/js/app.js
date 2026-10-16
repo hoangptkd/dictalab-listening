@@ -1123,6 +1123,7 @@
         window.DictaLabCoach?.leave();
         window.DictaLabListening?.leave();
         window.DictaLabConversation?.leave();
+        window.DictaLabConversation?.clearDrafts();
         stopRecordedAudio();
         document.body.dataset.route = "login";
         stopTimer();
