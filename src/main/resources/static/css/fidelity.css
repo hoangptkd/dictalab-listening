@@ -1256,3 +1256,66 @@ body[data-route="admin-users"] .admin-table td:last-child a { white-space: nowra
 .history-card { box-shadow: none; }
 .history-card:hover { box-shadow: var(--shadow); }
 
+
+/* ══════════════════════════════════════════════════════
+   ⑱ Declutter — ẩn labels, hướng dẫn thừa (mọi màn hình)
+   Giữ nguyên: các element role="status" do JS populate,
+   hidden-by-default auth fields, dynamic status spans.
+   ══════════════════════════════════════════════════════ */
+
+/* Tất cả màn hình: eyebrow + section-index là trang trí thuần tuý */
+.eyebrow          { display: none !important; }
+.section-index    { display: none !important; }
+
+/* ── Auth ────────────────────────────────────────────── */
+/* Subtitle "Đăng nhập để tiếp tục..." — h2 đã đủ rõ */
+#auth-subtitle          { display: none !important; }
+/* Ghi chú mật khẩu "Từ 8 ký tự..." — thừa */
+#register-password-note { display: none !important; }
+
+/* ── Catalog ─────────────────────────────────────────── */
+/* Hướng dẫn chọn mode "Chọn IELTS, TOEIC hoặc Giao tiếp..." */
+.catalog-mode-guide { display: none !important; }
+
+/* ── Practice ────────────────────────────────────────── */
+/* Protocol line "Nghe nguyên câu · Không transcript / Khóa tua" */
+.console-protocol { display: none !important; }
+/* Phím tắt hint trong replay button */
+.sound-stage .replay-button small { display: none !important; }
+/* Label "Tốc độ nghe" bên cạnh speed slider */
+.playback-speed-control > span:first-child { display: none !important; }
+/* "Bạn có thể nhập ngay khi audio đang phát..." */
+#dictation-instructions { display: none !important; }
+/* Hướng dẫn copy trong details toggle */
+#dictation-copy-help { display: none !important; }
+/* Gợi ý trừ điểm & note sau khi xem đáp án */
+.practice-help-heading .field-help,
+.practice-help-heading small { display: none !important; }
+/* "Nghe câu ít nhất một lần để bắt đầu." */
+#next-requirement { display: none !important; }
+/* "Chọn loại lỗi..." trong classifications */
+.practice-classifications > .field-help { display: none !important; }
+
+/* ── Result ──────────────────────────────────────────── */
+/* Mô tả metric (đã có số liệu, text thừa) */
+.result-metric p { display: none !important; }
+/* Score note phụ */
+#result-score-note { display: none !important; }
+/* Intro paragraph trong coach error bank */
+.coach-bank > p { display: none !important; }
+
+/* ── Room ────────────────────────────────────────────── */
+/* Intro paragraph lobby */
+.room-lobby-intro { display: none !important; }
+/* Label hành động "Tạo phòng mới" / "Nhập link mới" */
+.room-action-label { display: none !important; }
+
+/* ── Header stability — ngăn nhảy 1px khi scrollbar xuất hiện ── */
+html { scrollbar-gutter: stable; }
+@media (min-width: 761px) and (max-width: 1280px) {
+    body[data-route="dashboard"] .site-header .main-nav,
+    body[data-route="support"]   .site-header .main-nav {
+        border-top: none;
+        box-shadow: inset 0 1px 0 var(--line);
+    }
+}
