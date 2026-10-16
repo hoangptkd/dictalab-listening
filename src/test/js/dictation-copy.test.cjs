@@ -103,6 +103,7 @@ test('cleared input stays empty in the draft after background rendering', () => 
     Object.assign(h.context.state, {inputInteractionRevision: 0, wordAttemptStartedAt: new Map()});
     h.context.window.clearTimeout = () => {};
     h.context.roomQueueDraft = () => {};
+    h.context.savePracticeDraft = () => {};
     h.context.composingWords = new Set();
     const handler = source.match(/    function onWordInput\([^]*?\n    \}/)[0];
     vm.runInContext(`${handler}\nonWordInput({target: input})`, Object.assign(h.context, {input}));

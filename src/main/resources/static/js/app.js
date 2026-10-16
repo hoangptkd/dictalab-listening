@@ -153,6 +153,7 @@
         playbackSpeed: 1,
         checkingWords: new Set(),
         wordDrafts: new Map(),
+        practiceDraftKey: null,
         wordAttemptStartedAt: new Map(),
         inputInteractionRevision: 0,
         practiceMutationQueue: Promise.resolve(),
@@ -396,6 +397,14 @@
             return;
         }
         await resolveUrlAndNavigate(parsed, false); // false = không push lại history
+    });
+
+    window.addEventListener("pagehide", () => {
+        savePracticeDraft();
+        stopTimer();
+    });
+    window.addEventListener("pageshow", event => {
+        if (event.persisted && document.body.dataset.route === "practice" && state.sentence?.hasListened) startTimer();
     });
 
     async function init() {
@@ -1129,6 +1138,7 @@
         document.body.dataset.route = "login";
         stopTimer();
         resetPracticeInput();
+        clearPracticeDrafts();
         state.currentUser = null;
         state.session = null;
         state.sentence = null;
@@ -1628,6 +1638,8 @@
         elements.hintCount.textContent = sentence.hintCount + sentence.revealCount;
         if (newSentence) {
             resetTimer();
+            restorePracticeDraft();
+            if (sentence.hasListened) startTimer();
             setPracticeStatus(sentence.hasListened
                 ? "Tiếp tục câu đang làm dở. Bạn có thể nghe lại hoặc nhập tiếp."
                 : "Nhấn Nghe câu để bắt đầu.");
@@ -1652,7 +1664,7 @@
             const width = Math.max(3, Math.min(18, word.length));
             const draft = state.wordDrafts.get(word.index);
             const inputValue = word.prefilled ? word.userInput : draft === undefined
-                ? (word.userInput || word.firstLetter || "")
+                ? (word.userInput || "")
                 : draft;
             const classes = ["word-slot"];
             const wrong = Boolean(word.userInput && !word.correct && !word.revealed
@@ -1899,7 +1911,58 @@
             && document.body.dataset.route === "practice";
     }
 
+    function savePracticeDraft() {
+        if (!state.practiceDraftKey) return;
+        try {
+            sessionStorage.setItem(state.practiceDraftKey, JSON.stringify({
+                drafts: [...state.wordDrafts], elapsedSeconds: practiceElapsedSeconds()
+            }));
+        } catch (_) { /* Denied or full storage must not interrupt typing. */ }
+    }
+
+    function restorePracticeDraft() {
+        state.practiceDraftKey = state.currentUser?.id == null || !state.session?.sessionId || !state.sentence?.sentenceId
+            ? null : `dictalab.practice-draft.${state.currentUser.id}.${state.session.sessionId}.${state.sentence.sentenceId}`;
+        if (!state.practiceDraftKey) return;
+        try {
+            const saved = JSON.parse(sessionStorage.getItem(state.practiceDraftKey) || "null");
+            if (!saved) return;
+            if (Array.isArray(saved.drafts)) {
+                for (const entry of saved.drafts) {
+                    if (!Array.isArray(entry)) continue;
+                    const [index, value] = entry;
+                    const word = Number.isInteger(index) && state.sentence.words[index];
+                    if (word && !word.correct && !word.revealed && !word.prefilled
+                        && typeof value === "string" && value.length <= 200) state.wordDrafts.set(index, value);
+                }
+            }
+            if (Number.isFinite(saved.elapsedSeconds)) state.timerSeconds = Math.max(0, Math.min(1800, Math.floor(saved.elapsedSeconds)));
+            elements.sentenceTimer.textContent = formatTime(state.timerSeconds);
+        } catch (_) { /* Missing, malformed or blocked storage leaves server state intact. */ }
+    }
+
+    function discardPracticeDraft() {
+        try { if (state.practiceDraftKey) sessionStorage.removeItem(state.practiceDraftKey); }
+        catch (_) { /* Storage may be unavailable. */ }
+        state.practiceDraftKey = null;
+    }
+
+    function clearPracticeDrafts() {
+        try {
+            const prefix = `dictalab.practice-draft.${state.currentUser?.id}.`;
+            for (let index = sessionStorage.length - 1; index >= 0; index--) {
+                const key = sessionStorage.key(index);
+                if (key?.startsWith(prefix)) sessionStorage.removeItem(key);
+            }
+        } catch (_) { /* Storage may be unavailable. */ }
+        state.practiceDraftKey = null;
+        state.wordDrafts.clear();
+    }
+
     function resetPracticeInput() {
+        savePracticeDraft();
+        state.practiceDraftKey = null;
+        stopTimer();
         practiceInputGeneration++;
         wordChecks.clear();
         composingWords.clear();
@@ -1955,6 +2018,7 @@
         }
         // An empty draft is an intentional deletion, not a missing draft.
         state.wordDrafts.set(index, input.value);
+        savePracticeDraft();
         refreshDictationCopy();
         roomQueueDraft();
         input.closest(".word-slot")?.classList.remove("is-wrong");
@@ -2109,6 +2173,7 @@
                 state.wordAttemptStartedAt.set(index, Date.now());
                 state.completeAfterPendingCheck = false;
             }
+            savePracticeDraft();
             renderPractice(false, updatedWordIndex);
             const newerDraft = !correct && state.wordDrafts.has(index)
                 && state.wordDrafts.get(index).trim() !== answer;
@@ -2219,6 +2284,19 @@
         const sameSentence = practiceInputContext();
         const completedBeforePlayback = state.sentence.canComplete;
         const hasRecordedAudio = Boolean(state.sentence.audioUrl);
+        const recordStarted = async () => {
+            if (!sameSentence()) throw new DOMException("Sentence changed", "AbortError");
+            const started = await queuePracticeMutation(practicePath("/replay-events"), {
+                method: "POST", body: {event: "STARTED", playbackSpeed}
+            }, sameSentence);
+            if (!sameSentence()) throw new DOMException("Sentence changed", "AbortError");
+            state.sentence = started;
+            startTimer();
+            savePracticeDraft();
+            elements.replayCount.textContent = shared ? sharedPlayback.replayCount : state.sentence.replayCount;
+            updatePracticeControls();
+            setPracticeStatus("Đang phát câu. Bạn có thể nhập ngay trong khi nghe.");
+        };
         if (!hasRecordedAudio && !("speechSynthesis" in window)) {
             elements.speechSupportNote.hidden = false;
             elements.speechSupportNote.textContent = "Trình duyệt này không hỗ trợ đọc câu. Hãy dùng Chrome, Edge hoặc Safari mới.";
@@ -2236,18 +2314,6 @@
             if (sharedPlayback && Date.now() - sharedPlayback.localStartsAt > 1500) {
                 throw new Error("Mạng phản hồi chậm; nhờ chủ phòng phát lại để cả hai nghe cùng lượt.");
             }
-            const started = await queuePracticeMutation(practicePath("/replay-events"), {
-                method: "POST",
-                body: {event: "STARTED", playbackSpeed}
-            }, sameSentence);
-            if (!sameSentence()) throw new DOMException("Sentence changed", "AbortError");
-            state.sentence = started;
-            if (!state.sentenceStartedAt) {
-                startTimer();
-            }
-            elements.replayCount.textContent = shared ? sharedPlayback.replayCount : state.sentence.replayCount;
-            updatePracticeControls();
-            setPracticeStatus("Đang phát câu. Bạn có thể nhập ngay trong khi nghe.");
             if (hasRecordedAudio) {
                 if (sharedPlayback && Date.now() - sharedPlayback.localStartsAt > 1500) {
                     throw new Error("Mạng phản hồi chậm; nhờ chủ phòng phát lại để cả hai nghe cùng lượt.");
@@ -2257,10 +2323,11 @@
                     state.sentence.audioStartSeconds,
                     state.sentence.audioEndSeconds,
                     playbackSpeed,
-                    sharedPlayback ? Math.max(0, sharedPlayback.localStartsAt - Date.now()) / 1000 : 0
+                    sharedPlayback ? Math.max(0, sharedPlayback.localStartsAt - Date.now()) / 1000 : 0,
+                    recordStarted
                 );
             } else {
-                await speak(state.sentence.speechText, state.sentence.speechRate * playbackSpeed);
+                await speak(state.sentence.speechText, state.sentence.speechRate * playbackSpeed, recordStarted);
             }
             if (!sameSentence()) throw new DOMException("Sentence changed", "AbortError");
             const completed = await queuePracticeMutation(practicePath("/replay-events"), {
@@ -2300,7 +2367,7 @@
         });
     }
 
-    async function playRecordedAudio(url, startSeconds, endSeconds, playbackSpeed = 1, startDelay = 0) {
+    async function playRecordedAudio(url, startSeconds, endSeconds, playbackSpeed = 1, startDelay = 0, onStarted) {
         stopRecordedAudio();
         const playbackGeneration = ++state.audioPlaybackGeneration;
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -2317,12 +2384,16 @@
             throw new DOMException("Audio playback cancelled", "AbortError");
         }
         const segment = audioSegment(startSeconds, endSeconds, buffer.duration);
+        if (segment.duration <= 0) throw new Error("Đoạn audio không có thời lượng để phát.");
         return new Promise((resolve, reject) => {
             let settled = false, source = null, offset = segment.start, startedAt = 0, paused = false;
+            let notified = false, notification = Promise.resolve(), notificationTimer = null;
             const speed = Number.isFinite(playbackSpeed) && playbackSpeed > 0 ? playbackSpeed : 1;
             const position = () => Math.min(segment.start + segment.duration,
                 offset + (paused ? 0 : Math.max(0, state.audioContext.currentTime - startedAt) * speed));
             const releaseSource = () => {
+                if (notificationTimer !== null) window.clearTimeout(notificationTimer);
+                notificationTimer = null;
                 if (!source) return;
                 source.onended = null;
                 try { source.stop(); } catch (_) { /* Already ended. */ }
@@ -2335,6 +2406,17 @@
                 if (state.activeAudio === active) state.activeAudio = null;
                 callback();
             };
+            const notifyStarted = () => {
+                if (!onStarted || notified || settled || paused) return;
+                // A scheduled source is not heard until its audio-clock start time.
+                if (state.audioContext.state !== "running" || state.audioContext.currentTime < startedAt) {
+                    notificationTimer = window.setTimeout(notifyStarted, 25);
+                    return;
+                }
+                notified = true;
+                notification = Promise.resolve().then(onStarted);
+                notification.catch(error => finish(() => reject(error)));
+            };
             const start = (nextOffset, delay = 0) => {
                 releaseSource();
                 offset = nextOffset;
@@ -2343,8 +2425,15 @@
                 source.buffer = buffer;
                 source.playbackRate.value = speed;
                 source.connect(state.audioContext.destination);
-                source.onended = () => finish(resolve);
+                source.onended = () => {
+                    notifyStarted();
+                    notification.then(() => finish(resolve), error => finish(() => reject(error)));
+                };
                 source.start(startedAt, offset, Math.max(0, segment.start + segment.duration - offset));
+                if (onStarted && !notified) {
+                    if (delay > 0) notificationTimer = window.setTimeout(notifyStarted, delay * 1000);
+                    else notifyStarted();
+                }
             };
             const active = {
                 getState: () => ({currentTime: position() - segment.start, duration: segment.duration,
@@ -2429,7 +2518,7 @@
     function resumeRecordedAudio() { state.activeAudio?.resume?.(); }
     function seekRecordedAudio(seconds) { state.activeAudio?.seek?.(Number(seconds)); }
 
-    function speak(text, rate) {
+    function speak(text, rate, onStarted) {
         return new Promise((resolve, reject) => {
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
@@ -2439,7 +2528,15 @@
             utterance.voice = voices.find(voice => voice.lang === "en-US")
                 || voices.find(voice => voice.lang?.startsWith("en"))
                 || null;
-            utterance.onend = resolve;
+            let notification = Promise.resolve();
+            utterance.onstart = () => {
+                notification = Promise.resolve().then(onStarted);
+                notification.catch(error => {
+                    reject(error);
+                    window.speechSynthesis.cancel();
+                });
+            };
+            utterance.onend = () => notification.then(resolve, reject);
             utterance.onerror = event => reject(new Error(event.error === "canceled"
                 ? "Đã dừng phát câu."
                 : "Không thể phát giọng đọc trên trình duyệt này."));
@@ -2463,9 +2560,10 @@
         try {
             const response = await queuePracticeMutation(practicePath("/complete"), {
                 method: "POST",
-                body: {timeSpentSeconds: state.timerSeconds}
+                body: {timeSpentSeconds: practiceElapsedSeconds()}
             }, isCurrent);
             if (!isCurrent()) return;
+            discardPracticeDraft();
             if (response.lessonCompleted) {
                 if (state.roomSharedSessionId === state.session?.sessionId) state.roomSharedCompleted = true;
                 stopTimer();
@@ -3130,12 +3228,19 @@
         updatePracticeControls();
     }
 
+    function practiceElapsedSeconds() {
+        return Math.max(0, Math.min(1800, state.sentenceStartedAt == null ? (state.timerSeconds || 0)
+            : Math.floor((Date.now() - state.sentenceStartedAt) / 1000)));
+    }
+
     function startTimer() {
         if (state.timerId) return;
-        state.sentenceStartedAt = Date.now();
+        state.sentenceStartedAt = Date.now() - (state.timerSeconds || 0) * 1000;
+        elements.sentenceTimer.textContent = formatTime(state.timerSeconds);
         state.timerId = window.setInterval(() => {
-            state.timerSeconds++;
+            state.timerSeconds = practiceElapsedSeconds();
             elements.sentenceTimer.textContent = formatTime(state.timerSeconds);
+            savePracticeDraft();
         }, 1000);
     }
 
@@ -3147,6 +3252,8 @@
     }
 
     function stopTimer() {
+        state.timerSeconds = practiceElapsedSeconds();
+        state.sentenceStartedAt = null;
         if (state.timerId) {
             window.clearInterval(state.timerId);
             state.timerId = null;
