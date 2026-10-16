@@ -91,6 +91,7 @@ public class SecurityConfig {
                 .oauth2ResourceServer(resource -> resource
                         .bearerTokenResolver(request -> {
                             String path = request.getRequestURI().substring(request.getContextPath().length());
+                            if (path.equals("/api/billing/payos/webhook")) return null;
                             // Public auth endpoints must work when an expired access cookie is still present.
                             if (path.startsWith("/api/auth/") && !path.equals("/api/auth/me")) return null;
                             if (!path.startsWith("/api/") && !path.startsWith("/admin")
@@ -114,12 +115,15 @@ public class SecurityConfig {
                         .withObjectPostProcessor(new ObjectPostProcessor<CsrfFilter>() {
                             @Override public <O extends CsrfFilter> O postProcess(O filter) {
                                 // Cookie JWTs must not inherit Resource Server's bearer-token CSRF exemption.
-                                filter.setRequireCsrfProtectionMatcher(CsrfFilter.DEFAULT_CSRF_MATCHER);
+                                filter.setRequireCsrfProtectionMatcher(request ->
+                                        !request.getRequestURI().substring(request.getContextPath().length()).equals("/api/billing/payos/webhook")
+                                        && CsrfFilter.DEFAULT_CSRF_MATCHER.matches(request));
                                 return filter;
                             }
                         }))
                 .securityContext(context -> context.securityContextRepository(contextRepository))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.POST,"/api/billing/payos/webhook").permitAll()
                         // Source files include answers/transcripts and must never be served by the static handler.
                         .requestMatchers(request -> {
                             String path = java.net.URLDecoder.decode(

@@ -780,7 +780,8 @@
                     return;
                 }
                 if (pushHistory) router.push(route);
-                else if (!route.startsWith("admin-") && !(route === "support" && (query?.has("id") || query?.has("category")))) router.replace(route);
+                else if (!route.startsWith("admin-") && !(route === "support" && (query?.has("id") || query?.has("category")))
+                    && !(route === "account" && query?.has("orderCode"))) router.replace(route);
                 _showView(route);
                 await window.DictaLabAccount?.show(route);
                 return;

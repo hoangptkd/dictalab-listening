@@ -4843,3 +4843,15 @@ summary:focus-visible {
     }
 }
 
+.account-panel.billing-panel { display: block; margin-bottom: 2rem; }
+.billing-panel p { margin-block: .75rem; }
+.billing-panel [data-billing-status]:empty { display: none; }
+.billing-panel details { margin-top: 1.25rem; }
+.billing-summary, .billing-benefits, .billing-orders li { display: flex; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; }
+.billing-price { align-self: center; white-space: nowrap; }
+.billing-price strong { font-size: clamp(1.5rem, 4vw, 2.3rem); }
+.billing-benefits { border-block: 1px solid currentColor; margin-block: 1rem; }
+.billing-orders { padding-left: 1.3rem; }
+.billing-orders li { padding-block: 1rem; border-bottom: 1px solid currentColor; }
+.billing-order-actions { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+[data-billing-status][data-error="true"] { color: #a52a22; }

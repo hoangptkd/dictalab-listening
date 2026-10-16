@@ -159,6 +159,7 @@
             form.addEventListener("invalid", () => { form.closest("details").open = true; }, true);
         });
         const nameForm = root.querySelector("#account-name-form");
+        await window.DictaLabBilling?.mount(root);
         const nameInput = nameForm.querySelector("input");
         const nameButton = nameForm.querySelector('button[type="submit"]');
         let savedName = user.displayName;

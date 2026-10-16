@@ -41,6 +41,10 @@ public class ListeningComprehensionService {
     private final S3MediaLifecycle s3Lifecycle;
     private final AiUsageBudget budget;
     private final IdleDispatch dispatch = new IdleDispatch();
+    private PremiumAccessService premium;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configurePremium(PremiumAccessService premium) { this.premium=premium; }
 
     @org.springframework.beans.factory.annotation.Autowired
     public ListeningComprehensionService(JdbcTemplate db, ObjectMapper json, ShopAiKeyClient ai,
@@ -124,6 +128,7 @@ public class ListeningComprehensionService {
         boolean first = !heardBefore && prior != null && prior.longValue() == 0;
         String id = UUID.randomUUID().toString();
         JsonNode content = parse((String) unit.get("content_json"));
+        if (premium != null) premium.takePractice(userId);
         db.update("""
                 INSERT INTO listening_sessions
                 (id,user_id,unit_id,mode,stage,current_pass,first_exposure,started_at,option_order_json)

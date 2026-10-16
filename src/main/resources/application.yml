@@ -145,6 +145,16 @@ management:
         include: health,info,prometheus,metrics
 
 dictalab:
+  billing:
+    enabled: ${DICTALAB_BILLING_ENABLED:false}
+    price-vnd: ${DICTALAB_PREMIUM_PRICE_VND:49000}
+    duration-days: ${DICTALAB_PREMIUM_DURATION_DAYS:30}
+    free-daily-lessons: ${DICTALAB_FREE_DAILY_LESSONS:3}
+    premium-daily-ai: ${DICTALAB_PREMIUM_DAILY_AI:10}
+    public-base-url: ${DICTALAB_BILLING_PUBLIC_URL:}
+    client-id: ${PAYOS_CLIENT_ID:}
+    api-key: ${PAYOS_API_KEY:}
+    checksum-key: ${PAYOS_CHECKSUM_KEY:}
   learning:
     enabled: ${DICTALAB_LEARNING_ENABLED:false}
     queue-enabled: ${DICTALAB_LEARNING_QUEUE_ENABLED:false}

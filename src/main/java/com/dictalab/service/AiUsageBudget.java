@@ -20,6 +20,10 @@ public class AiUsageBudget {
     private final long globalLimit, userLimit, llmReservation, ttsReservation;
     private final int globalCalls, userCalls;
     private final boolean enabled;
+    private PremiumAccessService premium;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configurePremium(PremiumAccessService premium) { this.premium=premium; }
 
     public AiUsageBudget(JdbcTemplate db, PlatformTransactionManager manager,
                          @Value("${dictalab.ai.budget.enabled:true}") boolean enabled,
@@ -42,6 +46,7 @@ public class AiUsageBudget {
 
     public void reserve(Long userId, boolean tts) {
         transaction.executeWithoutResult(status -> {
+            if (premium != null && userId != null) premium.takeAi(userId,tts);
             Boolean accepting=db.queryForObject("SELECT enabled FROM ai_budget_control WHERE id=1 FOR UPDATE",Boolean.class);
             if (!Boolean.TRUE.equals(accepting)) throw rejected("AI đang tạm dừng. Bài làm của bạn vẫn được lưu.");
             if (!enabled) return; // Emergency stop remains effective when accounting is disabled.

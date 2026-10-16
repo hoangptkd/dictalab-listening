@@ -55,6 +55,7 @@ public class PracticeService {
     private final JdbcTemplate db;
     private final Clock clock;
     private final boolean learningEnabled;
+    private final PremiumAccessService premium;
 
     public PracticeService(LessonRepository lessonRepository,
                            LessonPreviewWordRepository previewWordRepository,
@@ -69,6 +70,7 @@ public class PracticeService {
                            ListeningErrorClassifier errorClassifier,
                            ListeningAssessmentService assessmentService,
                            JdbcTemplate db,
+                           PremiumAccessService premium,
                            @org.springframework.beans.factory.annotation.Value("${dictalab.learning.enabled:false}") boolean learningEnabled) {
         this.lessonRepository = lessonRepository;
         this.previewWordRepository = previewWordRepository;
@@ -83,6 +85,7 @@ public class PracticeService {
         this.errorClassifier = errorClassifier;
         this.assessmentService = assessmentService;
         this.db = db;
+        this.premium = premium;
         this.clock = Clock.systemUTC();
         this.learningEnabled = learningEnabled;
     }
@@ -128,6 +131,7 @@ public class PracticeService {
                 """, Integer.class, userId, lesson.getId(), userId, lesson.getId(), lesson.getId(), userId, lesson.getId());
         boolean firstExposure = !sessionRepository.existsByUserIdAndLessonId(userId, lesson.getId())
                 && otherExposure != null && otherExposure == 0;
+        premium.takePractice(userId);
         PracticeSession session = sessionRepository.save(new PracticeSession(user, lesson, now(), firstExposure));
         SentenceAttempt attempt = sentenceAttemptRepository.save(new SentenceAttempt(session, firstSentence, now()));
         return new ApiDtos.PracticeStartResponse(
@@ -167,6 +171,7 @@ public class PracticeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bài học chung."));
         LessonSentence first = sentenceRepository.findByLessonIdAndPosition(lessonId, 1)
                 .orElseThrow(() -> new InvalidPracticeStateException("Bài học chưa có câu nghe."));
+        premium.takePractice(userId);
         PracticeSession session = new PracticeSession(user, lesson, now(), false);
         session.setRoomId(roomId);
         sessionRepository.save(session);
