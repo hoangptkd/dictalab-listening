@@ -58,6 +58,9 @@ class ConversationLocalClientTest {
         assertFalse(received.get().path("think").asBoolean(true));
         assertFalse(received.get().path("stream").asBoolean(true));
         assertEquals("object", received.get().path("format").path("type").asText());
+        var order=List.of("taskVi","questionVi","utteranceEn","translationVi","skill","facts");
+        assertEquals(order,new ArrayList<>(received.get().path("format").path("properties").propertyNames()));
+        assertEquals(json.valueToTree(order),received.get().path("format").path("required"));
         assertEquals("system", received.get().path("messages").path(0).path("role").asText());
         assertEquals("user", received.get().path("messages").path(1).path("role").asText());
         assertEquals("assistant", received.get().path("messages").path(2).path("role").asText());
@@ -66,6 +69,21 @@ class ConversationLocalClientTest {
         assertThrows(IllegalArgumentException.class, () -> client.completeJson("A1", "x".repeat(65_000), Duration.ofSeconds(1)));
         assertThrows(IllegalStateException.class, () -> client.completeJson("A1", "{}", Duration.ZERO));
         assertEquals(1, requests.get());
+    }
+
+    @Test void experimentChangesOnlySchemaOrderAndKeepsDefaultSchema() {
+        var proposed=ConversationLocalEvaluationTest.factsFirstSchema(json);
+        var original=json.readTree(ConversationLocalClient.SCHEMA);
+        var normalized=(tools.jackson.databind.node.ObjectNode)proposed.deepCopy();
+        normalized.set("required",original.path("required"));
+        assertEquals(original,normalized,"No constraints may change in an order-only experiment");
+        assertEquals(json.readTree(content.get()),client.completeJson("A1","{}",Duration.ofSeconds(1),proposed));
+        var order=List.of("facts","utteranceEn","questionVi","translationVi","taskVi","skill");
+        assertEquals(order,new ArrayList<>(received.get().path("format").path("properties").propertyNames()));
+        assertEquals(json.valueToTree(order),received.get().path("format").path("required"));
+        call();
+        assertEquals(original,received.get().path("format"));
+        assertEquals("taskVi",received.get().path("format").path("properties").propertyNames().iterator().next());
     }
 
     @Test void rejectsTrailingTokensTruncationOversizeAndRedirectsWithoutRetry() {
