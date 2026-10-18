@@ -42,7 +42,7 @@ try {
                 $conversationUri.Host -notin @('localhost','127.0.0.1','[::1]') -or
                 $conversationUri.UserInfo -or $conversationUri.Query -or $conversationUri.Fragment -or
                 $conversationUri.AbsolutePath -ne '/') { throw 'Conversation Ollama URL phai la loopback, khong co credentials/path.' }
-        $conversationModel = if ($env:DICTALAB_CONVERSATION_LOCAL_MODEL) { $env:DICTALAB_CONVERSATION_LOCAL_MODEL } else { 'hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M' }
+        $conversationModel = if ($env:DICTALAB_CONVERSATION_LOCAL_MODEL) { $env:DICTALAB_CONVERSATION_LOCAL_MODEL } else { 'qwen3.5:9b' }
         if ($conversationModel -match ':cloud|-cloud') { throw 'Chi dung model Ollama local.' }
         $conversationTimeout = if ($env:DICTALAB_CONVERSATION_LOCAL_TIMEOUT_SECONDS) { [int]$env:DICTALAB_CONVERSATION_LOCAL_TIMEOUT_SECONDS } else { 180 }
         if ($conversationTimeout -eq 0) { $conversationTimeout = 180 }

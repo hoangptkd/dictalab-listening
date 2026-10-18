@@ -54,7 +54,7 @@ class ConversationLocalClientTest {
 
     @Test void sendsLocalStructuredNonThinkingRequestWithSeparateData() {
         assertEquals(json.readTree(content.get()), call());
-        assertEquals("hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M", received.get().path("model").asText());
+        assertEquals("qwen3.5:9b", received.get().path("model").asText());
         assertFalse(received.get().path("think").asBoolean(true));
         assertFalse(received.get().path("stream").asBoolean(true));
         assertEquals("object", received.get().path("format").path("type").asText());
@@ -69,21 +69,6 @@ class ConversationLocalClientTest {
         assertThrows(IllegalArgumentException.class, () -> client.completeJson("A1", "x".repeat(65_000), Duration.ofSeconds(1)));
         assertThrows(IllegalStateException.class, () -> client.completeJson("A1", "{}", Duration.ZERO));
         assertEquals(1, requests.get());
-    }
-
-    @Test void experimentChangesOnlySchemaOrderAndKeepsDefaultSchema() {
-        var proposed=ConversationLocalEvaluationTest.factsFirstSchema(json);
-        var original=json.readTree(ConversationLocalClient.SCHEMA);
-        var normalized=(tools.jackson.databind.node.ObjectNode)proposed.deepCopy();
-        normalized.set("required",original.path("required"));
-        assertEquals(original,normalized,"No constraints may change in an order-only experiment");
-        assertEquals(json.readTree(content.get()),client.completeJson("A1","{}",Duration.ofSeconds(1),proposed));
-        var order=List.of("facts","utteranceEn","questionVi","translationVi","taskVi","skill");
-        assertEquals(order,new ArrayList<>(received.get().path("format").path("properties").propertyNames()));
-        assertEquals(json.valueToTree(order),received.get().path("format").path("required"));
-        call();
-        assertEquals(original,received.get().path("format"));
-        assertEquals("taskVi",received.get().path("format").path("properties").propertyNames().iterator().next());
     }
 
     @Test void rejectsTrailingTokensTruncationOversizeAndRedirectsWithoutRetry() {
@@ -123,6 +108,7 @@ class ConversationLocalClientTest {
 
     @Test void hardwareTimeoutDefaultsAndLimitsIncludeRepairAndReviewBudget() {
         var defaults = new ConversationGenerationProperties("ollama", null, null, 0);
+        assertEquals("qwen3.5:9b", defaults.localModel());
         assertEquals(180, defaults.localTimeoutSeconds());
         assertEquals(450, defaults.localFlowTimeoutSeconds());
         var slowMachine = new ConversationGenerationProperties("ollama", null, null, 600);

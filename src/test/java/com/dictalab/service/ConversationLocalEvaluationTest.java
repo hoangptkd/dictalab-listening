@@ -18,21 +18,42 @@ import static org.mockito.Mockito.*;
 /** Synthetic local smoke test, not a CEFR/semantic benchmark; never calls a paid API. */
 @EnabledIfSystemProperty(named="conversation.evaluate", matches="true")
 class ConversationLocalEvaluationTest {
+    /** Startup/transport check only, not a content-quality benchmark. */
+    @Test
+    @EnabledIfSystemProperty(named="conversation.local-smoke", matches="true")
+    void smokeConfiguredLocalModelWithOriginalSchema() throws Exception {
+        var json=new ObjectMapper();
+        var config=new ConversationGenerationProperties("ollama",System.getProperty("conversation.url"),
+                System.getProperty("conversation.model"),Integer.getInteger("conversation.timeout-seconds",180));
+        var client=new ConversationLocalClient(json,config,new SimpleMeterRegistry(),ObservationRegistry.NOOP);
+        var contextSource=mock(ConversationService.class,CALLS_REAL_METHODS);
+        ReflectionTestUtils.setField(contextSource,"json",json);
+        Map<String,Object> input=ReflectionTestUtils.invokeMethod(contextSource,"promptContext",
+                syntheticRow("cafe","A1",fixture(json,"cafe","A1",2,false)));
+        long started=System.nanoTime();
+        System.out.println("START configured local smoke model="+config.localModel());
+        var output=client.completeJson("A1",json.writeValueAsString(input),Duration.ofSeconds(config.localTimeoutSeconds()));
+        double seconds=Math.round((System.nanoTime()-started)/1e7)/100.0;
+        var report=Path.of("target/conversation-local-configured-model-smoke.json");
+        Files.createDirectories(report.getParent());
+        Files.writeString(report,json.writerWithDefaultPrettyPrinter().writeValueAsString(Map.of(
+                "model",config.localModel(),"promptVersion",ConversationGenerationPrompt.VERSION,
+                "createdAt",Instant.now().toString(),"seconds",seconds,"input",input,"output",output,
+                "qualityVerdict","Transport/schema smoke only; content quality not certified")),java.nio.charset.StandardCharsets.UTF_8);
+        assertEquals(List.of("taskVi","questionVi","utteranceEn","translationVi","skill","facts"),
+                new ArrayList<>(output.propertyNames()));
+        assertFalse(output.path("utteranceEn").asText().isBlank());
+        assertTrue(output.path("facts").isArray());
+        System.out.println("DONE configured local smoke model="+config.localModel()+" seconds="+seconds);
+    }
+
     @Test
     @EnabledIfSystemProperty(named="conversation.raw-structure", matches="true")
     void checkCollectedOutputStructure() throws Exception {
         var json=new ObjectMapper();
-        var report=json.readTree(Files.readString(Path.of(System.getProperty("conversation.raw-report",
-                "target/conversation-local-raw-content-evaluation.json")),
+        var report=json.readTree(Files.readString(Path.of("target/conversation-local-raw-content-evaluation.json"),
                 java.nio.charset.StandardCharsets.UTF_8));
         assertEquals(12,report.path("cases").size());
-        if (report.has("schema")) {
-            var expected=factsFirstSchema(json);
-            assertEquals(expected,report.path("schema"),"Test schema must match the schema used for real outputs");
-            var order=new ArrayList<>(expected.path("properties").propertyNames());
-            assertEquals(order,new ArrayList<>(report.path("schema").path("properties").propertyNames()));
-            for (var row : report.path("cases")) assertEquals(json.valueToTree(order),row.path("outputPropertyOrder"));
-        }
         var limits=Map.of("taskVi",180,"questionVi",180,"utteranceEn",1200,"translationVi",1200,"skill",180);
         for (var row : report.path("cases")) {
             var output=row.path("output");
@@ -61,65 +82,6 @@ class ConversationLocalEvaluationTest {
                 assertTrue(fact.path("evidenceEn").asText().length()<=300);
             }
         }
-    }
-
-    /** Replay saved inputs, including the original generated prior task, without rebuilding fixtures. */
-    @Test
-    @EnabledIfSystemProperty(named="conversation.schema-order", matches="true")
-    void replaySavedInputsWithFactsFirstSchema() throws Exception {
-        var json=new ObjectMapper();
-        var source=Path.of("target/conversation-local-raw-content-evaluation.json");
-        byte[] baselineBytes=Files.readAllBytes(source);
-        var baseline=json.readTree(baselineBytes);
-        assertEquals(12,baseline.path("cases").size());
-        var config=new ConversationGenerationProperties("ollama",System.getProperty("conversation.url"),
-                System.getProperty("conversation.model"),Integer.getInteger("conversation.timeout-seconds",180));
-        assertEquals(baseline.path("model").asText(),config.localModel());
-        assertEquals(baseline.path("localTimeoutSeconds").asInt(),config.localTimeoutSeconds());
-        assertEquals(baseline.path("promptVersion").asText(),ConversationGenerationPrompt.VERSION);
-        var client=new ConversationLocalClient(json,config,new SimpleMeterRegistry(),ObservationRegistry.NOOP);
-        var rows=new ArrayList<Map<String,Object>>();
-        var report=Path.of("target/conversation-local-schema-order-evaluation.json");
-        String baselineHash=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(baselineBytes));
-        var schema=factsFirstSchema(json);
-        for (var previous : baseline.path("cases")) {
-            var row=new LinkedHashMap<String,Object>();
-            for (var field : List.of("id","scenario","level","turn","input")) row.put(field,previous.path(field));
-            long started=System.nanoTime();
-            System.out.println("START schema order case="+previous.path("id").asText());
-            try {
-                var output=client.completeJson(previous.path("level").asText(),json.writeValueAsString(previous.path("input")),
-                        Duration.ofSeconds(config.localTimeoutSeconds()),schema);
-                row.put("output",output);
-                row.put("outputPropertyOrder",new ArrayList<>(output.propertyNames()));
-            } catch (RuntimeException failure) {
-                row.put("generationFailure",failure.getMessage());
-            }
-            row.put("seconds",Math.round((System.nanoTime()-started)/1e7)/100.0);
-            rows.add(row);
-            Files.writeString(report,json.writerWithDefaultPrettyPrinter().writeValueAsString(Map.ofEntries(
-                    Map.entry("promptVersion",ConversationGenerationPrompt.VERSION),Map.entry("model",config.localModel()),
-                    Map.entry("localTimeoutSeconds",config.localTimeoutSeconds()),Map.entry("createdAt",Instant.now().toString()),
-                    Map.entry("baselineSha256",baselineHash),Map.entry("schema",schema),
-                    Map.entry("backendValidationIncluded",false),Map.entry("repairIncluded",false),
-                    Map.entry("qualityVerdict","Manual review required; collection success is not content correctness"),
-                    Map.entry("cases",rows))),java.nio.charset.StandardCharsets.UTF_8);
-            System.out.println("DONE schema order case="+previous.path("id").asText()+" collected="+row.containsKey("output")
-                    +" order="+row.get("outputPropertyOrder")+" seconds="+row.get("seconds"));
-        }
-        assertEquals(12,rows.stream().filter(r -> r.containsKey("output")).count(),"Collection failed; inspect "+report);
-        for (var row : rows) assertEquals(new ArrayList<>(schema.path("properties").propertyNames()),row.get("outputPropertyOrder"));
-        assertArrayEquals(baselineBytes,Files.readAllBytes(source),"Do not overwrite baseline evidence");
-    }
-
-    static JsonNode factsFirstSchema(ObjectMapper json) {
-        var schema=(ObjectNode)json.readTree(ConversationLocalClient.SCHEMA);
-        var properties=json.createObjectNode();
-        var order=List.of("facts","utteranceEn","questionVi","translationVi","taskVi","skill");
-        for (var field : order) properties.set(field,schema.path("properties").path(field));
-        schema.set("properties",properties);
-        schema.set("required",json.valueToTree(order));
-        return schema;
     }
 
     /** Collect first outputs for manual correctness review; collection success is not a quality score. */

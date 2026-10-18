@@ -1,5 +1,7 @@
 # Thử thứ tự facts → bài nghe → câu hỏi — 19/10/2026
 
+**Báo cáo lịch sử:** theo yêu cầu chủ dự án, code và test facts-first đã rollback ngày 19/10/2026. Các lệnh đổi thứ tự trong báo cáo này không còn áp dụng cho code hiện tại; giữ lại kết quả để tham khảo, không tiếp tục đổi thứ tự schema. Cấu hình local mới xem [hướng dẫn generator](conversation-generation-local.md).
+
 ## Kết luận
 
 Đã thử thật **đúng 12 input đã lưu của đợt trước**, mỗi ca một lần gọi local, không validation, không sửa, không reviewer cloud. Cả 12 output thực tế đều theo thứ tự `facts → utteranceEn → questionVi → translationVi → taskVi → skill`.

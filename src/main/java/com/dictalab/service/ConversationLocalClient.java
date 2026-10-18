@@ -44,16 +44,11 @@ public class ConversationLocalClient {
     public int flowTimeoutSeconds() { return config.localFlowTimeoutSeconds(); }
 
     public JsonNode completeJson(String level, String input, Duration remaining) {
-        return completeJson(level, input, remaining, json.readTree(SCHEMA));
-    }
-
-    // Test seam: schema-order experiments do not change the production default.
-    JsonNode completeJson(String level, String input, Duration remaining, JsonNode outputSchema) {
         Duration timeout = Duration.ofMillis(Math.min(config.localTimeoutSeconds() * 1000L, remaining.toMillis()));
         if (timeout.toMillis() < 1) throw new IllegalStateException("Conversation local deadline exhausted");
         // shortcut: fixed 8K context; add token-aware history budgeting before large-history production rollout.
         String body = json.writeValueAsString(Map.of("model", config.localModel(), "stream", false, "think", false,
-                "format", outputSchema, "keep_alive", "5m",
+                "format", json.readTree(SCHEMA), "keep_alive", "5m",
                 "options", Map.of("temperature", 0.7, "num_ctx", 8192, "num_predict", 1000),
                 "messages", List.of(Map.of("role", "system", "content", ConversationGenerationPrompt.INSTRUCTION
                                 + "\nThe first user/assistant pair is an example, not the current task. Generate for the LAST user only."),

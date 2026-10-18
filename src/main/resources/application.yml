@@ -214,7 +214,7 @@ dictalab:
     generation:
       provider: ${DICTALAB_CONVERSATION_GENERATION_PROVIDER:shopaikey}
       local-base-url: ${DICTALAB_CONVERSATION_LOCAL_BASE_URL:http://127.0.0.1:11434}
-      local-model: ${DICTALAB_CONVERSATION_LOCAL_MODEL:hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M}
+      local-model: ${DICTALAB_CONVERSATION_LOCAL_MODEL:qwen3.5:9b}
       local-timeout-seconds: ${DICTALAB_CONVERSATION_LOCAL_TIMEOUT_SECONDS:180}
     session-diversity: ${DICTALAB_CONVERSATION_DIVERSITY:true}
     audio-retention-days: ${CONVERSATION_AUDIO_RETENTION_DAYS:30}

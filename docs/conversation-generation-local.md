@@ -1,8 +1,8 @@
 # Tạo câu hội thoại bằng AI local
 
-Trạng thái: prompt V2 và đường nối Ollama đã có; **pilot local chưa đạt cổng chất lượng, không bật production**.
+Trạng thái: prompt V2 và đường nối Ollama đã có; **pilot local chưa được xác nhận đạt chất lượng, không bật production**.
 
-Kết quả kiểm tra model thật với timeout mới ngày 19/10/2026: xem [báo cáo các trường hợp tạo câu](conversation-generation-test-2026-10-19.md). Đợt này có thêm matrix dùng context backend, không chỉ smoke test schema.
+Kết quả kiểm tra model Qwen3-4B trước khi chuyển 9B ngày 19/10/2026: xem [báo cáo các trường hợp tạo câu](conversation-generation-test-2026-10-19.md). Đợt đó có thêm matrix dùng context backend, không chỉ smoke test schema; không dùng kết quả cũ để kết luận chất lượng Qwen3.5 9B.
 
 ## Phạm vi đợt này
 
@@ -15,16 +15,34 @@ Chưa làm RAG, fine-tuning, variation planner mới, bộ nhớ hội thoại c
 
 ## Model và cấu hình
 
-Model mặc định cho generator local: `hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M`, đã có trên máy HP. Chọn bản này sau khi thử Qwen 3.5 4B trên CPU gặp timeout ở cả ba lượt A1 đầu tiên với giới hạn 30 giây. Đây là lựa chọn thực dụng cho máy hiện tại, không phải kết luận chất lượng chung giữa hai model.
+Model mặc định cho generator local từ 19/10/2026: `qwen3.5:9b`, theo lựa chọn của chủ dự án. Coach vẫn giữ `qwen3.5:4b`, model đánh giá cloud không đổi. Các báo cáo Qwen3-4B bên dưới là lịch sử, không phải kết quả chất lượng của model 9B.
+
+Đã rollback code thử nghiệm facts-first, bao gồm đường gửi schema thay thế và test đổi thứ tự. Giữ nguyên thứ tự cũ `taskVi → questionVi → utteranceEn → translationVi → skill → facts`; không đổi prompt hoặc ví dụ mẫu. Báo cáo thử nghiệm cũ chỉ được giữ để tham khảo lịch sử.
+
+Tải đúng model trước khi chạy:
+
+```powershell
+ollama pull qwen3.5:9b
+```
 
 ```dotenv
 DICTALAB_CONVERSATION_GENERATION_PROVIDER=ollama
 DICTALAB_CONVERSATION_LOCAL_BASE_URL=http://127.0.0.1:11434
-DICTALAB_CONVERSATION_LOCAL_MODEL=hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M
-DICTALAB_CONVERSATION_LOCAL_TIMEOUT_SECONDS=180
+DICTALAB_CONVERSATION_LOCAL_MODEL=qwen3.5:9b
+DICTALAB_CONVERSATION_LOCAL_TIMEOUT_SECONDS=600
 ```
 
 Chạy bằng `powershell -File scripts/run-local.ps1 -WithConversationLocal`. Script kiểm tra model, làm nóng weights và báo nếu app cũ vẫn đang chạy. Cần khởi động lại app để nhận cấu hình mới. Không tự dừng app đang phục vụ người dùng.
+
+`.env` riêng trên máy HP chọn provider `ollama`, model `qwen3.5:9b`, timeout 600 giây để thử CPU; tệp này được Git bỏ qua, không commit. Trần mặc định trong code vẫn là 180 giây; 600 là cấu hình riêng, không tự áp dụng cho production hoặc mọi máy. Các model cũ được giữ lại, không xóa trọng số.
+
+Kiểm tra tải/chạy model thật qua client hội thoại, không gọi reviewer/TTS cloud:
+
+```powershell
+mvn --batch-mode --no-transfer-progress '-Dtest=ConversationLocalEvaluationTest#smokeConfiguredLocalModelWithOriginalSchema' '-Dconversation.evaluate=true' '-Dconversation.local-smoke=true' '-Dconversation.timeout-seconds=600' test
+```
+
+Kết quả lưu riêng tại `target/conversation-local-configured-model-smoke.json`, không ghi đè bộ 12 ca trước. Smoke chỉ xác nhận client nhận output và giữ thứ tự schema cũ; không chứng nhận nội dung model đúng hay toàn bộ ứng dụng đã chạy.
 
 Backend và `.env.example` giữ provider `shopaikey` để không bật một pilot chưa đạt cổng chất lượng. Cờ chạy local hoặc cấu hình `ollama` ở trên chọn local rõ ràng. Không thay `SHOPAIKEY_MODEL` hay `DICTALAB_CONVERSATION_MODEL`: model cloud vẫn kiểm duyệt đầu ra trước khi đưa vào phiên học.
 

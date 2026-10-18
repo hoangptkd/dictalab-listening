@@ -19,7 +19,7 @@ public record ConversationGenerationProperties(String provider, String localBase
                 || !(uri.getPath().isEmpty() || uri.getPath().equals("/")))
             throw new IllegalArgumentException("Conversation local URL must be loopback without credentials or a path");
         localBaseUrl = localBaseUrl.replaceAll("/$", "");
-        if (localModel == null || localModel.isBlank()) localModel = "hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M";
+        if (localModel == null || localModel.isBlank()) localModel = "qwen3.5:9b";
         String normalizedModel = localModel.toLowerCase(java.util.Locale.ROOT);
         if (localModel.length() > 120 || normalizedModel.contains(":cloud") || normalizedModel.contains("-cloud"))
             throw new IllegalArgumentException("Invalid conversation local model");
