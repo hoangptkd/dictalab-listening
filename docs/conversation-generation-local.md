@@ -44,6 +44,14 @@ mvn --batch-mode --no-transfer-progress '-Dtest=ConversationLocalEvaluationTest#
 
 Kết quả lưu riêng tại `target/conversation-local-configured-model-smoke.json`, không ghi đè bộ 12 ca trước. Smoke chỉ xác nhận client nhận output và giữ thứ tự schema cũ; không chứng nhận nội dung model đúng hay toàn bộ ứng dụng đã chạy.
 
+### Xác nhận trên máy HP ngày 19/10/2026
+
+- `ollama pull qwen3.5:9b` hoàn tất, kiểm tra SHA256 thành công. `/api/show` xác nhận Qwen3.5 9.0B, GGUF Q4_K_M; dung lượng tải khoảng 6,55 GB. Giữ nguyên hai model cũ.
+- Smoke qua `ConversationLocalClient` đạt 1/1, mất 85,84 giây; `/api/ps` xác nhận chạy `qwen3.5:9b` trên CPU, context 8192. Output giữ đúng thứ tự schema cũ.
+- Đây chỉ là xác nhận cài đặt và đường gọi model. Mẫu A1 lượt 2 vẫn hỏi lại loại thông tin món ăn/đồ uống đã hỏi ở lượt 1, chỉ đổi giá trị; chưa đạt yêu cầu phát triển lượt hội thoại. Không dùng kết quả này để kết luận chất lượng 9B tốt hơn model cũ.
+- Bộ `ci-unit`: 115 test đạt, 8 test opt-in bỏ qua; 9 test prompt/client riêng cũng đạt. PowerShell parser, kiểm tra UTF-8 và `git diff --check` đạt.
+- Chưa chạy lại bộ 12 ca, chưa kiểm tra toàn luồng generation + reviewer + TTS và chưa khởi động lại ứng dụng. Không deploy production. Không xác nhận được GitHub Actions qua API do không có quyền truy cập API phù hợp.
+
 Backend và `.env.example` giữ provider `shopaikey` để không bật một pilot chưa đạt cổng chất lượng. Cờ chạy local hoặc cấu hình `ollama` ở trên chọn local rõ ràng. Không thay `SHOPAIKEY_MODEL` hay `DICTALAB_CONVERSATION_MODEL`: model cloud vẫn kiểm duyệt đầu ra trước khi đưa vào phiên học.
 
 Chỉ chấp nhận địa chỉ loopback, không theo redirect và không dùng tag cloud. Request/response có giới hạn dung lượng; tắt thinking, dùng JSON schema, giới hạn một request generation local đồng thời và circuit breaker. Coach có giới hạn riêng, vì vậy bật cả hai vẫn có thể tranh CPU.
