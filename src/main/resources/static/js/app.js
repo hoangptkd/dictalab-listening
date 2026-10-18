@@ -2668,9 +2668,9 @@
         };
         if (isHistoryReview) {
             loaded = true;
-            window.DictaLabCoach?.leave();
             renderLessonReview(result);
-        } else window.DictaLabCoach?.show(result);
+        }
+        window.DictaLabCoach?.show(result, {autoGenerate: !isHistoryReview});
     }
 
     function renderLessonReview(result) {

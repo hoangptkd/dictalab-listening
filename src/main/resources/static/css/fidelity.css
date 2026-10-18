@@ -377,7 +377,6 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; backg
 .is-history-review .coach-navigation .history-back-link { order: -1; min-height: 44px; }
 .is-history-review .coach-hero .eyebrow,
 .is-history-review #result-message,
-.is-history-review #coach-status,
 .is-history-review #result-technical > summary,
 .is-history-review #result-assessment,
 .is-history-review .result-layout,
@@ -388,7 +387,6 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; backg
 .is-history-review .analysis-export { display: none; }
 .is-history-review .result-summary-layout { padding: 0; }
 .is-history-review #coach-panel { display: contents; }
-.is-history-review #coach-panel > :not(#result-technical),
 .is-history-review #result-technical > .smart-review,
 .is-history-review #result-technical > .coach-bank,
 .is-history-review #result-technical > .coach-comparison-help { display: none; }
@@ -1326,6 +1324,9 @@ html { scrollbar-gutter: stable; }
 #result-view:not(.is-history-review) #result-first { order: -1; font-size: clamp(3rem, 8vw, 4.5rem); line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
 #result-view:not(.is-history-review) #coach-status { border: 0; background: transparent; margin: 0; padding: 0; }
 #result-view:not(.is-history-review) #coach-insights { text-align: center; }
+#coach-insights section[aria-label="Nhận xét AI"] h2 { font: 600 18px/1.4 var(--body); margin: 0 0 8px; }
+.is-history-review #coach-insights .coach-focus { margin-left: 0; }
+.is-history-review #coach-actions { justify-content: flex-start; }
 .coach-progress { display: block; border: 0; background: transparent; padding: 0; margin: 0 0 20px; }
 .coach-progress h2 { font: 600 22px/1.4 var(--body); margin: 0 0 6px; overflow-wrap: anywhere; }
 .coach-progress p { color: var(--ink-soft); margin: 0; }

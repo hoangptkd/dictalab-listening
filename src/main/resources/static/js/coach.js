@@ -16,6 +16,7 @@
     let generation = 0, sessionId = null, report = null, bank = [], drill = [], drillIndex = 0;
     let playing = false;
     let quickReview = null, quickRun = null, quickStarted = null, lessonLevel = "A1";
+    let allowAutomaticGeneration = true;
     const saved = new Set();
 
     function leave() {
@@ -38,8 +39,9 @@
         $("#coach-practice").innerHTML = "";
     }
 
-    async function show(result) {
+    async function show(result, {autoGenerate = true} = {}) {
         leave();
+        allowAutomaticGeneration = autoGenerate;
         $("#coach-insights").hidden = false;
         const smartReview = $(".smart-review");
         if (smartReview) smartReview.hidden = false;
@@ -63,7 +65,7 @@
             render(data);
             track("coach_result_viewed");
             if (data.source === "QUEUED") await pollReport(current, sessionId);
-            else if (data.aiEnabled && data.source === "RULES" && data.reviewItems.length) await generate(current);
+            else if (autoGenerate && data.aiEnabled && data.source === "RULES" && data.reviewItems.length) await generate(current);
         } catch (error) {
             if (current !== generation) return;
             setStatus("Kết quả đã lưu. Chưa tải được nhận xét; bạn vẫn có thể học tiếp hoặc xem chi tiết.");
@@ -154,8 +156,14 @@
                 : data.source === "EXHAUSTED" ? "Chưa có nhận xét bổ sung cho buổi này." : "");
         const insight = (data.weaknesses || [])[0]?.insight;
         const shortInsight = insight && [...insight].length <= 120 && !/[\r\n]/.test(insight);
+        const feedback = data.source === "AI"
+            ? `<section aria-label="Nhận xét AI"><h2>Nhận xét AI</h2><p class="coach-focus">${shortInsight ? escape(insight) : "AI chưa chọn thêm điểm cần chú ý cho buổi này."}</p></section>`
+            : shortInsight ? `<p class="coach-focus">Gợi ý ôn tập: ${escape(insight)}</p>` : "";
+        const canRequest = data.source === "RULES" && data.aiEnabled && data.reviewItems.length > 0;
         $("#coach-insights").innerHTML = progressMarkup(data.progressInsight)
-            + (shortInsight ? `<p class="coach-focus">Điểm cần chú ý: ${escape(insight)}</p>` : "")
+            + feedback
+            + (canRequest && !allowAutomaticGeneration ? '<p>Chưa có nhận xét AI đã lưu cho buổi này.</p><button class="text-button" type="button" data-coach-retry>Nhận xét AI</button>' : "")
+            + (data.source === "RULES" && !data.reviewItems.length ? '<p>Không có lỗi cần AI phân tích trong buổi này.</p>' : "")
             + (["BUSY", "UNAVAILABLE", "RETRY_REQUIRED"].includes(data.source)
                 ? '<button class="text-button" type="button" data-coach-retry>Thử lại nhận xét</button>' : "");
         // Freeze the initial selection, including while a late report reranks the detail list.
@@ -338,7 +346,7 @@
             if (item) await listen({audioUrl:item.audio_url,audioStartSeconds:item.audio_start_seconds,audioEndSeconds:item.audio_end_seconds},button);
             return;
         }
-        if (button.hasAttribute("data-coach-reload")) { if (sessionId) await show({sessionId}); return; }
+        if (button.hasAttribute("data-coach-reload")) { if (sessionId) await show({sessionId}, {autoGenerate: allowAutomaticGeneration}); return; }
         if (button.hasAttribute("data-coach-retry")) {
             button.disabled = true;
             try { await generate(); } finally { button.disabled = false; }

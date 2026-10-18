@@ -284,3 +284,44 @@ test('empty audio hides review and overlong insight is omitted without truncatio
     assert.equal(h.$('#coach-quick-review').hidden,true);
     assert.doesNotMatch(h.$('#coach-insights').innerHTML,/coach-focus|xxxx/);
 });
+
+test('saved AI feedback is labeled separately from deterministic review suggestions', async () => {
+    for (const source of ['AI', 'RULES', 'UNAVAILABLE']) {
+        const data = {...report('Saved feedback'), source};
+        const h = harness(async () => data);
+        await h.module.show({sessionId: 'saved'}, {autoGenerate: false});
+        const html = h.$('#coach-insights').innerHTML;
+        assert.equal(html.includes('<h2>Nhận xét AI</h2>'), source === 'AI');
+        assert.equal(html.includes('Gợi ý ôn tập:'), source !== 'AI');
+        assert.match(html, /Saved feedback: short insight/);
+    }
+});
+
+test('history never starts AI on load or reload but allows an explicit request', async () => {
+    const requests = [];
+    const h = harness(async (url, options) => {
+        requests.push({url, options});
+        return {...report('History feedback', true), source: options?.method === 'POST' ? 'AI' : 'RULES'};
+    });
+    await h.module.show({sessionId: 'saved'}, {autoGenerate: false});
+    assert.match(h.$('#coach-insights').innerHTML, /Chưa có nhận xét AI đã lưu/);
+    assert.match(h.$('#coach-insights').innerHTML, /data-coach-retry>Nhận xét AI/);
+    await click(h, 'data-coach-reload');
+    assert.equal(requests.filter(r => r.options?.method === 'POST').length, 0);
+    await click(h, 'data-coach-retry');
+    assert.equal(requests.filter(r => r.options?.method === 'POST').length, 1);
+    assert.match(h.$('#coach-insights').innerHTML, /<h2>Nhận xét AI<\/h2>/);
+});
+
+test('empty evidence explains why AI is not called and AI with no focus is still visibly acknowledged', async () => {
+    for (const source of ['RULES', 'AI']) {
+        const data = {...report('', true), source, weaknesses: [], reviewItems: []};
+        let calls = 0;
+        const h = harness(async () => { calls++; return data; });
+        await h.module.show({sessionId: 'saved'});
+        assert.equal(calls, 1);
+        assert.match(h.$('#coach-insights').innerHTML, source === 'AI'
+            ? /AI chưa chọn thêm điểm cần chú ý/ : /Không có lỗi cần AI phân tích/);
+        assert.doesNotMatch(h.$('#coach-insights').innerHTML, /data-coach-retry/);
+    }
+});
