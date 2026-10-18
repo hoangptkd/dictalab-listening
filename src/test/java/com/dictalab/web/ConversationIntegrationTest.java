@@ -316,10 +316,10 @@ class ConversationIntegrationTest {
 
     @Test void challengeAndPreciseMeaningRulesReachTheProvider() {
         String id = start();
-        verify(ai).completeJson(contains("A small correction is optional, never mandatory"), anyString(), anyString());
-        verify(ai).completeJson(contains("A1: 8-35 words"), anyString(), anyString());
-        verify(ai).completeJson(contains("A2: 18-55 words"), anyString(), anyString());
-        verify(ai).completeJson(contains("B1: 30-90 words"), anyString(), anyString());
+        verify(ai).completeJson(contains("avoid relative clauses and deliberately inserted distractors or self-corrections"), anyString(), anyString());
+        verify(ai).completeJson(contains("levelProfile: {minWords,maxWords}, authoritative word bounds"), anyString(), anyString());
+        verify(ai).completeJson(contains("A2: short connected sentences"), anyString(), anyString());
+        verify(ai).completeJson(contains("B1: connected familiar speech"), anyString(), anyString());
         when(ai.completeJson(anyString(), anyString())).thenReturn(grade("PARTIAL", "INCORRECT", "quán"));
         var result = service.answer(owner, id, 1, UUID.randomUUID(), "quán");
         assertThat(result.path("turns").path(0).path("done").asBoolean()).isFalse();

@@ -1,4 +1,4 @@
-param([switch]$WithCoach, [switch]$WithMessaging)
+param([switch]$WithCoach, [switch]$WithMessaging, [switch]$WithConversationLocal)
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -33,6 +33,28 @@ Push-Location $projectRoot
 try {
     $appPort = [int]$env:APP_PORT
     $postgresPort = [int]$env:POSTGRES_PORT
+
+    if ($WithConversationLocal -or $env:DICTALAB_CONVERSATION_GENERATION_PROVIDER -eq 'ollama') {
+        $env:DICTALAB_CONVERSATION_GENERATION_PROVIDER = 'ollama'
+        $conversationBase = if ($env:DICTALAB_CONVERSATION_LOCAL_BASE_URL) { $env:DICTALAB_CONVERSATION_LOCAL_BASE_URL.TrimEnd('/') } else { 'http://127.0.0.1:11434' }
+        $conversationUri = [Uri]$conversationBase
+        if ($conversationUri.Scheme -notin @('http','https') -or
+                $conversationUri.Host -notin @('localhost','127.0.0.1','[::1]') -or
+                $conversationUri.UserInfo -or $conversationUri.Query -or $conversationUri.Fragment -or
+                $conversationUri.AbsolutePath -ne '/') { throw 'Conversation Ollama URL phai la loopback, khong co credentials/path.' }
+        $conversationModel = if ($env:DICTALAB_CONVERSATION_LOCAL_MODEL) { $env:DICTALAB_CONVERSATION_LOCAL_MODEL } else { 'hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M' }
+        if ($conversationModel -match ':cloud|-cloud') { throw 'Chi dung model Ollama local.' }
+        $conversationModels = Invoke-RestMethod "$conversationBase/api/tags" -TimeoutSec 5 -MaximumRedirection 0
+        if ($conversationModel -notin @($conversationModels.models.name)) { throw "Ollama chua co model $conversationModel." }
+        if ([string]::IsNullOrWhiteSpace($env:SHOPAIKEY_API_KEY) -or [string]::IsNullOrWhiteSpace($env:CARTESIA_API_KEY)) {
+            throw 'Can ShopAIKey cho danh gia va Cartesia cho audio; chi phan tao cau chay local.'
+        }
+        $env:DICTALAB_CONVERSATION_ENABLED = 'true'
+        # Load weights before serving; the actual generation still has its own bounded deadline.
+        $warmup = @{model=$conversationModel; stream=$false; keep_alive='5m'; options=@{num_ctx=8192}} | ConvertTo-Json -Depth 3
+        $null = Invoke-RestMethod "$conversationBase/api/generate" -Method Post -ContentType 'application/json' -Body $warmup -TimeoutSec 40 -MaximumRedirection 0
+        Write-Host "Conversation generation: Ollama local / $conversationModel. Danh gia va TTS van dung cloud."
+    }
 
     if ($WithCoach) {
         $coachProvider = if ($env:DICTALAB_COACH_PROVIDER) { $env:DICTALAB_COACH_PROVIDER } else { 'shopaikey' }
@@ -89,6 +111,9 @@ try {
         try {
             $health = Invoke-RestMethod -Uri "http://localhost:$appPort/actuator/health" -TimeoutSec 3
             if ($health.status -eq 'UP') {
+                if ($env:DICTALAB_CONVERSATION_GENERATION_PROVIDER -eq 'ollama') {
+                    Write-Warning 'App dang chay; cau hinh Conversation local chi ap dung sau khi khoi dong lai app.'
+                }
                 Write-Host "DictaLab dang chay tai http://localhost:$appPort"
                 return
             }
