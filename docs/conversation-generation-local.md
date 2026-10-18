@@ -2,6 +2,8 @@
 
 Trạng thái: prompt V2 và đường nối Ollama đã có; **pilot local chưa đạt cổng chất lượng, không bật production**.
 
+Kết quả kiểm tra model thật với timeout mới ngày 19/10/2026: xem [báo cáo các trường hợp tạo câu](conversation-generation-test-2026-10-19.md). Đợt này có thêm matrix dùng context backend, không chỉ smoke test schema.
+
 ## Phạm vi đợt này
 
 - Viết lại prompt tạo câu `CONVERSATION_GENERATION_V2`: mô tả input, hợp nhất quy tắc fact, phân định lượt 1–3/lượt 4, vai người học, cách chọn skill và mục đích của task/question.
