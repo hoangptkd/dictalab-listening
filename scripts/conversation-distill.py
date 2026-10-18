@@ -12,6 +12,7 @@ from pathlib import Path
 import random
 import re
 import statistics
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -221,7 +222,7 @@ class Cloud:
         path = DATA / "billing-start.json"
         if not path.exists():
             initial = self.balance()
-            save(path.name, {"initialCredit": initial, "maxCreditSpend": min(8.0, max(0, initial-0.25)), "time": time.time()})
+            save(path.name, {"initialCredit": initial, "maxCreditSpend": min(12.0, max(0, initial-0.25)), "time": time.time()})
         start = json.loads(path.read_text(encoding="utf-8"))
         if force or len(load("api-reservations.jsonl")) % 10 == 0:
             remaining = self.balance()
@@ -414,6 +415,14 @@ def teacher_rows():
             row.update({k: result[k] for k in ("hardErrors", "eligible", "judge") if k in result})
         if row.get("judge", {}).get("judgeVersion") != JUDGE_VERSION:
             row["eligible"] = False
+    by_id = {row["id"]: row for row in rows}
+    for review in load("assistant-audit.jsonl"):
+        row = by_id[review["id"]]
+        if review["inputHash"] != row["inputHash"] or review["outputHash"] != digest(row.get("output")):
+            raise RuntimeError("Assistant audit provenance mismatch")
+        if review["decision"] == "reject":
+            row["eligible"] = False
+            row["assistantAuditReason"] = review["reason"]
     return rows
 
 
@@ -566,8 +575,9 @@ def finalize():
     for row in retained:
         bucket = int(hashlib.sha256(row["group"].encode()).hexdigest()[:8], 16) % 10
         split = "test" if bucket == 0 else "validation" if bucket == 1 else "train"
-        item = {"id": row["id"], "group": row["group"], "inputHash": row["inputHash"], "teacher": TEACHER,
-                "humanReviewed": False, "messages": messages(row["input"], spec) + [{"role": "assistant", "content": packed({k: row["output"][k] for k in FIELDS})}]}
+        item = {"id": row["id"], "group": row["group"], "inputHash": row["inputHash"], "teacher": row["teacher"],
+                "humanReviewed": False, "targetMessageIndex": 4, "lossMaskPolicy": "last-assistant-only",
+                "messages": messages(row["input"], spec) + [{"role": "assistant", "content": packed({k: row["output"][k] for k in FIELDS})}]}
         splits[split].append(item)
     for split, rows in splits.items():
         write_lines(split+".provisional.jsonl", rows)
@@ -587,15 +597,20 @@ def finalize():
     write_lines("human-review-queue.jsonl", queue)
     review_path = DATA / "human-review-decisions.csv"
     decisions = []
+    review_fields = ["id", "decision", "reviewer", "notes"]
     if review_path.exists():
         with review_path.open(encoding="utf-8-sig", newline="") as handle:
-            decisions = list(csv.DictReader(handle))
+            reader = csv.DictReader(handle)
+            decisions = list(reader)
+            review_fields += [field for field in (reader.fieldnames or []) if field not in review_fields]
     existing_ids = {r["id"] for r in decisions}
     decisions += [{"id": r["id"]} for r in queue if r["id"] not in existing_ids]
-    with review_path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["id", "decision", "reviewer", "notes"])
+    review_temporary = review_path.with_suffix(".csv.tmp")
+    with review_temporary.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=review_fields)
         writer.writeheader()
         writer.writerows(decisions)
+    review_temporary.replace(review_path)
     cards = []
     for row in queue:
         cards.append("<article><h2>"+html.escape(row["id"])+"</h2><h3>Input</h3><pre>"+
@@ -608,6 +623,16 @@ def finalize():
     hard = collections.Counter(e for r in verdicts for e in r["hardErrors"])
     usage = load("api-usage.jsonl")
     references = load("benchmark-teacher-reference.jsonl")
+    reference_by_id = {r["id"]: r for r in references}
+    verdict_by_id = {r["id"]: r for r in verdicts}
+    comparisons = []
+    for row in baseline:
+        reference = reference_by_id.get(row["id"], {})
+        comparisons.append({"id": row["id"], "inputHash": row["inputHash"], "input": row["input"],
+            "student": {k: row[k] for k in ("model", "output", "seconds", "failure") if k in row},
+            "studentOffline": verdict_by_id.get(row["id"]),
+            "teacher": {k: reference[k] for k in ("model", "output", "hardErrors", "judge", "failure") if k in reference}})
+    write_lines("benchmark-comparison.jsonl", comparisons)
     summary = {"teacher": TEACHER, "judge": JUDGE, "promptVersion": spec["promptVersion"],
                "judgeVersion": JUDGE_VERSION, "productionContractHash": digest(spec), "benchmarkHash": digest(benchmark),
                "benchmarkCases": len(baseline), "benchmarkOutputs": sum("output" in r for r in baseline),
@@ -619,9 +644,18 @@ def finalize():
                "baselineMeanSeconds": round(statistics.mean(r["seconds"] for r in baseline), 2) if baseline else None,
                "baselineMedianSeconds": round(statistics.median(r["seconds"] for r in baseline), 2) if baseline else None,
                "teacherReferenceCount": len(references),
+               "teacherReferenceOutputs": sum("output" in r for r in references),
+               "teacherReferenceJudged": sum("judge" in r for r in references),
+               "teacherReferenceHardPass": sum("hardErrors" in r and not r["hardErrors"] for r in references),
+               "teacherReferenceSemanticPass": sum(r.get("judge", {}).get("pass", False) for r in references),
                "teacherReferenceCombinedPass": sum("hardErrors" in r and not r["hardErrors"] and r.get("judge", {}).get("pass", False) for r in references),
                "teacherCandidates": len(candidates), "teacherEligibleBeforeDedup": sum(r.get("eligible", False) for r in candidates),
                "teacherOutputs": sum("output" in r for r in candidates),
+               "teacherHardPass": sum("hardErrors" in r and not r["hardErrors"] for r in candidates),
+               "teacherCurrentJudgeCount": sum(r.get("judge", {}).get("judgeVersion") == JUDGE_VERSION for r in candidates),
+               "teacherCurrentSemanticFailures": dict(collections.Counter(k for r in candidates
+                   if r.get("judge", {}).get("judgeVersion") == JUDGE_VERSION for k in JUDGE_FIELDS if not r["judge"][k])),
+               "assistantAuditExclusions": len(load("assistant-audit.jsonl")),
                "retainedAfterDedup": len(retained), "removedDuplicates": duplicates,
                "retainedByLevel": dict(collections.Counter(r["level"] for r in retained)),
                "retainedByTurn": dict(collections.Counter(str(r["turn"]) for r in retained)),
@@ -635,6 +669,19 @@ def finalize():
                "reportedPromptTokens": sum(r["usage"].get("prompt_tokens", 0) for r in usage),
                "reportedCompletionTokens": sum(r["usage"].get("completion_tokens", 0) for r in usage),
                "billingVerified": False, "note": "Provisional synthetic data; human review pending. No fine-tuning, no production changes."}
+    coverage = collections.Counter((r["scenarioId"], r["level"], r["turn"]) for r in retained)
+    summary["retainedCoverageCells"] = len(coverage)
+    summary["targetCoverageCells"] = len({r["scenarioId"] for r in spec["catalogue"]}) * 3 * 3
+    coverage_temporary = DATA / "coverage.csv.tmp"
+    with coverage_temporary.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["scenario", "level", "turn", "retainedCount"])
+        for scenario in sorted({r["scenarioId"] for r in spec["catalogue"]}):
+            for level in ("A1", "A2", "B1"):
+                for turn in (2, 3, 4):
+                    writer.writerow([scenario, level, turn, coverage[(scenario, level, turn)]])
+    coverage_temporary.replace(DATA / "coverage.csv")
+    summary["creditDeltaScope"] = "Account balance decrease since budget snapshot; may include other activity and exclude earlier probes"
     if (DATA / "billing-start.json").exists():
         try:
             remaining = Cloud().balance()
@@ -654,9 +701,59 @@ def finalize():
     print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
 
 
+def audit():
+    """Fail loudly if collection/export integrity is incomplete; does not certify semantics."""
+    spec = contract()
+    benchmark = load("benchmark-inputs.jsonl")
+    local = load("baseline-qwen35-9b.jsonl")
+    assert len(benchmark) == len(local) == 50
+    expected = {r["id"]: r for r in benchmark}
+    assert len(expected) == 50 and len({r["id"] for r in local}) == 50
+    for row in local:
+        assert row["inputHash"] == expected[row["id"]]["inputHash"] == digest(row["input"])
+        assert row["model"] == "qwen3.5:9b"
+    assert sum("output" in r for r in teacher_rows()) == 500
+    holdout = {r["group"] for r in benchmark}
+    seen_groups, fingerprints = set(), set()
+    counts = {}
+    for split in ("train", "validation", "test"):
+        rows = load(split+".provisional.jsonl")
+        groups = {r["group"] for r in rows}
+        assert not groups & (seen_groups | holdout), "Conversation group leakage"
+        seen_groups |= groups
+        for row in rows:
+            assert [m["role"] for m in row["messages"]] == ["system", "user", "assistant", "user", "assistant"]
+            assert row["targetMessageIndex"] == 4 and row["lossMaskPolicy"] == "last-assistant-only"
+            actual = json.loads(row["messages"][-2]["content"].split("<data>", 1)[1].rsplit("</data>", 1)[0])
+            output = json.loads(row["messages"][-1]["content"])
+            assert digest(actual) == row["inputHash"]
+            assert list(output) == list(FIELDS), "Output order changed"
+            assert not check_output(actual, output, spec)
+            assert row["humanReviewed"] is False
+            assert row["messages"][:-1] == messages(actual, spec), "Production prompt/few-shot mismatch"
+            fingerprint = re.sub(r"\W+", "", output["utteranceEn"].casefold())
+            assert fingerprint not in fingerprints, "Duplicate output across dataset splits"
+            fingerprints.add(fingerprint)
+        counts[split] = len(rows)
+    summary = json.loads((DATA / "summary.json").read_text(encoding="utf-8"))
+    assert summary["retainedAfterDedup"] == sum(counts.values())
+    assert summary["trainingReady"] is False and summary["humanReviewed"] == 0
+    assert len(load("baseline-offline-verdicts.jsonl")) == 50
+    assert len(load("benchmark-teacher-reference.jsonl")) == 50
+    comparisons = load("benchmark-comparison.jsonl")
+    assert len(comparisons) == 50 and {r["id"] for r in comparisons} == set(expected)
+    assert all(digest(r["input"]) == expected[r["id"]]["inputHash"] for r in comparisons)
+    save("integrity-audit.json", {"passed": True, "semanticCertification": False, "counts": counts,
+         "benchmarkCount": 50, "teacherOutputs": 500, "contractHash": digest(spec)})
+    print("Dataset integrity audit passed; human semantic review still pending", flush=True)
+
+
 def main():
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("prepare", "probe", "calibrate", "refilter", "generate", "judge-baseline", "teacher-benchmark", "finalize"))
+    parser.add_argument("command", choices=("prepare", "probe", "calibrate", "refilter", "generate", "judge-baseline", "teacher-benchmark", "finalize", "audit"))
     parser.add_argument("--count", type=int, default=500)
     args = parser.parse_args()
     DATA.mkdir(parents=True, exist_ok=True)
@@ -665,7 +762,7 @@ def main():
             parser.error("First-stage candidate count must be 1..1000")
         generate(args.count)
     else:
-        {"prepare": prepare, "probe": probe, "calibrate": calibrate, "refilter": refilter, "judge-baseline": evaluate_baseline, "teacher-benchmark": teacher_benchmark, "finalize": finalize}[args.command]()
+        {"prepare": prepare, "probe": probe, "calibrate": calibrate, "refilter": refilter, "judge-baseline": evaluate_baseline, "teacher-benchmark": teacher_benchmark, "finalize": finalize, "audit": audit}[args.command]()
 
 
 if __name__ == "__main__":
