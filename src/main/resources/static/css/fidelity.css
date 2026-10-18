@@ -378,7 +378,6 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; backg
 .is-history-review .coach-hero .eyebrow,
 .is-history-review #result-message,
 .is-history-review #coach-status,
-.is-history-review #coach-panel,
 .is-history-review #result-technical > summary,
 .is-history-review #result-assessment,
 .is-history-review .result-layout,
@@ -388,6 +387,11 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; backg
 .is-history-review #review-outcome-summary,
 .is-history-review .analysis-export { display: none; }
 .is-history-review .result-summary-layout { padding: 0; }
+.is-history-review #coach-panel { display: contents; }
+.is-history-review #coach-panel > :not(#result-technical),
+.is-history-review #result-technical > .smart-review,
+.is-history-review #result-technical > .coach-bank,
+.is-history-review #result-technical > .coach-comparison-help { display: none; }
 .is-history-review #result-heading { overflow-wrap: anywhere; }
 .is-history-review .result-overview { grid-template-columns: repeat(2,minmax(0,1fr)); }
 .is-history-review .result-overview .result-metric { padding: 16px; }
@@ -1312,6 +1316,32 @@ body[data-route="admin-users"] .admin-table td:last-child a { white-space: nowra
 
 /* ── Header stability — ngăn nhảy 1px khi scrollbar xuất hiện ── */
 html { scrollbar-gutter: stable; }
+
+/* Coach: one score, progress, then a choice; the existing record stays in details. */
+#result-view:not(.is-history-review) { max-width: 880px; }
+#result-view:not(.is-history-review) .result-summary-layout { display: flex; flex-direction: column; gap: 20px; text-align: center; padding-bottom: 0; }
+#result-view:not(.is-history-review) .coach-hero h1 { font-size: clamp(1.75rem, 4vw, 2.5rem); line-height: 1.2; }
+#result-view:not(.is-history-review) .result-overview { display: block; }
+#result-view:not(.is-history-review) .result-overview .result-metric { display: flex; flex-direction: column; border: 0; padding: 0; background: transparent; }
+#result-view:not(.is-history-review) #result-first { order: -1; font-size: clamp(3rem, 8vw, 4.5rem); line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+#result-view:not(.is-history-review) #coach-status { border: 0; background: transparent; margin: 0; padding: 0; }
+#result-view:not(.is-history-review) #coach-insights { text-align: center; }
+.coach-progress { display: block; border: 0; background: transparent; padding: 0; margin: 0 0 20px; }
+.coach-progress h2 { font: 600 22px/1.4 var(--body); margin: 0 0 6px; overflow-wrap: anywhere; }
+.coach-progress p { color: var(--ink-soft); margin: 0; }
+.coach-focus { max-width: 60ch; margin: 0 auto 24px; overflow-wrap: anywhere; }
+.coach-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin: 24px 0 32px; }
+.coach-actions .secondary-button { border: 1px solid var(--ink); border-radius: 6px; padding: 12px 20px; min-height: 44px; color: var(--ink); background: var(--paper); font: inherit; cursor: pointer; }
+.coach-actions .secondary-button:hover { background: var(--paper-deep); }
+.coach-actions .secondary-button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.coach-comparison-help { max-width: 70ch; margin: 24px 0; }
+.coach-final-score { margin: 24px 0; }
+.coach-comparison-help h2 { font: 600 20px/1.4 var(--body); }
+#result-view:not(.is-history-review) .coach-navigation { display: none; }
+@media (max-width: 390px) {
+    .coach-actions { flex-direction: column; }
+    .coach-actions > * { width: 100%; justify-content: center; text-align: center; }
+}
 @media (min-width: 761px) and (max-width: 1280px) {
     body[data-route="dashboard"] .site-header .main-nav,
     body[data-route="support"]   .site-header .main-nav {

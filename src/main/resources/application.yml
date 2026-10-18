@@ -221,6 +221,10 @@ dictalab:
     tts-url: ${TTS_URL:https://api.cartesia.ai/tts/bytes}
   coach:
     enabled: ${DICTALAB_COACH_ENABLED:false}
+    provider: ${DICTALAB_COACH_PROVIDER:shopaikey}
+    local-base-url: ${DICTALAB_COACH_LOCAL_BASE_URL:http://127.0.0.1:11434}
+    local-model: ${DICTALAB_COACH_LOCAL_MODEL:qwen3.5:4b}
+    local-timeout-seconds: ${DICTALAB_COACH_LOCAL_TIMEOUT_SECONDS:60}
   public-url: ${DICTALAB_PUBLIC_URL:http://localhost:18081}
   support-email: ${DICTALAB_SUPPORT_EMAIL:}
   mail-from: ${DICTALAB_MAIL_FROM:}

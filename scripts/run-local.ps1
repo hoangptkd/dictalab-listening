@@ -35,11 +35,20 @@ try {
     $postgresPort = [int]$env:POSTGRES_PORT
 
     if ($WithCoach) {
-        if ([string]::IsNullOrWhiteSpace($env:SHOPAIKEY_API_KEY)) {
+        $coachProvider = if ($env:DICTALAB_COACH_PROVIDER) { $env:DICTALAB_COACH_PROVIDER } else { 'shopaikey' }
+        if ($coachProvider -eq 'ollama') {
+            $coachBase = if ($env:DICTALAB_COACH_LOCAL_BASE_URL) { $env:DICTALAB_COACH_LOCAL_BASE_URL.TrimEnd('/') } else { 'http://127.0.0.1:11434' }
+            $coachModel = if ($env:DICTALAB_COACH_LOCAL_MODEL) { $env:DICTALAB_COACH_LOCAL_MODEL } else { 'qwen3.5:4b' }
+            $coachModels = Invoke-RestMethod "$coachBase/api/tags" -TimeoutSec 5
+            if ($coachModel -notin @($coachModels.models.name)) { throw "Ollama chua co model $coachModel. Hay tai model truoc." }
+            Write-Host "AI Coach: Ollama local / $coachModel."
+        }
+        elseif ($coachProvider -ne 'shopaikey') { throw 'DICTALAB_COACH_PROVIDER chi nhan shopaikey hoac ollama.' }
+        elseif ([string]::IsNullOrWhiteSpace($env:SHOPAIKEY_API_KEY)) {
             throw 'Can SHOPAIKEY_API_KEY trong .env de bat Coach.'
         }
         $env:DICTALAB_COACH_ENABLED = 'true'
-        Write-Host 'AI Coach: ShopAIKey API (khong can Chrome/ChatGPT web).'
+        if ($coachProvider -eq 'shopaikey') { Write-Host 'AI Coach: ShopAIKey API.' }
     }
 
     if ($WithMessaging) {

@@ -6,6 +6,8 @@ MVP web luyện nghe chép chính tả tiếng Anh theo CEFR A1–B2. Người h
 
 ## Chức năng đã có
 
+Coach hỗ trợ Qwen3.5 4B qua Ollama local với provider riêng, tiến bộ có dữ liệu cấu trúc, ôn nhanh tối đa ba câu và phương án dự phòng khi AI lỗi. Hướng dẫn cấu hình, kiểm thử và đánh giá: [Coach local](docs/coach-local-ai.md).
+
 - Đăng ký, đăng nhập, đăng xuất bằng email; mật khẩu băm BCrypt, JWT access/refresh token dùng cookie HttpOnly và Redis quản lý phiên token.
 - Lịch sử luyện, điểm số, dashboard và gợi ý bài được tách riêng theo từng tài khoản.
 - Chọn level A1, A2, B1, B2 và bài luyện.

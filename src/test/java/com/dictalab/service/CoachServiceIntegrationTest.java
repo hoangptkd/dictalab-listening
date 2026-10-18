@@ -103,10 +103,28 @@ class CoachServiceIntegrationTest {
         assertEquals("UP", report.progressInsight().status());
         assertTrue(report.progressInsight().text().contains("2 bài"));
         assertTrue(report.progressInsight().text().contains("30.0 điểm"));
+        assertEquals(2, report.progressInsight().comparedLessonCount());
+        assertEquals(30.0, report.progressInsight().deltaPoints());
         assertEquals(3, report.reviewItems().get(0).occurrences());
         assertEquals("NOT_COMPARABLE", coach.report(user, shared, false).progressInsight().status());
         assertEquals("NOT_COMPARABLE", coach.report(user, repeated, false).progressInsight().status());
         then(client).should(never()).completeJson(anyString(), anyString());
+    }
+
+    @Test void eventsAreOwnedIdempotentAndNeverChangeScores() {
+        long owner = user(), other = user();
+        String id = session(owner), run = UUID.randomUUID().toString();
+        coach.recordEvent(owner,id,"coach_result_viewed",null);
+        coach.recordEvent(owner,id,"coach_result_viewed",null);
+        coach.recordEvent(owner,id,"coach_details_opened",null);
+        coach.recordEvent(owner,id,"coach_quick_review_completed",run);
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM coach_usage_events WHERE session_id=?",Integer.class,id));
+        coach.recordEvent(owner,id,"coach_quick_review_started",run);
+        coach.recordEvent(owner,id,"coach_quick_review_completed",run);
+        coach.recordEvent(owner,id,"coach_quick_review_completed",run);
+        assertEquals(4,db.queryForObject("SELECT COUNT(*) FROM coach_usage_events WHERE session_id=?",Integer.class,id));
+        assertThrows(ResourceNotFoundException.class, () -> coach.recordEvent(other,id,"coach_result_viewed",null));
+        assertEquals(50.0, db.queryForObject("SELECT first_attempt_accuracy FROM practice_sessions WHERE id=?",Double.class,id));
     }
 
     private long user() {

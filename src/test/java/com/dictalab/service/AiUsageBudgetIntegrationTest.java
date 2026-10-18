@@ -74,4 +74,16 @@ class AiUsageBudgetIntegrationTest {
         budget.setEnabled(actor,true);
         budget.reserve(actor,false);
     }
+
+    @Test void localCallsHaveTheirOwnLimitsAndNoCloudDollarReservation() {
+        var budget = budget(100,100,1);
+        budget.reserveLocal(actor);
+        assertThat(db.queryForObject("SELECT calls FROM ai_daily_budget WHERE scope='LOCAL_GLOBAL'",Integer.class)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT reserved_microusd FROM ai_daily_budget WHERE scope='LOCAL_GLOBAL'",Long.class)).isZero();
+        assertThatThrownBy(() -> budget.reserveLocal(actor)).isInstanceOf(AiUsageBudget.Rejected.class);
+        budget.reserve(actor,false);
+        assertThat(db.queryForObject("SELECT reserved_microusd FROM ai_daily_budget WHERE scope='GLOBAL'",Long.class)).isEqualTo(10);
+        budget.setEnabled(actor,false);
+        assertThatThrownBy(() -> budget.reserveLocal(actor)).isInstanceOf(AiUsageBudget.Rejected.class);
+    }
 }

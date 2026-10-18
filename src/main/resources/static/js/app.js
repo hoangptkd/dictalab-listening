@@ -2631,7 +2631,7 @@
         reportIssue.className = "text-button result-report-link";
         reportIssue.href = `/support?type=DICTATION&id=${encodeURIComponent(result.sessionId)}`;
         reportIssue.textContent = "Báo audio hoặc kết quả chưa đúng";
-        (isHistoryReview ? document.querySelector("#result-view") : resultActions).appendChild(reportIssue);
+        (isHistoryReview ? document.querySelector("#result-view") : document.querySelector("#result-technical")).appendChild(reportIssue);
         const dashboardButton = resultActions.querySelector("[data-route='dashboard']");
         const catalogButton = document.querySelector(".result-details .text-button[data-route='catalog']");
         if (isHistoryReview) {
@@ -2658,6 +2658,7 @@
         let loaded = false;
         technical.ontoggle = () => {
             if (!technical.open || loaded || state.lastResult !== result) return;
+            if (!isHistoryReview) window.DictaLabCoach?.detailsOpened?.();
             loaded = true;
             renderLessonReview(result);
             if (isHistoryReview) return;

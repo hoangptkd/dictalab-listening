@@ -6,6 +6,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.resolve(__dirname, '../../main/resources/static/js/coach.js'), 'utf8');
 
 function harness(api, timers = {setTimeout}, storage = new Map()) {
+    const events = [];
     const elements = new Map();
     const $ = selector => {
         if (!elements.has(selector)) elements.set(selector, {innerHTML: '', textContent: '', hidden: false,
@@ -15,14 +16,18 @@ function harness(api, timers = {setTimeout}, storage = new Map()) {
     };
     const listeners = {};
     const root = {querySelector: $, querySelectorAll: () => [], addEventListener: (name, handler) => { listeners[name] = handler; }};
-    const window = {DictaLabListeningBridge: {api, stopRecordedAudio() {}, showToast() {}, currentUser: () => ({id: 42}), playRecordedAudio: async () => {}}};
+    const window = {crypto: require('node:crypto').webcrypto, DictaLabListeningBridge: {
+        api: (url, options) => {
+            if (url.endsWith('/coach/events')) { events.push({url, ...options.body}); return Promise.resolve(); }
+            return api(url, options);
+        }, stopRecordedAudio() {}, showToast() {}, currentUser: () => ({id: 42}), playRecordedAudio: async () => {}}};
     const sessionStorage = {getItem: key => storage.get(key),setItem: (key,value) => storage.set(key,value),removeItem: key => storage.delete(key)};
     vm.runInNewContext(source, {window, sessionStorage, document: {querySelector: () => root}, ...timers});
-    return {module: window.DictaLabCoach, $, listeners};
+    return {module: window.DictaLabCoach, $, listeners, events};
 }
 
 const report = (label = 'Real evidence', aiEnabled = false) => ({source: 'RULES', aiEnabled,
-    weaknesses: [{pattern: 'KNOWN_MISSED', title: label, insight: 'Short insight', evidenceIds: ['1:0']}],
+    weaknesses: [{pattern: 'KNOWN_MISSED', title: label, insight: label + ': short insight', evidenceIds: ['1:0']}],
     progressInsight: {status: 'INSUFFICIENT', text: 'Not enough history'},
     nextActions: [{pattern: 'KNOWN_MISSED', instruction: 'Listen again'}],
     reviewItems: [{id: '1:0', pattern: 'KNOWN_MISSED', heard: '<img onerror=alert(1)>', expected: 'market',
@@ -128,7 +133,7 @@ test('coach escapes all evidence and keeps primary action and technical-free rev
     const h = harness(async () => report('<script>bad</script>'));
     await h.module.show({sessionId: 'current'});
     assert.doesNotMatch(h.$('#coach-insights').innerHTML, /<script>/);
-    assert.match(h.$('#coach-insights').innerHTML, /data-coach-practice/);
+    assert.equal(h.$('#coach-quick-review').textContent, 'Ôn nhanh 1 câu');
     assert.doesNotMatch(h.$('#smart-review-items').innerHTML, /<img/);
     assert.match(h.$('#smart-review-items').innerHTML, /&lt;img/);
     assert.match(h.$('#smart-review-items').innerHTML, /data-coach-save/);
@@ -221,4 +226,61 @@ test('polling outage preserves usable Coach evidence and offers read-only reload
     assert.match(h.$('#coach-insights').innerHTML, /Useful fallback/);
     assert.match(h.$('#coach-insights').innerHTML, /data-coach-reload/);
     assert.match(h.$('#smart-review-items').innerHTML, /market/);
+});
+
+test('progress uses typed deltas and reasons, with legacy text fallback', async () => {
+    for (const [status, delta, expected] of [['UP',6,'↑ Cao hơn 6 điểm %'], ['DOWN',-4,'↓ Thấp hơn 4 điểm %'], ['STEADY',0,'Kết quả khá ổn định']]) {
+        const data=report();
+        data.progressInsight={status,text:'Legacy',deltaPoints:delta,comparedLessonCount:3,level:'A2',comparisonReason:'NEW'};
+        const h=harness(async()=>data);
+        await h.module.show({sessionId:'current',level:'A2'});
+        assert.ok(h.$('#coach-insights').innerHTML.includes(expected));
+        assert.match(h.$('#coach-insights').innerHTML,/3 bài mới A2/);
+        assert.equal(h.$('#coach-next-lesson').href,'/catalog?level=A2&page=1');
+    }
+    for (const [status,reason,expected] of [['INSUFFICIENT','NEW','Chưa đủ dữ liệu'],['NOT_COMPARABLE','SHARED','Buổi học cùng bạn'],['NOT_COMPARABLE','REPEAT','Kết quả luyện lại']]) {
+        const data=report();data.progressInsight={status,comparisonReason:reason};
+        const h=harness(async()=>data);await h.module.show({sessionId:'current'});
+        assert.ok(h.$('#coach-insights').innerHTML.includes(expected));
+    }
+    const h=harness(async()=>report());await h.module.show({sessionId:'current'});
+    assert.match(h.$('#coach-insights').innerHTML,/Not enough history/);
+});
+
+test('quick review selects different sentences and late AI cannot replace an active drill', async () => {
+    let resolve;
+    const initial=report('Baseline',true);
+    initial.reviewItems=[...initial.reviewItems,{...initial.reviewItems[0],id:'1:1'},
+        {...initial.reviewItems[0],id:'2:0',position:2}, {...initial.reviewItems[0],id:'3:0',position:3}];
+    const h=harness(async(_url,options)=>options ? new Promise(done=>{resolve=done;}) : initial);
+    const pending=h.module.show({sessionId:'current'});
+    await new Promise(done=>setImmediate(done));
+    assert.equal(h.$('#coach-quick-review').textContent,'Ôn nhanh 3 câu');
+    await click(h,'data-coach-quick-review');
+    const active=h.$('#coach-practice').innerHTML;
+    resolve({...report('New insight'),source:'AI',reviewItems:[]});await pending;
+    assert.equal(h.$('#coach-practice').innerHTML,active);
+    assert.equal(h.$('#coach-quick-review').textContent,'Ôn nhanh 3 câu');
+    assert.match(active,/The _____ is open\./);
+    assert.doesNotMatch(active,/market/);
+    for(let i=0;i<3;i++) {
+        h.$('#coach-drill-answer').value='market';
+        await h.listeners.submit({target:{id:'coach-drill-form'},preventDefault(){}});
+        await click(h,'data-drill-next');
+    }
+    await new Promise(done=>setImmediate(done));
+    assert.match(h.$('#coach-practice').innerHTML,/Đã ôn 3 câu/);
+    assert.equal(h.events.filter(e=>e.name==='coach_result_viewed').length,1);
+    const started=h.events.find(e=>e.name==='coach_quick_review_started');
+    const completed=h.events.find(e=>e.name==='coach_quick_review_completed');
+    assert.equal(completed.reviewRunId,started.reviewRunId);
+    await h.module.detailsOpened();
+    assert.equal(h.events.at(-1).name,'coach_details_opened');
+});
+
+test('empty audio hides review and overlong insight is omitted without truncation', async () => {
+    const data=report(); data.reviewItems[0].audioUrl=null;data.weaknesses[0].insight='x'.repeat(121);
+    const h=harness(async()=>data);await h.module.show({sessionId:'current'});
+    assert.equal(h.$('#coach-quick-review').hidden,true);
+    assert.doesNotMatch(h.$('#coach-insights').innerHTML,/coach-focus|xxxx/);
 });

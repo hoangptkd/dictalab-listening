@@ -25,8 +25,6 @@ while ($sentence) {
     $sentencePath = "$sessionPath/sentences/$($sentence.sentenceId)"
     $null = Post-Json "$sentencePath/replay-events" @{event = 'STARTED'; playbackSpeed = 1.0}
     $null = Post-Json "$sentencePath/replay-events" @{event = 'COMPLETED'}
-    $words = @([regex]::Matches($sentence.speechText, "[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*") |
-        ForEach-Object { $_.Value })
     foreach ($slot in $sentence.words) {
         if ($slot.prefilled) { continue }
         $wordPath = "$sentencePath/words/$($slot.index)/checks"
@@ -35,16 +33,28 @@ while ($sentence) {
             $null = Post-Json "$sentencePath/classifications" @{wordIndex = $slot.index; errorType = 'KNOWN_BUT_MISSED'}
             $errors++
         }
-        $null = Post-Json $wordPath @{answer = $words[$slot.index]; responseTimeMs = 900}
     }
+    # The learner API intentionally withholds transcript before reveal. Use the normal reveal flow in QA.
+    $null = Post-Json "$sentencePath/hints" @{type = 'REVEAL_SENTENCE'}
+    $null = Post-Json "$sentencePath/replay-events" @{event = 'STARTED'; playbackSpeed = 1.0}
+    $null = Post-Json "$sentencePath/replay-events" @{event = 'COMPLETED'}
     $done = Post-Json "$sentencePath/complete" @{timeSpentSeconds = 20}
     $sentence = $done.nextSentence
 }
 $report = Post-Json "$sessionPath/coach" @{}
-if ($report.source -ne 'AI') { throw "Expected real AI, received $($report.source). Check SHOPAIKEY_API_KEY and DICTALAB_COACH_ENABLED." }
+for ($poll = 0; $report.source -eq 'QUEUED' -and $poll -lt 90; $poll++) {
+    Start-Sleep -Seconds 2
+    $report = Invoke-RestMethod "$BaseUrl$sessionPath/coach" -WebSession $qaWeb
+}
+if ($report.source -ne 'AI') { throw "Expected AI, received $($report.source). Check Coach provider, model and enabled configuration." }
 if ($report.weaknesses.Count -gt 3 -or $report.nextActions.Count -gt 3 -or $report.reviewItems.Count -gt 12) {
     throw 'Coach output exceeded UX limits.'
 }
+if ($report.quickReviewItems.Count -gt 3 -or @($report.quickReviewItems.sentenceId | Select-Object -Unique).Count -ne $report.quickReviewItems.Count) {
+    throw 'Quick review must use at most three different sentences.'
+}
+if ($report.generation.provider -eq 'ollama' -and ($report.weaknesses.Count -gt 1 -or
+        @($report.weaknesses | Where-Object { $_.insight.Length -gt 120 }).Count -gt 0)) { throw 'Local insight exceeded its contract.' }
 $cached = Invoke-RestMethod "$BaseUrl$sessionPath/coach" -WebSession $qaWeb
 if ($cached.source -ne 'AI') { throw 'AI report was not persisted.' }
 $detail = Invoke-RestMethod "$BaseUrl/api/v1/history/$($start.sessionId)" -WebSession $qaWeb

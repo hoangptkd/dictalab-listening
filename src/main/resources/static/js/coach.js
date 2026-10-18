@@ -7,21 +7,31 @@
     const statusParent = coachStatus.parentNode, statusNext = coachStatus.nextSibling;
     const bridge = window.DictaLabListeningBridge;
     const $ = selector => selector === "#coach-status" ? coachStatus : root.querySelector(selector);
+    const coachDetails = root.querySelector("#result-technical"), bankDetails = $("#coach-error-bank");
+    const bankParent = bankDetails.parentNode, bankNext = bankDetails.nextSibling;
     const escape = value => String(value ?? "").replace(/[&<>"']/g, char => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
     }[char]));
     const normalize = value => String(value).normalize("NFKC").trim().replaceAll("’", "'").toLowerCase();
     let generation = 0, sessionId = null, report = null, bank = [], drill = [], drillIndex = 0;
     let playing = false;
+    let quickReview = null, quickRun = null, quickStarted = null, lessonLevel = "A1";
     const saved = new Set();
 
     function leave() {
+        if (resultParent && root.parentNode !== resultParent) resultParent.insertBefore(root, resultNext);
+        if (statusParent && coachStatus.parentNode !== statusParent) statusParent.insertBefore(coachStatus, statusNext);
+        if (bankParent && bankDetails.parentNode !== bankParent) bankParent.insertBefore(bankDetails, bankNext);
+        coachDetails.hidden = false;
         generation++;
         sessionId = null;
         report = null;
         bank = [];
         learningBank = [];
         drill = [];
+        quickReview = null;
+        quickRun = null;
+        quickStarted = null;
         saved.clear();
         bridge.stopRecordedAudio();
         $("#coach-bank-items").innerHTML = "";
@@ -30,12 +40,15 @@
 
     async function show(result) {
         leave();
-        if (resultParent && root.parentNode !== resultParent) resultParent.insertBefore(root, resultNext);
-        if (statusParent && coachStatus.parentNode !== statusParent) statusParent.insertBefore(coachStatus, statusNext);
         $("#coach-insights").hidden = false;
         const smartReview = $(".smart-review");
         if (smartReview) smartReview.hidden = false;
         sessionId = result.sessionId;
+        lessonLevel = result.level || lessonLevel;
+        const next = $("#coach-next-lesson");
+        next.href = `/catalog?level=${encodeURIComponent(lessonLevel)}&page=1`;
+        $("#coach-actions").hidden = false;
+        $("#coach-quick-review").hidden = true;
         const current = generation;
         $("#coach-insights").innerHTML = "";
         $("#smart-review-items").innerHTML = "";
@@ -43,33 +56,35 @@
         $("#coach-practice").hidden = true;
         $("#coach-error-bank").open = false;
         $("#coach-bank-items").innerHTML = "";
-        $("#coach-status").textContent = "Đang chọn điểm cần luyện…";
+        setStatus("Đang tải nhận xét…");
         try {
             const data = await bridge.api(`/api/v1/practice-sessions/${encodeURIComponent(sessionId)}/coach`);
             if (current !== generation) return;
             render(data);
+            track("coach_result_viewed");
             if (data.source === "QUEUED") await pollReport(current, sessionId);
             else if (data.aiEnabled && data.source === "RULES" && data.reviewItems.length) await generate(current);
         } catch (error) {
             if (current !== generation) return;
-            $("#coach-status").textContent = "Kết quả đã lưu. Chưa tải được Coach; bạn vẫn có thể xem Phân tích chi tiết.";
+            setStatus("Kết quả đã lưu. Chưa tải được nhận xét; bạn vẫn có thể học tiếp hoặc xem chi tiết.");
             $("#coach-insights").innerHTML = '<button class="text-button" type="button" data-coach-reload>Tải lại Coach</button>';
         }
     }
 
     async function generate(current = generation) {
         const id = sessionId;
-        $("#coach-status").textContent = "Đã chọn lỗi để ôn. AI đang đọc buổi luyện; bạn có thể bắt đầu ngay.";
+        setStatus("Đang chuẩn bị nhận xét…");
         $("#coach-insights").setAttribute("aria-busy", "true");
         try {
-            const data = await bridge.api(`/api/v1/practice-sessions/${encodeURIComponent(id)}/coach`, {method: "POST"});
+            const data = await bridge.api(`/api/v1/practice-sessions/${encodeURIComponent(id)}/coach`, {method: "POST", timeoutMs: 105000});
             if (current !== generation) return;
             render(data);
             $("#coach-insights").removeAttribute("aria-busy");
             if (data.source === "QUEUED") await pollReport(current, id);
         } catch (error) {
             if (current !== generation) return;
-            $("#coach-status").textContent = "AI chưa sẵn sàng. Các gợi ý hiện tại dựa trên lỗi đã ghi nhận.";
+            setStatus("Chưa có nhận xét bổ sung. Bạn vẫn có thể học tiếp hoặc ôn nhanh.");
+            $("#coach-insights").insertAdjacentHTML("beforeend", '<button class="text-button" type="button" data-coach-retry>Thử lại nhận xét</button>');
         } finally {
             if (current === generation) $("#coach-insights").removeAttribute("aria-busy");
         }
@@ -85,7 +100,7 @@
                 data = await bridge.api(`/api/v1/practice-sessions/${encodeURIComponent(id)}/coach`);
             } catch (error) {
                 if (current === generation && id === sessionId) {
-                    $("#coach-status").textContent = "Chưa cập nhật được báo cáo. Các gợi ý hiện tại vẫn dùng được; hãy tải lại Coach sau.";
+                    setStatus("Chưa cập nhật được nhận xét. Bạn vẫn có thể học tiếp hoặc ôn nhanh.");
                     $("#coach-insights").insertAdjacentHTML("beforeend", '<button class="text-button" type="button" data-coach-reload>Tải lại Coach</button>');
                 }
                 return;
@@ -94,47 +109,68 @@
             if (data.source !== "QUEUED") { render(data); return; }
         }
         if (current === generation) {
-            $("#coach-status").textContent = "Báo cáo vẫn đang chờ. Bạn có thể luyện ngay và tải lại Coach sau.";
+            setStatus("Nhận xét vẫn đang chờ. Bạn có thể học tiếp hoặc ôn nhanh.");
             $("#coach-insights").insertAdjacentHTML("beforeend", '<button class="text-button" type="button" data-coach-reload>Tải lại Coach</button>');
         }
     }
 
-    function evidenceText(ids) {
-        const examples = ids.map(id => report.reviewItems.find(item => item.id === id)).filter(Boolean)
-            .map(item => `“${item.heard || "chưa nhập"}” → “${item.expected}”`);
-        return [...new Set(examples)].join(" · ");
+    function setStatus(text) {
+        coachStatus.textContent = text;
+        coachStatus.hidden = !text;
+    }
+
+    function track(name, reviewRunId = null) {
+        if (!sessionId) return Promise.resolve();
+        return bridge.api(`/api/v1/practice-sessions/${encodeURIComponent(sessionId)}/coach/events`, {
+            method: "POST", body: {name, reviewRunId}, timeoutMs: 5000
+        }).catch(() => {}); // Behavioral telemetry never blocks learning or changes scores.
+    }
+
+    function progressMarkup(progress) {
+        const number = value => Number(value).toLocaleString("vi-VN", {maximumFractionDigits: 1});
+        let title = progress.text || "Chưa đủ dữ liệu so sánh", support = "";
+        if (["UP", "DOWN", "STEADY"].includes(progress.status) && Number.isFinite(progress.deltaPoints)
+                && progress.comparedLessonCount >= 2 && progress.level) {
+            title = progress.status === "UP" ? `↑ Cao hơn ${number(Math.abs(progress.deltaPoints))} điểm %`
+                : progress.status === "DOWN" ? `↓ Thấp hơn ${number(Math.abs(progress.deltaPoints))} điểm %`
+                : "Kết quả khá ổn định";
+            support = `So với trung bình ${progress.comparedLessonCount} bài mới ${progress.level} gần nhất`;
+        } else if (progress.comparisonReason) {
+            if (progress.status === "NOT_COMPARABLE") {
+                title = progress.comparisonReason === "SHARED" ? "Buổi học cùng bạn" : "Kết quả luyện lại";
+                support = "Không dùng buổi này để so sánh tiến bộ";
+            } else {
+                title = "Chưa đủ dữ liệu so sánh";
+                support = "Cần ít nhất 2 bài mới cùng cấp độ trước bài này";
+            }
+        }
+        return `<div class="coach-progress" data-progress="${escape(progress.status)}"><h2>${escape(title)}</h2>${support ? `<p>${escape(support)}</p>` : ""}</div>`;
     }
 
     function render(data) {
         report = data;
-        $("#coach-status").textContent = data.source === "AI" ? "AI Coach · gợi ý từ buổi luyện của bạn"
-            : data.source === "QUEUED" ? "AI đang chuẩn bị báo cáo. Bạn có thể luyện các lỗi đã chọn ngay."
-            : data.source === "RETRY_REQUIRED" ? "Chưa xác nhận được báo cáo AI. Hệ thống không tự gọi lại; bạn có thể chủ động thử lại."
-            : data.source === "EXHAUSTED" ? "Đã hết lượt thử AI cho buổi này. Bạn vẫn có thể luyện các lỗi đã ghi nhận."
-            : data.source === "BUSY" ? "AI đang bận. Bạn có thể luyện các lỗi đã chọn và thử AI sau."
-                : data.source === "UNAVAILABLE" ? "AI chưa sẵn sàng. Gợi ý dưới đây dựa trên lỗi đã ghi nhận."
-                    : "Gợi ý từ lỗi đã ghi nhận trong buổi luyện.";
-        const weaknesses = data.weaknesses.slice(0, 3);
-        const actions = data.nextActions.slice(0, 3);
-        $("#coach-insights").innerHTML = `
-            <div class="coach-section-heading"><div><p class="section-index">Một chút tập trung</p>
-                <h2>${weaknesses.length ? "Điểm đáng luyện hôm nay" : "Chưa có điểm yếu đủ bằng chứng"}</h2></div></div>
-            <div class="coach-weaknesses">${weaknesses.map((weakness, index) => `
-                <article class="coach-weakness"><span class="coach-number">0${index + 1}</span>
-                    <h3>${escape(weakness.title)}</h3><p>${escape(weakness.insight)}</p>
-                    <p class="coach-evidence">${escape(evidenceText(weakness.evidenceIds))}</p></article>`).join("")}</div>
-            ${!weaknesses.length ? '<p>Chưa có lỗi đáng ưu tiên trong dữ liệu buổi này. Hãy thử một bài mới cùng cấp độ.</p>' : ""}
-            <div class="coach-progress"><span>Tiến bộ của bạn</span><p>${escape(data.progressInsight.text)}</p></div>
-            ${actions.length ? `<section class="coach-next" aria-labelledby="coach-next-heading">
-                <div><p class="section-index">Bước tiếp theo</p><h3 id="coach-next-heading">${escape(actions[0].instruction)}</h3></div>
-                <button type="button" class="primary-button" data-coach-practice="${escape(actions[0].pattern)}">Luyện điểm này <span aria-hidden="true">→</span></button>
-                ${actions.length > 1 ? `<details><summary>Thêm ${actions.length - 1} cách luyện</summary><ul>${actions.slice(1).map(action => `
-                    <li>${escape(action.instruction)} <button class="text-button" type="button" data-coach-practice="${escape(action.pattern)}">Bắt đầu</button></li>`).join("")}</ul></details>` : ""}
-            </section>` : ""}
-            ${["BUSY", "UNAVAILABLE", "RETRY_REQUIRED"].includes(data.source) ? '<button class="text-button" type="button" data-coach-retry>Thử AI lại</button>' : ""}`;
+        setStatus(data.source === "QUEUED" ? "Đang chuẩn bị nhận xét…"
+            : ["UNAVAILABLE", "BUSY", "RETRY_REQUIRED"].includes(data.source) ? "Chưa có nhận xét bổ sung. Bạn vẫn có thể học tiếp hoặc ôn nhanh."
+                : data.source === "EXHAUSTED" ? "Chưa có nhận xét bổ sung cho buổi này." : "");
+        const insight = (data.weaknesses || [])[0]?.insight;
+        const shortInsight = insight && [...insight].length <= 120 && !/[\r\n]/.test(insight);
+        $("#coach-insights").innerHTML = progressMarkup(data.progressInsight)
+            + (shortInsight ? `<p class="coach-focus">Điểm cần chú ý: ${escape(insight)}</p>` : "")
+            + (["BUSY", "UNAVAILABLE", "RETRY_REQUIRED"].includes(data.source)
+                ? '<button class="text-button" type="button" data-coach-retry>Thử lại nhận xét</button>' : "");
+        // Freeze the initial selection, including while a late report reranks the detail list.
+        if (quickReview === null) {
+            const seen = new Set();
+            quickReview = (data.quickReviewItems || data.reviewItems).filter(item => item.audioUrl)
+                .filter(item => { const id = item.sentenceId ?? item.position; if (seen.has(id)) return false; seen.add(id); return true; }).slice(0, 3);
+        }
+        $("#coach-quick-review").textContent = `Ôn nhanh ${quickReview.length} câu`;
+        $("#coach-quick-review").hidden = !quickReview.length;
         $("#smart-review-count").textContent = data.reviewItems.length ? `${data.reviewItems.length} lỗi ưu tiên · không cần ôn lại tất cả` : "Không có lỗi cần ưu tiên";
         $("#smart-review-items").innerHTML = data.reviewItems.slice(0, 3).map(item => itemCard(item, sessionId)).join("")
-            + (data.reviewItems.length > 3 ? `<details class="ui-disclosure smart-review-more"><summary>Xem thêm ${data.reviewItems.length - 3} điểm cần ôn</summary>${data.reviewItems.slice(3).map(item => itemCard(item, sessionId)).join("")}</details>` : "");
+            + (data.reviewItems.length > 3 ? `<details class="ui-disclosure smart-review-more"><summary>Xem thêm ${data.reviewItems.length - 3} điểm cần ôn</summary>${data.reviewItems.slice(3).map(item => itemCard(item, sessionId)).join("")}</details>` : "")
+            + ((data.nextActions || []).length ? `<section aria-label="Cách luyện thêm"><h3>Cách luyện thêm</h3><ul>${data.nextActions.slice(0, 3).map(action =>
+                `<li>${escape(action.instruction)} <button class="text-button" type="button" data-coach-practice="${escape(action.pattern)}">Bắt đầu luyện</button></li>`).join("")}</ul></section>` : "");
     }
 
     function itemCard(item, sourceSession, inBank = false) {
@@ -142,7 +178,7 @@
         return `<article class="smart-review-item" data-coach-item="${escape(item.id)}" data-coach-session="${escape(sourceSession)}">
             <div class="smart-review-label"><span>Câu ${item.position}</span><strong>${escape(item.label)}</strong>
                 ${item.occurrences > 1 ? `<small>Đã lỡ từ này ${item.occurrences} lần trong các bài được xét</small>` : ""}</div>
-            <div class="coach-answer-pair"><div><span>Bạn đã nghe / nhập</span><p>${escape(item.heard || "Chưa nhập đáp án")}</p></div>
+            <div class="coach-answer-pair"><div><span>Lần nhập đầu</span><p>${escape(item.heard || "Chưa nhập đáp án")}</p></div>
                 <div><span>Đáp án đúng</span><p lang="en">${escape(item.expected)}</p></div></div>
             <p class="smart-review-context" lang="en">${escape(item.transcript)}</p>
             <p class="smart-review-explanation">${escape(item.explanation)}</p>
@@ -176,11 +212,19 @@
         }
     }
 
-    function startDrill(items) {
-        drill = items.filter(item => item.audioUrl).slice(0, 3);
+    function startDrill(items, quick = false) {
+        const seen = new Set();
+        const selected = items.filter(item => item.audioUrl).filter(item => {
+            const id = item.sentenceId ?? item.position;
+            if (seen.has(id)) return false;
+            seen.add(id); return true;
+        }).slice(0, 3).map(item => ({...item}));
+        if (!selected.length) { bridge.showToast("Lỗi này chưa có audio để luyện.", true); return; }
+        drill = selected;
         drillIndex = 0;
-        if (!drill.length) { bridge.showToast("Lỗi này chưa có audio để luyện.", true); return; }
         renderDrill();
+        quickRun = quick && sessionId && window.crypto?.randomUUID ? window.crypto.randomUUID() : null;
+        quickStarted = quickRun ? track("coach_quick_review_started", quickRun) : null;
     }
 
     function renderDrill() {
@@ -268,6 +312,7 @@
                 if (pending) {
                     const state = await bridge.api(`/api/v1/listening-learning/reviews/${encodeURIComponent(pending.id)}`);
                     if (current !== generation) return;
+                    quickRun = null; quickStarted = null;
                     drill = [{...state.challenge, reviewId: pending.id, label: "Khôi phục lượt ôn", result: state.result, pendingAnswer: pending.body}];
                     drillIndex = 0; renderDrill();
                     if (state.result) pendingReview(null);
@@ -276,6 +321,7 @@
                 const items = await bridge.api("/api/v1/listening-learning/reviews", {method: "POST"});
                 if (current !== generation) return;
                 if (!items.length) { bridge.showToast("Chưa có câu ôn đến hạn có audio phù hợp."); return; }
+                quickRun = null; quickStarted = null;
                 drill = items.map(item => ({...item, reviewId: item.id, label: "Ôn nghe cách quãng"}));
                 drillIndex = 0; renderDrill();
             } catch (error) {
@@ -298,12 +344,14 @@
             try { await generate(); } finally { button.disabled = false; }
             return;
         }
+        if (button.hasAttribute("data-coach-quick-review")) { startDrill(quickReview || [], true); return; }
         if (button.hasAttribute("data-coach-practice")) {
             startDrill(report.reviewItems.filter(item => item.pattern === button.dataset.coachPractice)); return;
         }
         if (button.hasAttribute("data-coach-close")) {
             bridge.stopRecordedAudio(); $("#coach-practice").hidden = true;
-            $("[data-coach-practice]")?.focus(); return;
+            quickRun = null;
+            $("#coach-quick-review")?.focus(); return;
         }
         if (button.hasAttribute("data-drill-listen")) { await listen(drill[drillIndex], button); return; }
         if (button.hasAttribute("data-drill-reveal")) {
@@ -314,7 +362,15 @@
         if (button.hasAttribute("data-drill-next")) {
             if (++drillIndex < drill.length) renderDrill();
             else {
-                $("#coach-practice").innerHTML = '<h2 tabindex="-1">Đã hoàn tất lượt ôn.</h2><p>Giữ nhịp này và thử một bài mới khi sẵn sàng.</p>';
+                if (quickRun) {
+                    const current = generation, run = quickRun;
+                    quickRun = null;
+                    Promise.resolve(quickStarted).then(() => {
+                        if (current === generation) track("coach_quick_review_completed", run);
+                    });
+                }
+                $("#coach-practice").innerHTML = `<h2 tabindex="-1">Đã hoàn tất lượt ôn.</h2><p>Đã ôn ${drill.length} câu; điểm bài gốc được giữ nguyên.</p>
+                    <a class="primary-button" href="/catalog?level=${escape(lessonLevel)}&page=1" data-route="catalog">Học bài tiếp</a>`;
                 $("#coach-practice h2").focus();
             }
             return;
@@ -352,8 +408,12 @@
         leave();
         target.appendChild(root);
         root.prepend(coachStatus);
+        root.appendChild(bankDetails);
+        coachDetails.hidden = true;
+        coachStatus.hidden = false;
         $("#coach-status").textContent = "Kho lỗi nghe cá nhân · Ôn từ đến hạn";
         $("#coach-insights").hidden = true;
+        $("#coach-actions").hidden = true;
         $(".smart-review").hidden = true;
         $("#coach-practice").hidden = true;
         $("#coach-error-bank").open = true;
@@ -409,5 +469,5 @@
         });
     }
     $("#coach-error-bank").addEventListener("toggle", () => { if ($("#coach-error-bank").open && sessionId) loadBank(); });
-    window.DictaLabCoach = {show, leave, openBank};
+    window.DictaLabCoach = {show, leave, openBank, detailsOpened: () => track("coach_details_opened")};
 })();
