@@ -19,6 +19,115 @@ import static org.mockito.Mockito.*;
 @EnabledIfSystemProperty(named="conversation.evaluate", matches="true")
 class ConversationLocalEvaluationTest {
     @Test
+    @EnabledIfSystemProperty(named="conversation.raw-structure", matches="true")
+    void checkCollectedOutputStructure() throws Exception {
+        var json=new ObjectMapper();
+        var report=json.readTree(Files.readString(Path.of("target/conversation-local-raw-content-evaluation.json"),
+                java.nio.charset.StandardCharsets.UTF_8));
+        assertEquals(12,report.path("cases").size());
+        var limits=Map.of("taskVi",180,"questionVi",180,"utteranceEn",1200,"translationVi",1200,"skill",180);
+        for (var row : report.path("cases")) {
+            var output=row.path("output");
+            assertTrue(output.isObject(),row.path("id").asText());
+            assertEquals(Set.of("taskVi","questionVi","utteranceEn","translationVi","skill","facts"),output.propertyNames());
+            limits.forEach((field,max) -> {
+                assertTrue(output.path(field).isTextual(),field);
+                assertFalse(output.path(field).asText().isBlank(),field);
+                assertTrue(output.path(field).asText().length()<=max,field);
+            });
+            assertTrue(ConversationContent.SKILLS.containsValue(output.path("skill").asText()));
+            var facts=output.path("facts");
+            assertTrue(facts.isArray());
+            assertTrue(facts.size()>=2 && facts.size()<=3);
+            if (row.path("level").asText().equals("A1")) assertEquals(2,facts.size());
+            var ids=new HashSet<String>();
+            for (var fact : facts) {
+                assertEquals(Set.of("id","textVi","evidenceEn"),fact.propertyNames());
+                for (var field : List.of("id","textVi","evidenceEn")) {
+                    assertTrue(fact.path(field).isTextual(),field);
+                    assertFalse(fact.path(field).asText().isBlank(),field);
+                }
+                assertTrue(Set.of("f1","f2","f3").contains(fact.path("id").asText()));
+                assertTrue(ids.add(fact.path("id").asText()));
+                assertTrue(fact.path("textVi").asText().length()<=160);
+                assertTrue(fact.path("evidenceEn").asText().length()<=300);
+            }
+        }
+    }
+
+    /** Collect first outputs for manual correctness review; collection success is not a quality score. */
+    @Test
+    @EnabledIfSystemProperty(named="conversation.raw", matches="true")
+    void collectFirstOutputsForContentReview() throws Exception {
+        var json = new ObjectMapper();
+        var config = new ConversationGenerationProperties("ollama",System.getProperty("conversation.url"),
+                System.getProperty("conversation.model"),Integer.getInteger("conversation.timeout-seconds",180));
+        var client = new ConversationLocalClient(json,config,new SimpleMeterRegistry(),ObservationRegistry.NOOP);
+        var contextSource = mock(ConversationService.class,CALLS_REAL_METHODS);
+        ReflectionTestUtils.setField(contextSource,"json",json);
+        var cases = List.of(
+                List.of("cafe-a1-followup","cafe","A1","2"),
+                List.of("directions-a2-followup","directions","A2","2"),
+                List.of("hotel-b1-followup","hotel","B1","2"),
+                List.of("hotel-a1-followup","hotel","A1","2"),
+                List.of("cafe-a2-followup","cafe","A2","2"),
+                List.of("directions-b1-followup","directions","B1","2"),
+                List.of("hotel-a2-continuity","hotel","A2","3"),
+                List.of("hotel-a2-transfer","hotel","A2","4"),
+                List.of("cafe-a1-repeat-session","cafe","A1","2"),
+                List.of("cafe-a1-ten-recent-sessions","cafe","A1","2"),
+                List.of("directions-a2-practice-focus","directions","A2","2"),
+                List.of("hotel-b1-missed-transfer","hotel","B1","4"));
+        var rows = new ArrayList<Map<String,Object>>();
+        JsonNode firstCafeTask = null;
+        var report = Path.of("target/conversation-local-raw-content-evaluation.json");
+        for (var spec : cases) {
+            String id=spec.get(0), scenario=spec.get(1), level=spec.get(2);
+            int turn=Integer.parseInt(spec.get(3));
+            var state=fixture(json,scenario,level,turn,id.contains("missed"));
+            if (id.contains("practice-focus")) state.put("practiceFocus","Luyện nhận diện phương tiện và điểm xuống bằng dữ kiện mới.");
+            if (id.contains("repeat-session")) {
+                JsonNode previous=firstCafeTask!=null ? firstCafeTask
+                        : ConversationContent.starter(json,ConversationContent.branches(scenario).get(1).opening(),level);
+                state.withArray("recentPractice").addObject().put("branchId","synthetic-prior")
+                        .putArray("tasks").add(previous.deepCopy());
+            }
+            if (id.contains("ten-recent")) {
+                var branches=ConversationContent.branches(scenario);
+                for (int i=0;i<10;i++) {
+                    var tasks=state.withArray("recentPractice").addObject().put("branchId",branches.get(i%branches.size()).id()).putArray("tasks");
+                    for (int j=0;j<4;j++) tasks.add(ConversationContent.starter(json,branches.get((i+j)%branches.size()).opening(),level));
+                }
+            }
+            Map<String,Object> input=ReflectionTestUtils.invokeMethod(contextSource,"promptContext",syntheticRow(scenario,level,state));
+            var row=new LinkedHashMap<String,Object>();
+            row.put("id",id); row.put("scenario",scenario); row.put("level",level); row.put("turn",turn);
+            row.put("input",input);
+            if (id.contains("repeat-session")) row.put("priorGeneratedTaskAvailable",firstCafeTask!=null);
+            long started=System.nanoTime();
+            System.out.println("START raw content case="+id);
+            try {
+                var output=client.completeJson(level,json.writeValueAsString(input),Duration.ofSeconds(config.localTimeoutSeconds()));
+                row.put("output",output);
+                if (id.equals("cafe-a1-followup")) firstCafeTask=output;
+            } catch (RuntimeException failure) {
+                row.put("generationFailure",failure.getMessage());
+            }
+            row.put("seconds",Math.round((System.nanoTime()-started)/1e7)/100.0);
+            rows.add(row);
+            Files.createDirectories(report.getParent());
+            Files.writeString(report,json.writerWithDefaultPrettyPrinter().writeValueAsString(Map.of(
+                    "promptVersion",ConversationGenerationPrompt.VERSION,"model",config.localModel(),
+                    "localTimeoutSeconds",config.localTimeoutSeconds(),"createdAt",Instant.now().toString(),
+                    "backendValidationIncluded",false,"repairIncluded",false,"cloudSemanticReviewIncluded",false,
+                    "qualityVerdict","Manual review required; successful collection does not mean correct content",
+                    "cases",rows)),java.nio.charset.StandardCharsets.UTF_8);
+            System.out.println("DONE raw content case="+id+" collected="+row.containsKey("output")+" seconds="+row.get("seconds"));
+        }
+        assertEquals(cases.size(),rows.stream().filter(r -> r.containsKey("output")).count(),"Collection failed; inspect "+report);
+    }
+
+    @Test
     @EnabledIfSystemProperty(named="conversation.matrix", matches="true")
     void exerciseIndependentCasesWithProductionContext() throws Exception {
         var json = new ObjectMapper();
