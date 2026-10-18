@@ -304,11 +304,14 @@ public class ConversationService {
         if (turns.size() == expectedTurn + 1 || row.state.path("completed").asBoolean()) return view(row);
         checkTurn(row, expectedTurn);
         if (!turns.isEmpty() && !current(row).path("done").asBoolean()) fail(HttpStatus.CONFLICT, "Hãy trả lời nhiệm vụ hiện tại trước.");
-        String lease = claim(row);
+        int timeoutSeconds = generationTimeoutSeconds();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
+        String lease = claim(row, Math.max(210, timeoutSeconds + 30));
         try {
             JsonNode prompt = row.state.remove("nextPrompt");
             if (prompt != null) {
-                try { validateNextPrompt(row, prompt); reviewPrompt(row, prompt); }
+                try { validateNextPrompt(row, prompt); reviewPrompt(row, prompt,
+                        localGeneration != null && localGeneration.enabled() ? deadline : 0); }
                 catch (AiUsageBudget.Rejected budgetFailure) { throw budgetFailure; }
                 catch (RuntimeException invalidCachedPrompt) { prompt = null; }
             }
@@ -316,7 +319,7 @@ public class ConversationService {
                 if (turns.isEmpty() && row.state.path("curatedStarter").asBoolean()) {
                     prompt = row.state.has("openingPrompt") ? row.state.path("openingPrompt")
                             : ConversationContent.starter(json, row.scenario, row.difficulty);
-                } else prompt = generatePrompt(row);
+                } else prompt = generatePrompt(row, deadline);
             }
             validateNextPrompt(row, prompt);
             addTurn(row, prompt);
@@ -546,11 +549,14 @@ public class ConversationService {
         return context;
     }
 
-    private JsonNode generatePrompt(Row row) {
+    private int generationTimeoutSeconds() {
+        return localGeneration != null && localGeneration.enabled() ? localGeneration.flowTimeoutSeconds() : 45;
+    }
+
+    private JsonNode generatePrompt(Row row, long deadline) {
         var context = new LinkedHashMap<String, Object>(promptContext(row));
         String instruction = ConversationGenerationPrompt.instruction(row.difficulty);
         boolean local = localGeneration != null && localGeneration.enabled();
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(local ? 55 : 45);
         for (int attempt = 0; attempt < 2; attempt++) {
             if (local) budget.reserveLocal(row.user); else budget.reserve(row.user,false);
             JsonNode prompt = local
@@ -571,10 +577,6 @@ public class ConversationService {
             }
         }
         throw new IllegalStateException("Conversation generation failed");
-    }
-
-    private void reviewPrompt(Row row, JsonNode prompt) {
-        reviewPrompt(row, prompt, 0);
     }
 
     private java.time.Duration remaining(long deadline) {
@@ -791,12 +793,16 @@ public class ConversationService {
     }
 
     private String claim(Row row) {
+        return claim(row, 210);
+    }
+
+    private String claim(Row row, int timeoutSeconds) {
         String lease = UUID.randomUUID().toString();
         // Covers bounded generation, semantic review/repair and persistence overhead.
         int changed = dbPhase("claim").observe(()->db.update("""
                 UPDATE ai_conversation_sessions SET lease_id=?,busy_until=?,version=version+1,state_json=?
                 WHERE id=? AND user_id=? AND version=? AND (lease_id IS NULL OR busy_until<CURRENT_TIMESTAMP)
-                """, lease, Timestamp.from(Instant.now().plusSeconds(210)), row.state.toString(), row.id, row.user, row.version));
+                """, lease, Timestamp.from(Instant.now().plusSeconds(timeoutSeconds)), row.state.toString(), row.id, row.user, row.version));
         if (changed != 1) fail(HttpStatus.CONFLICT, "Phiên đang xử lý hoặc đã thay đổi. Hãy tải lại và thử lại.");
         return lease;
     }
@@ -831,6 +837,7 @@ public class ConversationService {
 
     private ObjectNode view(Row row) {
         var result = json.createObjectNode().put("id", row.id).put("scenario", row.scenario)
+                .put("generationTimeoutMs", (generationTimeoutSeconds() + 15) * 1000L)
                 .put("scenarioVi", SCENARIOS.get(row.scenario)).put("difficulty", row.difficulty)
                 .put("practiceFocus", row.state.path("practiceFocus").asText())
                 .put("transferSkipped", row.state.path("transferSkipped").asBoolean())

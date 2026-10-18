@@ -41,6 +41,8 @@ public class ConversationLocalClient {
 
     public boolean enabled() { return config.local(); }
 
+    public int flowTimeoutSeconds() { return config.localFlowTimeoutSeconds(); }
+
     public JsonNode completeJson(String level, String input, Duration remaining) {
         Duration timeout = Duration.ofMillis(Math.min(config.localTimeoutSeconds() * 1000L, remaining.toMillis()));
         if (timeout.toMillis() < 1) throw new IllegalStateException("Conversation local deadline exhausted");

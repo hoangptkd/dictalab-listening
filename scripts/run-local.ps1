@@ -44,6 +44,9 @@ try {
                 $conversationUri.AbsolutePath -ne '/') { throw 'Conversation Ollama URL phai la loopback, khong co credentials/path.' }
         $conversationModel = if ($env:DICTALAB_CONVERSATION_LOCAL_MODEL) { $env:DICTALAB_CONVERSATION_LOCAL_MODEL } else { 'hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M' }
         if ($conversationModel -match ':cloud|-cloud') { throw 'Chi dung model Ollama local.' }
+        $conversationTimeout = if ($env:DICTALAB_CONVERSATION_LOCAL_TIMEOUT_SECONDS) { [int]$env:DICTALAB_CONVERSATION_LOCAL_TIMEOUT_SECONDS } else { 180 }
+        if ($conversationTimeout -eq 0) { $conversationTimeout = 180 }
+        if ($conversationTimeout -lt 1 -or $conversationTimeout -gt 600) { throw 'Conversation local timeout phai tu 1 den 600 giay.' }
         $conversationModels = Invoke-RestMethod "$conversationBase/api/tags" -TimeoutSec 5 -MaximumRedirection 0
         if ($conversationModel -notin @($conversationModels.models.name)) { throw "Ollama chua co model $conversationModel." }
         if ([string]::IsNullOrWhiteSpace($env:SHOPAIKEY_API_KEY) -or [string]::IsNullOrWhiteSpace($env:CARTESIA_API_KEY)) {
@@ -52,7 +55,7 @@ try {
         $env:DICTALAB_CONVERSATION_ENABLED = 'true'
         # Load weights before serving; the actual generation still has its own bounded deadline.
         $warmup = @{model=$conversationModel; stream=$false; keep_alive='5m'; options=@{num_ctx=8192}} | ConvertTo-Json -Depth 3
-        $null = Invoke-RestMethod "$conversationBase/api/generate" -Method Post -ContentType 'application/json' -Body $warmup -TimeoutSec 40 -MaximumRedirection 0
+        $null = Invoke-RestMethod "$conversationBase/api/generate" -Method Post -ContentType 'application/json' -Body $warmup -TimeoutSec $conversationTimeout -MaximumRedirection 0
         Write-Host "Conversation generation: Ollama local / $conversationModel. Danh gia va TTS van dung cloud."
     }
 

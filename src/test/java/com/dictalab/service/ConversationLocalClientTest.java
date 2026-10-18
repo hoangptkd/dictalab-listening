@@ -50,7 +50,7 @@ class ConversationLocalClientTest {
     }
 
     @AfterEach void stop() { gate.get().countDown(); server.stop(0); pool.shutdownNow(); }
-    JsonNode call() { return client.completeJson("A1", "{\"difficulty\":\"A1\"}", Duration.ofSeconds(55)); }
+    JsonNode call() { return client.completeJson("A1", "{\"difficulty\":\"A1\"}", Duration.ofSeconds(450)); }
 
     @Test void sendsLocalStructuredNonThinkingRequestWithSeparateData() {
         assertEquals(json.readTree(content.get()), call());
@@ -98,7 +98,26 @@ class ConversationLocalClientTest {
         assertThrows(IllegalArgumentException.class, () -> new ConversationGenerationProperties("other", null, null, 30));
         assertThrows(IllegalArgumentException.class, () -> new ConversationGenerationProperties("ollama", null, "qwen:cloud", 30));
         assertThrows(IllegalArgumentException.class, () -> new ConversationGenerationProperties("ollama", null, "qwen:4b-cloud", 30));
-        assertThrows(IllegalArgumentException.class, () -> new ConversationGenerationProperties("ollama", null, null, 41));
+        assertThrows(IllegalArgumentException.class, () -> new ConversationGenerationProperties("ollama", null, null, 601));
+        assertThrows(IllegalArgumentException.class, () -> new ConversationGenerationProperties("ollama", null, null, -1));
         assertFalse(new ConversationGenerationProperties(null, null, null, 0).local());
+    }
+
+    @Test void hardwareTimeoutDefaultsAndLimitsIncludeRepairAndReviewBudget() {
+        var defaults = new ConversationGenerationProperties("ollama", null, null, 0);
+        assertEquals(180, defaults.localTimeoutSeconds());
+        assertEquals(450, defaults.localFlowTimeoutSeconds());
+        var slowMachine = new ConversationGenerationProperties("ollama", null, null, 600);
+        assertEquals(1290, slowMachine.localFlowTimeoutSeconds());
+        var slowClient = new ConversationLocalClient(json, slowMachine, new SimpleMeterRegistry(), ObservationRegistry.NOOP);
+        assertEquals(1290, slowClient.flowTimeoutSeconds());
+    }
+
+    @Test void configuredPerCallLimitStillAppliesWithLongFlowBudget() {
+        gate.set(new CountDownLatch(1));
+        long started = System.nanoTime();
+        assertThrows(IllegalStateException.class, this::call);
+        assertTrue(Duration.ofNanos(System.nanoTime() - started).toMillis() < 3000);
+        assertEquals(1, requests.get());
     }
 }

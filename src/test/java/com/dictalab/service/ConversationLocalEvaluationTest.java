@@ -19,7 +19,7 @@ class ConversationLocalEvaluationTest {
     @Test void exerciseLevelsContinuityAndTransferWithRealLocalModel() throws Exception {
         var json = new ObjectMapper();
         var config = new ConversationGenerationProperties("ollama",System.getProperty("conversation.url"),
-                System.getProperty("conversation.model"),40);
+                System.getProperty("conversation.model"),Integer.getInteger("conversation.timeout-seconds",180));
         var client = new ConversationLocalClient(json,config,new SimpleMeterRegistry(),ObservationRegistry.NOOP);
         var validator = mock(ConversationService.class,CALLS_REAL_METHODS);
         ReflectionTestUtils.setField(validator,"json",json);
@@ -41,7 +41,7 @@ class ConversationLocalEvaluationTest {
                 var row = new LinkedHashMap<String,Object>();
                 row.put("level",level); row.put("turn",turn); row.put("input",input);
                 long started = System.nanoTime();
-                long deadline = started + java.util.concurrent.TimeUnit.SECONDS.toNanos(55);
+                long deadline = started + java.util.concurrent.TimeUnit.SECONDS.toNanos(config.localFlowTimeoutSeconds());
                 var attempts = new ArrayList<Map<String,Object>>();
                 try {
                     for (int attempt=0;attempt<2;attempt++) {

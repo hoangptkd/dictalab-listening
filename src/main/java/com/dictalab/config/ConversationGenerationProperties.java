@@ -23,11 +23,13 @@ public record ConversationGenerationProperties(String provider, String localBase
         String normalizedModel = localModel.toLowerCase(java.util.Locale.ROOT);
         if (localModel.length() > 120 || normalizedModel.contains(":cloud") || normalizedModel.contains("-cloud"))
             throw new IllegalArgumentException("Invalid conversation local model");
-        if (localTimeoutSeconds == 0) localTimeoutSeconds = 40;
-        // Leave review/persistence time within the local flow's 55s deadline and browser's 60s limit.
-        if (localTimeoutSeconds < 1 || localTimeoutSeconds > 40)
-            throw new IllegalArgumentException("Conversation local timeout must be between 1 and 40 seconds");
+        if (localTimeoutSeconds == 0) localTimeoutSeconds = 180;
+        if (localTimeoutSeconds < 1 || localTimeoutSeconds > 600)
+            throw new IllegalArgumentException("Conversation local timeout must be between 1 and 600 seconds");
     }
 
     public boolean local() { return "ollama".equals(provider); }
+
+    // Two generation attempts, up to two 30s reviews, plus validation/persistence margin.
+    public int localFlowTimeoutSeconds() { return 2 * localTimeoutSeconds + 90; }
 }

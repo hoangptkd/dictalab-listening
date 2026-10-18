@@ -32,6 +32,7 @@ class ConversationUxIntegrationTest {
     long user() { return users.saveAndFlush(new AppUser("ux-" + UUID.randomUUID() + "@test.local", "Learner", "unused", Instant.now())).getId(); }
     @BeforeEach void setup() {
         owner=user(); when(ai.configured()).thenReturn(true); when(tts.enabled()).thenReturn(true);
+        when(local.flowTimeoutSeconds()).thenReturn(450);
         when(tts.synthesize(anyString())).thenReturn(new byte[]{1,2,3});
     }
     @Test void allCuratedOpeningsAreGroundedAndNeedNoLanguageModel() {
@@ -70,7 +71,7 @@ class ConversationUxIntegrationTest {
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
         assertThat(service.next(owner,id,1).path("turnNumber").asInt()).isEqualTo(2);
         verify(budget).reserveLocal(owner);
-        verify(local).completeJson(eq("A1"),anyString(),argThat(d -> d.toMillis()>0 && d.toMillis()<=55000));
+        verify(local).completeJson(eq("A1"),anyString(),argThat(d -> d.toMillis()>60000 && d.toMillis()<=450000));
         verify(ai,never()).completeJson(startsWith("You design"),anyString(),anyString(),any());
         when(ai.completeJson(startsWith("Evaluate MEANING"),anyString())).thenReturn(json.readTree("""
                 {"facts":[{"factId":"f1","status":"CAPTURED","evidenceVi":"thẻ"},
@@ -79,6 +80,26 @@ class ConversationUxIntegrationTest {
                 """));
         service.answer(owner,id,2,UUID.randomUUID(),"Trả bằng thẻ tại quầy phía trước");
         verify(ai).completeJson(startsWith("Evaluate MEANING"),anyString());
+    }
+
+    @Test void localLeaseAndBrowserBudgetFollowConfiguredHardwareTimeout() {
+        when(local.enabled()).thenReturn(true);
+        when(local.flowTimeoutSeconds()).thenReturn(1290);
+        var created=service.create(owner,"cafe","A1");
+        assertThat(created.path("generationTimeoutMs").asLong()).isEqualTo(1305000);
+        String id=created.path("id").asText();
+        service.next(owner,id,0); service.help(owner,id,1,"review");
+        when(local.completeJson(anyString(),anyString(),any())).thenAnswer(call -> {
+            java.time.Duration remaining=call.getArgument(2);
+            assertThat(remaining).isGreaterThan(java.time.Duration.ofSeconds(1200))
+                    .isLessThanOrEqualTo(java.time.Duration.ofSeconds(1290));
+            var until=db.queryForObject("SELECT busy_until FROM ai_conversation_sessions WHERE id=?",java.sql.Timestamp.class,id);
+            assertThat(until.toInstant()).isAfter(Instant.now().plusSeconds(1290));
+            throw new IllegalStateException("simulated local timeout");
+        });
+        assertThatThrownBy(() -> service.next(owner,id,1)).isInstanceOf(ResponseStatusException.class);
+        assertThat(state(id).path("turns").size()).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?",String.class,id)).isNull();
     }
 
     @Test void localFailureNeverFallsBackToCloudAndSameSessionCanRetry() {
@@ -122,6 +143,7 @@ class ConversationUxIntegrationTest {
         verify(budget,times(2)).reserveLocal(owner);
     }
     @Test void catalogHasSixGroupsAndHistoryIsPrivateAndPaginated() {
+        assertThat(service.create(user(),"cafe","A1").path("generationTimeoutMs").asLong()).isEqualTo(60000);
         for(int i=0;i<13;i++) service.create(owner,"cafe","A1");
         service.create(user(),"plans","B1");
         var catalog=json.valueToTree(service.catalog(owner));

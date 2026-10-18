@@ -19,7 +19,7 @@ Model mặc định cho generator local: `hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M`, đã
 DICTALAB_CONVERSATION_GENERATION_PROVIDER=ollama
 DICTALAB_CONVERSATION_LOCAL_BASE_URL=http://127.0.0.1:11434
 DICTALAB_CONVERSATION_LOCAL_MODEL=hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M
-DICTALAB_CONVERSATION_LOCAL_TIMEOUT_SECONDS=40
+DICTALAB_CONVERSATION_LOCAL_TIMEOUT_SECONDS=180
 ```
 
 Chạy bằng `powershell -File scripts/run-local.ps1 -WithConversationLocal`. Script kiểm tra model, làm nóng weights và báo nếu app cũ vẫn đang chạy. Cần khởi động lại app để nhận cấu hình mới. Không tự dừng app đang phục vụ người dùng.
@@ -28,7 +28,13 @@ Backend và `.env.example` giữ provider `shopaikey` để không bật một p
 
 Chỉ chấp nhận địa chỉ loopback, không theo redirect và không dùng tag cloud. Request/response có giới hạn dung lượng; tắt thinking, dùng JSON schema, giới hạn một request generation local đồng thời và circuit breaker. Coach có giới hạn riêng, vì vậy bật cả hai vẫn có thể tranh CPU.
 
-Mỗi call local tối đa 40 giây. Generation + validation + review + một lần sửa chung deadline 55 giây, dưới timeout giao diện 60 giây; luồng cloud hiện tại giữ 45 giây. Không retry lỗi mạng. Lỗi vẫn giữ phiên, giải phóng lease để người học thử lại. Local sử dụng quota local và kill switch hiện có; review/grading tiếp tục dùng quota cloud.
+Mỗi call local mặc định tối đa **180 giây**, cấu hình được từ 1 đến 600 giây theo phần cứng. Giá trị 0 dùng mặc định 180 giây. Warm-up dùng cùng cấu hình. Nếu `.env` cũ đặt 40 giây, cần đổi giá trị đó; mặc định mới không ghi đè cấu hình riêng.
+
+Generation + validation + review + một lần sửa dùng chung deadline `2 × localTimeoutSeconds + 90` giây: mặc định **450 giây** (7 phút 30 giây). Phần dư chứa tối đa hai review cloud (mỗi lần tối đa 30 giây) và thời gian xử lý. Deadline bắt đầu từ `/next`, bao gồm kiểm tra câu cache cũ nếu có. Backend trả `generationTimeoutMs` trong dữ liệu phiên; giao diện chỉ nâng thời gian đợi `/next` lên deadline + 15 giây (mặc định 465 giây). Lease tạo câu giữ thêm 30 giây (mặc định 480 giây), tránh hết khóa khi model vẫn đang chạy. Các thao tác khác giữ timeout/lease cũ; luồng tạo cloud giữ deadline 45 giây và giao diện 60 giây.
+
+Không retry lỗi mạng. Lỗi vẫn giữ phiên, giải phóng lease để người học thử lại. Local sử dụng quota local và kill switch hiện có; review/grading tiếp tục dùng quota cloud. Đây là trần chờ, không phải thời gian luôn phải đợi. Giới hạn đồng thời vẫn là một request local. Tăng timeout không sửa lỗi model sinh lặp hoặc sai ngữ nghĩa.
+
+Trần trên áp dụng cho ứng dụng khi truy cập local trực tiếp. Reverse proxy/tunnel có thể ngắt HTTP sớm hơn; chưa xác nhận luồng chờ dài qua domain production. Nếu cần phục vụ qua proxy có trần thấp hơn, phải chuyển generation sang job bất đồng bộ/polling, không chỉ tăng timeout trình duyệt.
 
 JSON schema không bảo đảm đúng nghĩa. Backend vẫn kiểm tra grounding, số fact, độ dài, skill và trùng lặp; reviewer cloud vẫn kiểm tra câu hỏi/đáp án và mạch hội thoại. Không gỡ lớp kiểm tra để tăng tỷ lệ trả kết quả.
 
@@ -40,7 +46,7 @@ mvn --batch-mode --no-transfer-progress '-Dtest=ConversationGenerationPromptTest
 mvn --batch-mode --no-transfer-progress '-Dtest=ConversationLocalEvaluationTest' '-Dconversation.evaluate=true' test
 ```
 
-Smoke test local dùng dữ liệu khách sạn tổng hợp ở A1/A2/B1, không gửi dữ liệu người học hay gọi API trả phí. Báo cáo nằm tại `target/conversation-local-evaluation.json`, không commit dữ liệu runtime. Có thể đổi model bằng `-Dconversation.model=...`.
+Smoke test local dùng dữ liệu khách sạn tổng hợp ở A1/A2/B1, không gửi dữ liệu người học hay gọi API trả phí. Báo cáo nằm tại `target/conversation-local-evaluation.json`, không commit dữ liệu runtime. Có thể đổi model bằng `-Dconversation.model=...`, thời gian chờ bằng `-Dconversation.timeout-seconds=...` (mặc định 180). Chạy đủ chín lượt kèm sửa có thể mất nhiều phút trên CPU.
 
 Smoke test chỉ kiểm tra ràng buộc cơ bản và thời gian của generator; **không thay thế đánh giá ngữ nghĩa độc lập, CEFR hoặc đo toàn bộ generation + cloud review + TTS**. Thời gian sẽ tăng khi model lạnh hoặc CPU bận.
 
