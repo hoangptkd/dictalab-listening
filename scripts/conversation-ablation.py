@@ -171,7 +171,8 @@ def run(stage):
         raise ValueError("Model digest changed; do not mix checkpoints")
     spec = json.loads((ROOT / (stage + "-requests.json")).read_text(encoding="utf-8"))
     manifest = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))
-    assert len(spec["requests"]) == 15 and tuple(manifest["seeds"]) == SEEDS
+    assert len(spec["requests"]) == len(manifest["cases"]) and tuple(manifest["seeds"]) == SEEDS
+    assert {r["id"] for r in spec["requests"]} == {r["id"] for r in manifest["cases"]}
     done = {r["key"]: r for r in read(stage + "-outputs.jsonl")}
     for seed in SEEDS:
         for item in spec["requests"]:
@@ -191,8 +192,8 @@ def run(stage):
             row["requestWireHash"] = request_wire_hash
             sent = body["messages"][-1]["content"].split("<data>", 1)[1].split("</data>", 1)[0]
             actual = json.loads(sent)
-            row["judgeInput"] = dict(item["input"], **{k: actual[k] for k in
-                                     ("partnerRole", "learnerRole") if k in actual})
+            row["judgeInput"] = item.get("judgeInput", dict(item["input"], **{k: actual[k] for k in
+                                     ("partnerRole", "learnerRole") if k in actual}))
             print("START", stage, key, flush=True)
             started = time.monotonic()
             request = urllib.request.Request("http://127.0.0.1:11434/api/chat",
@@ -213,7 +214,7 @@ def run(stage):
             row["seconds"] = round(time.monotonic() - started, 2)
             append(stage + "-outputs.jsonl", row)
             print("DONE", stage, key, "output=" + str("output" in row), row["seconds"], flush=True)
-    assert len(read(stage + "-outputs.jsonl")) == 45
+    assert len(read(stage + "-outputs.jsonl")) == len(spec["requests"]) * len(SEEDS)
 
 
 def cloud():

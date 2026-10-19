@@ -1,6 +1,7 @@
 """Offline regression tests; python scripts/test-conversation-ablation.py."""
 import copy
 import importlib.util
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -145,6 +146,27 @@ class AblationTest(unittest.TestCase):
             a.report()
         stages = json.loads((a.ROOT / "summary.json").read_text(encoding="utf-8"))["stages"]
         self.assertEqual(["s6-next-change"], [s["stage"] for s in stages])
+
+    def test_collector_accepts_five_cases_two_seeds_and_fixed_judge_context(self):
+        stage = "quick"
+        cases = [{"id": "case-" + str(i), "input": {"turnNumber": 2}} for i in range(5)]
+        a.freeze("manifest.json", {"cases": cases, "seeds": [17, 43]})
+        a.freeze("model.json", {"digest": "frozen"})
+        requests = [dict(r, judgeInput={"turnNumber": 2, "partnerRole": "fixed judge role"},
+                        request={"options": {}, "messages": [{"content": "<data>{}</data>"}]}) for r in cases]
+        a.freeze(stage + "-requests.json", {"requests": requests})
+        def response(request, timeout):
+            payload = ({"models": [{"name": "qwen3.5:9b", "digest": "frozen"}]} if isinstance(request, str)
+                       else {"done": True, "done_reason": "stop", "message": {"content": "{}"}})
+            return io.BytesIO(json.dumps(payload).encode("utf-8"))
+        with patch.object(a, "SEEDS", (17, 43)), patch.object(a.urllib.request, "urlopen", side_effect=response), patch("builtins.print"):
+            a.run(stage)
+            a.run(stage)  # Resume cannot append duplicate outcomes.
+        rows = a.read(stage + "-outputs.jsonl")
+        self.assertEqual(10, len(rows))
+        self.assertEqual(10, len({r["key"] for r in rows}))
+        self.assertTrue(all(r["judgeInput"]["partnerRole"] == "fixed judge role" for r in rows))
+        self.assertTrue(all("requestWireHash" in r for r in rows))
 
 
 if __name__ == "__main__":
