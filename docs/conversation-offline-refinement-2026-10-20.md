@@ -211,7 +211,9 @@ Kiểm tra cứng riêng r1: 9 ca ngoài khoảng số từ, 2 ca evidence khôn
 
 #### r2–r4 — Đang chạy
 
-R2 đã bắt đầu. Chưa có cơ sở công bố mức cải thiện r2/r3 hoặc hiệu quả repair.
+R2 đã hoàn tất sinh 45 ca; **42 verdict hợp lệ, 3 judge failure**. Có 23 ca qua nội dung và 19 ca qua toàn rubric. Trên các cặp có verdict hợp lệ ở cả hai nhánh (40 cặp), so với r1: nhóm nội dung **28→22** (7 tốt lên, 13 kém đi), toàn rubric **22→18** (7 tốt lên, 11 kém đi), dịch **39→36** (1 tốt lên, 4 kém đi), ngoài dịch **28→24** (7 tốt lên, 11 kém đi). Vì vậy hợp đồng slot–fact–question trong cấu hình này chưa cải thiện ổn định; nó bắt được các fact thừa như “thư viện... con sông” khi câu hỏi chỉ hỏi đích, nhưng cũng tạo hồi quy và vẫn còn 14 lỗi khớp câu hỏi–fact.
+
+R3 đã bắt đầu nhưng chưa có số liệu đủ. R4 chưa chạy. Ledger đã dùng **9,33/10 credit**; khi chạm biên 0,20 credit còn lại, runner phải dừng và giữ artifacts, không reset hoặc tăng ngân sách. Nếu dừng ở đây, không được coi r3/r4 là thất bại nội dung; đó là chưa đo được.
 
 Các ca r1 đã đọc cụ thể (AI rà soát):
 
