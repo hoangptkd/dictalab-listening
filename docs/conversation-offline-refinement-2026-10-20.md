@@ -213,7 +213,11 @@ Kiểm tra cứng riêng r1: 9 ca ngoài khoảng số từ, 2 ca evidence khôn
 
 R2 đã hoàn tất sinh 45 ca; **42 verdict hợp lệ, 3 judge failure**. Có 23 ca qua nội dung và 19 ca qua toàn rubric. Trên các cặp có verdict hợp lệ ở cả hai nhánh (40 cặp), so với r1: nhóm nội dung **28→22** (7 tốt lên, 13 kém đi), toàn rubric **22→18** (7 tốt lên, 11 kém đi), dịch **39→36** (1 tốt lên, 4 kém đi), ngoài dịch **28→24** (7 tốt lên, 11 kém đi). Vì vậy hợp đồng slot–fact–question trong cấu hình này chưa cải thiện ổn định; nó bắt được các fact thừa như “thư viện... con sông” khi câu hỏi chỉ hỏi đích, nhưng cũng tạo hồi quy và vẫn còn 14 lỗi khớp câu hỏi–fact.
 
-R3 đã bắt đầu nhưng chưa có số liệu đủ. R4 chưa chạy. Ledger đã dùng **9,33/10 credit**; khi chạm biên 0,20 credit còn lại, runner phải dừng và giữ artifacts, không reset hoặc tăng ngân sách. Nếu dừng ở đây, không được coi r3/r4 là thất bại nội dung; đó là chưa đo được.
+R3 đã sinh **17/45 output**, đều từ seed 17; **10 verdict hợp lệ**, 5 ca qua nội dung và 5 ca qua toàn rubric. Đây là lát cắt chưa đủ, không thể so tổng 10 ca với các nhánh 42–45 ca. Trên 10 cặp seed 17 có verdict hợp lệ với r2, nội dung 5→5 (2 tốt lên, 2 kém đi), vai 6→8, continuity 8→10; dịch giữ 10→10. Kết quả này gợi ý brief trạng thái có thể giúp vai/continuity ở lát cắt nhỏ, nhưng chưa có seed 43/97 nên chưa kết luận.
+
+R4 repair chưa chạy. Ledger đã dùng **9,82/10 credit** và runner dừng sạch trước paid call tiếp theo, giữ artifacts; không reset hoặc tăng ngân sách. R3/r4 còn thiếu không được coi là thất bại nội dung — đó là chưa đo được. Không shutdown máy tính và không tạm dừng dịch vụ production trong thử nghiệm này.
+
+`audit` toàn bộ hiện trả lỗi có chủ đích vì yêu cầu 45 output/verdict cho mọi stage, trong khi r3 chỉ có 17/10 và r4 chưa có. Đây là tín hiệu **incomplete experiment**, không phải provenance failure của các stage đã hoàn tất. Các stage r0–r2 vẫn có request/output/verdict hash riêng; không chạy audit cưỡng ép bằng cách bỏ qua thiếu dữ liệu.
 
 Các ca r1 đã đọc cụ thể (AI rà soát):
 
