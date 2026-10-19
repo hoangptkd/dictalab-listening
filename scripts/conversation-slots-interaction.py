@@ -58,6 +58,12 @@ EXAMPLE_SLOTS = {
 }
 
 
+class BudgetedCloud(a.d.Cloud):
+    def check_budget(self, force=False):
+        # Do not allow ten more calls after approaching the run's spend threshold.
+        return super().check_budget(force=True)
+
+
 def source(name):
     path = SOURCE / name
     if path.suffix == ".jsonl":
@@ -248,6 +254,14 @@ def audit():
 
 
 class VariantTest(unittest.TestCase):
+    def test_budget_is_checked_before_every_paid_call_not_every_ten(self):
+        client = BudgetedCloud.__new__(BudgetedCloud)
+        with patch.object(a.d.Cloud, "check_budget") as check:
+            client.check_budget()
+            client.check_budget()
+        self.assertEqual(2, check.call_count)
+        self.assertTrue(all(kwargs == {"force": True} for _, kwargs in check.call_args_list))
+
     def test_frozen_fifteen_requests_change_only_slot_group(self):
         old = source("s0-baseline-requests.json")["requests"]
         slots = {r["id"]: r for r in source("s4-slots-requests.json")["requests"]}
@@ -312,13 +326,14 @@ def main():
     a.JUDGE_VERSION = VERSION
     a.TRANSFER = TRANSFER
     a.assess = assess
+    a.d.Cloud = BudgetedCloud
     prepare()
     if args.command in ("report", "audit"):
         if args.command == "audit": audit()
         report()
         return
     if args.command == "prepare": return
-    # Separate capped ledger, no top-up, no second paid writer.
+    # Separate spend threshold, no top-up. One in-flight call can still cross it.
     if not (ROOT / "billing-start.json").exists():
         balance = a.d.Cloud().balance()
         a.d.save("billing-start.json", {"initialCredit": balance,

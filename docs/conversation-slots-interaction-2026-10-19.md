@@ -52,7 +52,7 @@ Không thêm metadata vai, lịch sử có speaker/question mới, brief/context
 
 So sánh ghép cặp s0→s6 và s4→s6 trên cùng key, cùng seed, cùng vai chuẩn cho judge. Báo cả ca tốt lên lẫn kém đi, lỗi theo loại và lỗi judge; ca không có verdict không coi là đạt/trượt. Chênh lệch dưới 3–4 ca được coi chưa kết luận theo yêu cầu. Chênh lệch lớn hơn cũng chỉ là tín hiệu trên tập development nhỏ, không tự thành bằng chứng thống kê hay độ chính xác thật.
 
-Runtime/input/output/verdict nằm trong `data/conversation-slots-interaction-20261019/`, được Git bỏ qua. Ledger riêng có trần bốn credit hiện có, không nạp tự động; không đưa key/số dư vào báo cáo.
+Runtime/input/output/verdict nằm trong `data/conversation-slots-interaction-20261019/`, được Git bỏ qua. Ledger riêng đặt ngưỡng theo dõi bốn credit hiện có, không nạp tự động; không đưa key/số dư vào báo cáo. Cơ chế kế thừa lúc chạy kiểm ngân sách mỗi 10 request, không phải hard cap tài chính. Đối soát cuối ghi nhận mức trừ tài khoản trong khoảng chạy **4,18 credit**, vượt ngưỡng 0,18 credit. Đây là chênh lệch số dư toàn tài khoản, không cô lập được chi tiêu bên ngoài nếu cùng key còn được dùng nơi khác. Đã dừng mọi gọi có phí của đợt này và sửa riêng runner thành kiểm **trước từng lời gọi**; vẫn có thể vượt ngưỡng bởi chi phí của một lời gọi đang thực hiện. Không chạy lại API sau sửa guard; thêm test mock xác nhận hành vi.
 
 ## Chạy và kiểm tra
 
@@ -166,7 +166,7 @@ Do đó +4 ca nội dung của slots đơn lẻ chỉ là **tín hiệu nhỏ/s�
 
 ## Kiểm tra và bàn giao
 
-- 36 test đạt: bốn test ô mới, 13 ablation, một quick-variant, 18 distillation. Python compile và UTF-8 hai file của task đạt.
+- 37 test đạt: năm test ô mới, 13 ablation, một quick-variant, 18 distillation. Python compile và UTF-8 hai file của task đạt.
 - Audit 180 record đạt: đủ key, cùng input/seed/role context; output mốc khớp nguyên bản; request semantic hash khớp; **45 request mới có wire hash giữ thứ tự schema**. Đợt cũ không có wire hash nên không nhận là đã kiểm wire order hồi tố cho 135 request mốc.
 - Runtime và output không đẩy GitHub. Chỉ bàn giao script và báo cáo; bảo toàn các file đang sửa của người dùng/agent khác.
 - Không sửa validation, reviewer hoặc prompt production; không chạy deployment. Chưa có human review hoặc kiểm thử giao diện/production trong đợt này.
