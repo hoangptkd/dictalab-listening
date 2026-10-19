@@ -501,7 +501,8 @@ def report():
                    "improved": [k for k in shared if not passed(left,k,flags) and passed(right,k,flags)],
                    "regressed": [k for k in shared if passed(left,k,flags) and not passed(right,k,flags)]}
             for name, flags in (("content", a.CONTENT_FLAGS), ("allSemantic", a.FLAGS),
-                                ("translation", ("translationAccurate",)), ("nonTranslationContent", tuple(f for f in a.CONTENT_FLAGS if f != "translationAccurate")))}}
+                                ("translation", ("translationAccurate",)), ("nonTranslationContent", tuple(f for f in a.CONTENT_FLAGS if f != "translationAccurate")))
+                                + tuple((flag, (flag,)) for flag in a.FLAGS)}}
     repairs = by_stage["r4-one-repair"]
     first = by_stage[STAGES[-1]]
     repair_details = {"attemptedAndJudged": len(repairs), "fullyFixed": [], "stillFailing": [], "regressedCriteria": {}}
@@ -566,7 +567,7 @@ def audit():
     with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=10) as response:
         current = next(m for m in json.load(response)["models"] if m["name"] == "qwen3.5:9b")
     assert current["digest"] == source("model.json")["digest"]
-    print("AUDIT PASS: 180 paired outcomes plus one repair round; unchanged full judge context, exact request/output provenance.", flush=True)
+    print("AUDIT PASS: 180 attempted case/seed outcomes (including failures/unknowns) plus one repair round; unchanged full judge context, exact request/output provenance.", flush=True)
 
 
 def pipeline(c):

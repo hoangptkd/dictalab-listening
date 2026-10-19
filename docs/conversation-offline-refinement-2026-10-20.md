@@ -174,4 +174,50 @@ Thời gian baseline được tái sử dụng từ lượt s4 cũ: median **56,
 
 ### Các bản thử và repair
 
-Đang chạy. Chưa đủ cơ sở công bố mức cải thiện r1–r4. Các phần dưới chỉ được điền sau khi có output/verdict thực tế.
+#### r1 — Tách dịch: đã hoàn tất 45 lượt sinh/chấm
+
+Không có lỗi sinh; **43 verdict hợp lệ, 2 judge failure**. Có 29 ca qua nhóm nội dung và 23 ca qua toàn rubric trong 43 verdict hợp lệ; không tự coi hai ca unknown là đúng hoặc sai.
+
+Đối chiếu đúng **43 cặp chung** (không lấy baseline đủ 45 để so với r1 chỉ có 43 nhãn):
+
+| Tiêu chí không bị bác | r0 | r1 | Cặp tốt lên | Cặp kém đi |
+| --- | ---: | ---: | ---: | ---: |
+| Nhóm nội dung cốt lõi | 18 | 29 | 14 | 3 |
+| Toàn rubric ngữ nghĩa | 15 | 23 | 13 | 5 |
+| Dịch | 31 | 42 | 11 | 0 |
+| Nội dung ngoài phần dịch | 25 | 29 | 11 | 7 |
+
+| Loại lỗi trên cùng tập cặp | r0 | r1 |
+| --- | ---: | ---: |
+| Câu hỏi–slot–fact | 11 | 7 |
+| Đáp án thiếu căn cứ | 5 | 2 |
+| Fact thừa ý | 4 | 5 |
+| Dịch | 12 | 1 |
+| Vai | 10 | 10 |
+| Continuity | 5/30 | 7/30 |
+| Transfer | 3/13 | 3/13 |
+| Mức ngôn ngữ | 1 | 0 |
+| Input | 0 | 0 |
+
+Đây là hiệu quả **của cấu hình English-first + dịch riêng trên tập phát triển này**, không phải tác động thuần túy của temperature dịch. Lỗi dịch giảm rõ trong dữ liệu quan sát; lỗi vai không giảm ròng (5 cặp được sửa nhưng 5 cặp phát sinh), continuity còn tăng. Phần nội dung ngoài dịch chỉ tăng ròng 4 ca, chưa đủ để kết luận chắc tác động tổng quát, nhất là 3 seed của cùng một input có tương quan.
+
+Các ca **hồi quy nhóm nội dung**: `cafe-A2-t3:43`, `delivery-B1-t2:17,43`. Các ca **hồi quy toàn rubric** còn thêm `directions-A2-t2:43` và `hotel-A1-t3:97`. Danh sách tốt lên/kém đi theo từng tiêu chí, từng seed/lượt/level nằm trong `summary.json`; raw verdict và phản hồi gốc không thay đổi. Đã bổ sung thống kê cặp cho từng cờ bằng đọc lại artifact, không gọi lại AI.
+
+Median thời gian: English **92,74 giây**, dịch **25,29 giây**, tổng một ca **118,43 giây**; tổng 45 ca **5.353,93 giây** (~89,2 phút sinh tuần tự). Median của tổng không nhất thiết bằng tổng hai median. Ollama chạy CPU (`size_vram=0`). Không suy ra rằng tách dịch làm chậm production đúng 2,1 lần: baseline 56,36 giây là số đo lịch sử, khác thời điểm. Thêm bước dịch có chi phí thực đo khoảng 25 giây ở median trong lượt này.
+
+Hai judge failure đều ở lượt 4, nên việc chỉ xét 43 cặp không đại diện hoàn toàn cho mọi output. Ca directions đã có lỗi Q chắc chắn theo AI rà soát, xem bảng dưới. Ca `delivery-A2-t4:97` có trích dẫn đúng nguồn nhưng audit giữ một link `sameMeaning=false`, trái yêu cầu chỉ giữ neo cùng ý; verifier báo `Inexact transfer anchors`. Judge thực ra ghi `decision=uncertain` và không nêu issue, chứ không bác transfer. AI rà soát cũng chưa đủ bằng chứng để bác chỉ từ cổng bên trùng nhau; phần dịch “my sister” → “chị tôi” tự chọn tuổi tương đối chưa được English nói rõ, cần thống nhất chính sách dịch trước khi dùng làm nhãn huấn luyện. Không sửa nhãn hoặc gọi lại ca này giữa các nhánh.
+
+Kiểm tra cứng riêng r1: 9 ca ngoài khoảng số từ, 2 ca evidence không là substring nguyên văn. Chưa thấy lỗi case-only literal bằng chẩn đoán hẹp đã công bố; điều này không chứng minh mọi mã/số đều đúng.
+
+#### r2–r4 — Đang chạy
+
+R2 đã bắt đầu. Chưa có cơ sở công bố mức cải thiện r2/r3 hoặc hiệu quả repair.
+
+Các ca r1 đã đọc cụ thể (AI rà soát):
+
+| Ca | Tiêu chí, dẫn chứng và kết luận |
+| --- | --- |
+| plans-A2-t3:17 | **Dịch sai chắc chắn:** “half past two” là 2:30 nhưng bản dịch và fact đều ghi “hai giờ kém mười lăm” (1:45). Tách dịch ở temperature 0,1 không loại hết lỗi hiểu giờ. Judge còn bác atomic vì “bên ngoài” trong đáp án thời tiết; mức độ đây là một ý thừa độc lập còn có thể tranh luận, không dùng làm kết luận chắc ngoài lỗi giờ đã rõ. |
+| delivery-B1-t2:17 | **Đảo vai chắc chắn:** recipient nói “I can only receive the package…” nhưng câu hỏi “Bạn có thể nhận hàng…” hướng tới learner là courier. Bản dịch đúng không giải quyết được sai ngôi của câu hỏi. |
+| hotel-A1-t3:97 | **Continuity sai có căn cứ:** history đã chốt ăn sáng “Ngoài vườn”; lượt mới nói “in the lobby restaurant” và hỏi lại “ăn sáng ở đâu”, không báo đổi. Nội dung hiện tại có thể tự khớp nhưng sai trạng thái hội thoại. |
+| directions-A1-t4:97 | **Nội dung Q sai chắc chắn theo AI rà soát; judge failure về giao thức:** `questionVi` là “Hãy đi thẳng và rẽ trái tại đồng hồ đỏ lớn. Bạn sẽ thấy thư viện ở bên phải.” — không hỏi ý nào và cung cấp luôn đáp án. Main audit bắt được lộ đáp án, nhưng `requestedPhraseVi` lại ghi “Hướng đi tiếp theo”/“Điểm mốc”, không phải substring của question. Giữ trạng thái unknown của scorer, không gọi lại/chuyển nhãn; đồng thời báo riêng lỗi nội dung đã có bằng chứng. |
