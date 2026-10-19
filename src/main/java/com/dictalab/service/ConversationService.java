@@ -87,6 +87,7 @@ public class ConversationService {
     private final MediaStorageService media;
     private final S3MediaLifecycle s3Lifecycle;
     private final ConversationLocalClient localGeneration;
+    private ConversationPythonClient pythonGeneration;
     private static final Logger log = LoggerFactory.getLogger(ConversationService.class);
     @org.springframework.beans.factory.annotation.Value("${dictalab.conversation.audio-retention-days:30}")
     private int audioRetentionDays = 30;
@@ -126,6 +127,11 @@ public class ConversationService {
         var workers=(ThreadPoolExecutor)audioWorkers;
         metrics.gauge("dictalab.audio.queue",workers,w->w.getQueue().size());
         metrics.gauge("dictalab.audio.active",workers,ThreadPoolExecutor::getActiveCount);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void configurePythonGeneration(ConversationPythonClient pythonGeneration) {
+        this.pythonGeneration = pythonGeneration;
     }
 
     public Map<String, Object> catalog(long userId) {
@@ -552,6 +558,7 @@ public class ConversationService {
     }
 
     private int generationTimeoutSeconds() {
+        if (pythonGeneration != null && pythonGeneration.enabled()) return pythonGeneration.flowTimeoutSeconds();
         return localGeneration != null && localGeneration.enabled() ? localGeneration.flowTimeoutSeconds() : 45;
     }
 
@@ -569,10 +576,13 @@ public class ConversationService {
     private JsonNode generatePrompt(Row row, long deadline) {
         var context = ConversationGenerationPrompt.context(json, json.valueToTree(promptContext(row)));
         String instruction = ConversationGenerationPrompt.instruction(row.difficulty, turns(row).size() + 1);
-        boolean local = localGeneration != null && localGeneration.enabled();
+        boolean python = pythonGeneration != null && pythonGeneration.enabled();
+        boolean local = !python && localGeneration != null && localGeneration.enabled();
         for (int attempt = 0; attempt < 2; attempt++) {
-            if (local) budget.reserveLocal(row.user); else budget.reserve(row.user,false);
-            JsonNode raw = local
+            if (local || python) budget.reserveLocal(row.user); else budget.reserve(row.user,false);
+            JsonNode raw = python
+                    ? pythonGeneration.completeTask(row.difficulty, json.writeValueAsString(context), remaining(deadline)).raw()
+                    : local
                     ? localGeneration.completeTask(row.difficulty, json.writeValueAsString(context), remaining(deadline)).raw()
                     : row.state.path("curatedStarter").asBoolean()
                         ? ai.completeJson(instruction, json.writeValueAsString(context) + ConversationGenerationPrompt.turnBrief(context), config.generationModel(), remaining(deadline))
@@ -580,7 +590,7 @@ public class ConversationService {
             try {
                 var slots = raw.path("slots"); var prompt = ConversationLocalClient.normalizeOutput(raw);
                 validateNextPrompt(row, prompt);
-                reviewPrompt(row, prompt, local || row.state.path("curatedStarter").asBoolean() ? deadline : 0);
+                reviewPrompt(row, prompt, local || python || row.state.path("curatedStarter").asBoolean() ? deadline : 0);
                 if (slots.isArray()) row.state.set("pendingGenerationSlots", slots.deepCopy());
                 else row.state.remove("pendingGenerationSlots");
                 return prompt;

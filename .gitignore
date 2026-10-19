@@ -10,6 +10,7 @@ qa-output/
 downloads/
 __pycache__/
 *.pyc
+*.egg-info/
 .agents/
 artifacts/
 logs/

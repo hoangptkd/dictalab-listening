@@ -1,0 +1,74 @@
+openapi: 3.1.0
+info:
+  title: DictaLab AI Generation Service
+  version: 1.0.0
+paths:
+  /health/live:
+    get:
+      operationId: live
+      responses:
+        '200': {description: Process is running}
+  /health/ready:
+    get:
+      operationId: ready
+      responses:
+        '200': {description: Ollama is reachable}
+        '503': {description: Ollama is unavailable}
+  /v1/conversation/tasks:
+    post:
+      operationId: createConversationTask
+      security: [{serviceToken: []}]
+      parameters:
+        - in: header
+          name: X-Request-Id
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ConversationTaskRequest'}
+      responses:
+        '200':
+          description: Generated task
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConversationTaskResponse'}
+        '400': {description: Invalid request}
+        '401': {description: Invalid service token}
+        '409': {description: Idempotency conflict}
+        '429': {description: Generation capacity exhausted}
+        '503': {description: Model unavailable}
+        '504': {description: Model timeout}
+components:
+  securitySchemes:
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+  schemas:
+    ConversationTaskRequest:
+      type: object
+      required: [requestId, idempotencyKey, level, turnNumber, promptVersion, instruction, context]
+      properties:
+        requestId: {type: string, minLength: 1, maxLength: 128}
+        idempotencyKey: {type: string, minLength: 1, maxLength: 128}
+        level: {type: string, enum: [A1, A2, B1]}
+        turnNumber: {type: integer, minimum: 1, maximum: 4}
+        promptVersion: {type: string, minLength: 1, maxLength: 128}
+        instruction: {type: string, minLength: 1, maxLength: 50000}
+        context: {type: object, additionalProperties: true}
+    ConversationTaskResponse:
+      type: object
+      required: [task, model, modelDigest, promptVersion, generationId, requestId]
+      properties:
+        task: {type: object, additionalProperties: true}
+        model: {type: string}
+        modelDigest: {type: string}
+        promptVersion: {type: string}
+        generationId: {type: string}
+        requestId: {type: string}

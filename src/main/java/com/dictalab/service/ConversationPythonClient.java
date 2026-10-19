@@ -1,0 +1,104 @@
+package com.dictalab.service;
+
+import com.dictalab.config.ConversationGenerationProperties;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+/** HTTP boundary for the optional Python generation service. Local Ollama remains the default. */
+@Service
+public final class ConversationPythonClient implements ConversationAiClient {
+    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+    private final ObjectMapper json;
+    private final ConversationGenerationProperties config;
+    private final ProviderGuard guard;
+
+    public ConversationPythonClient(ObjectMapper json, ConversationGenerationProperties config,
+                                    MeterRegistry metrics, io.micrometer.observation.ObservationRegistry observations) {
+        this.json = json;
+        this.config = config;
+        this.guard = new ProviderGuard("conversation-python", 1, metrics, observations, 5, Duration.ofSeconds(30));
+    }
+
+    @Override public boolean enabled() { return config.python(); }
+
+    @Override public int flowTimeoutSeconds() { return config.pythonFlowTimeoutSeconds(); }
+
+    @Override public ConversationLocalClient.GeneratedTask completeTask(String level, String input, Duration remaining) {
+        Duration timeout = Duration.ofMillis(Math.min(config.pythonTimeoutSeconds() * 1000L, remaining.toMillis()));
+        if (timeout.toMillis() < 1) throw new IllegalStateException("Conversation Python deadline exhausted");
+        String requestId = UUID.randomUUID().toString();
+        byte[] bytes = requestBody(level, input, requestId).getBytes(StandardCharsets.UTF_8);
+        if (bytes.length > 64_000) throw new IllegalArgumentException("Conversation exceeds Python request limit");
+        try (var permit = guard.enter()) {
+            var builder = HttpRequest.newBuilder(URI.create(config.pythonBaseUrl() + "/v1/conversation/tasks"))
+                    .timeout(timeout).header("Content-Type", "application/json")
+                    .header("X-Request-Id", requestId).header("Idempotency-Key", requestId)
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(bytes));
+            if (!config.pythonServiceToken().isBlank()) builder.header("X-Service-Token", config.pythonServiceToken());
+            var pending = http.sendAsync(builder.build(), ignored -> BoundedProviderBody.bytes(32_000));
+            try {
+                var response = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                if (response.statusCode() == 429) throw new ProviderGuard.Unavailable("Python AI đang bận. Vui lòng thử lại sau.", 5);
+                if (response.statusCode() == 400) throw new IllegalArgumentException("Python conversation request rejected");
+                if (response.statusCode() == 409) throw new IllegalStateException("Python conversation idempotency conflict");
+                if (response.statusCode() == 503 || response.statusCode() == 504)
+                    throw new IllegalStateException("Python conversation service unavailable");
+                if (response.statusCode() != 200) throw new IllegalStateException("Python conversation HTTP " + response.statusCode());
+                JsonNode envelope = json.readTree(response.body());
+                JsonNode task = envelope.path("task");
+                if (!task.isObject()) throw new IllegalStateException("Python conversation task missing");
+                permit.success();
+                return new ConversationLocalClient.GeneratedTask(task);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                permit.failure();
+                throw new IllegalStateException("Python conversation interrupted");
+            } catch (ExecutionException | TimeoutException failed) {
+                permit.failure();
+                throw new IllegalStateException("Python conversation transport or deadline failure");
+            } catch (RuntimeException failed) {
+                permit.failure();
+                throw failed;
+            } finally {
+                pending.cancel(true);
+            }
+        }
+    }
+
+    String requestBody(String level, String input) {
+        return requestBody(level, input, UUID.randomUUID().toString());
+    }
+
+    private String requestBody(String level, String input, String requestId) {
+        try {
+            JsonNode context = json.readTree(input);
+            var body = new LinkedHashMap<String, Object>();
+            body.put("requestId", requestId);
+            body.put("idempotencyKey", requestId);
+            body.put("level", level);
+            body.put("turnNumber", context.path("turnNumber").asInt());
+            body.put("promptVersion", ConversationGenerationPrompt.VERSION);
+            body.put("instruction", ConversationGenerationPrompt.instruction(level, context.path("turnNumber").asInt())
+                    + ConversationGenerationPrompt.turnBrief(context));
+            body.put("context", context);
+            return json.writeValueAsString(body);
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("Invalid conversation generation input", e);
+        }
+    }
+}

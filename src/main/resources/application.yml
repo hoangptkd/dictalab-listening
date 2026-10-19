@@ -216,6 +216,9 @@ dictalab:
       local-base-url: ${DICTALAB_CONVERSATION_LOCAL_BASE_URL:http://127.0.0.1:11434}
       local-model: ${DICTALAB_CONVERSATION_LOCAL_MODEL:qwen3.5:9b}
       local-timeout-seconds: ${DICTALAB_CONVERSATION_LOCAL_TIMEOUT_SECONDS:180}
+      python-base-url: ${DICTALAB_CONVERSATION_PYTHON_BASE_URL:http://127.0.0.1:8091}
+      python-service-token: ${DICTALAB_CONVERSATION_PYTHON_SERVICE_TOKEN:}
+      python-timeout-seconds: ${DICTALAB_CONVERSATION_PYTHON_TIMEOUT_SECONDS:180}
     session-diversity: ${DICTALAB_CONVERSATION_DIVERSITY:true}
     audio-retention-days: ${CONVERSATION_AUDIO_RETENTION_DAYS:30}
     cartesia-api-key: ${CARTESIA_API_KEY:}

@@ -54,6 +54,28 @@ services:
       timeout: 5s
       retries: 20
 
+  ai-generation:
+    profiles: [ai]
+    build:
+      context: ./services/ai-generation
+    container_name: dictalab-ai-generation
+    restart: unless-stopped
+    environment:
+      DICTALAB_AI_OLLAMA_URL: ${DICTALAB_AI_OLLAMA_URL:-http://host.docker.internal:11434}
+      DICTALAB_AI_MODEL: ${DICTALAB_AI_MODEL:-qwen3.5:9b}
+      DICTALAB_AI_SERVICE_TOKEN: ${DICTALAB_AI_SERVICE_TOKEN:-}
+      DICTALAB_AI_TEMPERATURE: ${DICTALAB_AI_TEMPERATURE:-0.3}
+      DICTALAB_AI_NUM_CTX: ${DICTALAB_AI_NUM_CTX:-8192}
+      DICTALAB_AI_NUM_PREDICT: ${DICTALAB_AI_NUM_PREDICT:-1000}
+      DICTALAB_AI_TIMEOUT_SECONDS: ${DICTALAB_AI_TIMEOUT_SECONDS:-180}
+    ports:
+      - "127.0.0.1:${DICTALAB_AI_PORT:-8091}:8091"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health/live')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
 volumes:
   dictalab_postgres_data:
   dictalab_redis_data:

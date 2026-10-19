@@ -13,7 +13,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 @Service
-public class ConversationLocalClient {
+public class ConversationLocalClient implements ConversationAiClient {
     static final String SCHEMA = """
             {"type":"object","properties":{
               "slots":{"type":"array","minItems":2,"maxItems":3,"items":{"type":"object","properties":{
