@@ -58,17 +58,33 @@ class ConversationLocalClientTest {
         assertFalse(received.get().path("think").asBoolean(true));
         assertFalse(received.get().path("stream").asBoolean(true));
         assertEquals("object", received.get().path("format").path("type").asText());
-        var order=List.of("taskVi","questionVi","utteranceEn","translationVi","skill","facts");
+        var order=List.of("slots","utteranceEn","facts","questionVi","translationVi","taskVi","skill");
         assertEquals(order,new ArrayList<>(received.get().path("format").path("properties").propertyNames()));
         assertEquals(json.valueToTree(order),received.get().path("format").path("required"));
         assertEquals("system", received.get().path("messages").path(0).path("role").asText());
         assertEquals("user", received.get().path("messages").path(1).path("role").asText());
         assertEquals("assistant", received.get().path("messages").path(2).path("role").asText());
-        assertEquals(ConversationGenerationPrompt.example("A1"), received.get().path("messages").path(2).path("content").asText());
-        assertTrue(received.get().path("messages").path(3).path("content").asText().contains("<data>{\"difficulty\":\"A1\"}</data>"));
+        assertEquals(ConversationGenerationPrompt.wireExample("A1", 2), received.get().path("messages").path(2).path("content").asText());
+        assertTrue(received.get().path("messages").path(3).path("content").asText().contains("\"difficulty\":\"A1\""));
+        assertTrue(received.get().path("messages").path(3).path("content").asText().contains("partnerRole"));
         assertThrows(IllegalArgumentException.class, () -> client.completeJson("A1", "x".repeat(65_000), Duration.ofSeconds(1)));
         assertThrows(IllegalStateException.class, () -> client.completeJson("A1", "{}", Duration.ZERO));
         assertEquals(1, requests.get());
+    }
+
+    @Test void assignsIdsKeepsSlotMetadataAndPreservesPublicContract() {
+        content.set(ConversationGenerationPrompt.wireExample("A1", 2));
+        var result = client.completeTask("A1", "{\"difficulty\":\"A1\"}", Duration.ofSeconds(30));
+        assertEquals(2, result.slots().size());
+        assertFalse(result.prompt().has("slots"));
+        assertEquals(json.readTree(ConversationGenerationPrompt.example("A1", 2)), result.prompt());
+        assertEquals(2, received.get().path("format").path("properties").path("facts").path("maxItems").asInt());
+        assertEquals(2, received.get().path("format").path("properties").path("slots").path("maxItems").asInt());
+        for (String level : List.of("A2", "B1"))
+            assertEquals(3, ConversationLocalClient.schema(level).path("properties").path("facts").path("maxItems").asInt());
+        var invalid = (tools.jackson.databind.node.ObjectNode) json.readTree(content.get());
+        invalid.withArray("facts").remove(1);
+        assertThrows(IllegalStateException.class, () -> ConversationLocalClient.normalizeOutput(invalid));
     }
 
     @Test void rejectsTrailingTokensTruncationOversizeAndRedirectsWithoutRetry() {

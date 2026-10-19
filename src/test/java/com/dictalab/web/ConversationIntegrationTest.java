@@ -70,6 +70,9 @@ class ConversationIntegrationTest {
         when(ai.completeJson(startsWith("Audit a clarification"), anyString(), anyString()))
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
     }
+    private JsonNode generationContext(String input) {
+        return json.readTree(input.split("\n<turn_brief>", 2)[0]);
+    }
     private JsonNode prompt(String detail) {
         return json.readTree("""
                 {"taskVi":"Nghe giờ hẹn và địa điểm.","questionVi":"Bạn cần đến đâu, lúc nào?",
@@ -178,7 +181,7 @@ class ConversationIntegrationTest {
         service.next(owner, followup, 0);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(ai, times(5)).completeJson(startsWith("You design"), input.capture(), anyString());
-        var context = json.readTree(input.getAllValues().get(4));
+        var context = generationContext(input.getAllValues().get(4));
         assertThat(context.path("scenarioJourney").asText()).contains("Same customer and server");
         assertThat(context.path("practiceFocus").asText()).isEqualTo("Nghe giờ và địa điểm");
         assertThatThrownBy(() -> service.create(owner, "tickets", "B1", id)).isInstanceOf(ResponseStatusException.class);
@@ -251,7 +254,7 @@ class ConversationIntegrationTest {
         assertThat(service.next(owner, id, 0).path("turnNumber").asInt()).isEqualTo(1);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), anyString());
-        JsonNode repair = json.readTree(input.getAllValues().get(1));
+        JsonNode repair = generationContext(input.getAllValues().get(1));
         assertThat(repair.path("validationError").asText()).contains("Ticket is not requested");
         assertThat(repair.path("previousInvalidPrompt")).isEqualTo(invalid);
         var stored = json.readTree(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=?", String.class, id));
@@ -424,7 +427,7 @@ class ConversationIntegrationTest {
         assertThat(service.next(owner, id, 0).path("turnNumber").asInt()).isEqualTo(1);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), eq("gemini-2.5-flash"));
-        JsonNode first = json.readTree(input.getAllValues().get(0)), repaired = json.readTree(input.getAllValues().get(1));
+        JsonNode first = generationContext(input.getAllValues().get(0)), repaired = generationContext(input.getAllValues().get(1));
         assertThat(repaired.path("scenario")).isEqualTo(first.path("scenario"));
         assertThat(repaired.path("turnNumber").asInt()).isEqualTo(1);
         assertThat(repaired.path("validationError").asText()).isEqualTo("Invalid JSON schema");
@@ -490,7 +493,7 @@ class ConversationIntegrationTest {
         assertThat(service.next(owner, id, 1).path("turnNumber").asInt()).isEqualTo(2);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), eq("gemini-2.5-flash"));
-        JsonNode history = json.readTree(input.getAllValues().get(1)).path("history").path(0);
+        JsonNode history = generationContext(input.getAllValues().get(1)).path("history").path(0);
         assertThat(history.path("facts").size()).isEqualTo(2);
         assertThat(history.path("evaluation").path("facts").path(0).path("status").asText()).isEqualTo("CAPTURED");
     }

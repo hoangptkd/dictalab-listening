@@ -521,7 +521,8 @@ public class ConversationService {
         // Only the task history is needed, not every answer or the complete internal state.
         var history = turns(row).valueStream().map(t -> Map.of(
                 "utteranceEn", t.path("prompt").path("utteranceEn"), "skill", t.path("prompt").path("skill"),
-                "facts", t.path("prompt").path("facts"),
+                "questionVi", t.path("prompt").path("questionVi"), "speaker", t.path("speaker").asText("unknown"),
+                "facts", historyFacts(t),
                 "evaluation", t.path("attempts").path(t.path("attempts").size() - 1).path("evaluation"))).toList();
         String journey = switch (row.scenario) {
             case "cafe" -> "Same customer and server: 1 order food/drink; 2 revise that order; 3 arrange serving or takeaway; 4 a new order.";
@@ -546,6 +547,7 @@ public class ConversationService {
                             "questionVi", t.path("questionVi"), "skill", t.path("skill"),
                             "answersVi", t.path("facts").valueStream().map(f -> f.path("textVi")).toList())).toList())).toList());
         }
+        context.putAll(ConversationContent.roles(row.scenario, row.state.path("sessionBlueprint").path("branchId").asText("standard")));
         return context;
     }
 
@@ -553,27 +555,41 @@ public class ConversationService {
         return localGeneration != null && localGeneration.enabled() ? localGeneration.flowTimeoutSeconds() : 45;
     }
 
+    private JsonNode historyFacts(JsonNode turn) {
+        var facts = turn.path("prompt").path("facts").deepCopy();
+        var slots = turn.path("generationSlots");
+        if (slots.isArray() && slots.size() == facts.size()) for (int i = 0; i < facts.size(); i++) {
+            var fact = (ObjectNode) facts.path(i);
+            fact.set("slotKind", slots.path(i).path("kind"));
+            fact.set("askVi", slots.path(i).path("askVi"));
+        }
+        return facts;
+    }
+
     private JsonNode generatePrompt(Row row, long deadline) {
-        var context = new LinkedHashMap<String, Object>(promptContext(row));
-        String instruction = ConversationGenerationPrompt.instruction(row.difficulty);
+        var context = ConversationGenerationPrompt.context(json, json.valueToTree(promptContext(row)));
+        String instruction = ConversationGenerationPrompt.instruction(row.difficulty, turns(row).size() + 1);
         boolean local = localGeneration != null && localGeneration.enabled();
         for (int attempt = 0; attempt < 2; attempt++) {
             if (local) budget.reserveLocal(row.user); else budget.reserve(row.user,false);
-            JsonNode prompt = local
-                    ? localGeneration.completeJson(row.difficulty, json.writeValueAsString(context), remaining(deadline))
+            JsonNode raw = local
+                    ? localGeneration.completeTask(row.difficulty, json.writeValueAsString(context), remaining(deadline)).raw()
                     : row.state.path("curatedStarter").asBoolean()
-                        ? ai.completeJson(instruction, json.writeValueAsString(context), config.generationModel(), remaining(deadline))
-                        : ai.completeJson(instruction, json.writeValueAsString(context), config.generationModel());
+                        ? ai.completeJson(instruction, json.writeValueAsString(context) + ConversationGenerationPrompt.turnBrief(context), config.generationModel(), remaining(deadline))
+                        : ai.completeJson(instruction, json.writeValueAsString(context) + ConversationGenerationPrompt.turnBrief(context), config.generationModel());
             try {
+                var slots = raw.path("slots"); var prompt = ConversationLocalClient.normalizeOutput(raw);
                 validateNextPrompt(row, prompt);
                 reviewPrompt(row, prompt, local || row.state.path("curatedStarter").asBoolean() ? deadline : 0);
+                if (slots.isArray()) row.state.set("pendingGenerationSlots", slots.deepCopy());
+                else row.state.remove("pendingGenerationSlots");
                 return prompt;
             } catch (AiUsageBudget.Rejected budgetFailure) { throw budgetFailure;
             } catch (IllegalStateException invalidPrompt) {
                 if (attempt == 1) throw invalidPrompt;
                 // One bounded repair of rejected output; do not retry network failures.
                 context.put("validationError", invalidPrompt.getMessage());
-                context.put("previousInvalidPrompt", prompt);
+                context.set("previousInvalidPrompt", raw);
             }
         }
         throw new IllegalStateException("Conversation generation failed");
@@ -619,8 +635,9 @@ public class ConversationService {
     private void validateNextPrompt(Row row, JsonNode prompt) {
         validatePrompt(prompt);
         String generated = normalized(prompt.path("utteranceEn").asText());
-        if (LEVELS.stream().anyMatch(level -> generated.equals(normalized(json.readTree(
-                ConversationGenerationPrompt.example(level)).path("utteranceEn").asText()))))
+        if (LEVELS.stream().anyMatch(level -> java.util.stream.Stream.of(2, 4).anyMatch(turn ->
+                generated.equals(normalized(json.readTree(ConversationGenerationPrompt.example(level, turn))
+                        .path("utteranceEn").asText())))))
             throw new IllegalStateException("Copied generation example");
         int words = prompt.path("utteranceEn").asText().trim().split("\\s+").length;
         Map<String,Integer> bounds = row.state.path("curatedStarter").asBoolean()
@@ -671,6 +688,11 @@ public class ConversationService {
     private void addTurn(Row row, JsonNode prompt) {
         var turn = json.createObjectNode();
         turn.set("prompt", prompt); turn.put("done", false); turn.put("transcriptShown", false);
+        turn.put("speaker", ConversationContent.roles(row.scenario,
+                row.state.path("sessionBlueprint").path("branchId").asText("standard")).get("partnerRole"));
+        var slots = row.state.remove("pendingGenerationSlots");
+        if (slots != null && slots.isArray() && slots.size() == prompt.path("facts").size())
+            turn.set("generationSlots", slots);
         turn.put("translationShown", false); turn.put("slow", false); turn.put("plays", 0);
         turn.putArray("attempts"); turns(row).add(turn);
         turn.put("skillId", ConversationContent.skillId(prompt.path("skill").asText()));
@@ -845,6 +867,7 @@ public class ConversationService {
         var visible = result.putArray("turns");
         for (JsonNode stored : turns(row)) {
             var turn = ((ObjectNode) stored).deepCopy();
+            turn.remove("generationSlots"); turn.remove("speaker");
             var prompt = (ObjectNode) turn.path("prompt");
             turn.put("totalFacts", prompt.path("facts").size());
             turn.put("capturedFacts", prompt.path("facts").valueStream()
