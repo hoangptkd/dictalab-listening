@@ -1,0 +1,36 @@
+{
+  "name": "ai-platform-conversation-regression",
+  "seeds": [17, 43, 97],
+  "model": "qwen3.5:9b",
+  "modelDigest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "promptVersion": "CONVERSATION_GENERATION_V6_SLOTS",
+  "sourceManifest": "data/conversation-offline-refinement-20261020/manifest.json",
+  "sourceSummary": "data/conversation-offline-refinement-20261020/summary.json",
+  "cases": [
+    {"id": "eval-cafe-A1-t2", "scenario": "cafe", "level": "A1", "turn": 2, "tags": ["continuity", "two-slots"]},
+    {"id": "eval-cafe-A2-t3", "scenario": "cafe", "level": "A2", "turn": 3, "tags": ["continuity", "multi-slots"]},
+    {"id": "eval-cafe-B1-t4", "scenario": "cafe", "level": "B1", "turn": 4, "tags": ["transfer", "multi-slots"]},
+    {"id": "eval-hotel-A1-t3", "scenario": "hotel", "level": "A1", "turn": 3, "tags": ["continuity", "two-slots"]},
+    {"id": "eval-hotel-A2-t4", "scenario": "hotel", "level": "A2", "turn": 4, "tags": ["transfer", "multi-slots"]},
+    {"id": "eval-hotel-B1-t2", "scenario": "hotel", "level": "B1", "turn": 2, "tags": ["continuity", "multi-slots"]},
+    {"id": "eval-directions-A1-t4", "scenario": "directions", "level": "A1", "turn": 4, "tags": ["transfer", "two-slots", "long-history"]},
+    {"id": "eval-directions-A2-t2", "scenario": "directions", "level": "A2", "turn": 2, "tags": ["continuity", "multi-slots"]},
+    {"id": "eval-directions-B1-t3", "scenario": "directions", "level": "B1", "turn": 3, "tags": ["continuity", "multi-slots"]},
+    {"id": "eval-plans-A1-t2", "scenario": "plans", "level": "A1", "turn": 2, "tags": ["continuity", "two-slots"]},
+    {"id": "eval-plans-A2-t3", "scenario": "plans", "level": "A2", "turn": 3, "tags": ["continuity", "multi-slots"]},
+    {"id": "eval-plans-B1-t4", "scenario": "plans", "level": "B1", "turn": 4, "tags": ["transfer", "multi-slots"]},
+    {"id": "eval-delivery-A1-t3", "scenario": "delivery", "level": "A1", "turn": 3, "tags": ["continuity", "two-slots"]},
+    {"id": "eval-delivery-A2-t4", "scenario": "delivery", "level": "A2", "turn": 4, "tags": ["transfer", "multi-slots"]},
+    {"id": "eval-delivery-B1-t2", "scenario": "delivery", "level": "B1", "turn": 2, "tags": ["continuity", "multi-slots"]}
+  ],
+  "edgeCases": [
+    "timeout",
+    "non-json-response",
+    "truncated-response",
+    "fact-count-mismatch",
+    "turn-4-transfer",
+    "role-mismatch",
+    "continuity-mismatch",
+    "translation-mismatch"
+  ]
+}
