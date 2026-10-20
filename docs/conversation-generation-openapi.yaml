@@ -38,9 +38,9 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ConversationTaskResponse'}
-        '400': {description: Invalid request}
+        '400': {description: Invalid request — missing required field or wrong type}
         '401': {description: Invalid service token}
-        '409': {description: Idempotency conflict}
+        '409': {description: Idempotency conflict — key reused with different fingerprint}
         '429': {description: Generation capacity exhausted}
         '503': {description: Model unavailable}
         '504': {description: Model timeout}
@@ -51,24 +51,106 @@ components:
       in: header
       name: X-Service-Token
   schemas:
+    ConversationContext:
+      type: object
+      description: >
+        Allowlisted context passed to the AI model. Unknown fields are silently dropped
+        before reaching the prompt. This object must never carry credentials, account
+        data, emails, tokens, or cookies.
+      additionalProperties: false
+      properties:
+        scenario:
+          type: string
+          maxLength: 200
+        difficulty:
+          type: string
+          enum: [A1, A2, B1]
+        turnNumber:
+          type: integer
+          minimum: 1
+          maximum: 4
+        partnerRole:
+          type: string
+          maxLength: 120
+        learnerRole:
+          type: string
+          maxLength: 120
+        levelProfile:
+          type: object
+          additionalProperties: true
+        listeningSkills:
+          type: object
+          additionalProperties: true
+        scenarioJourney:
+          type: string
+          maxLength: 4000
+        history:
+          type: array
+          items: {type: object, additionalProperties: true}
+        recentPractice:
+          type: array
+          items: {type: object, additionalProperties: true}
+        practiceFocus:
+          type: string
+          maxLength: 2000
+        sessionBlueprint:
+          type: object
+          additionalProperties: true
+        variationSeed:
+          type: integer
+        previouslyTestedDetails:
+          type: array
+          items: {type: object, additionalProperties: true}
+        weakSkills:
+          type: array
+          items: {type: string}
     ConversationTaskRequest:
       type: object
       required: [requestId, idempotencyKey, level, turnNumber, promptVersion, instruction, context]
+      additionalProperties: false
       properties:
-        requestId: {type: string, minLength: 1, maxLength: 128}
-        idempotencyKey: {type: string, minLength: 1, maxLength: 128}
-        level: {type: string, enum: [A1, A2, B1]}
-        turnNumber: {type: integer, minimum: 1, maximum: 4}
-        promptVersion: {type: string, minLength: 1, maxLength: 128}
-        instruction: {type: string, minLength: 1, maxLength: 50000}
-        context: {type: object, additionalProperties: true}
+        requestId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 128
+        level:
+          type: string
+          enum: [A1, A2, B1]
+        turnNumber:
+          type: integer
+          minimum: 1
+          maximum: 4
+        promptVersion:
+          type: string
+          minLength: 1
+          maxLength: 128
+        instruction:
+          type: string
+          minLength: 1
+          maxLength: 50000
+        context:
+          $ref: '#/components/schemas/ConversationContext'
     ConversationTaskResponse:
       type: object
-      required: [task, model, modelDigest, promptVersion, generationId, requestId]
+      required: [task, model, modelDigest, promptVersion, generationId, requestId, contractVersion]
       properties:
-        task: {type: object, additionalProperties: true}
-        model: {type: string}
-        modelDigest: {type: string}
-        promptVersion: {type: string}
-        generationId: {type: string}
-        requestId: {type: string}
+        task:
+          type: object
+          additionalProperties: true
+        model:
+          type: string
+        modelDigest:
+          type: string
+        promptVersion:
+          type: string
+        generationId:
+          type: string
+        requestId:
+          type: string
+        contractVersion:
+          type: string
+          description: Schema contract version; current value is "1"

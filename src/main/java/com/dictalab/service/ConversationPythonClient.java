@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -22,6 +23,15 @@ import java.util.concurrent.TimeoutException;
 /** HTTP boundary for the optional Python generation service. Local Ollama remains the default. */
 @Service
 public final class ConversationPythonClient implements ConversationAiClient {
+
+    /** Allowlisted context keys sent to the Python AI Platform. Keys outside this set are dropped
+     *  before transmission so credentials and account data never reach the model prompt. */
+    private static final Set<String> CONTEXT_ALLOWLIST = Set.of(
+            "scenario", "difficulty", "turnNumber", "partnerRole", "learnerRole",
+            "levelProfile", "listeningSkills", "scenarioJourney", "history",
+            "recentPractice", "practiceFocus", "sessionBlueprint", "variationSeed",
+            "previouslyTestedDetails", "weakSkills"
+    );
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     private final ObjectMapper json;
     private final ConversationGenerationProperties config;
@@ -95,10 +105,22 @@ public final class ConversationPythonClient implements ConversationAiClient {
             body.put("promptVersion", ConversationGenerationPrompt.VERSION);
             body.put("instruction", ConversationGenerationPrompt.instruction(level, context.path("turnNumber").asInt())
                     + ConversationGenerationPrompt.turnBrief(context));
-            body.put("context", context);
+            body.put("context", filterContext(context));
             return json.writeValueAsString(body);
         } catch (RuntimeException e) {
             throw new IllegalArgumentException("Invalid conversation generation input", e);
         }
+    }
+
+    /** Returns a copy of the context JsonNode containing only allowlisted keys.
+     *  This ensures credentials and account data never reach the Python AI Platform. */
+    private Map<String, Object> filterContext(JsonNode context) {
+        var filtered = new LinkedHashMap<String, Object>();
+        context.properties().forEach(entry -> {
+            if (CONTEXT_ALLOWLIST.contains(entry.getKey())) {
+                filtered.put(entry.getKey(), json.convertValue(entry.getValue(), Object.class));
+            }
+        });
+        return filtered;
     }
 }

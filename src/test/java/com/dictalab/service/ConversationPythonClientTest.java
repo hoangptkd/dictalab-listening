@@ -12,6 +12,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -42,5 +43,43 @@ class ConversationPythonClientTest {
         var client = new ConversationPythonClient(json, config, new SimpleMeterRegistry(), ObservationRegistry.NOOP);
         var task = client.completeTask("A1", "{\"turnNumber\":1,\"scenario\":\"cafe\"}", Duration.ofSeconds(5));
         assertEquals("Nắm thông tin cụ thể", task.raw().path("skill").asText());
+    }
+
+    @Test void requestBodyDoesNotContainCredentials() {
+        ObjectMapper json = new ObjectMapper();
+        var config = new ConversationGenerationProperties("python", "http://127.0.0.1:11434", "qwen3.5:9b", 1,
+                "http://127.0.0.1:8091", "", 5);
+        var client = new ConversationPythonClient(json, config, new SimpleMeterRegistry(), ObservationRegistry.NOOP);
+        // Input intentionally contains credential-like keys that must not appear in the prompt instruction
+        String input = "{\"turnNumber\":1,\"scenario\":\"cafe\","
+                + "\"email\":\"user@example.com\","
+                + "\"accessToken\":\"Bearer secret123\","
+                + "\"cookie\":\"session=abc\"}";
+        String body = client.requestBody("A1", input);
+        assertFalse(body.contains("user@example.com"), "email must not appear in request body sent to Python");
+        assertFalse(body.contains("Bearer secret123"), "accessToken must not appear in request body");
+        assertFalse(body.contains("session=abc"), "cookie must not appear in request body");
+        // The instruction and context must still carry the legitimate scenario value
+        assertTrue(body.contains("cafe"), "legitimate context field must be present");
+    }
+
+    @Test void requestBodyExceedsLimitIsRejected() {
+        ObjectMapper json = new ObjectMapper();
+        var config = new ConversationGenerationProperties("python", "http://127.0.0.1:11434", "qwen3.5:9b", 1,
+                "http://127.0.0.1:8091", "", 5);
+        var client = new ConversationPythonClient(json, config, new SimpleMeterRegistry(), ObservationRegistry.NOOP);
+        String scenario = "x".repeat(70_000);
+        String input = "{\"turnNumber\":1,\"scenario\":\"" + scenario + "\"}";
+        assertThrows(IllegalArgumentException.class,
+                () -> client.completeTask("A1", input, Duration.ofSeconds(5)));
+    }
+
+    @Test void deadlineExhaustedBeforeSendingRequest() {
+        ObjectMapper json = new ObjectMapper();
+        var config = new ConversationGenerationProperties("python", "http://127.0.0.1:11434", "qwen3.5:9b", 1,
+                "http://127.0.0.1:8091", "", 5);
+        var client = new ConversationPythonClient(json, config, new SimpleMeterRegistry(), ObservationRegistry.NOOP);
+        assertThrows(IllegalStateException.class,
+                () -> client.completeTask("A1", "{\"turnNumber\":1}", Duration.ZERO));
     }
 }
