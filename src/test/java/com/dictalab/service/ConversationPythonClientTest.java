@@ -82,4 +82,70 @@ class ConversationPythonClientTest {
         assertThrows(IllegalStateException.class,
                 () -> client.completeTask("A1", "{\"turnNumber\":1}", Duration.ZERO));
     }
+
+    /** Helper: start a fake server that always returns a fixed HTTP status code. */
+    private ConversationPythonClient clientWithStatus(int statusCode) throws Exception {
+        ObjectMapper json = new ObjectMapper();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/conversation/tasks", exchange -> {
+            exchange.sendResponseHeaders(statusCode, -1);
+            exchange.close();
+        });
+        server.start();
+        var config = new ConversationGenerationProperties("python", "http://127.0.0.1:11434", "qwen3.5:9b", 1,
+                "http://127.0.0.1:" + server.getAddress().getPort(), "", 5);
+        return new ConversationPythonClient(json, config, new SimpleMeterRegistry(), ObservationRegistry.NOOP);
+    }
+
+    @Test void status400MapsToIllegalArgument() throws Exception {
+        var client = clientWithStatus(400);
+        assertThrows(IllegalArgumentException.class,
+                () -> client.completeTask("A1", "{\"turnNumber\":1}", Duration.ofSeconds(5)));
+    }
+
+    @Test void status401MapsToSecurityFailure() throws Exception {
+        var client = clientWithStatus(401);
+        var ex = assertThrows(IllegalStateException.class,
+                () -> client.completeTask("A1", "{\"turnNumber\":1}", Duration.ofSeconds(5)));
+        assertTrue(ex.getMessage().contains("security") || ex.getMessage().contains("configuration"),
+                "401 must map to security/configuration failure message");
+    }
+
+    @Test void status409MapsToIdempotencyConflict() throws Exception {
+        var client = clientWithStatus(409);
+        var ex = assertThrows(IllegalStateException.class,
+                () -> client.completeTask("A1", "{\"turnNumber\":1}", Duration.ofSeconds(5)));
+        assertTrue(ex.getMessage().contains("idempotency"), "409 must mention idempotency");
+    }
+
+    @Test void status503MapsToUnavailable() throws Exception {
+        var client = clientWithStatus(503);
+        var ex = assertThrows(IllegalStateException.class,
+                () -> client.completeTask("A1", "{\"turnNumber\":1}", Duration.ofSeconds(5)));
+        assertTrue(ex.getMessage().contains("unavailable"), "503 must map to unavailable");
+    }
+
+    @Test void status504MapsToUnavailable() throws Exception {
+        var client = clientWithStatus(504);
+        assertThrows(IllegalStateException.class,
+                () -> client.completeTask("A1", "{\"turnNumber\":1}", Duration.ofSeconds(5)));
+    }
+
+    @Test void missingTaskObjectInResponseIsRejected() throws Exception {
+        ObjectMapper json = new ObjectMapper();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/conversation/tasks", exchange -> {
+            byte[] body = "{\"task\":null}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        var config = new ConversationGenerationProperties("python", "http://127.0.0.1:11434", "qwen3.5:9b", 1,
+                "http://127.0.0.1:" + server.getAddress().getPort(), "", 5);
+        var client = new ConversationPythonClient(json, config, new SimpleMeterRegistry(), ObservationRegistry.NOOP);
+        assertThrows(IllegalStateException.class,
+                () -> client.completeTask("A1", "{\"turnNumber\":1}", Duration.ofSeconds(5)));
+    }
 }

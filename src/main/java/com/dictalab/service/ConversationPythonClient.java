@@ -2,6 +2,9 @@ package com.dictalab.service;
 
 import com.dictalab.config.ConversationGenerationProperties;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -24,6 +27,8 @@ import java.util.concurrent.TimeoutException;
 @Service
 public final class ConversationPythonClient implements ConversationAiClient {
 
+    private static final Logger log = LoggerFactory.getLogger(ConversationPythonClient.class);
+
     /** Allowlisted context keys sent to the Python AI Platform. Keys outside this set are dropped
      *  before transmission so credentials and account data never reach the model prompt. */
     private static final Set<String> CONTEXT_ALLOWLIST = Set.of(
@@ -36,11 +41,13 @@ public final class ConversationPythonClient implements ConversationAiClient {
     private final ObjectMapper json;
     private final ConversationGenerationProperties config;
     private final ProviderGuard guard;
+    private final MeterRegistry metrics;
 
     public ConversationPythonClient(ObjectMapper json, ConversationGenerationProperties config,
                                     MeterRegistry metrics, io.micrometer.observation.ObservationRegistry observations) {
         this.json = json;
         this.config = config;
+        this.metrics = metrics;
         this.guard = new ProviderGuard("conversation-python", 1, metrics, observations, 5, Duration.ofSeconds(30));
     }
 
@@ -54,6 +61,8 @@ public final class ConversationPythonClient implements ConversationAiClient {
         String requestId = UUID.randomUUID().toString();
         byte[] bytes = requestBody(level, input, requestId).getBytes(StandardCharsets.UTF_8);
         if (bytes.length > 64_000) throw new IllegalArgumentException("Conversation exceeds Python request limit");
+        long startedNs = System.nanoTime();
+        String outcome = "error";
         try (var permit = guard.enter()) {
             var builder = HttpRequest.newBuilder(URI.create(config.pythonBaseUrl() + "/v1/conversation/tasks"))
                     .timeout(timeout).header("Content-Type", "application/json")
@@ -63,29 +72,40 @@ public final class ConversationPythonClient implements ConversationAiClient {
             var pending = http.sendAsync(builder.build(), ignored -> BoundedProviderBody.bytes(32_000));
             try {
                 var response = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-                if (response.statusCode() == 429) throw new ProviderGuard.Unavailable("Python AI đang bận. Vui lòng thử lại sau.", 5);
-                if (response.statusCode() == 400) throw new IllegalArgumentException("Python conversation request rejected");
-                if (response.statusCode() == 409) throw new IllegalStateException("Python conversation idempotency conflict");
-                if (response.statusCode() == 503 || response.statusCode() == 504)
+                int status = response.statusCode();
+                if (status == 401) throw new IllegalStateException("Python conversation configuration or security failure");
+                if (status == 429) throw new ProviderGuard.Unavailable("Python AI đang bận. Vui lòng thử lại sau.", 5);
+                if (status == 400) throw new IllegalArgumentException("Python conversation request rejected");
+                if (status == 409) throw new IllegalStateException("Python conversation idempotency conflict");
+                if (status == 503 || status == 504)
                     throw new IllegalStateException("Python conversation service unavailable");
-                if (response.statusCode() != 200) throw new IllegalStateException("Python conversation HTTP " + response.statusCode());
+                if (status != 200) throw new IllegalStateException("Python conversation HTTP " + status);
                 JsonNode envelope = json.readTree(response.body());
                 JsonNode task = envelope.path("task");
                 if (!task.isObject()) throw new IllegalStateException("Python conversation task missing");
                 permit.success();
+                outcome = "success";
                 return new ConversationLocalClient.GeneratedTask(task);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 permit.failure();
+                outcome = "interrupted";
                 throw new IllegalStateException("Python conversation interrupted");
             } catch (ExecutionException | TimeoutException failed) {
                 permit.failure();
+                outcome = "timeout";
                 throw new IllegalStateException("Python conversation transport or deadline failure");
             } catch (RuntimeException failed) {
                 permit.failure();
                 throw failed;
             } finally {
                 pending.cancel(true);
+                long durationMs = (System.nanoTime() - startedNs) / 1_000_000L;
+                log.info("conversation_python_request request_id={} outcome={} duration_ms={} provider=python",
+                        requestId, outcome, durationMs);
+                metrics.timer("dictalab.conversation.python.duration",
+                        "outcome", outcome, "provider", "python"
+                ).record(durationMs, java.util.concurrent.TimeUnit.MILLISECONDS);
             }
         }
     }
