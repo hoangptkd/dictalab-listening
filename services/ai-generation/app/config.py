@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     model_digest: str = "unknown"
     max_concurrency: int = 1
 
+    # Fallback provider (Shop AI cloud) — off by default
+    fallback_enabled: bool = False
+    fallback_base_url: str = "https://api.shopai.vn"
+    fallback_api_key: str = ""
+    fallback_model: str = "gpt-4o-mini"
+
     def __init__(self, **values):
         super().__init__(**values)
         if not 0 <= self.temperature <= 2:
