@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     fallback_api_key: str = ""
     fallback_model: str = "gpt-4o-mini"
 
+    # Production mode: when true, service_token is mandatory and startup
+    # fails if it is empty or contains unsafe characters.
+    production_mode: bool = False
+
+    # Idempotency cache TTL in seconds (default 15 minutes)
+    cache_ttl_seconds: float = 900.0
+
     def __init__(self, **values):
         super().__init__(**values)
         if not 0 <= self.temperature <= 2:
@@ -34,3 +41,12 @@ class Settings(BaseSettings):
             raise ValueError("timeout_seconds must be between 0 and 600")
         if self.max_concurrency < 1 or self.max_concurrency > 32:
             raise ValueError("max_concurrency must be between 1 and 32")
+        if "\n" in self.service_token or "\r" in self.service_token:
+            raise ValueError("service_token must not contain newline or carriage return")
+        if self.production_mode and not self.service_token:
+            raise ValueError(
+                "DICTALAB_AI_SERVICE_TOKEN must be set in production mode; "
+                "set DICTALAB_AI_PRODUCTION_MODE=false for local development"
+            )
+        if self.cache_ttl_seconds <= 0 or self.cache_ttl_seconds > 86400:
+            raise ValueError("cache_ttl_seconds must be between 1 and 86400")

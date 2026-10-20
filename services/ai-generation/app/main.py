@@ -1,9 +1,10 @@
+import asyncio
 import hashlib
 import json
 import logging
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -12,16 +13,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .config import Settings
+from .redaction import RedactingFilter, is_safe_log_value, redact
 from .workflow import run_workflow
 from .schemas import ConversationContext, ConversationTaskRequest, ConversationTaskResponse
-
-MAX_HISTORY_ITEMS = 10
-MAX_RECENT_PRACTICE_ITEMS = 20
-MAX_UTTERANCE_CHARS = 2000
 
 settings = Settings()
 app = FastAPI(title="DictaLab AI Generation", version="0.1.0")
 logger = logging.getLogger("dictalab.ai_generation")
+logger.addFilter(RedactingFilter())
 
 
 @dataclass
@@ -31,8 +30,16 @@ class CachedResult:
     expires_at: float
 
 
+# In-memory idempotency cache (TTL from settings; lost on process restart by design)
 cache: dict[str, CachedResult] = {}
-semaphore = __import__("asyncio").Semaphore(settings.max_concurrency)
+
+# Per-key locks prevent two concurrent requests with the same idempotency key
+# from both proceeding to generation. Only one holds the lock; the other waits
+# then gets the cached result.
+_key_locks: dict[str, asyncio.Lock] = {}
+_key_locks_mu: asyncio.Lock = asyncio.Lock()
+
+semaphore = asyncio.Semaphore(settings.max_concurrency)
 
 
 def _authorized(token: str | None) -> bool:
@@ -44,27 +51,20 @@ def _fingerprint(payload: ConversationTaskRequest) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def _normalize_context(context: ConversationContext, request_id: str) -> ConversationContext:
-    """Deterministically truncate oversized history/recentPractice so prompt size stays bounded."""
-    normalized = context.model_copy(deep=True)
-    truncated = False
+async def _get_key_lock(key: str) -> asyncio.Lock:
+    async with _key_locks_mu:
+        if key not in _key_locks:
+            _key_locks[key] = asyncio.Lock()
+        return _key_locks[key]
 
-    if normalized.history and len(normalized.history) > MAX_HISTORY_ITEMS:
-        normalized.history = normalized.history[-MAX_HISTORY_ITEMS:]
-        truncated = True
-    for turn in (normalized.history or []):
-        if isinstance(turn, dict) and isinstance(turn.get("utteranceEn"), str) \
-                and len(turn["utteranceEn"]) > MAX_UTTERANCE_CHARS:
-            turn["utteranceEn"] = turn["utteranceEn"][:MAX_UTTERANCE_CHARS]
-            truncated = True
 
-    if normalized.recentPractice and len(normalized.recentPractice) > MAX_RECENT_PRACTICE_ITEMS:
-        normalized.recentPractice = normalized.recentPractice[-MAX_RECENT_PRACTICE_ITEMS:]
-        truncated = True
-
-    if truncated:
-        logger.info("conversation_context_truncated", extra={"request_id": request_id})
-    return normalized
+def _evict_expired() -> None:
+    """Remove expired cache entries and their associated locks."""
+    now = time.monotonic()
+    expired = [k for k, v in cache.items() if v.expires_at <= now]
+    for k in expired:
+        cache.pop(k, None)
+        _key_locks.pop(k, None)
 
 
 @app.get("/health/live")
@@ -93,43 +93,68 @@ async def create_task(payload: ConversationTaskRequest, request: Request,
         raise HTTPException(status_code=401, detail="invalid service token")
     if not request_id or request_id != payload.requestId or idempotency_key != payload.idempotencyKey:
         raise HTTPException(status_code=400, detail="request id mismatch")
+
+    _evict_expired()
     now = time.monotonic()
     key = payload.idempotencyKey
     fingerprint = _fingerprint(payload)
+
+    # Fast path: already cached (no lock needed for read, fingerprint guards correctness)
     cached = cache.get(key)
     if cached and cached.expires_at > now:
         if cached.fingerprint != fingerprint:
             raise HTTPException(status_code=409, detail="idempotency key was reused")
         return cached.response
-    if cached:
-        cache.pop(key, None)
-    if semaphore.locked():
-        raise HTTPException(status_code=429, detail="generation capacity exhausted")
-    async with semaphore:
+
+    # Acquire per-key lock to prevent duplicate concurrent generation
+    key_lock = await _get_key_lock(key)
+    async with key_lock:
+        # Re-check after acquiring lock (another coroutine may have populated the cache)
+        cached = cache.get(key)
+        if cached and cached.expires_at > time.monotonic():
+            if cached.fingerprint != fingerprint:
+                raise HTTPException(status_code=409, detail="idempotency key was reused")
+            return cached.response
+        if cached:
+            cache.pop(key, None)
+
+        if semaphore.locked():
+            raise HTTPException(status_code=429, detail="generation capacity exhausted")
+
         started = time.monotonic()
-        try:
-            timeout = httpx.Timeout(settings.timeout_seconds)
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                task = await run_workflow(payload, settings, client)
-        except TimeoutError as exc:
-            raise HTTPException(status_code=504, detail="generation timed out") from exc
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail="generation unavailable") from exc
-    result = ConversationTaskResponse(task=task, model=settings.model, modelDigest=settings.model_digest,
-                                      promptVersion=payload.promptVersion, generationId=str(uuid.uuid4()),
-                                      requestId=payload.requestId)
-    logger.info("conversation_generation_completed", extra={
-        "request_id": payload.requestId, "generation_id": result.generationId,
-        "model": settings.model, "model_digest": settings.model_digest,
-        "prompt_version": payload.promptVersion, "duration_ms": round((time.monotonic() - started) * 1000),
-    })
-    cache[key] = CachedResult(fingerprint, result, now + 900)
-    return result
+        async with semaphore:
+            try:
+                timeout = httpx.Timeout(settings.timeout_seconds)
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    task = await run_workflow(payload, settings, client)
+            except TimeoutError as exc:
+                raise HTTPException(status_code=504, detail="generation timed out") from exc
+            except Exception as exc:
+                raise HTTPException(status_code=503, detail="generation unavailable") from exc
+
+        result = ConversationTaskResponse(
+            task=task, model=settings.model, modelDigest=settings.model_digest,
+            promptVersion=payload.promptVersion, generationId=str(uuid.uuid4()),
+            requestId=payload.requestId,
+        )
+        # Log only safe metadata — no raw prompt, response, or learner content
+        logger.info("conversation_generation_completed", extra={
+            "request_id": payload.requestId, "generation_id": result.generationId,
+            "model": settings.model, "model_digest": settings.model_digest,
+            "prompt_version": payload.promptVersion,
+            "duration_ms": round((time.monotonic() - started) * 1000),
+            "turn_number": payload.turnNumber,
+            "level": payload.level,
+        })
+        # Cache only the merged response (not raw content) within finite TTL
+        cache[key] = CachedResult(fingerprint, result, time.monotonic() + settings.cache_ttl_seconds)
+        return result
 
 
 @app.exception_handler(HTTPException)
 async def http_error(_: Request, exc: HTTPException) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
+    detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    return JSONResponse(status_code=exc.status_code, content={"error": redact(detail)})
 
 
 @app.exception_handler(RequestValidationError)

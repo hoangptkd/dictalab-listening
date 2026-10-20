@@ -63,13 +63,23 @@ services:
     environment:
       DICTALAB_AI_OLLAMA_URL: ${DICTALAB_AI_OLLAMA_URL:-http://host.docker.internal:11434}
       DICTALAB_AI_MODEL: ${DICTALAB_AI_MODEL:-qwen3.5:9b}
+      # Service-to-service auth token — must be non-empty in production.
+      # Set DICTALAB_AI_PRODUCTION_MODE=true to enforce fail-fast on startup.
       DICTALAB_AI_SERVICE_TOKEN: ${DICTALAB_AI_SERVICE_TOKEN:-}
+      DICTALAB_AI_PRODUCTION_MODE: ${DICTALAB_AI_PRODUCTION_MODE:-false}
       DICTALAB_AI_TEMPERATURE: ${DICTALAB_AI_TEMPERATURE:-0.3}
       DICTALAB_AI_TRANSLATION_TEMPERATURE: ${DICTALAB_AI_TRANSLATION_TEMPERATURE:-0.1}
       DICTALAB_AI_NUM_CTX: ${DICTALAB_AI_NUM_CTX:-8192}
       DICTALAB_AI_NUM_PREDICT: ${DICTALAB_AI_NUM_PREDICT:-1000}
       DICTALAB_AI_TIMEOUT_SECONDS: ${DICTALAB_AI_TIMEOUT_SECONDS:-180}
+      DICTALAB_AI_MAX_CONCURRENCY: ${DICTALAB_AI_MAX_CONCURRENCY:-1}
+      DICTALAB_AI_CACHE_TTL_SECONDS: ${DICTALAB_AI_CACHE_TTL_SECONDS:-900}
+      # Fallback provider — disabled by default; never commit the API key here
+      DICTALAB_AI_FALLBACK_ENABLED: ${DICTALAB_AI_FALLBACK_ENABLED:-false}
+      DICTALAB_AI_FALLBACK_BASE_URL: ${DICTALAB_AI_FALLBACK_BASE_URL:-https://api.shopai.vn}
+      DICTALAB_AI_FALLBACK_MODEL: ${DICTALAB_AI_FALLBACK_MODEL:-gpt-4o-mini}
     ports:
+      # Bind only to loopback — AI Platform must not be reachable from the network
       - "127.0.0.1:${DICTALAB_AI_PORT:-8091}:8091"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health/live')"]
