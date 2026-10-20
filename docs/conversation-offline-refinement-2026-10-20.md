@@ -174,9 +174,12 @@ Thời gian baseline được tái sử dụng từ lượt s4 cũ: median **56,
 
 ### Các bản thử và repair
 
-#### r1 — Tách dịch: đã hoàn tất 45 lượt sinh/chấm
+#### r1 — English trước, dịch riêng: đã hoàn tất 45 lượt sinh/chấm
 
-Không có lỗi sinh; **43 verdict hợp lệ, 2 judge failure**. Có 29 ca qua nhóm nội dung và 23 ca qua toàn rubric trong 43 verdict hợp lệ; không tự coi hai ca unknown là đúng hoặc sai.
+- 45 output, 43 verdict hợp lệ, 2 judge failure.
+- 29/43 đạt nội dung, 23/43 đạt toàn rubric.
+
+Không tự coi hai ca unknown là đúng hoặc sai.
 
 Đối chiếu đúng **43 cặp chung** (không lấy baseline đủ 45 để so với r1 chỉ có 43 nhãn):
 
