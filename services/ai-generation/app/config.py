@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     model: str = "qwen3.5:9b"
     ollama_url: str = "http://127.0.0.1:11434"
     temperature: float = 0.3
+    translation_temperature: float = 0.1
     num_ctx: int = 8192
     num_predict: int = 1000
     timeout_seconds: float = 180.0
@@ -19,6 +20,8 @@ class Settings(BaseSettings):
         super().__init__(**values)
         if not 0 <= self.temperature <= 2:
             raise ValueError("temperature must be between 0 and 2")
+        if not 0 <= self.translation_temperature <= 2:
+            raise ValueError("translation_temperature must be between 0 and 2")
         if self.num_ctx < 512 or self.num_predict < 1:
             raise ValueError("invalid Ollama context or output limit")
         if self.timeout_seconds <= 0 or self.timeout_seconds > 600:
