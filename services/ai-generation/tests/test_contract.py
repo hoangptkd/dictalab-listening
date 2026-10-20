@@ -29,12 +29,12 @@ def test_idempotency_replay_does_not_call_generate_twice():
         "promptVersion": "V1", "instruction": "test", "context": {"turnNumber": 2},
     }
     headers = {"X-Request-Id": "req-replay", "Idempotency-Key": "key-replay"}
-    with patch("app.main.generate", new=AsyncMock(return_value=task)) as generate_mock:
+    with patch("app.main.run_workflow", new=AsyncMock(return_value=task)) as workflow_mock:
         client = TestClient(app)
         first = client.post("/v1/conversation/tasks", json=payload, headers=headers)
         second = client.post("/v1/conversation/tasks", json=payload, headers=headers)
         assert first.status_code == 200
         assert second.status_code == 200
         assert first.json()["task"] == second.json()["task"]
-        assert generate_mock.await_count == 1
+        assert workflow_mock.await_count == 1
     cache.clear()

@@ -12,8 +12,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .config import Settings
-from .ollama import generate
-from .schemas import ConversationTaskRequest, ConversationTaskResponse
+from .workflow import run_workflow
+from .schemas import ConversationContext, ConversationTaskRequest, ConversationTaskResponse
+
+MAX_HISTORY_ITEMS = 10
+MAX_RECENT_PRACTICE_ITEMS = 20
+MAX_UTTERANCE_CHARS = 2000
 
 settings = Settings()
 app = FastAPI(title="DictaLab AI Generation", version="0.1.0")
@@ -38,6 +42,29 @@ def _authorized(token: str | None) -> bool:
 def _fingerprint(payload: ConversationTaskRequest) -> str:
     raw = json.dumps(payload.model_dump(), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _normalize_context(context: ConversationContext, request_id: str) -> ConversationContext:
+    """Deterministically truncate oversized history/recentPractice so prompt size stays bounded."""
+    normalized = context.model_copy(deep=True)
+    truncated = False
+
+    if normalized.history and len(normalized.history) > MAX_HISTORY_ITEMS:
+        normalized.history = normalized.history[-MAX_HISTORY_ITEMS:]
+        truncated = True
+    for turn in (normalized.history or []):
+        if isinstance(turn, dict) and isinstance(turn.get("utteranceEn"), str) \
+                and len(turn["utteranceEn"]) > MAX_UTTERANCE_CHARS:
+            turn["utteranceEn"] = turn["utteranceEn"][:MAX_UTTERANCE_CHARS]
+            truncated = True
+
+    if normalized.recentPractice and len(normalized.recentPractice) > MAX_RECENT_PRACTICE_ITEMS:
+        normalized.recentPractice = normalized.recentPractice[-MAX_RECENT_PRACTICE_ITEMS:]
+        truncated = True
+
+    if truncated:
+        logger.info("conversation_context_truncated", extra={"request_id": request_id})
+    return normalized
 
 
 @app.get("/health/live")
@@ -83,7 +110,7 @@ async def create_task(payload: ConversationTaskRequest, request: Request,
         try:
             timeout = httpx.Timeout(settings.timeout_seconds)
             async with httpx.AsyncClient(timeout=timeout) as client:
-                task = await generate(payload, settings, client)
+                task = await run_workflow(payload, settings, client)
         except TimeoutError as exc:
             raise HTTPException(status_code=504, detail="generation timed out") from exc
         except Exception as exc:
