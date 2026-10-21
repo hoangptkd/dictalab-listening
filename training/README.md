@@ -344,3 +344,10 @@ Use a fresh output directory after this switch because the frozen plan binds the
 generator source, model and batching. Quota and live capacity must be
 rechecked for a later collection run; do not relabel a health probe or failed
 provider request as a successful teacher candidate.
+
+The first approved 3 Flash Preview collection passed judge calibration, then its
+24-task A1 teacher batch returned `finish_reason=stop` with malformed Unicode
+escapes in the target JSON. The batch was rejected with zero accepted targets;
+no repair or retry was performed. Invalid JSON responses retain the exact raw
+envelope and a credential-free `.invalid-json.json` diagnostic. A response ending
+normally does not prove its JSON or training targets are valid.

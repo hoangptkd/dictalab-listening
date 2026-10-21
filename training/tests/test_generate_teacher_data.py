@@ -143,6 +143,23 @@ def test_teacher_and_judge_share_quota_but_use_separate_output_budgets(tmp_path,
         assert not (tmp_path / f"{name}.request.json").exists()
 
 
+def test_malformed_unicode_target_is_preserved_and_never_repaired_or_retried(tmp_path):
+    client = object.__new__(Gemini)
+    client.output, client.key = tmp_path, "test-only"
+    malformed = r'{"items": [{"textVi": "bad \u00dt"}]}'
+    envelope = {"choices": [{"finish_reason": "stop", "message": {"content": malformed}}]}
+    client.opener = SimpleNamespace(open=lambda *a, **kw: BytesIO(json.dumps(envelope).encode()))
+    with pytest.raises(DatasetError, match="invalid target JSON"):
+        client.call(TEACHER, "author", {}, "teacher-bad")
+    saved = json.loads((tmp_path / "teacher-bad.envelope.json").read_text())
+    assert saved["choices"][0]["message"]["content"] == malformed
+    failure = json.loads((tmp_path / "teacher-bad.invalid-json.json").read_text())
+    assert failure["acceptedTargetRecords"] == 0 and failure["repaired"] is False
+    assert not (tmp_path / "teacher-bad.response.json").exists()
+    with pytest.raises(DatasetError, match="refusing automatic retry"):
+        client.call(TEACHER, "author", {}, "teacher-bad")
+
+
 def test_review_export_does_not_fabricate_human_approval_and_excludes_failed_groups(tmp_path):
     item, context = _item()
     task, records = build_records(item, context, _group(), ARTIFACT, "review")

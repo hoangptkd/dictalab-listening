@@ -224,7 +224,15 @@ class Gemini:
             choice = envelope["choices"][0]
             if choice["finish_reason"] != "stop":
                 raise DatasetError("unfinished response; no retry/repair allowed")
-            result = json.loads(choice["message"]["content"])
+            try:
+                result = json.loads(choice["message"]["content"])
+            except json.JSONDecodeError as exc:
+                write_json(self.output / f"{name}.invalid-json.json", {
+                    "requestHash": digest(body), "envelopeHash": digest(envelope),
+                    "error": exc.msg, "line": exc.lineno, "column": exc.colno, "offset": exc.pos,
+                    "repaired": False, "acceptedTargetRecords": 0})
+                raise DatasetError(f"{name}: invalid target JSON at character {exc.pos}; "
+                                   "raw envelope preserved, stopped without repair/retry") from None
             if not isinstance(result, dict):
                 raise DatasetError("expected one strict JSON object")
             write_json(response_path, {"result": result, "responseHash": digest(result),
