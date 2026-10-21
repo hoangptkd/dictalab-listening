@@ -1,5 +1,6 @@
 package com.dictalab.service;
 
+import com.dictalab.config.GeminiProviderProperties;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,6 +13,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Gemini text client using Google's OpenAI-compatible chat endpoint; keeps an ephemeral Ollama path for local development. */
 @Service
@@ -22,6 +24,9 @@ public class GeminiClient {
     private final String model;
     private final String url;
     private final ProviderGuard guard;
+    private final GeminiProviderProperties providerProperties;
+    private final GeminiQuotaCoordinator quota;
+    private final AtomicInteger nextProvider = new AtomicInteger();
     private Duration assessmentTimeout=Duration.ofSeconds(60);
     private Duration generationTimeout=Duration.ofSeconds(30);
     private boolean local;
@@ -67,21 +72,34 @@ public class GeminiClient {
                            io.micrometer.core.instrument.MeterRegistry metrics,
                            io.micrometer.observation.ObservationRegistry observations,
                            @Value("${dictalab.provider.circuit-failures:5}") int circuitFailures,
-                           @Value("${dictalab.provider.circuit-open-seconds:30}") int circuitOpenSeconds) {
+                           @Value("${dictalab.provider.circuit-open-seconds:30}") int circuitOpenSeconds,
+                           GeminiProviderProperties providerProperties,
+                           GeminiQuotaCoordinator quota) {
         this.json = json;
         this.key = key;
         this.model = model;
         this.url = url;
         this.guard=new ProviderGuard("gemini",concurrency,metrics,observations,circuitFailures,Duration.ofSeconds(circuitOpenSeconds));
+        this.providerProperties = providerProperties;
+        this.quota = quota;
     }
 
     public GeminiClient(ObjectMapper json,String key,String model,String url){
         this(json,key,model,url,8,new io.micrometer.core.instrument.simple.SimpleMeterRegistry(),
-                io.micrometer.observation.ObservationRegistry.NOOP,5,30);
+                io.micrometer.observation.ObservationRegistry.NOOP,5,30,
+                new GeminiProviderProperties(List.of(),0,0,false,"memory"),null);
+    }
+
+    public GeminiClient(ObjectMapper json,String key,String model,String url,int concurrency,
+                        io.micrometer.core.instrument.MeterRegistry metrics,
+                        io.micrometer.observation.ObservationRegistry observations,int circuitFailures,
+                        int circuitOpenSeconds) {
+        this(json,key,model,url,concurrency,metrics,observations,circuitFailures,circuitOpenSeconds,
+                new GeminiProviderProperties(List.of(),0,0,false,"memory"),null);
     }
 
     public boolean configured() {
-        return local || !key.isBlank();
+        return local || !key.isBlank() || routingEnabled();
     }
 
     public String model() { return local ? localModel : model; }
@@ -107,18 +125,22 @@ public class GeminiClient {
         if (requestModel == null || requestModel.isBlank()) throw new IllegalArgumentException("Missing Gemini model");
         try (var permit=guard.enter()) {
           try {
+            ProviderSelection selection = local ? null : selectProvider(instruction, input, requestModel);
+            String targetModel = local ? localModel : selection.model();
+            String targetUrl = local ? localBaseUrl + "/api/chat" : selection.url();
+            String targetKey = local ? "" : selection.apiKey();
             String body = json.writeValueAsString(local ? Map.of("model", localModel, "stream", false, "think", false,
                     "format", "json", "options", Map.of("temperature", 0, "num_ctx", 8192, "num_predict", 2200),
                     "messages", List.of(Map.of("role", "system", "content", instruction), Map.of("role", "user", "content", input))) : Map.of(
-                    "model", requestModel, "temperature", 0, "max_tokens", 2200,
+                    "model", targetModel, "temperature", 0, "max_tokens", 2200,
                     "response_format", Map.of("type", "json_object"),
                     "messages", List.of(Map.of("role", "system", "content", instruction),
                             Map.of("role", "user", "content", input))));
-            var builder = HttpRequest.newBuilder(URI.create(local ? localBaseUrl + "/api/chat" : url))
+            var builder = HttpRequest.newBuilder(URI.create(targetUrl))
                     .timeout(timeout)
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body));
-            if (!local) builder.header("Authorization", "Bearer " + key);
+            if (!local) builder.header("Authorization", "Bearer " + targetKey);
             HttpRequest request = builder.build();
             var pending = http.sendAsync(request, info -> BoundedProviderBody.bytes(100_000));
             HttpResponse<byte[]> response;
@@ -176,4 +198,25 @@ public class GeminiClient {
         }
         }
     }
+
+    private boolean routingEnabled() {
+        return providerProperties != null && providerProperties.quotaEnabled()
+                && !providerProperties.enabledProviders().isEmpty() && quota != null;
+    }
+
+    private ProviderSelection selectProvider(String instruction, String input, String requestModel) {
+        if (!routingEnabled()) return new ProviderSelection(requestModel, url, key);
+        var providers = providerProperties.enabledProviders();
+        int start = Math.floorMod(nextProvider.getAndIncrement(), providers.size());
+        int estimatedTokens = Math.max(1, (instruction.length() + input.length() + 3) / 4 + 2200);
+        for (int offset = 0; offset < providers.size(); offset++) {
+            var provider = providers.get((start + offset) % providers.size());
+            String selectedModel = requestModel.equals(model) ? provider.model() : requestModel;
+            if (quota.tryReserve(provider.id(), selectedModel, estimatedTokens))
+                return new ProviderSelection(selectedModel, provider.url(), provider.apiKey());
+        }
+        throw new ProviderGuard.Unavailable("Gemini đã hết quota tạm thời.", 30, true);
+    }
+
+    private record ProviderSelection(String model, String url, String apiKey) {}
 }
