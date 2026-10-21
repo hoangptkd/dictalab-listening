@@ -33,14 +33,17 @@ def run_smoke(output: Path) -> dict:
     tokenizer = PreTrainedTokenizerFast(tokenizer_object=raw, unk_token="[UNK]", pad_token="[PAD]",
                                        eos_token="[EOS]", chat_template=template)
     model_config = Qwen3_5TextConfig(vocab_size=len(tokenizer), hidden_size=32, intermediate_size=64,
-        num_hidden_layers=1, num_attention_heads=2, num_key_value_heads=1, head_dim=16,
-        layer_types=["full_attention"], max_position_embeddings=512, tie_word_embeddings=True,
+        num_hidden_layers=2, num_attention_heads=2, num_key_value_heads=1, head_dim=16,
+        linear_num_key_heads=1, linear_num_value_heads=2,
+        linear_key_head_dim=16, linear_value_head_dim=16, linear_conv_kernel_dim=4,
+        layer_types=["linear_attention", "full_attention"], max_position_embeddings=512, tie_word_embeddings=True,
         rope_parameters={"rope_type": "default", "rope_theta": 10000.0,
                          "partial_rotary_factor": 1.0, "mrope_section": [3, 3, 2]},
         pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id, use_cache=False)
     model = Qwen3_5ForCausalLM(model_config)
     model = get_peft_model(model, LoraConfig(r=2, lora_alpha=4, lora_dropout=0.0, bias="none",
                                            task_type="CAUSAL_LM", target_modules=["q_proj", "v_proj"]))
+    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     rows = [{"targetMessageIndex": 2, "lossMaskPolicy": "last-assistant-only", "messages": [
         {"role": "system", "content": "Return JSON."},
         {"role": "user", "content": json.dumps({"number": i})},
@@ -50,7 +53,7 @@ def run_smoke(output: Path) -> dict:
     initial = {name: param.detach().clone() for name, param in model.named_parameters() if param.requires_grad}
     config = {"seed": 17, "device": "cpu", "quantization": {"compute_dtype": "float32"},
               "training": {"per_device_batch_size": 1, "gradient_accumulation_steps": 1,
-                  "gradient_checkpointing": False, "learning_rate": 0.001, "warmup_ratio": 0.0,
+                  "gradient_checkpointing": True, "learning_rate": 0.001, "warmup_ratio": 0.0,
                   "scheduler": "constant", "epochs": 1}}
     trainer = make_trainer(model, tokenizer, features, features, config, output / "checkpoints", smoke=True)
     if trainer.train_dataset[0]["labels"] != features[0]["labels"]:
@@ -75,6 +78,7 @@ def run_smoke(output: Path) -> dict:
               "steps": result.global_step, "trainingLoss": result.training_loss,
               "maskPolicy": "last-assistant-only", "preflight": preflight,
               "trainerPreservedMask": True,
+              "gradientCheckpointing": True,
               "optimizerUpdatedAdapter": True, "freshModelAdapterReload": True,
               "epochLoopSteps": epoch_result.global_step, "bestCheckpointReload": True,
               "adapterHash": file_hash(output / "adapter/adapter_model.safetensors")}

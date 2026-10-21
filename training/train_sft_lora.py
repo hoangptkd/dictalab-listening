@@ -114,8 +114,8 @@ def checked_inputs(config_path: Path) -> tuple[dict, dict, dict, dict]:
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     if not isinstance(config, dict):
         raise DatasetError("training config must be an object")
-    if config.get("base_model") != "Qwen/Qwen3.5-9B" or not re.fullmatch(r"[a-f0-9]{40}", str(config.get("base_revision", ""))):
-        raise DatasetError("base model must be Qwen3.5-9B with an immutable revision")
+    if config.get("base_model") != "Qwen/Qwen3.5-4B" or not re.fullmatch(r"[a-f0-9]{40}", str(config.get("base_revision", ""))):
+        raise DatasetError("base model must be Qwen3.5-4B with an immutable revision")
     for field, expected in (("packing", False), ("repair_enabled", False), ("fallback_enabled", False),
                             ("assistant_only_loss", True), ("enable_thinking", False), ("require_loss_mask_smoke", True)):
         if config.get(field) is not expected:
@@ -144,6 +144,13 @@ def checked_inputs(config_path: Path) -> tuple[dict, dict, dict, dict]:
         raise DatasetError("inconsistent LoRA/QLoRA quantization settings")
     if lora["method"] == "qlora" and (quant.get("quant_type") != "nf4" or quant.get("double_quant") is not True):
         raise DatasetError("P0 QLoRA requires NF4 and double quantization")
+    device, dtype = config.get("device"), quant.get("compute_dtype")
+    if device not in ("cpu", "cuda"):
+        raise DatasetError("device must be cpu or cuda")
+    if device == "cpu" and (lora["method"] != "lora" or dtype != "float32"):
+        raise DatasetError("CPU training requires unquantized LoRA with float32")
+    if device == "cuda" and dtype not in ("bfloat16", "float16"):
+        raise DatasetError("CUDA training requires an explicit bfloat16 or float16 compute dtype")
     manifest_path = ROOT / config["dataset_manifest"]
     manifest, splits = load_bundle(manifest_path)
     validate_review(read_object(ROOT / config["dataset_approval"]), manifest, manifest_path, splits)
@@ -271,6 +278,18 @@ def write_report(output: Path, report: dict) -> None:
         handle.write(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
 
 
+def check_cpu_memory(inspection: dict, available_bytes: int) -> dict:
+    count = inspection.get("parameterCountFromConfig")
+    if type(count) is not int or count <= 0:
+        raise DatasetError("CPU memory preflight requires an inspected parameter count")
+    # Admission estimate only: float32 base plus workspace; peak usage needs a real smoke.
+    required = count * 4 + 8 * 1024**3
+    if available_bytes < required:
+        raise DatasetError(f"CPU RAM preflight: {available_bytes / 1024**3:.1f} GiB available, "
+                           f"at least {required / 1024**3:.1f} GiB estimated; checkpoint was not loaded")
+    return {"availableBytesBeforeLoad": available_bytes, "estimatedRequiredBytes": required}
+
+
 def run(config_path: Path, *, check_only: bool = False, smoke: bool = False) -> dict:
     config, manifest, splits, inspection = checked_inputs(config_path)
     versions = verify_environment(ROOT / config["environment_lock"])
@@ -283,19 +302,22 @@ def run(config_path: Path, *, check_only: bool = False, smoke: bool = False) -> 
         return {"offlineChecksPassed": True, "datasetHash": manifest["datasetHash"], "trainingReady": False}
     if int(os.environ.get("WORLD_SIZE", "1")) != 1:
         raise DatasetError("P0 supports a single training process/device")
-    if config.get("device") != "cuda":
-        raise DatasetError("Qwen3.5-9B training requires a CUDA training host; use smoke_cpu.py on this PC")
     import torch
     from transformers import AutoTokenizer, BitsAndBytesConfig, Qwen3_5ForCausalLM, set_seed
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-    if not torch.cuda.is_available():
-        raise DatasetError("CUDA is unavailable; the 9B checkpoint was not loaded")
+    device = config["device"]
     dtype_name = config["quantization"]["compute_dtype"]
-    if dtype_name not in ("bfloat16", "float16"):
-        raise DatasetError("CUDA training requires an explicit bfloat16 or float16 compute dtype")
-    if dtype_name == "bfloat16" and not torch.cuda.is_bf16_supported():
-        raise DatasetError("GPU does not support bf16; review an fp16 config explicitly")
+    memory = {}
+    if device == "cuda":
+        if not torch.cuda.is_available():
+            raise DatasetError("CUDA is unavailable; the 4B checkpoint was not loaded")
+        if dtype_name == "bfloat16" and not torch.cuda.is_bf16_supported():
+            raise DatasetError("GPU does not support bf16; review an fp16 config explicitly")
+        torch.cuda.reset_peak_memory_stats()
+    else:
+        import psutil
+        memory = check_cpu_memory(inspection, psutil.virtual_memory().available)
     set_seed(config["seed"])
     tokenizer = AutoTokenizer.from_pretrained(config["base_model"], revision=config["base_revision"], trust_remote_code=False)
     if hashlib.sha256(str(tokenizer.chat_template).encode()).hexdigest() != inspection.get("chatTemplateHash"):
@@ -308,7 +330,7 @@ def run(config_path: Path, *, check_only: bool = False, smoke: bool = False) -> 
     output = ROOT / config["output_dir"]
     output.mkdir(parents=True, exist_ok=False)
     kwargs = {"revision": config["base_revision"], "trust_remote_code": False,
-              "dtype": getattr(torch, dtype_name), "device_map": {"": 0}, "output_loading_info": True}
+              "dtype": getattr(torch, dtype_name), "device_map": {"": device}, "output_loading_info": True}
     method = config["lora"]["method"]
     quant = config["quantization"]
     if method == "qlora" and quant["load_in_4bit"] is True:
@@ -331,7 +353,10 @@ def run(config_path: Path, *, check_only: bool = False, smoke: bool = False) -> 
     model = get_peft_model(model, LoraConfig(r=lora["r"], lora_alpha=lora["alpha"],
         lora_dropout=lora["dropout"], bias=lora["bias"], revision=config["base_revision"],
         task_type="CAUSAL_LM", target_modules=targets))
-    preflight = adapter_preflight(model, tokenized["train"][0], tokenizer, output / "preflight-adapter")
+    if config["training"]["gradient_checkpointing"]:
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    preflight = adapter_preflight(model, max(tokenized["train"], key=lambda row: len(row["input_ids"])),
+                                  tokenizer, output / "preflight-adapter")
     set_seed(config["seed"])
     trainer = make_trainer(model, tokenizer, tokenized["train"], tokenized["validation"], config, output / "checkpoints", smoke=smoke)
     result = trainer.train()
@@ -351,7 +376,9 @@ def run(config_path: Path, *, check_only: bool = False, smoke: bool = False) -> 
               "datasetHash": manifest["datasetHash"], **input_hashes,
               "gitHead": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
               "versions": versions, "python": sys.version.split()[0], "cuda": torch.version.cuda,
-              "gpu": torch.cuda.get_device_name(0), "peakAllocatedBytes": torch.cuda.max_memory_allocated(),
+              "device": device, "computeDtype": dtype_name, "cpuMemoryPreflight": memory,
+              "gpu": torch.cuda.get_device_name(0) if device == "cuda" else None,
+              "peakAllocatedBytes": torch.cuda.max_memory_allocated() if device == "cuda" else None,
               "maskPolicy": "last-assistant-only", "truncationCount": 0, "preflight": preflight,
               "steps": result.global_step, "trainingLoss": result.training_loss,
               "validationMetrics": validation_metrics,

@@ -13,12 +13,12 @@ def test_full_text_paths_avoid_vision_and_unselected_hybrid_layers():
 
 def test_inspection_requires_pinned_revision_before_importing_torch(tmp_path):
     with pytest.raises(ValueError, match="immutable"):
-        inspect("Qwen/Qwen3.5-9B", tmp_path / "report.json", revision="main")
+        inspect("Qwen/Qwen3.5-4B", tmp_path / "report.json", revision="main")
 
 
 def test_inspection_preserves_existing_report(tmp_path):
     output = tmp_path / "report.json"
     output.write_text("existing", encoding="utf-8")
     with pytest.raises(ValueError, match="overwrite"):
-        inspect("Qwen/Qwen3.5-9B", output, revision="a" * 40)
+        inspect("Qwen/Qwen3.5-4B", output, revision="a" * 40)
     assert output.read_text(encoding="utf-8") == "existing"

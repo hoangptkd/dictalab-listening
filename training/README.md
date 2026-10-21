@@ -10,10 +10,10 @@ the service image.
 | Step | Delivered code | Execution gate |
 | --- | --- | --- |
 | 0: freeze scope | A1/A2/B1, content + translation, first attempt only; no repair or fallback | No production model/config change |
-| 1: isolated tooling | Offline dependency lock, ignored output directories, CPU CI | GPU/CUDA training lock still needs the selected training machine |
+| 1: isolated tooling | Offline dependency lock, ignored output directories, CPU CI and tested local CPU lock | CUDA lock needed only for a future GPU run |
 | 2: dataset contract | Artifact/schema/prompt/input/output hashes, exact production message order, review references | Current-contract export and human review required |
 | 3: preparation | Production hard validator, dedup, group splits, provenance and coverage manifest | Near-duplicate/holdout audit and P0 coverage approval still required |
-| 4: model inspection + P0 config | Pinned checkpoint revision, text module map, chat template smoke, last-assistant loss policy | Real checkpoint/tokenizer inspection and GPU forward/backward/mask smoke not run |
+| 4: model inspection + P0 config | Qwen3.5-4B pinned revision, inspected text modules/tokenizer, last-assistant loss policy | Real pretrained weight loading and forward/backward remain pending |
 
 `train_sft_lora.py` now implements preflight and training; `smoke_cpu.py` tests
 the runtime locally on a tiny random model. `prepare_dataset.py` never repairs an output
@@ -121,13 +121,13 @@ Windows/Python 3.12 CPU runtime. The CUDA environment is still pending.
 
 ```powershell
 python training/inspect_model.py `
-  --model Qwen/Qwen3.5-9B `
-  --revision <immutable-40-character-Hugging-Face-commit-SHA> `
-  --output data/fine-tuning/inspections/conversation-sft-p0.json
+  --model Qwen/Qwen3.5-4B `
+  --revision 851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a `
+  --output data/fine-tuning/inspections/conversation-sft-p0-4b.json
 ```
 
 Inspection downloads config/tokenizer at the requested revision and creates the
-text model on the meta device; it does not download the 9B weights. It renders
+text model on the meta device; it does not download checkpoint weights. It renders
 three test messages with thinking disabled. The report records full text module
 paths, unselected linear layers, library versions and chat template hash. It
 refuses to overwrite an existing report.
@@ -137,7 +137,7 @@ hybrid DeltaNet layers remain listed as unselected. Review that coverage before
 choosing a LoRA target set. No vision module is selected. Config-only inspection
 does not prove weight loading, assistant masks, forward/backward, or adapter
 save/load. The trainer performs those checks separately. The YAML remains a
-proposal with `status: requires_preflight`; fill the immutable revision and
+proposal with `status: requires_preflight`; retain the pinned revision and
 provide the reviewed inputs before invoking it. Inspection inputs must be stored
 outside the training output directory, which must not already exist.
 
@@ -154,8 +154,21 @@ for audit. There is no serving model switch to undo.
 ## Local CPU runtime on the current PC
 
 Verified 2026-10-22: Ryzen 7 PRO 6850HS, 31.3 GiB RAM, Radeon integrated graphics
-with 0.5 GiB reported dedicated memory, no CUDA GPU. The existing QLoRA 9B
-training config requires a CUDA host. No 9B weights were downloaded or trained.
+with 0.5 GiB reported dedicated memory, no CUDA GPU. The active P0 target is
+[Qwen/Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B), pinned to revision
+`851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`. It uses CPU LoRA, float32,
+batch size 1 and gradient checkpointing with the existing CPU lock. CPU 4-bit
+QLoRA and half precision are rejected. No pretrained weights were downloaded
+or trained. This changes training configuration only; production serving stays
+under its existing release gates.
+
+Config inspection counts 4,205,751,296 text parameters: about 15.7 GiB for the
+float32 base alone. Before loading, the runner requires that amount plus an
+8 GiB workspace estimate (23.7 GiB available RAM). This is an admission estimate,
+not a guarantee that a 4,096-token run fits. The observed 14.7 GiB free on this
+PC fails that gate. Close memory-heavy applications before attempting a real
+smoke; CPU throughput and peak memory still need measurement. Do not shorten
+production prompts or silently truncate targets to get around memory limits.
 
 The local runtime is isolated at `data/fine-tuning/.venv-cpu`; nothing is added
 to the production image. To recreate it using the installed `uv`:
@@ -177,18 +190,19 @@ $env:SFT_RUN_RUNTIME_TESTS = '1'
 data/fine-tuning/.venv-cpu/Scripts/python.exe -m pytest -q training/tests
 ```
 
-The smoke uses a random one-layer Qwen3.5 text model and a tiny character
+The smoke uses a random two-layer Qwen3.5 text model (linear + full attention) and a tiny character
 tokenizer with synthetic JSON fixtures. It verifies finite forward/backward,
 nonzero LoRA gradients, frozen base weights, one optimizer update, padding/loss
 mask preservation, adapter safetensors reload on a fresh model, and an epoch
-loop with validation and best-checkpoint reload. It writes
+loop with validation and best-checkpoint reload, with gradient checkpointing
+enabled. It writes
 `run-manifest.json` with `trainingReady=false`, `realCheckpointLoaded=false`,
 and `releaseAllowed=false`. These artifacts are test fixtures, not a candidate
 Conversation model. The synthetic smoke validation set deliberately reuses
 fixtures; its loss is not a model quality measurement.
 
-Real Qwen3.5 config/tokenizer inspection also passed on this PC at revision
-`c202236235762e1c871ad0ccb60c8ee5ba337b9a`. The real tokenizer was checked on
+Real 4B config/tokenizer inspection passed on this PC at the pinned revision
+above. Its tokenizer and final-assistant mask were checked on
 production-format content and translation fixtures: 2,331/248 total tokens,
 150/44 supervised target tokens. These checks load no checkpoint weights.
 
@@ -235,18 +249,22 @@ not edit the prepared manifest or fabricate review decisions.
 pins, including torch, transformers, trl, peft, datasets, accelerate, safetensors
 and PyYAML. The CPU lock is tested; create a separate CUDA lock with the same
 HF library versions and the host's compatible PyTorch/bitsandbytes builds.
-The 9B CUDA/QLoRA load path has not been executed on the current PC.
+The active YAML uses `training/requirements-cpu.lock`. Neither the pretrained
+4B CPU load path nor CUDA/QLoRA has been executed on the current PC.
 
 ```powershell
-python training/train_sft_lora.py --config training/configs/conversation-sft-p0.yaml --check
-python training/train_sft_lora.py --config training/configs/conversation-sft-p0.yaml --smoke
-python training/train_sft_lora.py --config training/configs/conversation-sft-p0.yaml
+data/fine-tuning/.venv-cpu/Scripts/python.exe training/train_sft_lora.py --config training/configs/conversation-sft-p0.yaml --check
+data/fine-tuning/.venv-cpu/Scripts/python.exe training/train_sft_lora.py --config training/configs/conversation-sft-p0.yaml --smoke
+data/fine-tuning/.venv-cpu/Scripts/python.exe training/train_sft_lora.py --config training/configs/conversation-sft-p0.yaml
 ```
 
 `--check` performs offline gates only. `--smoke` additionally loads the real base
 and runs one optimizer update on approved data. Use a new run/output directory
-for full training; weights are loaded fresh. The real trainer supports one CUDA
-process/device, LoRA or QLoRA, with explicit bf16/fp16 capability checks.
+for full training; weights are loaded fresh. The real trainer supports one CPU
+or CUDA process/device. CPU uses float32 LoRA with a RAM admission check;
+CUDA supports LoRA or QLoRA with explicit bf16/fp16 capability checks.
+The adapter preflight uses the longest training sequence with checkpointing
+enabled when configured, before starting the optimizer loop.
 
 Loss labels are computed before TRL: system/user tokens are `-100`, final target
 and its template terminator are supervised, padding stays `-100` even if pad
@@ -257,7 +275,8 @@ are disabled because the runner has already built the exact mask.
 
 A successful full run saves adapter/tokenizer, trainer checkpoints/state,
 train/validation metrics and a manifest with config/dataset/review/environment/
-inspection/adapter hashes, Git SHA, GPU/CUDA and library versions. It can set
+inspection/adapter hashes, Git SHA, device/dtype, CPU memory admission estimate,
+GPU/CUDA and library versions. CPU GPU-memory fields are null. It can set
 `trainingReady=true` in the new **run** manifest after preflight and training;
 the dataset manifest stays unchanged. `releaseAllowed` remains false until the
 separate base/candidate first-pass benchmark and release gates pass.

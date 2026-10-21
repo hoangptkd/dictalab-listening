@@ -44,7 +44,7 @@ def inspect(model_id: str, output: Path, *, revision: str, include_mlp: bool = F
     text_config = config.get_text_config()
     if text_config.model_type != "qwen3_5_text":
         raise ValueError("this P0 inspection requires a Qwen3.5 text backbone")
-    # Shape inspection needs no 9B weight download, GPU allocation or random tensor initialization.
+    # Shape inspection needs no weight download, GPU allocation or random tensor initialization.
     with torch.device("meta"):
         model = Qwen3_5ForCausalLM(text_config)
     names = [name for name, module in model.named_modules()

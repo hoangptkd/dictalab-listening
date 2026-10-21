@@ -7,7 +7,7 @@ import pytest
 
 from training.prepare_dataset import DatasetError
 from training.tests.test_prepare_dataset import _prepare, _row, _write
-from training.train_sft_lora import checked_inputs, file_hash, load_bundle, pad_batch, tokenize_target, validate_review, verify_environment
+from training.train_sft_lora import check_cpu_memory, checked_inputs, file_hash, load_bundle, pad_batch, tokenize_target, validate_review, verify_environment
 
 
 class CharacterTokenizer:
@@ -127,13 +127,59 @@ def test_real_cpu_sft_and_adapter_round_trip(tmp_path):
     assert report["steps"] == 1
     assert report["preflight"]["finiteGradients"]
     assert report["optimizerUpdatedAdapter"] and report["freshModelAdapterReload"]
+    assert report["gradientCheckpointing"]
     assert not report["trainingReady"] and not report["realCheckpointLoaded"]
 
 
-def test_template_config_cannot_load_a_floating_checkpoint():
+def test_template_config_cannot_load_a_floating_checkpoint(tmp_path):
+    import yaml
     from training.prepare_dataset import ROOT
+    config = yaml.safe_load((ROOT / "training/configs/conversation-sft-p0.yaml").read_text(encoding="utf-8"))
+    config["base_revision"] = "main"
+    path = tmp_path / "floating.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
     with pytest.raises(DatasetError, match="immutable revision"):
+        checked_inputs(path)
+
+
+def test_cpu_4b_config_reaches_data_gate_without_cuda(monkeypatch):
+    import training.train_sft_lora as runner
+    from training.prepare_dataset import ROOT
+    def stop_at_data(path):
+        raise DatasetError("reached reviewed dataset gate")
+    monkeypatch.setattr(runner, "load_bundle", stop_at_data)
+    with pytest.raises(DatasetError, match="reached reviewed dataset gate"):
         checked_inputs(ROOT / "training/configs/conversation-sft-p0.yaml")
+
+
+@pytest.mark.parametrize("change", ["quantized", "half", "unknown_device", "old_model"])
+def test_incompatible_cpu_settings_fail_before_data(tmp_path, change):
+    import yaml
+    from training.prepare_dataset import ROOT
+    config = yaml.safe_load((ROOT / "training/configs/conversation-sft-p0.yaml").read_text(encoding="utf-8"))
+    if change == "quantized":
+        config["lora"]["method"] = "qlora"
+        config["quantization"]["load_in_4bit"] = True
+    elif change == "half":
+        config["quantization"]["compute_dtype"] = "float16"
+    elif change == "unknown_device":
+        config["device"] = "auto"
+    else:
+        config["base_model"] = "Qwen/Qwen3.5-9B"
+    path = tmp_path / "invalid.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    with pytest.raises(DatasetError, match="CPU training|device must|base model must"):
+        checked_inputs(path)
+
+
+def test_cpu_memory_guard_stops_before_weights_and_requires_inspected_count():
+    gib = 1024**3
+    inspection = {"parameterCountFromConfig": gib}
+    with pytest.raises(DatasetError, match="checkpoint was not loaded"):
+        check_cpu_memory(inspection, 12 * gib - 1)
+    assert check_cpu_memory(inspection, 12 * gib)["estimatedRequiredBytes"] == 12 * gib
+    with pytest.raises(DatasetError, match="inspected parameter count"):
+        check_cpu_memory({}, 32 * gib)
 
 
 @pytest.mark.parametrize("field,value", [("epochs", 0), ("learning_rate", -1), ("use_cache", True)])
