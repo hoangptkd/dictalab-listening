@@ -88,4 +88,4 @@ Tham chiếu triển khai: [Ollama chat/structured outputs](https://docs.ollama.
 
 ## Tích hợp nhánh
 
-Đợt này không có migration. Tại thời điểm kiểm tra, `origin/main` ở `ae6da19` có payment migration V39, còn nhánh hiện tại đã có Coach V39 áp dụng ở máy HP. Không merge trực tiếp hai lịch sử này hoặc đổi tên migration đã áp dụng chỉ để vượt kiểm tra. Cần xử lý tích hợp migration riêng trước khi phát hành chung lên main; push nhánh tính năng không phải deploy production.
+Đợt này không thêm migration runtime. Production đã áp dụng payment V39 và payment ledger guards V40; migration Coach chưa được áp dụng ở production nên đã được đổi tên thành V41 trước khi phát hành chung lên `main`. Không đổi tên migration đã áp dụng chỉ để vượt kiểm tra; push nhánh tính năng không phải deploy production.

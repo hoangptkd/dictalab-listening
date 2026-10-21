@@ -92,7 +92,7 @@ Môi trường quan sát lúc bàn giao: HP EliteBook 865 G9, Ryzen 7 PRO 6850HS
 
 ## Đo hành vi và migration
 
-V39 chỉ tạo bảng `coach_usage_events` và index mới, không sửa điểm, transcript hoặc report cũ. Đã có kiểm tra trên H2 và PostgreSQL 18.4. Khi đưa lên môi trường khác, vẫn cần quy trình backup/deploy hiện có; FK mới có thể chờ lock của bảng phiên, không cam kết DDL không khóa production. Bản ứng dụng cũ bỏ qua bảng mới được; rollback app không cần xóa bảng.
+V41 chỉ tạo bảng `coach_usage_events` và index mới, không sửa điểm, transcript hoặc report cũ. Migration Coach được đánh số V41 vì production đã áp dụng V39 payment operations và V40 payment ledger guards. Đã có kiểm tra trên H2 và PostgreSQL 18.4. Khi đưa lên môi trường khác, vẫn cần quy trình backup/deploy hiện có; FK mới có thể chờ lock của bảng phiên, không cam kết DDL không khóa production. Bản ứng dụng cũ bỏ qua bảng mới được; rollback app không cần xóa bảng.
 
 Bốn sự kiện: `coach_result_viewed`, `coach_details_opened`, `coach_quick_review_started`, `coach_quick_review_completed`. Backend kiểm tra chủ sở hữu và buổi đã hoàn thành; khóa theo session + event + run chống trùng reload/polling. View/details chỉ có một bản ghi mỗi session; mỗi lượt ôn có UUID riêng, completion phải có start tương ứng. Tối đa 82 sự kiện mỗi session. Không lưu câu trả lời trong analytics; đây là telemetry không đáng tin từ client, không cấp điểm hoặc xác nhận tiến bộ.
 
