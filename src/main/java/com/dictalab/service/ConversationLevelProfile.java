@@ -10,7 +10,7 @@ import java.util.Map;
 enum ConversationLevelProfile {
     A1(8, 35, 2, 2, "Thông tin trực tiếp, câu ngắn và quen thuộc. Có thể nghe chậm."),
     A2(18, 55, 2, 3, "Nối thông tin qua vài câu; nghe ý chính và lý do rõ ràng."),
-    B1(30, 90, 2, 3, "Theo dõi thông điệp chính, mục đích, lý do và điều kiện trong ngữ cảnh quen thuộc.");
+    B1(30, 90, 2, 3, "Hiểu ý chính, lý do, điều kiện, thái độ rõ ràng và suy luận đơn giản có căn cứ trong ngữ cảnh quen thuộc.");
 
     static final List<String> SUPPORTED_LEVELS = Arrays.stream(values()).map(Enum::name).toList();
     static final Map<String, Integer> LEGACY_BOUNDS = Map.of("minWords", 20, "maxWords", 65);
@@ -41,4 +41,21 @@ enum ConversationLevelProfile {
     int minSlots() { return minSlots; }
     int maxSlots() { return maxSlots; }
     String descriptionVi() { return descriptionVi; }
+
+    List<String> taskTypes() {
+        if (this == A1) return List.of("direct_detail");
+        var types = new java.util.ArrayList<>(List.of("direct_detail", "gist", "reason_purpose",
+                "change_revision", "instruction_sequence", "condition"));
+        if (this == B1) types.addAll(List.of("opinion_attitude", "inference_prediction"));
+        return List.copyOf(types);
+    }
+
+    Map<String, String> skills() {
+        var skills = new LinkedHashMap<String, String>();
+        for (String key : List.of("condition", "change", "gist", "reason", "instructions", "details"))
+            skills.put(key, ConversationContent.SKILLS.get(key));
+        if (this == B1) for (String key : List.of("attitude", "inference"))
+            skills.put(key, ConversationContent.SKILLS.get(key));
+        return Collections.unmodifiableMap(skills);
+    }
 }

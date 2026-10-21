@@ -46,7 +46,7 @@ jobs:
       - name: Python contracts, registry, readiness, regression and golden metrics
         run: python -m pytest -q services/ai-generation/tests tools/ai-eval
       - name: Java routing and contract tests
-        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,ShopAiKeyClientTest,ListeningComprehensionIntegrationTest test
+        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,ShopAiKeyClientTest,ListeningComprehensionIntegrationTest test
       - name: Java to Python to fake Ollama smoke
         run: python tools/ai-eval/smoke.py
       - name: Java API RabbitMQ worker smoke, local/cloud routing and capacity sweep

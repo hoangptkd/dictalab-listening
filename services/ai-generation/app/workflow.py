@@ -25,7 +25,7 @@ import httpx
 from .config import Settings
 from .ollama import OllamaError, merge_content_and_translation
 from .prompt_versions import generate_content as _generate_content, translate_task
-from .schemas import ConversationContext
+from .schemas import ConversationContext, ConversationTaskRequest
 from .state import WorkflowState
 from .validation import validate_task
 
@@ -138,13 +138,16 @@ async def node_translate(
 # Node 4 — validate (deterministic, no LLM)
 # ---------------------------------------------------------------------------
 
-def node_validate(state: WorkflowState) -> WorkflowState:
+def node_validate(state: WorkflowState, request: Any = None) -> WorkflowState:
     if state.merged is None:
         raise OllamaError("validate node reached without merged task")
-    errors = validate_task(state.merged)
+    level = getattr(request, "level", None)
+    profile = getattr(getattr(request, "context", None), "levelProfile", None)
+    errors = validate_task(state.merged, level=level if isinstance(level, str) else None,
+                           level_profile=profile if isinstance(profile, dict) else None)
     if errors:
         logger.warning(
-            "workflow_validation_errors",
+            "workflow_validation_errors errors=%s", errors,
             extra={
                 "request_id": state.request_id,
                 "attempt": state.attempt,
@@ -179,9 +182,15 @@ async def node_repair_once(
         extra={"request_id": state.request_id, "errors": list(state.validation_errors)},
     )
     repaired = state.replace(attempt=2, content=None, translation=None, merged=None)
+    if isinstance(request, ConversationTaskRequest):
+        # Give the single repair its actual defects without mutating the original caller context.
+        request = request.model_copy(update={"context": request.context.model_copy(update={
+            "validationError": "; ".join(state.validation_errors)[:4000],
+            "previousInvalidPrompt": state.merged,
+        })})
     repaired = await node_generate_content(repaired, request, settings, client)
     repaired = await node_translate(repaired, request, settings, client)
-    repaired = node_validate(repaired)
+    repaired = node_validate(repaired, request)
     if repaired.validation_errors:
         raise OllamaError(
             f"repaired task still invalid: {list(repaired.validation_errors)} "
@@ -218,7 +227,7 @@ async def run_workflow(
     state = normalize_context(state, request)
     state = await node_generate_content(state, request, settings, client)
     state = await node_translate(state, request, settings, client)
-    state = node_validate(state)
+    state = node_validate(state, request)
 
     if state.validation_errors:
         state = await node_repair_once(state, request, settings, client)

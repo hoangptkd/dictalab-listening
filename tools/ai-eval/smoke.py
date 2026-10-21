@@ -14,14 +14,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTENT = {"slots": [{"kind": "time", "askVi": "When?"}, {"kind": "place", "askVi": "Where?"}],
-           "utteranceEn": "Meet at nine in the lobby.",
-           "facts": [{"textEn": "nine", "evidenceEn": "at nine"}, {"textEn": "lobby", "evidenceEn": "in the lobby"}],
+           "utteranceEn": "Please meet at nine in the main lobby.",
+           "facts": [{"textEn": "nine", "evidenceEn": "at nine"}, {"textEn": "lobby", "evidenceEn": "in the main lobby"}],
            "questionVi": "When and where?", "taskVi": "Listen.", "skill": "details"}
 TRANSLATION = {"translationVi": "At nine in the lobby.", "facts": [{"textVi": "nine"}, {"textVi": "lobby"}]}
 
 
 def main():
-    artifact = json.loads((ROOT / "artifacts/prompts/conversation-platform-r1-20261020.json").read_text(encoding="utf-8"))
+    artifact = json.loads((ROOT / "artifacts/prompts/conversation-cefr-b1-v7-20261021.json").read_text(encoding="utf-8"))
     calls = []
 
     class FakeOllama(BaseHTTPRequestHandler):

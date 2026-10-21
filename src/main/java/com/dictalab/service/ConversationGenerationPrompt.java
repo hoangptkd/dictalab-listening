@@ -2,7 +2,7 @@ package com.dictalab.service;
 
 /** Generation only: grading and independent review have separate, unchanged instructions. */
 final class ConversationGenerationPrompt {
-    static final String VERSION = "CONVERSATION_GENERATION_V6_SLOTS";
+    static final String VERSION = "CONVERSATION_GENERATION_V7_B1_EVIDENCE";
     private ConversationGenerationPrompt() {}
 
     static tools.jackson.databind.node.ObjectNode context(tools.jackson.databind.ObjectMapper json,
@@ -101,10 +101,8 @@ final class ConversationGenerationPrompt {
         }
         result.put("history", history);
         result.put("levelProfile", profile.wordBounds()); result.put("turnNumber", turn); result.put("difficulty", level);
-        var skills = new java.util.LinkedHashMap<String,String>();
-        for (String key : java.util.List.of("condition", "change", "gist", "reason", "instructions", "details"))
-            skills.put(key, ConversationContent.SKILLS.get(key));
-        result.put("listeningSkills", skills); result.put("practiceFocus", "");
+        result.put("listeningSkills", profile.skills()); result.put("allowedTaskTypes", profile.taskTypes());
+        result.put("practiceFocus", "");
         result.put("partnerRole", "workshop employee"); result.put("learnerRole", "workshop participant");
         if (turn == 4) {
             result.remove("scenarioJourney");
@@ -127,6 +125,7 @@ final class ConversationGenerationPrompt {
             Required turnNumber: 1-4.
             Required levelProfile: {minWords,maxWords}, authoritative word bounds, including legacy sessions.
             Required listeningSkills: {id:Vietnamese label}, allowed skills.
+            Required allowedTaskTypes: permitted per-fact task types, independent of the overall level.
             Optional scenarioJourney: encounter stages, omitted for independent transfer.
             Required history: chronological [{utteranceEn,skill,facts,evaluation}], possibly empty;
             evaluation is the latest grade with facts:[{factId,status}], or absent/empty.
@@ -142,14 +141,20 @@ final class ConversationGenerationPrompt {
             OUTPUT IN ORDER: slots, utteranceEn, facts, questionVi, translationVi, taskVi, skill.
             First plan 2 slots for A1, 2-3 for A2/B1: [{kind,askVi}]. kind is a specific meaning such as
             collection_place, payment_method or cancellation_reason, not a vague label like detail/place.
-            askVi names exactly one meaning to ask, not its answer. Write speech that explicitly answers
+            askVi names exactly one meaning to ask, not its answer. Write speech that grounds
             every planned slot. facts[i] answers slots[i]. questionVi asks ALL planned meanings and no others.
             utteranceEn is natural spoken English; translationVi accurately translates it, including negation/conditions.
             facts=[{textVi,evidenceEn}], in slot order. Do NOT generate IDs. A1 exactly 2 facts; A2/B1 2-3.
             One fact = exactly one slot explicitly requested by questionVi, without unasked reasons,
             days, times or places. Supply every requested slot. evidenceEn is an exact utteranceEn substring.
             A reason and an action are separate slots only when BOTH are explicitly asked.
-            All prose except utteranceEn/evidenceEn is concise Vietnamese, not placeholders.
+            For B1 each fact also has taskType from allowedTaskTypes. For inference_prediction additionally
+            supply reasoningEvidence:{segmentsEn:[exact transcript quotes],rationaleEn:brief English explanation}.
+            Use 1-4 distinct segments (max 300 characters each), including evidenceEn as one segment.
+            The inferred answer may be absent verbatim; all cues must be in the transcript. One segment
+            can contain multiple cues. rationaleEn is at most 300 characters. Gist/opinion_attitude may
+            also use reasoningEvidence when needed. Other task types keep direct evidenceEn.
+            UI prose and textVi are concise Vietnamese; transcript quotes and rationaleEn are English.
             Character limits: taskVi/questionVi/skill 180, textVi 160, evidenceEn 300, translationVi 1200.
 
             ROLES: The NEXT utterance is spoken by partnerRole to learnerRole. Do not swap them.
@@ -158,18 +163,23 @@ final class ConversationGenerationPrompt {
             If an employee instructs the learner, a question may address the learner as you.
             Both taskVi and questionVi are shown BEFORE listening: taskVi is a brief
             listening goal; questionVi specifies independent answer slots, not a duplicate introduction.
-            Ask what the partner explicitly states, never the learner's preference or information merely
-            requested from them. No answer clues, yes/no questions, vocabulary quiz, arithmetic,
+            Ask what the partner states or, at B1, what follows from contextual cues, never the learner's preference
+            or information merely requested from them. No answer clues, yes/no questions, isolated vocabulary quiz, arithmetic,
             outside knowledge, ambiguous inference or invented AM/PM. Do not claim to hear learner audio.
 
             LEVEL: Use the concrete word target in turn_brief and the supplied levelProfile bounds.
             A1: short direct clauses, familiar words, simple present, concrete numbers/times;
             avoid relative clauses and deliberately inserted distractors or self-corrections.
             A2: short connected sentences, familiar past/plans/because; at most one useful explicit change.
-            B1: connected familiar speech, purposes/reasons/instructions/conditions; clear contrasts optional.
+            B1: connected familiar speech, gist, purposes/reasons/instructions/conditions, clearly expressed
+            attitude/opinion, contextual meaning or prediction of the likely next step in a short narrative.
+            Use at most one simple inference target, supported by at least two transcript cues; one segment
+            may contain both. Do not force inference into every B1 task. No irony, subtle idioms, external
+            knowledge or audio-only tone. All tasks remain a single speaker and answerable from text.
             No padding or obscure idioms. Shorten syntax after difficulty, not the requested meanings.
             SKILL: choose the primary question goal: details=concrete information, gist=main message,
-            reason=reason/purpose, change=final revision, instructions=actions/order, condition=prerequisite.
+            reason=reason/purpose, change=final revision, instructions=actions/order, condition=prerequisite,
+            attitude=clearly expressed opinion/attitude, inference=contextual meaning or likely next step.
             Copy its Vietnamese label from listeningSkills; vary only when appropriate for the level.
 
             ENCOUNTER: Follow the final turn_brief and the saved journey when supplied. Turns 1-3 keep partner and setting.
@@ -200,6 +210,7 @@ final class ConversationGenerationPrompt {
             Required turnNumber: 1-4.
             Required levelProfile: {minWords,maxWords}, authoritative word bounds, including legacy sessions.
             Required listeningSkills: {id:Vietnamese label}, allowed skills.
+            Required allowedTaskTypes: permitted per-fact task types, independent of the overall level.
             Optional scenarioJourney: encounter stages, omitted for independent transfer.
             Required history: chronological [{utteranceEn,skill,facts,evaluation}], possibly empty;
             evaluation is the latest grade with facts:[{factId,status}], or absent/empty.
@@ -216,7 +227,7 @@ final class ConversationGenerationPrompt {
             Do not translate the utterance here. A separate translator handles Vietnamese answers.
             First plan 2 slots for A1, 2-3 for A2/B1: [{kind,askVi}]. kind is a specific meaning such as
             collection_place, payment_method or cancellation_reason, not a vague label like detail/place.
-            askVi names exactly one meaning to ask, not its answer. Write speech that explicitly answers
+            askVi names exactly one meaning to ask, not its answer. Write speech that grounds
             every planned slot. facts[i] answers slots[i]. questionVi asks ALL planned meanings and no others.
             utteranceEn is natural spoken English.
             facts=[{textEn,evidenceEn}], in slot order. Do NOT generate IDs. A1 exactly 2 facts; A2/B1 2-3.
@@ -224,6 +235,12 @@ final class ConversationGenerationPrompt {
             One fact = exactly one slot explicitly requested by questionVi, without unasked reasons,
             days, times or places. Supply every requested slot.
             A reason and an action are separate slots only when BOTH are explicitly asked.
+            For B1 each fact also has taskType from allowedTaskTypes. For inference_prediction additionally
+            supply reasoningEvidence:{segmentsEn:[exact transcript quotes],rationaleEn:brief English explanation}.
+            Use 1-4 distinct segments (max 300 characters each), including evidenceEn as one segment.
+            The inferred answer may be absent verbatim; all cues must be in the transcript. One segment
+            can contain multiple cues. rationaleEn is at most 300 characters. Gist/opinion_attitude may
+            also use reasoningEvidence when needed. Other task types keep direct evidenceEn.
             utteranceEn and evidenceEn are English. slots.askVi, questionVi, taskVi and skill are concise Vietnamese.
             Character limits: taskVi/questionVi/skill 180, textEn 160, evidenceEn 300.
 
@@ -233,18 +250,23 @@ final class ConversationGenerationPrompt {
             If an employee instructs the learner, a question may address the learner as you.
             Both taskVi and questionVi are shown BEFORE listening: taskVi is a brief
             listening goal; questionVi specifies independent answer slots, not a duplicate introduction.
-            Ask what the partner explicitly states, never the learner's preference or information merely
-            requested from them. No answer clues, yes/no questions, vocabulary quiz, arithmetic,
+            Ask what the partner states or, at B1, what follows from contextual cues, never the learner's preference
+            or information merely requested from them. No answer clues, yes/no questions, isolated vocabulary quiz, arithmetic,
             outside knowledge, ambiguous inference or invented AM/PM. Do not claim to hear learner audio.
 
             LEVEL: Use the concrete word target in turn_brief and the supplied levelProfile bounds.
             A1: short direct clauses, familiar words, simple present, concrete numbers/times;
             avoid relative clauses and deliberately inserted distractors or self-corrections.
             A2: short connected sentences, familiar past/plans/because; at most one useful explicit change.
-            B1: connected familiar speech, purposes/reasons/instructions/conditions; clear contrasts optional.
+            B1: connected familiar speech, gist, purposes/reasons/instructions/conditions, clearly expressed
+            attitude/opinion, contextual meaning or prediction of the likely next step in a short narrative.
+            Use at most one simple inference target, supported by at least two transcript cues; one segment
+            may contain both. Do not force inference into every B1 task. No irony, subtle idioms, external
+            knowledge or audio-only tone. All tasks remain a single speaker and answerable from text.
             No padding or obscure idioms. Shorten syntax after difficulty, not the requested meanings.
             SKILL: choose the primary question goal: details=concrete information, gist=main message,
-            reason=reason/purpose, change=final revision, instructions=actions/order, condition=prerequisite.
+            reason=reason/purpose, change=final revision, instructions=actions/order, condition=prerequisite,
+            attitude=clearly expressed opinion/attitude, inference=contextual meaning or likely next step.
             Copy its Vietnamese label from listeningSkills; vary only when appropriate for the level.
 
             ENCOUNTER: Follow the final turn_brief and the saved journey when supplied. Turns 1-3 keep partner and setting.
@@ -286,8 +308,8 @@ final class ConversationGenerationPrompt {
             case "A1-transfer" -> "apron_collection_place|Nơi lấy tạp dề|bring_item|Vật cần mang";
             case "A2-continue" -> "packing_reason|Lý do dùng hộp|box_location|Nơi đặt hộp";
             case "A2-transfer" -> "start_prerequisite|Việc cần làm trước khi bắt đầu|tool_provider|Người cung cấp dụng cụ";
-            case "B1-continue" -> "collection_condition|Điều kiện lấy bát|protective_container|Vật đựng bát";
-            case "B1-transfer" -> "wheel_use_condition|Điều kiện dùng bàn xoay|required_document|Giấy tờ cần đưa";
+            case "B1-continue" -> "collection_prediction|Điều cần chờ để lấy bát|protective_container|Vật đựng bát";
+            case "B1-transfer" -> "wheel_opinion|Quan điểm về bàn xoay nhỏ|required_document|Giấy tờ cần đưa";
             default -> throw new IllegalArgumentException("Unsupported conversation level");
         };
         var result = json.createObjectNode(); var slots = result.putArray("slots");
@@ -296,7 +318,8 @@ final class ConversationGenerationPrompt {
         result.set("utteranceEn", example.path("utteranceEn"));
         var facts = result.putArray("facts");
         for (var fact : example.path("facts")) {
-            var entry = facts.addObject(); entry.set("textVi", fact.path("textVi")); entry.set("evidenceEn", fact.path("evidenceEn"));
+            var entry = ((tools.jackson.databind.node.ObjectNode) fact).deepCopy();
+            entry.remove("id"); facts.add(entry);
         }
         for (String field : java.util.List.of("questionVi", "translationVi", "taskVi", "skill")) result.set(field, example.path(field));
         return json.writeValueAsString(result);
@@ -305,28 +328,17 @@ final class ConversationGenerationPrompt {
     /** English-first wire example: facts use textEn instead of textVi; no translationVi field. */
     static String wireExampleEnglish(String level, int turn) {
         var json = new tools.jackson.databind.ObjectMapper();
-        var example = json.readTree(example(level, turn));
-        String labels = switch (level + (turn == 4 ? "-transfer" : "-continue")) {
-            case "A1-continue" -> "collection_place|Nơi lấy đất sét|cutting_tool|Dụng cụ cắt đất sét";
-            case "A1-transfer" -> "apron_collection_place|Nơi lấy tạp dề|bring_item|Vật cần mang";
-            case "A2-continue" -> "packing_reason|Lý do dùng hộp|box_location|Nơi đặt hộp";
-            case "A2-transfer" -> "start_prerequisite|Việc cần làm trước khi bắt đầu|tool_provider|Người cung cấp dụng cụ";
-            case "B1-continue" -> "collection_condition|Điều kiện lấy bát|protective_container|Vật đựng bát";
-            case "B1-transfer" -> "wheel_use_condition|Điều kiện dùng bàn xoay|required_document|Giấy tờ cần đưa";
-            default -> throw new IllegalArgumentException("Unsupported conversation level");
-        };
-        var result = json.createObjectNode(); var slots = result.putArray("slots");
-        var parts = labels.split("\\|");
-        for (int i = 0; i < parts.length; i += 2) slots.addObject().put("kind", parts[i]).put("askVi", parts[i + 1]);
-        result.set("utteranceEn", example.path("utteranceEn"));
-        var facts = result.putArray("facts");
-        // English-first: use evidenceEn as textEn (concise English answer matching the slot).
-        for (var fact : example.path("facts")) {
-            var entry = facts.addObject();
-            entry.set("textEn", fact.path("evidenceEn")); // evidenceEn is already a concise English phrase
-            entry.set("evidenceEn", fact.path("evidenceEn"));
+        var result = (tools.jackson.databind.node.ObjectNode) json.readTree(wireExample(level, turn));
+        result.remove("translationVi");
+        int i = 0;
+        for (var fact : result.path("facts")) {
+            var entry = (tools.jackson.databind.node.ObjectNode) fact;
+            String answer = level.equals("B1")
+                    ? (turn == 4 ? java.util.List.of("A positive opinion of the smaller wheel", "Your booking receipt")
+                                  : java.util.List.of("Wait until the kiln has cooled before collecting the bowl", "A padded bag")).get(i)
+                    : fact.path("evidenceEn").asText();
+            entry.remove("textVi"); entry.put("textEn", answer); i++;
         }
-        for (String field : java.util.List.of("questionVi", "taskVi", "skill")) result.set(field, example.path(field));
         return json.writeValueAsString(result);
     }
 
@@ -347,11 +359,11 @@ final class ConversationGenerationPrompt {
                     {"id":"f2","textVi":"Kỹ thuật viên","evidenceEn":"the technician"}]}
                     """;
             case "B1" -> """
-                    {"taskVi":"Nghe điều kiện và giấy tờ tại xưởng mới.","questionVi":"Khi nào bạn được dùng bàn xoay và cần đưa giấy tờ gì cho nhân viên?",
-                    "utteranceEn":"For your first visit to the new ceramics workshop, you may use the wheel only after the instructor has checked your form. Please show your booking email at the equipment desk, rather than relying on a photograph of it.",
-                    "translationVi":"Trong lần đầu đến xưởng gốm mới, bạn chỉ được dùng bàn xoay sau khi người hướng dẫn đã kiểm tra biểu mẫu của bạn. Xin đưa email đặt chỗ tại quầy dụng cụ, thay vì dùng ảnh chụp email đó.","skill":"Hiểu điều kiện",
-                    "facts":[{"id":"f1","textVi":"Sau khi người hướng dẫn kiểm tra biểu mẫu","evidenceEn":"after the instructor has checked your form"},
-                    {"id":"f2","textVi":"Email đặt chỗ","evidenceEn":"your booking email"}]}
+                    {"taskVi":"Nghe nhận xét và hướng dẫn tại lớp mới.","questionVi":"Người hướng dẫn nghĩ gì về bàn xoay nhỏ và bạn cần đưa giấy tờ gì?",
+                    "utteranceEn":"At our new pottery studio, I tried the smaller wheel yesterday. It was easier to control, and I enjoyed working with it. Before today's class begins, please show your booking receipt so we can confirm your place.",
+                    "translationVi":"Tại xưởng gốm mới của chúng tôi, hôm qua tôi đã thử bàn xoay nhỏ hơn. Nó dễ điều khiển hơn và tôi thích sử dụng nó. Trước khi lớp hôm nay bắt đầu, xin đưa biên nhận đặt chỗ để chúng tôi xác nhận chỗ của bạn.","skill":"Hiểu thái độ và quan điểm",
+                    "facts":[{"id":"f1","textVi":"Đánh giá tích cực về bàn xoay nhỏ","evidenceEn":"It was easier to control, and I enjoyed working with it.","taskType":"opinion_attitude"},
+                    {"id":"f2","textVi":"Biên nhận đặt chỗ","evidenceEn":"your booking receipt","taskType":"direct_detail"}]}
                     """;
             default -> throw new IllegalArgumentException("Unsupported conversation level");
         };
@@ -371,11 +383,13 @@ final class ConversationGenerationPrompt {
                     {"id":"f2","textVi":"Dưới bàn dụng cụ","evidenceEn":"under the equipment table"}]}
                     """;
             case "B1" -> """
-                    {"taskVi":"Nghe điều kiện và hướng dẫn lấy sản phẩm.","questionVi":"Khi nào bạn được lấy bát và cần mang vật dụng gì để đựng bát?",
-                    "utteranceEn":"You can collect your bowl only after the paint has dried completely. Although the front desk is open now, please leave the bowl on the rack until it is ready. Bring a padded bag to protect it on the journey home.",
-                    "translationVi":"Bạn chỉ được lấy bát sau khi lớp sơn khô hoàn toàn. Dù quầy trước đang mở, xin để bát trên giá cho đến khi sẵn sàng. Mang túi có lớp đệm để bảo vệ bát trên đường về nhà.","skill":"Hiểu điều kiện",
-                    "facts":[{"id":"f1","textVi":"Sau khi lớp sơn khô hoàn toàn","evidenceEn":"after the paint has dried completely"},
-                    {"id":"f2","textVi":"Túi có lớp đệm","evidenceEn":"a padded bag"}]}
+                    {"taskVi":"Nghe thông tin và suy ra việc nhận sản phẩm.","questionVi":"Bạn cần chờ điều gì để lấy bát và mang vật gì để đựng bát?",
+                    "utteranceEn":"The kiln is still hot, and your bowl is inside it. We only open the kiln once it has cooled. Our technician checks it after lunch. Please bring a padded bag when you return to protect your bowl.",
+                    "translationVi":"Lò vẫn còn nóng và bát của bạn đang ở trong đó. Chúng tôi chỉ mở lò khi nó đã nguội. Kỹ thuật viên của chúng tôi kiểm tra lò sau bữa trưa. Khi quay lại, xin mang túi có lớp đệm để bảo vệ bát.","skill":"Suy luận và dự đoán có căn cứ",
+                    "facts":[{"id":"f1","textVi":"Chờ lò nguội rồi mới lấy bát","evidenceEn":"The kiln is still hot, and your bowl is inside it.","taskType":"inference_prediction",
+                      "reasoningEvidence":{"segmentsEn":["The kiln is still hot, and your bowl is inside it.","We only open the kiln once it has cooled."],
+                        "rationaleEn":"The bowl is inside a hot kiln that cannot be opened until it cools, so collection must wait."}},
+                    {"id":"f2","textVi":"Túi có lớp đệm","evidenceEn":"a padded bag","taskType":"direct_detail"}]}
                     """;
             default -> throw new IllegalArgumentException("Unsupported conversation level");
         };

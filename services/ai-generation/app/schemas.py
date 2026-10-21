@@ -19,6 +19,7 @@ class ConversationContext(BaseModel):
     learnerRole: str | None = Field(default=None, max_length=120)
     levelProfile: dict[str, Any] | None = None
     listeningSkills: dict[str, Any] | None = None
+    allowedTaskTypes: list[str] | None = None
     scenarioJourney: str | None = Field(default=None, max_length=4000)
     history: list[dict[str, Any]] | None = None
     recentPractice: list[dict[str, Any]] | None = None
@@ -27,6 +28,8 @@ class ConversationContext(BaseModel):
     variationSeed: int | None = None
     previouslyTestedDetails: list[dict[str, Any]] | None = None
     weakSkills: list[str] | None = None
+    validationError: str | None = Field(default=None, max_length=4000)
+    previousInvalidPrompt: dict[str, Any] | None = None
 
 
 class ConversationTaskRequest(BaseModel):

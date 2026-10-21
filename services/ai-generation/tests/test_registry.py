@@ -62,8 +62,8 @@ def test_readiness_model_up_down_missing_and_drift():
 def test_real_workflow_uses_registry_gateway_and_metadata():
     from app.main import app, cache
     content = {"slots": [{"kind": "time", "askVi": "When?"}, {"kind": "place", "askVi": "Where?"}],
-               "utteranceEn": "Meet at nine in the lobby.", "facts": [{"textEn": "nine", "evidenceEn": "at nine"},
-               {"textEn": "lobby", "evidenceEn": "in the lobby"}], "questionVi": "When and where?", "taskVi": "Listen.", "skill": "details"}
+               "utteranceEn": "Please meet at nine in the main lobby.", "facts": [{"textEn": "nine", "evidenceEn": "at nine"},
+               {"textEn": "lobby", "evidenceEn": "in the main lobby"}], "questionVi": "When and where?", "taskVi": "Listen.", "skill": "details"}
     translation = {"translationVi": "At nine in the lobby.", "facts": [{"textVi": "nine"}, {"textVi": "lobby"}]}
     artifact = load_artifact(Settings())
     bodies = []

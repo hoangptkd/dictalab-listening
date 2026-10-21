@@ -37,7 +37,8 @@ final class ConversationContent {
         new Scene("weekend", "Thống nhất kế hoạch", "social", "Giao tiếp xã hội", "Hai người sẽ làm gì và gặp lúc mấy giờ?", "Let us play tennis. Meet me at four.", "Chúng ta chơi quần vợt nhé. Gặp tôi lúc bốn giờ.", "play tennis", "Chơi quần vợt", "at four", "Bốn giờ", "the court is free then", "Sân trống lúc đó")
     );
     static final Map<String,String> SKILLS = Map.of("details", "Nắm thông tin cụ thể", "gist", "Nắm ý chính",
-            "reason", "Hiểu lý do và mục đích", "change", "Theo dõi thay đổi", "instructions", "Theo dõi hướng dẫn", "condition", "Hiểu điều kiện");
+            "reason", "Hiểu lý do và mục đích", "change", "Theo dõi thay đổi", "instructions", "Theo dõi hướng dẫn", "condition", "Hiểu điều kiện",
+            "attitude", "Hiểu thái độ và quan điểm", "inference", "Suy luận và dự đoán có căn cứ");
     static Map<String,String> labels() {
         var result = new LinkedHashMap<String,String>();
         SCENES.forEach(s -> result.put(s.id(), s.label()));

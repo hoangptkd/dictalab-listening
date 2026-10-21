@@ -1,0 +1,541 @@
+{
+  "scope": "focused_local_smoke_not_release_benchmark",
+  "historicalLengthReplay": {
+    "rows": 30,
+    "rejected": 10,
+    "byLevel": {
+      "A1": 1,
+      "A2": 3,
+      "B1": 6
+    },
+    "newGeneration": false
+  },
+  "initialSmoke": {
+    "capturedAt": "2026-10-21T10:49:25.678496+00:00",
+    "datasetHash": "5abf84e200bd878825f3eb2bf1eed06b28e49df3444983c92254cc3b1e8a6db0",
+    "metadata": {
+      "model": "qwen3.5:9b",
+      "modelDigest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+      "promptVersion": "conversation-cefr-b1-v7-20261021",
+      "promptHash": "09274af4b93c9562aa188ed920bc24cea3cb2016c74680083fcdddfacc3f1ae5",
+      "config": {
+        "temperature": 0.3,
+        "translation_temperature": 0.1,
+        "num_ctx": 8192,
+        "num_predict": 1000
+      },
+      "judgeVersion": "pending-offline-judge",
+      "labels": "unjudged"
+    },
+    "records": [
+      {
+        "id": "cefr-v7-cafe-B1-t4",
+        "seed": 17,
+        "task": {
+          "slots": [
+            {
+              "kind": "opinion_attitude",
+              "askVi": "Thái độ của khách hàng về món ăn mới"
+            },
+            {
+              "kind": "condition",
+              "askVi": "Điều kiện để được giảm giá"
+            }
+          ],
+          "utteranceEn": "I really enjoy the spicy curry we just introduced. It is absolutely delicious and I think you should try it. However, please note that if you order two dishes from our new menu today, you will receive a special discount.",
+          "facts": [
+            {
+              "evidenceEn": "I really enjoy the spicy curry we just introduced. It is absolutely delicious and I think you should try it.",
+              "taskType": "opinion_attitude",
+              "textVi": "Khách hàng nhiệt liệt khuyến nghị nên thử món cà ri cay mới này"
+            },
+            {
+              "evidenceEn": "if you order two dishes from our new menu today, you will receive a special discount.",
+              "taskType": "condition",
+              "textVi": "Đặt hai món từ thực đơn mới"
+            }
+          ],
+          "questionVi": "Khách hàng nghĩ gì về món ăn mới và bạn cần làm gì để được giảm giá?",
+          "taskVi": "Nghe nhận xét của khách hàng về món mới và điều kiện khuyến mãi.",
+          "skill": "Hiểu thái độ và quan điểm",
+          "translationVi": "Tôi thực sự thích món cà ri cay mà chúng tôi vừa giới thiệu. Nó tuyệt vời và tôi nghĩ bạn nên thử. Tuy nhiên, xin lưu ý rằng nếu bạn đặt hai món từ thực đơn mới của chúng tôi hôm nay, bạn sẽ nhận được một khoản giảm giá đặc biệt."
+        },
+        "transport": "ok",
+        "seconds": 144.20762839999225,
+        "verdict": "missing",
+        "judgeInput": {
+          "turnNumber": 4,
+          "context": {
+            "practiceFocus": "Test clearly expressed opinion or attitude from wording, not audio tone.",
+            "listeningSkills": {
+              "condition": "Hiểu điều kiện",
+              "change": "Theo dõi thay đổi",
+              "gist": "Nắm ý chính",
+              "reason": "Hiểu lý do và mục đích",
+              "instructions": "Theo dõi hướng dẫn",
+              "details": "Nắm thông tin cụ thể",
+              "attitude": "Hiểu thái độ và quan điểm",
+              "inference": "Suy luận và dự đoán có căn cứ"
+            },
+            "scenario": "Gọi món ở quán",
+            "scenarioJourney": "1 establish this need: Khách gọi đồ uống gì và món ăn gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers.",
+            "history": [
+              {
+                "facts": [
+                  {
+                    "id": "f1",
+                    "textVi": "Trà",
+                    "evidenceEn": "a tea"
+                  },
+                  {
+                    "id": "f2",
+                    "textVi": "Bánh mì kẹp phô mai",
+                    "evidenceEn": "a cheese sandwich"
+                  },
+                  {
+                    "id": "f3",
+                    "textVi": "Khách chưa ăn trưa",
+                    "evidenceEn": "I have not had lunch yet"
+                  }
+                ],
+                "skill": "Hiểu lý do và mục đích",
+                "utteranceEn": "Hello. I would like a tea and a cheese sandwich, please. This is because I have not had lunch yet.",
+                "evaluation": {
+                  "facts": [
+                    {
+                      "factId": "f1",
+                      "status": "CAPTURED"
+                    },
+                    {
+                      "factId": "f2",
+                      "status": "CAPTURED"
+                    },
+                    {
+                      "factId": "f3",
+                      "status": "CAPTURED"
+                    }
+                  ]
+                }
+              },
+              {
+                "utteranceEn": "Please collect your order at the back counter. Your number is sixteen.",
+                "skill": "Nắm thông tin cụ thể",
+                "facts": [
+                  {
+                    "id": "f1",
+                    "textVi": "Quầy phía sau",
+                    "evidenceEn": "the back counter"
+                  },
+                  {
+                    "id": "f2",
+                    "textVi": "Mười sáu",
+                    "evidenceEn": "sixteen"
+                  }
+                ],
+                "evaluation": {
+                  "facts": [
+                    {
+                      "factId": "f1",
+                      "status": "MISSED"
+                    },
+                    {
+                      "factId": "f2",
+                      "status": "MISSED"
+                    }
+                  ]
+                }
+              },
+              {
+                "utteranceEn": "Please bring your receipt. Ask for Lily when you arrive.",
+                "skill": "Nắm thông tin cụ thể",
+                "facts": [
+                  {
+                    "id": "f1",
+                    "textVi": "Biên nhận",
+                    "evidenceEn": "your receipt"
+                  },
+                  {
+                    "id": "f2",
+                    "textVi": "Lily",
+                    "evidenceEn": "Lily"
+                  }
+                ],
+                "evaluation": {
+                  "facts": [
+                    {
+                      "factId": "f1",
+                      "status": "MISSED"
+                    },
+                    {
+                      "factId": "f2",
+                      "status": "MISSED"
+                    }
+                  ]
+                }
+              }
+            ],
+            "levelProfile": {
+              "maxWords": 90,
+              "minWords": 30
+            },
+            "turnNumber": 4,
+            "difficulty": "B1",
+            "sessionBlueprint": {
+              "contentVersion": 1,
+              "branchId": "standard",
+              "journey": "1 establish this need: Khách gọi đồ uống gì và món ăn gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers."
+            },
+            "recentPractice": [],
+            "partnerRole": "customer",
+            "learnerRole": "server",
+            "allowedTaskTypes": [
+              "direct_detail",
+              "gist",
+              "reason_purpose",
+              "change_revision",
+              "instruction_sequence",
+              "condition",
+              "opinion_attitude",
+              "inference_prediction"
+            ]
+          },
+          "task": {
+            "slots": [
+              {
+                "kind": "opinion_attitude",
+                "askVi": "Thái độ của khách hàng về món ăn mới"
+              },
+              {
+                "kind": "condition",
+                "askVi": "Điều kiện để được giảm giá"
+              }
+            ],
+            "utteranceEn": "I really enjoy the spicy curry we just introduced. It is absolutely delicious and I think you should try it. However, please note that if you order two dishes from our new menu today, you will receive a special discount.",
+            "facts": [
+              {
+                "evidenceEn": "I really enjoy the spicy curry we just introduced. It is absolutely delicious and I think you should try it.",
+                "taskType": "opinion_attitude",
+                "textVi": "Khách hàng nhiệt liệt khuyến nghị nên thử món cà ri cay mới này"
+              },
+              {
+                "evidenceEn": "if you order two dishes from our new menu today, you will receive a special discount.",
+                "taskType": "condition",
+                "textVi": "Đặt hai món từ thực đơn mới"
+              }
+            ],
+            "questionVi": "Khách hàng nghĩ gì về món ăn mới và bạn cần làm gì để được giảm giá?",
+            "taskVi": "Nghe nhận xét của khách hàng về món mới và điều kiện khuyến mãi.",
+            "skill": "Hiểu thái độ và quan điểm",
+            "translationVi": "Tôi thực sự thích món cà ri cay mà chúng tôi vừa giới thiệu. Nó tuyệt vời và tôi nghĩ bạn nên thử. Tuy nhiên, xin lưu ý rằng nếu bạn đặt hai món từ thực đơn mới của chúng tôi hôm nay, bạn sẽ nhận được một khoản giảm giá đặc biệt."
+          },
+          "rules": "Turn 4 is a NEW independent encounter in the same scenario. Do not impose old arrangements; continuity is not applicable. Require concrete evidence of continuing the old encounter to fail transfer."
+        }
+      },
+      {
+        "id": "cefr-v7-hotel-B1-t2",
+        "seed": 17,
+        "task": null,
+        "transport": "error",
+        "seconds": 238.21866769999906,
+        "verdict": "missing",
+        "judgeInput": {
+          "turnNumber": 2,
+          "context": {
+            "practiceFocus": "Test one likely next action or contextual inference with reasoningEvidence, not a directly stated instruction.",
+            "listeningSkills": {
+              "condition": "Hiểu điều kiện",
+              "change": "Theo dõi thay đổi",
+              "gist": "Nắm ý chính",
+              "reason": "Hiểu lý do và mục đích",
+              "instructions": "Theo dõi hướng dẫn",
+              "details": "Nắm thông tin cụ thể",
+              "attitude": "Hiểu thái độ và quan điểm",
+              "inference": "Suy luận và dự đoán có căn cứ"
+            },
+            "scenario": "Nhận phòng",
+            "scenarioJourney": "1 establish this need: Phòng số mấy và ăn sáng ở đâu? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers.",
+            "history": [
+              {
+                "facts": [
+                  {
+                    "id": "f1",
+                    "textVi": "Phòng tám",
+                    "evidenceEn": "number eight"
+                  },
+                  {
+                    "id": "f2",
+                    "textVi": "Ngoài vườn",
+                    "evidenceEn": "in the garden"
+                  },
+                  {
+                    "id": "f3",
+                    "textVi": "Phòng ăn hôm nay đóng cửa",
+                    "evidenceEn": "the dining room is closed today"
+                  }
+                ],
+                "skill": "Hiểu lý do và mục đích",
+                "utteranceEn": "Hello. Your room is number eight. Breakfast is in the garden. This is because the dining room is closed today.",
+                "evaluation": {
+                  "facts": [
+                    {
+                      "factId": "f1",
+                      "status": "CAPTURED"
+                    },
+                    {
+                      "factId": "f2",
+                      "status": "CAPTURED"
+                    },
+                    {
+                      "factId": "f3",
+                      "status": "CAPTURED"
+                    }
+                  ]
+                }
+              }
+            ],
+            "levelProfile": {
+              "maxWords": 90,
+              "minWords": 30
+            },
+            "turnNumber": 2,
+            "difficulty": "B1",
+            "sessionBlueprint": {
+              "contentVersion": 1,
+              "branchId": "standard",
+              "journey": "1 establish this need: Phòng số mấy và ăn sáng ở đâu? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers."
+            },
+            "recentPractice": [],
+            "partnerRole": "receptionist",
+            "learnerRole": "guest",
+            "allowedTaskTypes": [
+              "direct_detail",
+              "gist",
+              "reason_purpose",
+              "change_revision",
+              "instruction_sequence",
+              "condition",
+              "opinion_attitude",
+              "inference_prediction"
+            ]
+          },
+          "task": null,
+          "rules": "Turns 1-3 continue the same encounter. Transfer is not applicable. Check settled values and newly requested meanings."
+        }
+      }
+    ]
+  },
+  "diagnosticBeforeSubquoteAndWordTargetFix": {
+    "attempts": 2,
+    "wordCounts": [
+      26,
+      26
+    ],
+    "errors": [
+      "utteranceEn:word_count=26,min=30,max=90",
+      "fact[0].reasoningEvidence:primary_evidence_missing"
+    ],
+    "rawEnglish": [
+      {
+        "slots": [
+          {
+            "kind": "inference_prediction",
+            "askVi": "Bạn sẽ làm gì tiếp theo?"
+          },
+          {
+            "kind": "condition",
+            "askVi": "Bạn cần mang theo gì?"
+          }
+        ],
+        "utteranceEn": "Since the dining room is closed, you should eat breakfast in the garden. Please bring your own water bottle because there are no taps available outside.",
+        "facts": [
+          {
+            "textEn": "Eat breakfast in the garden",
+            "evidenceEn": "you should eat breakfast in the garden",
+            "taskType": "inference_prediction",
+            "reasoningEvidence": {
+              "segmentsEn": [
+                "Since the dining room is closed, you should eat breakfast in the garden.",
+                "Please bring your own water bottle because there are no taps available outside."
+              ],
+              "rationaleEn": "The receptionist states the dining room is closed and implies eating in the garden. Bringing a water bottle is necessary due to the lack of taps outside, suggesting hydration needs must be self-managed."
+            }
+          },
+          {
+            "textEn": "Your own water bottle",
+            "evidenceEn": "bring your own water bottle",
+            "taskType": "direct_detail"
+          }
+        ],
+        "questionVi": "Vì nhà hàng ăn sáng đóng cửa, bạn nên làm gì và mang theo vật gì?",
+        "taskVi": "Suy luận hành động tiếp theo dựa trên tình huống.",
+        "skill": "Suy luận và dự đoán có căn cứ"
+      },
+      {
+        "slots": [
+          {
+            "kind": "inference_prediction",
+            "askVi": "Bạn sẽ làm gì tiếp theo?"
+          },
+          {
+            "kind": "condition",
+            "askVi": "Bạn cần mang theo gì?"
+          }
+        ],
+        "utteranceEn": "Since the dining room is closed, you should eat breakfast in the garden. Please bring your own water bottle because there are no taps available outside.",
+        "facts": [
+          {
+            "textEn": "Eat breakfast in the garden",
+            "evidenceEn": "you should eat breakfast in the garden",
+            "taskType": "inference_prediction",
+            "reasoningEvidence": {
+              "segmentsEn": [
+                "Since the dining room is closed, you should eat breakfast in the garden.",
+                "Please bring your own water bottle because there are no taps available outside."
+              ],
+              "rationaleEn": "The receptionist states the dining room is closed and implies eating in the garden. Bringing a water bottle is necessary due to the lack of taps outside, suggesting hydration needs must be self-managed."
+            }
+          },
+          {
+            "textEn": "Bring your own water bottle",
+            "evidenceEn": "bring your own water bottle",
+            "taskType": "direct_detail"
+          }
+        ],
+        "questionVi": "Vì nhà hàng ăn sáng đóng cửa, bạn nên làm gì và mang theo vật gì?",
+        "taskVi": "Suy luận hành động tiếp theo dựa trên tình huống.",
+        "skill": "Suy luận và dự đoán có căn cứ"
+      }
+    ]
+  },
+  "postWordTargetAndSubquoteFixSmoke": {
+    "capturedAt": "2026-10-21T11:02:38.937975+00:00",
+    "datasetHash": "3428c62239505490a49657a1502ec0dfa4e0f5acddf13a3216913d87edd1b505",
+    "metadata": {
+      "model": "qwen3.5:9b",
+      "modelDigest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+      "promptVersion": "conversation-cefr-b1-v7-20261021",
+      "promptHash": "09274af4b93c9562aa188ed920bc24cea3cb2016c74680083fcdddfacc3f1ae5",
+      "config": {
+        "temperature": 0.3,
+        "translation_temperature": 0.1,
+        "num_ctx": 8192,
+        "num_predict": 1000
+      },
+      "judgeVersion": "pending-offline-judge",
+      "labels": "unjudged"
+    },
+    "records": [
+      {
+        "id": "cefr-v7-hotel-B1-t2",
+        "seed": 17,
+        "task": null,
+        "transport": "error",
+        "seconds": 185.7255809999915,
+        "verdict": "missing",
+        "judgeInput": {
+          "turnNumber": 2,
+          "context": {
+            "practiceFocus": "Test one likely next action or contextual inference with reasoningEvidence, not a directly stated instruction.",
+            "listeningSkills": {
+              "condition": "Hiểu điều kiện",
+              "change": "Theo dõi thay đổi",
+              "gist": "Nắm ý chính",
+              "reason": "Hiểu lý do và mục đích",
+              "instructions": "Theo dõi hướng dẫn",
+              "details": "Nắm thông tin cụ thể",
+              "attitude": "Hiểu thái độ và quan điểm",
+              "inference": "Suy luận và dự đoán có căn cứ"
+            },
+            "scenario": "Nhận phòng",
+            "scenarioJourney": "1 establish this need: Phòng số mấy và ăn sáng ở đâu? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers.",
+            "history": [
+              {
+                "facts": [
+                  {
+                    "id": "f1",
+                    "textVi": "Phòng tám",
+                    "evidenceEn": "number eight"
+                  },
+                  {
+                    "id": "f2",
+                    "textVi": "Ngoài vườn",
+                    "evidenceEn": "in the garden"
+                  },
+                  {
+                    "id": "f3",
+                    "textVi": "Phòng ăn hôm nay đóng cửa",
+                    "evidenceEn": "the dining room is closed today"
+                  }
+                ],
+                "skill": "Hiểu lý do và mục đích",
+                "utteranceEn": "Hello. Your room is number eight. Breakfast is in the garden. This is because the dining room is closed today.",
+                "evaluation": {
+                  "facts": [
+                    {
+                      "factId": "f1",
+                      "status": "CAPTURED"
+                    },
+                    {
+                      "factId": "f2",
+                      "status": "CAPTURED"
+                    },
+                    {
+                      "factId": "f3",
+                      "status": "CAPTURED"
+                    }
+                  ]
+                }
+              }
+            ],
+            "levelProfile": {
+              "maxWords": 90,
+              "minWords": 30
+            },
+            "turnNumber": 2,
+            "difficulty": "B1",
+            "sessionBlueprint": {
+              "contentVersion": 1,
+              "branchId": "standard",
+              "journey": "1 establish this need: Phòng số mấy và ăn sáng ở đâu? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers."
+            },
+            "recentPractice": [],
+            "partnerRole": "receptionist",
+            "learnerRole": "guest",
+            "allowedTaskTypes": [
+              "direct_detail",
+              "gist",
+              "reason_purpose",
+              "change_revision",
+              "instruction_sequence",
+              "condition",
+              "opinion_attitude",
+              "inference_prediction"
+            ]
+          },
+          "task": null,
+          "rules": "Turns 1-3 continue the same encounter. Transfer is not applicable. Check settled values and newly requested meanings."
+        }
+      }
+    ]
+  },
+  "manualSpotReview": [
+    {
+      "case": "cefr-v7-cafe-B1-t4:17",
+      "stage": "initialSmoke",
+      "valid": false,
+      "reason": "Question labels the speaker as a customer, but speech uses staff perspective: we just introduced / our new menu."
+    },
+    {
+      "case": "cefr-v7-hotel-B1-t2:17",
+      "stage": "diagnosticBeforeSubquoteAndWordTargetFix",
+      "valid": false,
+      "reason": "An explicitly stated breakfast instruction is labelled inference_prediction; rationale also introduces hydration needs rather than combining relevant cues for the requested inference."
+    }
+  ],
+  "releaseAllowed": false,
+  "remaining": [
+    "Run the full independent 10x3 dataset after tuning B1 generation.",
+    "Obtain independent semantic verdicts and manual review; structural validity alone is insufficient.",
+    "Do not enable B2/C1/C2 in the learner catalog from these smoke results."
+  ]
+}

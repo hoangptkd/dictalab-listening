@@ -33,9 +33,9 @@ public final class ConversationPythonClient implements ConversationAiClient {
      *  before transmission so credentials and account data never reach the model prompt. */
     private static final Set<String> CONTEXT_ALLOWLIST = Set.of(
             "scenario", "difficulty", "turnNumber", "partnerRole", "learnerRole",
-            "levelProfile", "listeningSkills", "scenarioJourney", "history",
+            "levelProfile", "listeningSkills", "allowedTaskTypes", "scenarioJourney", "history",
             "recentPractice", "practiceFocus", "sessionBlueprint", "variationSeed",
-            "previouslyTestedDetails", "weakSkills"
+            "previouslyTestedDetails", "weakSkills", "validationError", "previousInvalidPrompt"
     );
     private final HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(Duration.ofSeconds(3)).build();

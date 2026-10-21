@@ -91,11 +91,7 @@ public class ConversationLocalClient implements ConversationAiClient {
     }
 
     static JsonNode schemaEnglish(String level) {
-        var profile = ConversationLevelProfile.require(level);
-        var schema = new ObjectMapper().readTree(SCHEMA_ENGLISH);
-        for (String field : List.of("slots", "facts"))
-            ((ObjectNode) schema.path("properties").path(field)).put("minItems", profile.minSlots()).put("maxItems", profile.maxSlots());
-        return schema;
+        return schemaFor(SCHEMA_ENGLISH, level);
     }
 
     static JsonNode schemaTranslate(int factCount) {
@@ -105,10 +101,28 @@ public class ConversationLocalClient implements ConversationAiClient {
     }
 
     static JsonNode schema(String level) {
+        return schemaFor(SCHEMA, level);
+    }
+
+    private static JsonNode schemaFor(String template, String level) {
         var profile = ConversationLevelProfile.require(level);
-        var schema = new ObjectMapper().readTree(SCHEMA);
+        var mapper = new ObjectMapper();
+        var schema = mapper.readTree(template);
         for (String field : List.of("slots", "facts"))
             ((ObjectNode) schema.path("properties").path(field)).put("minItems", profile.minSlots()).put("maxItems", profile.maxSlots());
+        ((ObjectNode) schema.path("properties").path("skill")).set("enum", mapper.valueToTree(profile.skills().values()));
+        var fact = (ObjectNode) schema.path("properties").path("facts").path("items");
+        ((ObjectNode) fact.path("properties")).set("taskType", mapper.valueToTree(Map.of("type", "string", "enum", profile.taskTypes())));
+        if (profile == ConversationLevelProfile.B1) {
+            fact.withArray("required").add("taskType");
+            ((ObjectNode) fact.path("properties")).set("reasoningEvidence", mapper.readTree("""
+                    {"type":"object","properties":{
+                      "segmentsEn":{"type":"array","minItems":1,"maxItems":4,"uniqueItems":true,
+                        "items":{"type":"string","minLength":1,"maxLength":300}},
+                      "rationaleEn":{"type":"string","minLength":1,"maxLength":300}},
+                      "required":["segmentsEn","rationaleEn"],"additionalProperties":false}
+                    """));
+        }
         return schema;
     }
 
@@ -167,9 +181,10 @@ public class ConversationLocalClient implements ConversationAiClient {
         result.put("translationVi", translated.path("translationVi").asText());
         var mergedFacts = result.putArray("facts");
         for (int i = 0; i < englishFacts.size(); i++) {
-            var merged = mergedFacts.addObject();
+            var merged = ((ObjectNode) englishFacts.path(i)).deepCopy();
+            merged.remove("textEn");
             merged.put("textVi", translatedFacts.path(i).path("textVi").asText());
-            merged.put("evidenceEn", englishFacts.path(i).path("evidenceEn").asText());
+            mergedFacts.add(merged);
         }
         return result;
     }

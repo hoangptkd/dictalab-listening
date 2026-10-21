@@ -91,6 +91,40 @@ class ConversationUxIntegrationTest {
         verify(ai).completeJson(startsWith("Evaluate MEANING"),anyString());
     }
 
+    @Test void b1InferenceEvidenceIsStoredReviewedAndGradedByMeaningWithoutLeakingIt() {
+        when(local.enabled()).thenReturn(true);
+        String id=service.create(owner,"plans","B1").path("id").asText();
+        service.next(owner,id,0); service.help(owner,id,1,"review");
+        var generated=json.readTree("""
+                {"taskVi":"Nghe và suy ra kế hoạch.","questionVi":"Người nói có thể làm gì tiếp theo và bạn cần mang gì?",
+                 "skill":"Suy luận và dự đoán có căn cứ",
+                 "slots":[{"kind":"likely_next_action","askVi":"Việc tiếp theo"},{"kind":"bring_item","askVi":"Vật cần mang"}],
+                 "utteranceEn":"My morning train has been cancelled. The next train leaves at noon, and my ticket is valid for that service too. I still need to reach the city today. Please bring your notebook for our meeting.",
+                 "translationVi":"Chuyến tàu sáng của tôi đã bị hủy. Chuyến tiếp theo đi lúc trưa và vé cũng dùng được cho chuyến đó. Tôi vẫn cần đến thành phố hôm nay. Xin mang sổ cho cuộc họp.",
+                 "facts":[{"textVi":"Có thể đi chuyến tàu trưa","evidenceEn":"My morning train has been cancelled.","taskType":"inference_prediction",
+                  "reasoningEvidence":{"segmentsEn":["My morning train has been cancelled.","The next train leaves at noon, and my ticket is valid for that service too.","I still need to reach the city today."],
+                  "rationaleEn":"The cancelled service, valid ticket and need to arrive today support taking the noon train."}},
+                  {"textVi":"Sổ ghi chép","evidenceEn":"your notebook","taskType":"direct_detail"}]}
+                """);
+        when(local.completeTask(eq("B1"),anyString(),any())).thenReturn(new ConversationLocalClient.GeneratedTask(generated));
+        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any()))
+                .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
+        var next=service.next(owner,id,1);
+        assertThat(next.toString()).doesNotContain("reasoningEvidence", "rationaleEn", "Có thể đi chuyến tàu trưa");
+        assertThat(state(id).path("turns").path(1).path("prompt").path("facts").path(0).path("reasoningEvidence"))
+                .isEqualTo(generated.path("facts").path(0).path("reasoningEvidence"));
+        verify(ai).completeJson(contains("Never require the inferred conclusion to be stated verbatim"),
+                contains("reasoningEvidence"),anyString(),any());
+        when(ai.completeJson(startsWith("Evaluate MEANING"),anyString())).thenReturn(json.readTree("""
+                {"facts":[{"factId":"f1","status":"CAPTURED","evidenceVi":"chuyến trưa"},
+                          {"factId":"f2","status":"CAPTURED","evidenceVi":"sổ ghi chép"}],
+                 "feedbackVi":"Bạn đã hiểu đúng.","clarificationVi":""}
+                """));
+        var answered=service.answer(owner,id,2,UUID.randomUUID(),"Anh ấy có thể đi chuyến trưa; tôi mang sổ ghi chép.");
+        assertThat(answered.path("turns").path(1).path("capturedFacts").asInt()).isEqualTo(2);
+        verify(ai).completeJson(contains("never require the learner to repeat"),contains("reasoningEvidence"));
+    }
+
     @Test void localLeaseAndBrowserBudgetFollowConfiguredHardwareTimeout() {
         when(local.enabled()).thenReturn(true);
         when(local.flowTimeoutSeconds()).thenReturn(1290);

@@ -14,10 +14,10 @@ class Settings(BaseSettings):
     num_predict: int = 1000
     timeout_seconds: float = 180.0
     service_token: str = ""
-    prompt_version: str = "CONVERSATION_GENERATION_V6_SLOTS"
+    prompt_version: str = "CONVERSATION_GENERATION_V7_B1_EVIDENCE"
     model_digest: str = "unknown"
     registry_dir: str = str(Path(__file__).resolve().parents[2].parent / "artifacts" / "prompts")
-    artifact_version: str = "conversation-platform-r1-20261020"
+    artifact_version: str = "conversation-cefr-b1-v7-20261021"
     artifact_sha256: str = ""
     max_concurrency: int = 1
     primary_provider: str = "auto"
