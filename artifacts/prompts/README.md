@@ -10,6 +10,12 @@ structured reasoning evidence and level profiles. It is the default for developm
 closed pending the independent `cefr-b1-v7-10x3.json` generation benchmark and semantic review. The previous
 bundle is retained unchanged. Explicit production pins still require an approved, evaluated artifact.
 Java contract tests compare the new bundle's instruction, schemas, examples and profiles with the current code.
+The separate `conversation-cefr-shadow-v1-20261021` bundle is **offline evaluation only** for B2/C1.
+It has level-specific schemas, explicit SHADOW profiles, examples and an independent review rubric.
+C2 remains PLANNED with generation disabled. Its compact 30-90 word envelope is a provisional B1 comparison,
+not finalized B2/C1 lengths. The benchmark has 10 cases x 3 seeds per level and has not been generated or judged.
+Use `tools/ai-eval/generate.py --shadow`; do not configure this bundle as the HTTP server default.
+Both Java contract tests and Python isolation checks preserve the A1/A2/B1 public contract.
 The historical baseline/candidate reports describe earlier offline experiments, not this registered workflow.
 Do not relabel this bundle approved or reuse its identifier after editing. Capture and judge the exact new
 workflow, resolve invalid verdicts and review disagreements, compare all metrics to an approved baseline,

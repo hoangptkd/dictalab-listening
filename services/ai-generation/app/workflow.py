@@ -24,8 +24,8 @@ import httpx
 
 from .config import Settings
 from .ollama import OllamaError, merge_content_and_translation
-from .prompt_versions import generate_content as _generate_content, translate_task
-from .schemas import ConversationContext, ConversationTaskRequest
+from .prompt_versions import generate_content as _generate_content, translate_task, selected_artifact
+from .schemas import ConversationContext, ConversationTaskRequest, ShadowConversationTaskRequest
 from .state import WorkflowState
 from .validation import validate_task
 
@@ -143,8 +143,11 @@ def node_validate(state: WorkflowState, request: Any = None) -> WorkflowState:
         raise OllamaError("validate node reached without merged task")
     level = getattr(request, "level", None)
     profile = getattr(getattr(request, "context", None), "levelProfile", None)
+    artifact = selected_artifact.get() or {}
+    shadow_profile = (artifact.get("levelProfiles", {}).get(level)
+                      if isinstance(request, ShadowConversationTaskRequest) and artifact.get("evaluationOnly") is True else None)
     errors = validate_task(state.merged, level=level if isinstance(level, str) else None,
-                           level_profile=profile if isinstance(profile, dict) else None)
+                           level_profile=profile if isinstance(profile, dict) else None, shadow_profile=shadow_profile)
     if errors:
         logger.warning(
             "workflow_validation_errors errors=%s", errors,

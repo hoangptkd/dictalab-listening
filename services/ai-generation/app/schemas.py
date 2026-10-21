@@ -56,6 +56,16 @@ class ConversationTaskResponse(BaseModel):
     contractVersion: str = "1"
 
 
+# Offline runner only. HTTP routes and queue jobs continue to use ConversationTaskRequest.
+class ShadowConversationContext(ConversationContext):
+    difficulty: Literal["B2", "C1"]
+
+
+class ShadowConversationTaskRequest(ConversationTaskRequest):
+    level: Literal["B2", "C1"]
+    context: ShadowConversationContext
+
+
 class ErrorResponse(BaseModel):
     error: str
     requestId: str | None = None

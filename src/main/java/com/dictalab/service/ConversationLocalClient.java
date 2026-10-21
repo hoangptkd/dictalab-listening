@@ -105,7 +105,15 @@ public class ConversationLocalClient implements ConversationAiClient {
     }
 
     private static JsonNode schemaFor(String template, String level) {
-        var profile = ConversationLevelProfile.require(level);
+        return schemaFor(template, ConversationLevelProfile.require(level));
+    }
+
+    // Offline contract export only; normal generation still rejects shadow levels.
+    static JsonNode shadowSchemaEnglish(String level) {
+        return schemaFor(SCHEMA_ENGLISH, ConversationLevelProfile.requireShadow(level));
+    }
+
+    private static JsonNode schemaFor(String template, ConversationLevelProfile profile) {
         var mapper = new ObjectMapper();
         var schema = mapper.readTree(template);
         for (String field : List.of("slots", "facts"))
@@ -113,7 +121,7 @@ public class ConversationLocalClient implements ConversationAiClient {
         ((ObjectNode) schema.path("properties").path("skill")).set("enum", mapper.valueToTree(profile.skills().values()));
         var fact = (ObjectNode) schema.path("properties").path("facts").path("items");
         ((ObjectNode) fact.path("properties")).set("taskType", mapper.valueToTree(Map.of("type", "string", "enum", profile.taskTypes())));
-        if (profile == ConversationLevelProfile.B1) {
+        if (profile == ConversationLevelProfile.B1 || profile.status() == ConversationLevelProfile.Status.SHADOW) {
             fact.withArray("required").add("taskType");
             ((ObjectNode) fact.path("properties")).set("reasoningEvidence", mapper.readTree("""
                     {"type":"object","properties":{

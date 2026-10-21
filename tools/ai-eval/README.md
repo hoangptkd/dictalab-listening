@@ -40,3 +40,36 @@ optional `seconds`/`transport`. The baseline approval is a separate review decis
 `export_benchmark.py SOURCE DESTINATION` reconstructs the checked-in synthetic fixture captures from the
 local historical benchmark, excluding wire logs, billing logs and runtime/account data.
 `smoke.py` runs the real Java client against FastAPI and a fake Ollama server, then cleans up both servers.
+
+## B2/C1 offline CEFR shadow
+
+The shadow bundle and dataset are separate from the default B1 candidate. The public API, jobs, catalog,
+database and learner selector still accept only A1/A2/B1. The existing `X-AI-Mode: shadow` provider comparison
+header does not enable higher levels. C2 is PLANNED and cannot generate even in the offline runner.
+
+```powershell
+python tools/ai-eval/generate.py --shadow --dataset services/ai-generation/tests/fixtures/evaluation/cefr-shadow-v1-10x3.json --output data/cefr-shadow-capture.json
+python tools/ai-eval/shadow_report.py --dataset services/ai-generation/tests/fixtures/evaluation/cefr-shadow-v1-10x3.json --capture data/cefr-shadow-reviewed.json --output data/cefr-shadow-report.json
+```
+
+Run later when ready to evaluate: 10 cases per level x 3 seeds = 60 local samples. Use non-production local
+Ollama with fallback disabled. Existing artifact SHA pins must match the selected shadow bundle. Dataset,
+model and config are pinned in capture/report metadata. No paid judge runs automatically. Existing outputs
+are preserved; use new paths. The provisional 30-90 word bounds isolate discourse/question differences from
+B1 within the existing compact format; they do not represent final B2/C1 lengths or extended listening.
+
+For independent judging, use each record's `judgeInput`, including turn rules, level profile and review rubric.
+Write all existing boolean `verdict` fields plus `cefrLevelAppropriate`, `taskTypeAccurate`,
+`cuesSupportConclusion`, `noExternalKnowledge`, `textOnly`. Preserve raw captures; put judgments in a copy.
+Missing, invalid or uncertain labels do not pass. `expectedTaskTypes` in the dataset checks planned coverage;
+it does not prove the model's label matches the question. Review that meaning independently.
+
+For manual coverage, attach `manualReview: {status: "approved", reference: "path-or-review-id"}` only after
+an actual review. Every benchmark task type per level needs at least one representative reference.
+The report includes missing captures as failures in the denominator, checks transport/schema/evidence/focus,
+requires at least 95% within length bounds and 90% passing independent semantic review per level, and reports
+manual coverage gaps. `candidateGatePassed` is preparation for a separate promotion decision;
+`releaseAllowed` always remains false. No tool changes product support status.
+
+The C2 draft rubric and outstanding format/audio decisions are in
+`docs/conversation-cefr-classification-plan-2026-10-21.md`. No C2 dataset or generation is implied by that draft.

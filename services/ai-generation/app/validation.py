@@ -30,7 +30,8 @@ def _str(value: Any) -> str:
 
 
 def validate_task(task: dict[str, Any], *, level: str | None = None,
-                  level_profile: dict[str, Any] | None = None) -> list[str]:
+                  level_profile: dict[str, Any] | None = None,
+                  shadow_profile: dict[str, Any] | None = None) -> list[str]:
     """Return a list of error strings; empty list means the task passed all checks."""
     errors: list[str] = []
 
@@ -45,12 +46,22 @@ def validate_task(task: dict[str, Any], *, level: str | None = None,
     utterance = _str(task.get("utteranceEn"))
     question = _str(task.get("questionVi"))
     task_text = _str(task.get("taskVi"))
+    shadow = (level in ("B2", "C1") and isinstance(shadow_profile, dict)
+              and shadow_profile.get("status") == "SHADOW")
+    allowed_types = (set(shadow_profile["taskTypes"]) if shadow else
+                     {"direct_detail"} if level == "A1" else DIRECT_TASK_TYPES if level == "A2" else B1_TASK_TYPES)
+    reasoning_types = {"inference_prediction", "opinion_attitude", "gist"}
+    required_reasoning = {"inference_prediction"}
+    if shadow:
+        reasoning_types |= {"argument_relation", "implicit_intention"}
+        required_reasoning |= {"argument_relation", "implicit_intention"}
 
     if level is not None:
-        if level not in LEVEL_BOUNDS:
+        if level not in LEVEL_BOUNDS and not shadow:
             errors.append("level:unsupported")
         else:
-            minimum, maximum = LEVEL_BOUNDS[level]
+            bounds = shadow_profile["wordBounds"] if shadow else None
+            minimum, maximum = (bounds["minWords"], bounds["maxWords"]) if shadow else LEVEL_BOUNDS[level]
             if level_profile is not None:
                 minimum = level_profile.get("minWords", minimum)
                 maximum = level_profile.get("maxWords", maximum)
@@ -83,15 +94,16 @@ def validate_task(task: dict[str, Any], *, level: str | None = None,
         if not isinstance(fact, dict):
             continue
         task_type = fact.get("taskType")
+        if shadow and "taskType" not in fact:
+            errors.append(f"fact[{i}].taskType:required")
         if "taskType" in fact:
-            allowed = {"direct_detail"} if level == "A1" else DIRECT_TASK_TYPES if level == "A2" else B1_TASK_TYPES
-            if not isinstance(task_type, str) or task_type not in allowed:
+            if not isinstance(task_type, str) or task_type not in allowed_types:
                 errors.append(f"fact[{i}].taskType:unsupported_for_level")
         reasoning = fact.get("reasoningEvidence")
-        if task_type == "inference_prediction" and reasoning is None:
+        if isinstance(task_type, str) and task_type in required_reasoning and reasoning is None:
             errors.append(f"fact[{i}].reasoningEvidence:required")
         if "reasoningEvidence" in fact:
-            if level not in (None, "B1") or task_type not in ("inference_prediction", "opinion_attitude", "gist"):
+            if (level not in (None, "B1") and not shadow) or not isinstance(task_type, str) or task_type not in reasoning_types:
                 errors.append(f"fact[{i}].reasoningEvidence:unsupported_for_task")
             if not isinstance(reasoning, dict) or set(reasoning) != {"segmentsEn", "rationaleEn"}:
                 errors.append(f"fact[{i}].reasoningEvidence:invalid_shape")
@@ -128,11 +140,13 @@ def validate_task(task: dict[str, Any], *, level: str | None = None,
     skill = task.get("skill")
     if not isinstance(skill, str) or not skill.strip():
         errors.append("skill:empty_or_not_string")
+    if shadow and skill not in shadow_profile["skills"].values():
+        errors.append("skill:unsupported_for_level")
     if skill == "Suy luận và dự đoán có căn cứ" and not any(
             isinstance(f, dict) and f.get("taskType") == "inference_prediction"
             for f in (facts if isinstance(facts, list) else [])):
         errors.append("skill:inference_requires_evidence")
-    if sum(isinstance(f, dict) and f.get("taskType") == "inference_prediction"
+    if not shadow and sum(isinstance(f, dict) and f.get("taskType") == "inference_prediction"
            for f in (facts if isinstance(facts, list) else [])) > 1:
         errors.append("facts:at_most_one_inference_target")
 

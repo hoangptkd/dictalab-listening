@@ -123,7 +123,7 @@ B1 vẫn giữ 30–90 từ và 2–3 slot/fact, nhưng loại slot được m�
 - change: thay đổi cuối cùng so với kế hoạch cũ.
 - instructions: hành động hoặc thứ tự hành động.
 - condition: điều kiện cần có trước khi hành động.
-- inference: ý nghĩa hoặc bước tiếp theo có thể suy ra từ hai hoặc nhiều câu rõ ràng trong bài.
+- inference: ý nghĩa hoặc bước tiếp theo có thể suy ra từ ít nhất hai dấu hiệu rõ ràng trong bài; các dấu hiệu có thể nằm trong cùng một câu hoặc đoạn trích.
 - attitude: thái độ hoặc quan điểm được thể hiện bằng từ ngữ rõ, không yêu cầu đọc tone audio ở giai đoạn này.
 
 Giới hạn B1:
@@ -146,7 +146,7 @@ Nội dung được phép:
 - Hội thoại hai người hoặc nhiều người ở mức vừa phải; không yêu cầu chồng lượt quá dày.
 - Có thể có một vài cách nói tự nhiên, nhưng chưa dùng mật độ thành ngữ hoặc giọng vùng miền cao.
 
-Task B2 phải đo ít nhất một trong các năng lực sau:
+Bộ benchmark B2 phải bao phủ các năng lực sau; không bắt mọi task đơn lẻ phải hỏi một mục tiêu đặc trưng:
 
     main argument / supporting reason / contrast / opinion / attitude / agreement
 
@@ -164,7 +164,7 @@ Nội dung được phép:
 - Hội thoại nhiều người, chuyển lượt, phản hồi, ngắt mạch và digression.
 - Cách nói tự nhiên, khẩu ngữ và thành ngữ ở mức có kiểm soát.
 
-Task C1 phải có bằng chứng cho ít nhất một mục tiêu:
+Bộ benchmark C1 phải có bằng chứng cho các mục tiêu sau; task hỏi trực tiếp vẫn hợp lệ khi tổng thể nội dung và yêu cầu phù hợp:
 
     implicit relation / speaker intention / attitude / stance / context interpretation
 
@@ -182,7 +182,7 @@ Nội dung C2 có thể gồm:
 - Nhiều người nói, thông tin phân tán và quan hệ không được báo hiệu rõ.
 - Nhiệm vụ yêu cầu tổng hợp, tái cấu trúc lập luận hoặc phân biệt các cách hiểu gần nhau.
 
-Task C2 phải đo được ít nhất một trong các năng lực:
+Bộ benchmark C2 sau này cần bao phủ các năng lực sau, theo rubric riêng:
 
     implication / tone / allusion / humour / sociocultural meaning / fine-grained stance
 
@@ -219,7 +219,7 @@ Giá trị ban đầu:
 | C1 | SHADOW | 2/3 hoặc task-specific | Quan hệ ẩn, thái độ, ý định | Segment evidence + rationale |
 | C2 | PLANNED | Task-specific | Hàm ý, tone, ám chỉ, sắc thái | Multi-segment evidence + rationale |
 
-Số từ cho B2/C1/C2 chưa được chốt trong tài liệu này. Chỉ đặt sau benchmark nội dung; không suy ra từ CEFR.
+Số từ chính thức cho B2/C1/C2 chưa được chốt. B2/C1 shadow tạm dùng cùng khung 30–90 từ với B1 để so sánh độ phức tạp diễn ngôn và yêu cầu câu hỏi trong format ngắn hiện có. Đây là khung thử nghiệm, không chứng minh khả năng theo dõi bài nói dài B2/C1 và không được coi là giới hạn CEFR. C2 chưa có khoảng từ hoặc format sinh bài.
 
 ## Kế hoạch triển khai theo thứ tự
 
@@ -239,7 +239,13 @@ Số từ cho B2/C1/C2 chưa được chốt trong tài liệu này. Chỉ đặ
 - Dataset độc lập 10 tình huống × 3 seed (17/43/71) ở `services/ai-generation/tests/fixtures/evaluation/cefr-b1-v7-10x3.json`, có ba mục tiêu B1: attitude, inference/prediction và gist. Chưa chạy đủ benchmark 30 bài mới và semantic review.
 - Kiểm tra giai đoạn này: 105 test Java pass, một test race chưa bật; 177 test Python và 28 test JavaScript pass; smoke Java → Python → Ollama giả pass. UTF-8 và whitespace pass.
 - **Sinh thật chưa đạt cổng chất lượng.** Smoke hai bài đầu: một bài qua cấu trúc nhưng dùng vai khách/nhân viên thiếu nhất quán; một bài bị chặn sau repair. Chẩn đoán bài thứ hai phát hiện 26 từ và trích dẫn ngắn nằm trong segment dài bị kiểm tra quá chặt. Đã sửa phép chứa trích dẫn và thêm mục tiêu số từ; lần thử lại cùng tình huống vẫn bị chặn. Output chẩn đoán còn gắn nhãn inference cho một hành động nói trực tiếp. Bằng chứng tổng hợp ở `artifacts/reports/ai-platform-cefr-b1-v7-smoke-20261021.json`. Cần tiếp tục chỉnh chất lượng generation và review trước khi dùng B1 làm baseline cho B2.
-- **Còn bước 5–7:** B2/C1 shadow và C2 rubric/planned. Bước 8 đã cập nhật các contract liên quan đến B1; database và frontend vẫn chỉ A1/A2/B1, chưa cần migration cho mức mới. Audio không đổi.
+- **Đã bổ sung code bước 5–6:** profile B2/C1 ở SHADOW, schema và instruction riêng, runner offline dùng lại pipeline sinh/dịch/validate/repair. `argument_relation` yêu cầu evidence cho support/contrast/concession/agreement; C1 thêm `implicit_intention`. Mỗi reasoning có 1–4 đoạn exact quote và rationale, ít nhất một đoạn chứa `evidenceEn`. Một đoạn có thể có nhiều dấu hiệu. B2/C1 cho tối đa hai bước suy luận như giả thuyết sản phẩm; reviewer phải xác nhận độ sâu và quan hệ ý, validator cấu trúc không tự chứng minh được điều này.
+- Bundle bất biến `conversation-cefr-shadow-v1-20261021` chứa profile/schema/few-shot/rubric, `evaluationOnly=true`, `releaseAllowed=false`. Không thay bundle B1 mặc định. CLI bắt buộc `--shadow`, chỉ dùng Ollama ngoài production, không có cloud fallback; profile do bundle quyết định. C2 bị chặn trước khi gọi model. Context của bundle được reset sau cả thành công và lỗi.
+- Dataset `cefr-shadow-v1-10x3.json` có 10 tình huống B2 và 10 C1, mỗi tình huống ba seed 17/43/71, gồm tiếp diễn và lượt 4 độc lập. Dataset benchmark độc lập với ví dụ trong bundle. Báo cáo shadow kiểm tra hash dataset/bundle, model, config, loại câu hỏi và bằng chứng; giữ đủ mẫu trong mẫu số kể cả timeout hoặc thiếu capture. Review semantic thiếu/sai kiểu boolean tính fail. Cần review thủ công có tham chiếu cho từng task type trong bộ thử nghiệm.
+- **Bước 7 đã có rubric C2 dự thảo** ở phần dưới. C2 giữ PLANNED: chưa có dữ liệu được review để hiệu chuẩn rubric, chưa chốt format/độ dài, không có generation hoặc UI. Các bài hàm ý chỉ dựa trên transcript sau này sẽ không được coi là bao phủ toàn bộ năng lực nghe C2.
+- **Bước 8 đồng bộ theo trạng thái:** Java có status riêng và vẫn lọc SUPPORTED khi tạo phiên/catalog. Python HTTP/queue và OpenAPI request vẫn chỉ A1/A2/B1; lớp request shadow chỉ dùng offline. Database/frontend chưa mở mức mới nên không cần migration. Header `X-AI-Mode: shadow` có sẵn là cơ chế so sánh provider cho mức đã hỗ trợ, không mở B2/C1. Audio không đổi.
+- Theo yêu cầu tiếp tục code trước, **chưa chạy generation benchmark B2/C1, chưa chạy lại 30 bài B1**, chưa semantic review hoặc hiệu chuẩn rubric C2. Các mức không được tự chuyển SUPPORTED theo kết quả test kỹ thuật.
+- Kiểm tra kỹ thuật cho bước 5–8: 107 test Java pass, một test race có điều kiện chưa bật; 213 test Python pass, gồm cách ly shadow, grounding, repair, pin config/dataset và báo cáo fail-closed. Kiểm tra UTF-8/biên dịch Python và whitespace pass. Đây không phải kết quả benchmark CEFR hoặc sinh bài bằng model thật.
 
 ### 1. Tập trung hóa profile
 
@@ -296,7 +302,7 @@ Không để model tự gắn nhãn theo từ khóa. Validator phải kiểm tra
 
 - Thêm task có implicit relation, speaker intention, stance và context interpretation.
 - Bổ sung bằng chứng nhiều đoạn và rationale ngắn.
-- Kiểm tra hội thoại nhiều người ở transcript text; không đưa yêu cầu overlap hoặc tone audio vào đợt này vì audio ngoài phạm vi.
+- Đợt shadow hiện tại giữ một người nói và câu hỏi giải được bằng transcript. Hội thoại nhiều người, overlap và tone audio để sau theo giới hạn phạm vi đã nêu.
 - Không dùng exact substring validator cho toàn bộ C1.
 
 ### 7. Thiết kế C2 như một loại nội dung riêng
@@ -323,6 +329,25 @@ Khi một mức được phép bật, cập nhật đồng bộ:
 
 Không sửa migration cũ đã chạy; thêm migration mới.
 
+## Rubric C2 dự thảo — PLANNED
+
+Rubric này phục vụ chuẩn bị dữ liệu review, chưa được hiệu chuẩn bằng benchmark. Không kế thừa schema sinh C1 để bật C2. Danh sách năng lực dựa trên ma trận và nguồn CEFR/Cambridge ở trên; cách chấm, format và ngưỡng dưới đây là thiết kế sản phẩm cần kiểm chứng.
+
+| Mục tiêu | Cần phân biệt | Bằng chứng tối thiểu về ý nghĩa | Trường hợp phải loại |
+|---|---|---|---|
+| `implication` | Điều người nói hàm ý so với điều nói trực tiếp | Trích dẫn phát ngôn và ngữ cảnh tạo ra hàm ý; giải thích liên kết | Chỉ đổi nhãn cho thông tin đã nói rõ hoặc suy đoán tùy ý |
+| `tone` | Sắc thái trong cách dùng từ và lập trường | Các từ/cấu trúc thể hiện mức dè dặt, nhấn mạnh hoặc thay đổi sắc thái | Câu chỉ giải được bằng ngữ điệu; phần này cần rubric audio ở đợt sau |
+| `allusion` | Ý nghĩa của lời ám chỉ trong ngữ cảnh | Transcript tự cung cấp đủ ngữ cảnh cho ám chỉ | Cần biết lịch sử, tác phẩm hay sự kiện không được cung cấp |
+| `humour` | Tác dụng giao tiếp của tương phản hoặc cách dùng từ | Cả hai cách hiểu và dấu hiệu chọn cách hiểu phù hợp phải có trong transcript | Chỉ hỏi nhận biết một câu đùa, hoặc phụ thuộc giọng đọc |
+| `sociocultural_meaning` | Ý nghĩa xã hội trong tình huống cụ thể | Vai trò, quan hệ và quy ước liên quan được thiết lập trong bài | Gán khuôn mẫu văn hóa hoặc yêu cầu kiến thức ngoài bài |
+| `fine_grained_stance` | Mức cam kết, phạm vi và thay đổi nhỏ của lập trường | Tích hợp hedging, concession, phạm vi phát biểu và ngữ cảnh | Tóm tắt thành tích cực/tiêu cực làm mất khác biệt cần kiểm tra |
+
+Mỗi mẫu dự thảo phải kèm: mục tiêu, câu trả lời chấp nhận được theo ý nghĩa, các exact quote liên quan, rationale, ít nhất một cách hiểu gần nhưng sai và dấu hiệu loại cách hiểu đó. Không bắt nhiều segment khi một segment đã chứa đủ dấu hiệu; cũng không bỏ qua dấu hiệu phân tán chỉ vì có một câu chứa từ khóa. Chưa chốt số slot hoặc giới hạn segment cho format C2.
+
+Review theo sáu trục: (1) độ phức tạp nội dung/yêu cầu phù hợp, (2) bằng chứng và liên kết, (3) phân biệt cách hiểu gần nhau, (4) không cần kiến thức ngoài bài, (5) chấm giữ đúng sắc thái nhưng nhận paraphrase, (6) giải được bằng transcript trong đợt không audio. Mỗi trục chấm 0 = sai/thiếu, 1 = chưa đủ chắc, 2 = đủ bằng chứng. Mẫu chỉ được đề xuất vào bộ hiệu chuẩn khi mọi trục đạt 2; đây chưa phải ngưỡng release. Bất đồng reviewer phải được lưu và giải quyết trước khi dùng làm chuẩn.
+
+C2 chỉ được rời PLANNED khi chủ dự án chốt format/giới hạn, có tập dữ liệu đại diện từng mục tiêu với đối chứng C1, có review độc lập và thủ công, hiệu chuẩn được độ nhất quán của rubric và cập nhật đồng bộ contract. Phạm vi nghe đầy đủ còn cần thiết kế audio riêng.
+
 ## Quy tắc validation sau khi triển khai
 
 ### Validation cấu trúc
@@ -331,7 +356,7 @@ Không sửa migration cũ đã chạy; thêm migration mới.
 - Slot và fact phải cùng số lượng.
 - A1 vẫn đúng 2 fact.
 - evidenceEn trực tiếp phải là substring chính xác.
-- Evidence suy luận phải trỏ tới ít nhất hai segment nếu kết luận dựa trên hai tín hiệu.
+- Evidence suy luận phải bao phủ các dấu hiệu dùng để kết luận; một segment có thể chứa nhiều dấu hiệu. Không bắt hai segment chỉ vì cần hai dấu hiệu.
 - Không có fact hoặc evidence trùng nghĩa.
 - Không có answer leak trong questionVi hoặc taskVi.
 - Không có câu hỏi yes/no, ngoài kiến trúc task mới được duyệt riêng.

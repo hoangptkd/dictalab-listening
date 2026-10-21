@@ -8,6 +8,7 @@ from .ollama import CONTENT_SCHEMA, TRANSLATION_SCHEMA, _context_dict
 from .registry import load_artifact
 from .redaction import redact
 from .validation import LEVEL_BOUNDS
+from .schemas import ShadowConversationTaskRequest
 
 # Per-request metadata; no prompt/task bodies in logs or response metadata.
 provider_calls: ContextVar[list | None] = ContextVar("provider_calls", default=None)
@@ -25,7 +26,8 @@ async def _complete(request, settings, client, schema, purpose, data, temperatur
     result, provider = await ModelGateway(settings, client).complete(
         [{"role": "system", "content": system},
          {"role": "user", "content": json.dumps(redact(data), ensure_ascii=False)}],
-        artifact["contentSchema" if purpose == "content" else "translationSchema"],
+        (artifact.get("contentSchemas", {}).get(request.level, artifact["contentSchema"])
+         if purpose == "content" else artifact["translationSchema"]),
         deadline if deadline is not None else time.monotonic() + settings.timeout_seconds,
         purpose, temperature=temperature)
     calls = provider_calls.get()
@@ -43,11 +45,17 @@ async def generate_content(request, settings, client, *, deadline=None):
     data["turnNumber"] = request.turnNumber
     artifact = selected_artifact.get() or load_artifact(settings)
     profile = artifact.get("levelProfiles", {}).get(request.level, {})
+    shadow = isinstance(request, ShadowConversationTaskRequest)
+    if shadow != (artifact.get("evaluationOnly") is True):
+        raise ValueError("shadow requests require an offline evaluation artifact")
+    if shadow and profile.get("status") != "SHADOW":
+        raise ValueError("level is not enabled for shadow generation")
     for key, value in (("levelProfile", profile.get("wordBounds")), ("listeningSkills", profile.get("skills")),
                        ("allowedTaskTypes", profile.get("taskTypes"))):
         if value is not None:
             data.setdefault(key, value)
-    minimum, maximum = LEVEL_BOUNDS[request.level]
+    minimum, maximum = ((profile["wordBounds"]["minWords"], profile["wordBounds"]["maxWords"])
+                        if shadow else LEVEL_BOUNDS[request.level])
     bounds = data.get("levelProfile") or {}
     minimum, maximum = bounds.get("minWords", minimum), bounds.get("maxWords", maximum)
     if type(minimum) is int and type(maximum) is int and 8 <= minimum <= maximum <= 90:

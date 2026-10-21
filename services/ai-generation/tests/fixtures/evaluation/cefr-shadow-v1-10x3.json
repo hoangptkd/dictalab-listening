@@ -1,0 +1,1212 @@
+{
+  "version": "conversation-cefr-shadow-v1-10x3-per-level",
+  "evaluationOnly": true,
+  "wordBoundsStatus": "experimental_compact_b1_comparison",
+  "seeds": [
+    17,
+    43,
+    71
+  ],
+  "cases": [
+    {
+      "id": "cefr-shadow-library-B2-t2",
+      "expectedTaskTypes": [
+        "argument_relation"
+      ],
+      "context": {
+        "scenario": "Họp về thư viện cộng đồng",
+        "difficulty": "B2",
+        "turnNumber": 2,
+        "partnerRole": "library coordinator",
+        "learnerRole": "committee member",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation"
+        ],
+        "practiceFocus": "Primary target argument_relation. Contrast lower staffing costs with reduced access; ask which consideration supports the recommendation. Ask one additional independent meaning.",
+        "history": [
+          {
+            "speaker": "library coordinator",
+            "utteranceEn": "Our planning meeting starts at ten. Please come to the main office.",
+            "questionVi": "Buổi họp bắt đầu lúc mấy giờ và ở đâu?",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Mười giờ",
+                "evidenceEn": "at ten"
+              },
+              {
+                "id": "f2",
+                "textVi": "Văn phòng chính",
+                "evidenceEn": "the main office"
+              }
+            ]
+          }
+        ],
+        "previouslyTestedDetails": [],
+        "scenarioJourney": "Continue the same planning meeting. Discuss new substantive meanings; preserve settled arrangements."
+      }
+    },
+    {
+      "id": "cefr-shadow-bus-B2-t2",
+      "expectedTaskTypes": [
+        "argument_relation"
+      ],
+      "context": {
+        "scenario": "Thảo luận tuyến xe buýt",
+        "difficulty": "B2",
+        "turnNumber": 2,
+        "partnerRole": "transport planner",
+        "learnerRole": "council member",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation"
+        ],
+        "practiceFocus": "Primary target argument_relation. Track a concession about journey time and a counterargument about reliability. Ask one additional independent meaning.",
+        "history": [
+          {
+            "speaker": "transport planner",
+            "utteranceEn": "Our planning meeting starts at ten. Please come to the main office.",
+            "questionVi": "Buổi họp bắt đầu lúc mấy giờ và ở đâu?",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Mười giờ",
+                "evidenceEn": "at ten"
+              },
+              {
+                "id": "f2",
+                "textVi": "Văn phòng chính",
+                "evidenceEn": "the main office"
+              }
+            ]
+          }
+        ],
+        "previouslyTestedDetails": [],
+        "scenarioJourney": "Continue the same planning meeting. Discuss new substantive meanings; preserve settled arrangements."
+      }
+    },
+    {
+      "id": "cefr-shadow-coworking-B2-t2",
+      "expectedTaskTypes": [
+        "opinion_attitude"
+      ],
+      "context": {
+        "scenario": "Chọn chính sách không gian làm việc",
+        "difficulty": "B2",
+        "turnNumber": 2,
+        "partnerRole": "office manager",
+        "learnerRole": "team representative",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation"
+        ],
+        "practiceFocus": "Primary target opinion_attitude. Recognize qualified support for shared desks despite a stated drawback. Ask one additional independent meaning.",
+        "history": [
+          {
+            "speaker": "office manager",
+            "utteranceEn": "Our planning meeting starts at ten. Please come to the main office.",
+            "questionVi": "Buổi họp bắt đầu lúc mấy giờ và ở đâu?",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Mười giờ",
+                "evidenceEn": "at ten"
+              },
+              {
+                "id": "f2",
+                "textVi": "Văn phòng chính",
+                "evidenceEn": "the main office"
+              }
+            ]
+          }
+        ],
+        "previouslyTestedDetails": [],
+        "scenarioJourney": "Continue the same planning meeting. Discuss new substantive meanings; preserve settled arrangements."
+      }
+    },
+    {
+      "id": "cefr-shadow-museum-B2-t2",
+      "expectedTaskTypes": [
+        "gist"
+      ],
+      "context": {
+        "scenario": "Lập chương trình bảo tàng",
+        "difficulty": "B2",
+        "turnNumber": 2,
+        "partnerRole": "museum coordinator",
+        "learnerRole": "programme adviser",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation"
+        ],
+        "practiceFocus": "Primary target gist. Identify the overall argument for balancing public access and conservation. Ask one additional independent meaning.",
+        "history": [
+          {
+            "speaker": "museum coordinator",
+            "utteranceEn": "Our planning meeting starts at ten. Please come to the main office.",
+            "questionVi": "Buổi họp bắt đầu lúc mấy giờ và ở đâu?",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Mười giờ",
+                "evidenceEn": "at ten"
+              },
+              {
+                "id": "f2",
+                "textVi": "Văn phòng chính",
+                "evidenceEn": "the main office"
+              }
+            ]
+          }
+        ],
+        "previouslyTestedDetails": [],
+        "scenarioJourney": "Continue the same planning meeting. Discuss new substantive meanings; preserve settled arrangements."
+      }
+    },
+    {
+      "id": "cefr-shadow-garden-B2-t2",
+      "expectedTaskTypes": [
+        "inference_prediction"
+      ],
+      "context": {
+        "scenario": "Lên kế hoạch vườn cộng đồng",
+        "difficulty": "B2",
+        "turnNumber": 2,
+        "partnerRole": "garden coordinator",
+        "learnerRole": "volunteer",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation"
+        ],
+        "practiceFocus": "Primary target inference_prediction. Infer the likely next decision from competing needs and a funding constraint; do not state that decision directly. Ask one additional independent meaning.",
+        "history": [
+          {
+            "speaker": "garden coordinator",
+            "utteranceEn": "Our planning meeting starts at ten. Please come to the main office.",
+            "questionVi": "Buổi họp bắt đầu lúc mấy giờ và ở đâu?",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Mười giờ",
+                "evidenceEn": "at ten"
+              },
+              {
+                "id": "f2",
+                "textVi": "Văn phòng chính",
+                "evidenceEn": "the main office"
+              }
+            ]
+          }
+        ],
+        "previouslyTestedDetails": [],
+        "scenarioJourney": "Continue the same planning meeting. Discuss new substantive meanings; preserve settled arrangements."
+      }
+    },
+    {
+      "id": "cefr-shadow-training-B2-t4",
+      "expectedTaskTypes": [
+        "argument_relation"
+      ],
+      "context": {
+        "scenario": "Chọn chương trình đào tạo",
+        "difficulty": "B2",
+        "turnNumber": 4,
+        "partnerRole": "training manager",
+        "learnerRole": "department representative",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation"
+        ],
+        "practiceFocus": "Primary target argument_relation. Explain why the speaker partly agrees with a reported proposal but retains a different recommendation. Ask one additional independent meaning.",
+        "history": [],
+        "previouslyTestedDetails": [
+          {
+            "id": "f1",
+            "textVi": "Mười giờ",
+            "evidenceEn": "at ten"
+          },
+          {
+            "id": "f2",
+            "textVi": "Văn phòng chính",
+            "evidenceEn": "the main office"
+          }
+        ],
+        "weakSkills": [
+          "Theo dõi lập luận và quan hệ ý"
+        ]
+      }
+    },
+    {
+      "id": "cefr-shadow-festival-B2-t4",
+      "expectedTaskTypes": [
+        "opinion_attitude"
+      ],
+      "context": {
+        "scenario": "Thảo luận lịch lễ hội",
+        "difficulty": "B2",
+        "turnNumber": 4,
+        "partnerRole": "festival organiser",
+        "learnerRole": "sponsor representative",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation"
+        ],
+        "practiceFocus": "Primary target opinion_attitude. Interpret a balanced evaluation of moving the festival to another season. Ask one additional independent meaning.",
+        "history": [],
+        "previouslyTestedDetails": [
+          {
+            "id": "f1",
+            "textVi": "Mười giờ",
+            "evidenceEn": "at ten"
+          },
+          {
+            "id": "f2",
+            "textVi": "Văn phòng chính",
+            "evidenceEn": "the main office"
+          }
+        ],
+        "weakSkills": [
+          "Theo dõi lập luận và quan hệ ý"
+        ]
+      }
+    },
+    {
+      "id": "cefr-shadow-recycling-B2-t4",
+      "expectedTaskTypes": [
+        "argument_relation"
+      ],
+      "context": {
+        "scenario": "Đánh giá dự án tái chế",
+        "difficulty": "B2",
+        "turnNumber": 4,
+        "partnerRole": "project leader",
+        "learnerRole": "reviewer",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation"
+        ],
+        "practiceFocus": "Primary target argument_relation. Separate a main claim from evidence and explain how the evidence qualifies the claim. Ask one additional independent meaning.",
+        "history": [],
+        "previouslyTestedDetails": [
+          {
+            "id": "f1",
+            "textVi": "Mười giờ",
+            "evidenceEn": "at ten"
+          },
+          {
+            "id": "f2",
+            "textVi": "Văn phòng chính",
+            "evidenceEn": "the main office"
+          }
+        ],
+        "weakSkills": [
+          "Theo dõi lập luận và quan hệ ý"
+        ]
+      }
+    },
+    {
+      "id": "cefr-shadow-sports-B2-t4",
+      "expectedTaskTypes": [
+        "direct_detail"
+      ],
+      "context": {
+        "scenario": "Lập kế hoạch trung tâm thể thao",
+        "difficulty": "B2",
+        "turnNumber": 4,
+        "partnerRole": "centre director",
+        "learnerRole": "community adviser",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation"
+        ],
+        "practiceFocus": "Primary target direct_detail. Ask a concrete decision within an argument containing concessions and competing community priorities; keep the discourse B2. Ask one additional independent meaning.",
+        "history": [],
+        "previouslyTestedDetails": [
+          {
+            "id": "f1",
+            "textVi": "Mười giờ",
+            "evidenceEn": "at ten"
+          },
+          {
+            "id": "f2",
+            "textVi": "Văn phòng chính",
+            "evidenceEn": "the main office"
+          }
+        ],
+        "weakSkills": [
+          "Theo dõi lập luận và quan hệ ý"
+        ]
+      }
+    },
+    {
+      "id": "cefr-shadow-energy-B2-t4",
+      "expectedTaskTypes": [
+        "argument_relation"
+      ],
+      "context": {
+        "scenario": "Thảo luận tiết kiệm năng lượng",
+        "difficulty": "B2",
+        "turnNumber": 4,
+        "partnerRole": "facilities manager",
+        "learnerRole": "budget officer",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation"
+        ],
+        "practiceFocus": "Primary target argument_relation. Track agreement on the aim but disagreement on the proposed method; ask the reason for the alternative. Ask one additional independent meaning.",
+        "history": [],
+        "previouslyTestedDetails": [
+          {
+            "id": "f1",
+            "textVi": "Mười giờ",
+            "evidenceEn": "at ten"
+          },
+          {
+            "id": "f2",
+            "textVi": "Văn phòng chính",
+            "evidenceEn": "the main office"
+          }
+        ],
+        "weakSkills": [
+          "Theo dõi lập luận và quan hệ ý"
+        ]
+      }
+    },
+    {
+      "id": "cefr-shadow-grant-C1-t2",
+      "expectedTaskTypes": [
+        "implicit_intention"
+      ],
+      "context": {
+        "scenario": "Đánh giá đề xuất tài trợ",
+        "difficulty": "C1",
+        "turnNumber": 2,
+        "partnerRole": "grant reviewer",
+        "learnerRole": "panel chair",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý",
+          "intention": "Diễn giải ý định và lập trường ngầm"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation",
+          "implicit_intention"
+        ],
+        "practiceFocus": "Primary target implicit_intention. Infer the speaker's unspoken reservation from praise qualified by unresolved methodological gaps; do not state the intention directly. Ask one additional independent meaning.",
+        "history": [
+          {
+            "speaker": "grant reviewer",
+            "utteranceEn": "Our planning meeting starts at ten. Please come to the main office.",
+            "questionVi": "Buổi họp bắt đầu lúc mấy giờ và ở đâu?",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Mười giờ",
+                "evidenceEn": "at ten"
+              },
+              {
+                "id": "f2",
+                "textVi": "Văn phòng chính",
+                "evidenceEn": "the main office"
+              }
+            ]
+          }
+        ],
+        "previouslyTestedDetails": [],
+        "scenarioJourney": "Continue the same planning meeting. Discuss new substantive meanings; preserve settled arrangements."
+      }
+    },
+    {
+      "id": "cefr-shadow-journal-C1-t2",
+      "expectedTaskTypes": [
+        "argument_relation"
+      ],
+      "context": {
+        "scenario": "Trao đổi biên tập nghiên cứu",
+        "difficulty": "C1",
+        "turnNumber": 2,
+        "partnerRole": "journal editor",
+        "learnerRole": "research author",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý",
+          "intention": "Diễn giải ý định và lập trường ngầm"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation",
+          "implicit_intention"
+        ],
+        "practiceFocus": "Primary target argument_relation. Integrate dispersed limitations and a concession to interpret how the evidence qualifies a broad claim; avoid explicit logical connectors throughout. Ask one additional independent meaning.",
+        "history": [
+          {
+            "speaker": "journal editor",
+            "utteranceEn": "Our planning meeting starts at ten. Please come to the main office.",
+            "questionVi": "Buổi họp bắt đầu lúc mấy giờ và ở đâu?",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Mười giờ",
+                "evidenceEn": "at ten"
+              },
+              {
+                "id": "f2",
+                "textVi": "Văn phòng chính",
+                "evidenceEn": "the main office"
+              }
+            ]
+          }
+        ],
+        "previouslyTestedDetails": [],
+        "scenarioJourney": "Continue the same planning meeting. Discuss new substantive meanings; preserve settled arrangements."
+      }
+    },
+    {
+      "id": "cefr-shadow-heritage-C1-t2",
+      "expectedTaskTypes": [
+        "implicit_intention"
+      ],
+      "context": {
+        "scenario": "Xem xét dự án bảo tồn",
+        "difficulty": "C1",
+        "turnNumber": 2,
+        "partnerRole": "heritage consultant",
+        "learnerRole": "project coordinator",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý",
+          "intention": "Diễn giải ý định và lập trường ngầm"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation",
+          "implicit_intention"
+        ],
+        "practiceFocus": "Primary target implicit_intention. Interpret a diplomatic intervention whose practical purpose is recoverable from lexical choices and the surrounding context. Ask one additional independent meaning.",
+        "history": [
+          {
+            "speaker": "heritage consultant",
+            "utteranceEn": "Our planning meeting starts at ten. Please come to the main office.",
+            "questionVi": "Buổi họp bắt đầu lúc mấy giờ và ở đâu?",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Mười giờ",
+                "evidenceEn": "at ten"
+              },
+              {
+                "id": "f2",
+                "textVi": "Văn phòng chính",
+                "evidenceEn": "the main office"
+              }
+            ]
+          }
+        ],
+        "previouslyTestedDetails": [],
+        "scenarioJourney": "Continue the same planning meeting. Discuss new substantive meanings; preserve settled arrangements."
+      }
+    },
+    {
+      "id": "cefr-shadow-policy-C1-t2",
+      "expectedTaskTypes": [
+        "opinion_attitude"
+      ],
+      "context": {
+        "scenario": "Phân tích chính sách trường học",
+        "difficulty": "C1",
+        "turnNumber": 2,
+        "partnerRole": "policy adviser",
+        "learnerRole": "school director",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý",
+          "intention": "Diễn giải ý định và lập trường ngầm"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation",
+          "implicit_intention"
+        ],
+        "practiceFocus": "Primary target opinion_attitude. Distinguish tentative endorsement of an objective from reservations about implementation using hedging and scope. Ask one additional independent meaning.",
+        "history": [
+          {
+            "speaker": "policy adviser",
+            "utteranceEn": "Our planning meeting starts at ten. Please come to the main office.",
+            "questionVi": "Buổi họp bắt đầu lúc mấy giờ và ở đâu?",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Mười giờ",
+                "evidenceEn": "at ten"
+              },
+              {
+                "id": "f2",
+                "textVi": "Văn phòng chính",
+                "evidenceEn": "the main office"
+              }
+            ]
+          }
+        ],
+        "previouslyTestedDetails": [],
+        "scenarioJourney": "Continue the same planning meeting. Discuss new substantive meanings; preserve settled arrangements."
+      }
+    },
+    {
+      "id": "cefr-shadow-archive-C1-t2",
+      "expectedTaskTypes": [
+        "gist"
+      ],
+      "context": {
+        "scenario": "Đánh giá dự án lưu trữ",
+        "difficulty": "C1",
+        "turnNumber": 2,
+        "partnerRole": "archive curator",
+        "learnerRole": "research coordinator",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý",
+          "intention": "Diễn giải ý định và lập trường ngầm"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation",
+          "implicit_intention"
+        ],
+        "practiceFocus": "Primary target gist. Synthesize the main point of a compact contribution with a digression, a shift in emphasis and an implicit relation. Ask one additional independent meaning.",
+        "history": [
+          {
+            "speaker": "archive curator",
+            "utteranceEn": "Our planning meeting starts at ten. Please come to the main office.",
+            "questionVi": "Buổi họp bắt đầu lúc mấy giờ và ở đâu?",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Mười giờ",
+                "evidenceEn": "at ten"
+              },
+              {
+                "id": "f2",
+                "textVi": "Văn phòng chính",
+                "evidenceEn": "the main office"
+              }
+            ]
+          }
+        ],
+        "previouslyTestedDetails": [],
+        "scenarioJourney": "Continue the same planning meeting. Discuss new substantive meanings; preserve settled arrangements."
+      }
+    },
+    {
+      "id": "cefr-shadow-ethics-C1-t4",
+      "expectedTaskTypes": [
+        "implicit_intention"
+      ],
+      "context": {
+        "scenario": "Thảo luận quy trình đạo đức",
+        "difficulty": "C1",
+        "turnNumber": 4,
+        "partnerRole": "ethics reviewer",
+        "learnerRole": "study coordinator",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý",
+          "intention": "Diễn giải ý định và lập trường ngầm"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation",
+          "implicit_intention"
+        ],
+        "practiceFocus": "Primary target implicit_intention. Infer a procedural concern behind a seemingly neutral request; rule out a plausible alternative using transcript cues. Ask one additional independent meaning.",
+        "history": [],
+        "previouslyTestedDetails": [
+          {
+            "id": "f1",
+            "textVi": "Mười giờ",
+            "evidenceEn": "at ten"
+          },
+          {
+            "id": "f2",
+            "textVi": "Văn phòng chính",
+            "evidenceEn": "the main office"
+          }
+        ],
+        "weakSkills": [
+          "Theo dõi lập luận và quan hệ ý"
+        ]
+      }
+    },
+    {
+      "id": "cefr-shadow-funding-C1-t4",
+      "expectedTaskTypes": [
+        "argument_relation"
+      ],
+      "context": {
+        "scenario": "Thảo luận phân bổ ngân sách",
+        "difficulty": "C1",
+        "turnNumber": 4,
+        "partnerRole": "evaluation analyst",
+        "learnerRole": "funding director",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý",
+          "intention": "Diễn giải ý định và lập trường ngầm"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation",
+          "implicit_intention"
+        ],
+        "practiceFocus": "Primary target argument_relation. Reconstruct a less signposted relation between reported success, selection effects and a qualified recommendation. Ask one additional independent meaning.",
+        "history": [],
+        "previouslyTestedDetails": [
+          {
+            "id": "f1",
+            "textVi": "Mười giờ",
+            "evidenceEn": "at ten"
+          },
+          {
+            "id": "f2",
+            "textVi": "Văn phòng chính",
+            "evidenceEn": "the main office"
+          }
+        ],
+        "weakSkills": [
+          "Theo dõi lập luận và quan hệ ý"
+        ]
+      }
+    },
+    {
+      "id": "cefr-shadow-design-C1-t4",
+      "expectedTaskTypes": [
+        "implicit_intention"
+      ],
+      "context": {
+        "scenario": "Phản biện đề xuất thiết kế",
+        "difficulty": "C1",
+        "turnNumber": 4,
+        "partnerRole": "design critic",
+        "learnerRole": "project architect",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý",
+          "intention": "Diễn giải ý định và lập trường ngầm"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation",
+          "implicit_intention"
+        ],
+        "practiceFocus": "Primary target implicit_intention. Infer whether diplomatic praise invites revision or acceptance from the context, not from voice or irony. Ask one additional independent meaning.",
+        "history": [],
+        "previouslyTestedDetails": [
+          {
+            "id": "f1",
+            "textVi": "Mười giờ",
+            "evidenceEn": "at ten"
+          },
+          {
+            "id": "f2",
+            "textVi": "Văn phòng chính",
+            "evidenceEn": "the main office"
+          }
+        ],
+        "weakSkills": [
+          "Theo dõi lập luận và quan hệ ý"
+        ]
+      }
+    },
+    {
+      "id": "cefr-shadow-curriculum-C1-t4",
+      "expectedTaskTypes": [
+        "direct_detail"
+      ],
+      "context": {
+        "scenario": "Rà soát chương trình học",
+        "difficulty": "C1",
+        "turnNumber": 4,
+        "partnerRole": "curriculum adviser",
+        "learnerRole": "course leader",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý",
+          "intention": "Diễn giải ý định và lập trường ngầm"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation",
+          "implicit_intention"
+        ],
+        "practiceFocus": "Primary target direct_detail. Retrieve an exact required action from a dense contribution with hedging and an implicit change of scope; keep the overall demand C1. Ask one additional independent meaning.",
+        "history": [],
+        "previouslyTestedDetails": [
+          {
+            "id": "f1",
+            "textVi": "Mười giờ",
+            "evidenceEn": "at ten"
+          },
+          {
+            "id": "f2",
+            "textVi": "Văn phòng chính",
+            "evidenceEn": "the main office"
+          }
+        ],
+        "weakSkills": [
+          "Theo dõi lập luận và quan hệ ý"
+        ]
+      }
+    },
+    {
+      "id": "cefr-shadow-exhibition-C1-t4",
+      "expectedTaskTypes": [
+        "argument_relation"
+      ],
+      "context": {
+        "scenario": "Đánh giá định hướng triển lãm",
+        "difficulty": "C1",
+        "turnNumber": 4,
+        "partnerRole": "exhibition reviewer",
+        "learnerRole": "gallery director",
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ",
+          "argument": "Theo dõi lập luận và quan hệ ý",
+          "intention": "Diễn giải ý định và lập trường ngầm"
+        },
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction",
+          "argument_relation",
+          "implicit_intention"
+        ],
+        "practiceFocus": "Primary target argument_relation. Interpret an unstated tension between institutional aims and audience evidence through dispersed lexical cues. Ask one additional independent meaning.",
+        "history": [],
+        "previouslyTestedDetails": [
+          {
+            "id": "f1",
+            "textVi": "Mười giờ",
+            "evidenceEn": "at ten"
+          },
+          {
+            "id": "f2",
+            "textVi": "Văn phòng chính",
+            "evidenceEn": "the main office"
+          }
+        ],
+        "weakSkills": [
+          "Theo dõi lập luận và quan hệ ý"
+        ]
+      }
+    }
+  ]
+}

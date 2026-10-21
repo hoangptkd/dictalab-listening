@@ -2,6 +2,12 @@ openapi: 3.1.0
 info:
   title: DictaLab AI Generation Service
   version: 1.0.0
+x-cefr-offline-evaluation:
+  levels: {B2: SHADOW, C1: SHADOW, C2: PLANNED}
+  artifact: conversation-cefr-shadow-v1-20261021
+  entrypoint: tools/ai-eval/generate.py --shadow
+  httpEnabled: false
+  note: Offline evaluation uses a separate request model; X-AI-Mode does not expand the HTTP level enum.
 paths:
   /health/live:
     get:
