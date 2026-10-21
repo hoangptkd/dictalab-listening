@@ -13,6 +13,7 @@ from pydantic import Field, model_validator
 
 from . import coach, review, tts
 from .coach import StrictModel
+from .config import CLOUD_PROVIDERS
 
 QUEUE = "dictalab.ai.platform.v1"
 DLQ = QUEUE + ".dead"
@@ -59,7 +60,7 @@ def capability_metadata(payload, settings):
     instruction = getattr(module, "INSTRUCTION", "Cartesia PCM 24000 mono 16-bit WAV")
     return {"provider": "cartesia" if payload.kind == "tts" else settings.selected_provider,
             "model": settings.cartesia_model if payload.kind == "tts" else
-                settings.cloud_model if settings.selected_provider == "shopaikey" else settings.model,
+                settings.active_cloud_model if settings.selected_provider in CLOUD_PROVIDERS else settings.model,
             "modelDigest": settings.model_digest if settings.selected_provider == "ollama" and payload.kind != "tts" else "provider-managed",
             "promptVersion": module.PROMPT_VERSION,
             "promptHash": digest({"instruction": instruction, "input": type(payload).model_json_schema(),

@@ -209,6 +209,23 @@ def test_cloud_readiness_does_not_require_local_model_or_unapproved_conversation
         assert "shopaikey.com/v1/models" in get.call_args.args[0]
 
 
+def test_opencode_provider_uses_its_own_cloud_slot(monkeypatch):
+    settings = Settings(primary_provider="opencode", opencode_api_key="oc-test",
+                        cloud_api_key="shop-test", cloud_model="shop-model")
+    assert settings.selected_provider == "opencode"
+    assert settings.active_cloud_base_url == "https://opencode.ai/inference"
+    assert settings.active_cloud_api_key == "oc-test"
+    assert settings.active_cloud_model == "deepseek-v4.1-flash"
+
+    from app import main
+    monkeypatch.setattr(main, "settings", settings.model_copy(update={"conversation_enabled": False}))
+    response = httpx.Response(200, json={"data": [{"id": "deepseek-v4.1-flash"}]},
+                              request=httpx.Request("GET", "https://opencode.ai/inference/v1/models"))
+    with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=response)) as get:
+        assert TestClient(main.app).get("/health/ready").status_code == 200
+        assert "opencode.ai/inference/v1/models" in get.call_args.args[0]
+
+
 def test_remote_plaintext_provider_is_rejected():
     with pytest.raises(ValueError):
         Settings(production_mode=True, primary_provider="ollama", service_token="test-only", ollama_url="http://10.0.0.2:11434")

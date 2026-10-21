@@ -3,6 +3,7 @@ import json
 import time
 from contextvars import ContextVar
 
+from .config import CLOUD_PROVIDERS
 from .model_gateway import ModelGateway
 from .ollama import CONTENT_SCHEMA, TRANSLATION_SCHEMA, _context_dict
 from .registry import load_artifact
@@ -34,7 +35,7 @@ async def _complete(request, settings, client, schema, purpose, data, temperatur
     if calls is not None:
         calls.append({"purpose": purpose, "provider": provider,
                       "model": settings.model if provider == "ollama" else
-                          settings.cloud_model if settings.selected_provider == "shopaikey" else settings.fallback_model,
+                          settings.active_cloud_model if settings.selected_provider in CLOUD_PROVIDERS else settings.fallback_model,
                       "modelDigest": artifact["model"]["digest"] if provider == "ollama" else "unpinned-cloud"})
     return result
 

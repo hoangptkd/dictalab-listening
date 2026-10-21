@@ -1,6 +1,8 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
+CLOUD_PROVIDERS = ("shopaikey", "opencode")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DICTALAB_AI_")
@@ -26,6 +28,9 @@ class Settings(BaseSettings):
     cloud_base_url: str = "https://api.shopaikey.com"
     cloud_api_key: str = ""
     cloud_model: str = "gemini-2.5-flash"
+    opencode_base_url: str = "https://opencode.ai/inference"
+    opencode_api_key: str = ""
+    opencode_model: str = "deepseek-v4.1-flash"
     jobs_enabled: bool = False
     jobs_database: str = "data/ai-jobs.sqlite3"
     rabbitmq_url: str = "amqp://guest:guest@127.0.0.1:5672/%2F"
@@ -52,7 +57,7 @@ class Settings(BaseSettings):
 
     def __init__(self, **values):
         super().__init__(**values)
-        if self.primary_provider not in ("auto", "ollama", "shopaikey"):
+        if self.primary_provider not in ("auto", "ollama", *CLOUD_PROVIDERS):
             raise ValueError("unsupported primary_provider")
         if not 60 <= self.job_retention_seconds <= 86400:
             raise ValueError("job retention must be between 60 and 86400 seconds")
@@ -60,6 +65,7 @@ class Settings(BaseSettings):
             raise ValueError("invalid HTTP pool limit")
         from urllib.parse import urlsplit
         for value, active in ((self.cloud_base_url, self.selected_provider == "shopaikey"),
+                (self.opencode_base_url, self.selected_provider == "opencode"),
                 (self.fallback_base_url, self.fallback_enabled), (self.ollama_url, self.selected_provider == "ollama"),
                 (self.cartesia_url, bool(self.cartesia_api_key))):
             uri = urlsplit(value)
@@ -96,3 +102,15 @@ class Settings(BaseSettings):
         if self.primary_provider != "auto":
             return self.primary_provider
         return "shopaikey" if self.production_mode else "ollama"
+
+    @property
+    def active_cloud_base_url(self) -> str:
+        return self.opencode_base_url if self.selected_provider == "opencode" else self.cloud_base_url
+
+    @property
+    def active_cloud_api_key(self) -> str:
+        return self.opencode_api_key if self.selected_provider == "opencode" else self.cloud_api_key
+
+    @property
+    def active_cloud_model(self) -> str:
+        return self.opencode_model if self.selected_provider == "opencode" else self.cloud_model

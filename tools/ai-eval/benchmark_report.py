@@ -196,12 +196,13 @@ def build(run_dir, baseline_dir=None):
         "The observer records attempts but does not change prompts, seeds, schemas, options or repair count.",
     ]
     model = manifest.get("model") or {}
-    if model.get("provider") == "shopaikey":
+    cloud_provider = model.get("provider") in ("shopaikey", "opencode")
+    if cloud_provider:
         limits += [
             "The frozen bundle is pinned to Ollama qwen3.5:9b; this cloud run changes provider and model, so "
             "differences cannot be attributed to the prompt alone.",
-            "Shop AI requests do not carry the Ollama seed option; each seed is a repeated case label, not a "
-            "reproducible sampling seed.",
+            f"{model.get('provider')} requests do not carry the Ollama seed option; each seed is a repeated case "
+            "label, not a reproducible sampling seed.",
         ]
     if has_shadow:
         limits.append("Shadow arm uses the compact 30-90 word format; it does not test long B2/C1 listening.")
@@ -213,7 +214,7 @@ def build(run_dir, baseline_dir=None):
         next_steps.append("Finish the remaining shadow samples with the same bundle, dataset and environment, "
                           "writing a new raw capture plus sidecar and merging by key with duplicate/missing checks.")
     else:
-        next_steps.append("Run the shadow arm separately if B2/C1 evidence is needed; it cannot run on Shop AI.")
+        next_steps.append("Run the shadow arm separately if B2/C1 evidence is needed; it cannot run on a cloud provider.")
 
     report = {
         "reportVersion": 1,

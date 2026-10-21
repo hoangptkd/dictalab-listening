@@ -14,7 +14,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from .config import Settings
+from .config import CLOUD_PROVIDERS, Settings
 from . import telemetry
 from .registry import RegistryError, load_artifact, resolve_version, verify_model
 from .prompt_versions import provider_calls, selected_artifact
@@ -149,24 +149,25 @@ async def ready() -> dict[str, str]:
     try:
         artifact = load_artifact(settings) if settings.conversation_enabled else None
         timeout = httpx.Timeout(min(settings.timeout_seconds, 3.0))
+        provider = settings.selected_provider
         async with httpx.AsyncClient(timeout=timeout) as client:
-            if settings.selected_provider == "shopaikey":
-                if not settings.cloud_api_key:
+            if provider in CLOUD_PROVIDERS:
+                if not settings.active_cloud_api_key:
                     raise ValueError("cloud key is missing")
-                base = settings.cloud_base_url.rstrip("/").removesuffix("/chat/completions").removesuffix("/v1")
-                response = await client.get(base + "/v1/models", headers={"Authorization": "Bearer " + settings.cloud_api_key})
+                base = settings.active_cloud_base_url.rstrip("/").removesuffix("/chat/completions").removesuffix("/v1")
+                response = await client.get(base + "/v1/models", headers={"Authorization": "Bearer " + settings.active_cloud_api_key})
             else:
                 response = await client.get(settings.ollama_url.rstrip("/") + "/api/tags",
                     headers={"X-Service-Token": settings.ollama_service_token} if settings.ollama_service_token else {})
             response.raise_for_status()
-        if settings.selected_provider == "ollama":
+        if provider == "ollama":
             if artifact:
                 verify_model(artifact, response.json())
             elif not any(m.get("name") == settings.model and (settings.model_digest == "unknown" or
                     m.get("digest", "").removeprefix("sha256:") == settings.model_digest.removeprefix("sha256:"))
                     for m in response.json().get("models", [])):
                 raise ValueError("local model missing or digest drift")
-        elif settings.cloud_model not in {m.get("id") for m in response.json().get("data", [])}:
+        elif settings.active_cloud_model not in {m.get("id") for m in response.json().get("data", [])}:
             raise ValueError("cloud model missing")
         if settings.jobs_enabled:
             from .jobs import JobStore, broker_connection, QUEUE
@@ -175,11 +176,11 @@ async def ready() -> dict[str, str]:
                 with broker_connection(settings) as connection:
                     connection.channel().queue_declare(queue=QUEUE, passive=True)
             await asyncio.to_thread(check_broker)
-        return {"status": "ready", "model": settings.cloud_model if settings.selected_provider == "shopaikey" else settings.model,
+        return {"status": "ready", "model": settings.active_cloud_model if provider in CLOUD_PROVIDERS else settings.model,
                 "promptVersion": artifact["version"] if artifact else "conversation-disabled",
                 "modelDigest": artifact["model"]["digest"] if artifact else "provider-managed"}
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="AI artifact or Ollama model is not ready") from exc
+        raise HTTPException(status_code=503, detail="AI artifact or provider model is not ready") from exc
 
 
 @app.post("/v1/conversation/tasks", response_model=ConversationTaskResponse)
@@ -197,7 +198,7 @@ async def create_task(payload: ConversationTaskRequest, request: Request,
         raise HTTPException(status_code=400, detail="invalid generation mode")
     if not settings.conversation_enabled:
         raise HTTPException(status_code=503, detail="conversation capability is disabled")
-    if mode == "shadow" and settings.selected_provider == "shopaikey":
+    if mode == "shadow" and settings.selected_provider in CLOUD_PROVIDERS:
         raise HTTPException(status_code=400, detail="cloud shadow is disabled")
 
     try:

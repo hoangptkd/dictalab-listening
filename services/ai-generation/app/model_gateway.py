@@ -1,6 +1,7 @@
 """Model gateway — selects provider and handles controlled fallback.
 
-Primary: Ollama locally, ShopAIKey in production (or explicit configuration).
+Primary: Ollama locally, Shop AI in production, or an explicit cloud provider
+(Shop AI or OpenCode).
 Fallback: Shop AI cloud — only when:
   - DICTALAB_AI_FALLBACK_ENABLED=true, AND
   - local provider raises TimeoutError or ProviderError with a 5xx-like cause
@@ -22,9 +23,10 @@ from typing import Any
 
 import httpx
 
-from .config import Settings
+from .config import CLOUD_PROVIDERS, Settings
 from .providers.base import ModelProvider, ProviderError
 from .providers.ollama import OllamaProvider
+from .providers.opencode import OpenCodeProvider
 from .providers.shopaikey import ShopAiKeyProvider
 
 logger = logging.getLogger("dictalab.ai_generation.model_gateway")
@@ -54,9 +56,15 @@ class ModelGateway:
                 temperature=settings.temperature,
                 client=client,
             )
-        self._primary_cloud = ShopAiKeyProvider(base_url=settings.cloud_base_url,
-            api_key=settings.cloud_api_key, model=settings.cloud_model,
-            temperature=settings.temperature, client=client, max_tokens=settings.num_predict)
+        cloud_provider = OpenCodeProvider if settings.selected_provider == "opencode" else ShopAiKeyProvider
+        self._primary_cloud = cloud_provider(
+            base_url=settings.active_cloud_base_url,
+            api_key=settings.active_cloud_api_key,
+            model=settings.active_cloud_model,
+            temperature=settings.temperature,
+            client=client,
+            max_tokens=settings.num_predict,
+        )
 
     async def complete(
         self,
@@ -74,10 +82,11 @@ class ModelGateway:
         (result_dict, provider_name)
         """
         started = time.monotonic()
-        if self._settings.selected_provider == "shopaikey":
+        provider = self._settings.selected_provider
+        if provider in CLOUD_PROVIDERS:
             result = await self._primary_cloud.complete(messages, schema, deadline, purpose, temperature=temperature)
-            self._log("shopaikey", purpose, started, fallback=False)
-            return result, "shopaikey"
+            self._log(provider, purpose, started, fallback=False)
+            return result, provider
         try:
             result = await self._local.complete(
                 messages, schema, deadline, purpose, temperature=temperature

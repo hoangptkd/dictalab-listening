@@ -68,6 +68,16 @@ and forces Ollama for text AI, including legacy grading and review; it no longer
 Audio still requires Cartesia. Default Java production routing remains ShopAIKey, including rollback clients.
 Java `DICTALAB_AI_TEXT_PROVIDER` must match Python's selected primary; mismatches fail before paid job calls.
 
+OpenCode Console is an explicit Python cloud primary (`DICTALAB_AI_PRIMARY_PROVIDER=opencode`). Compose
+forwards `OPENCODE_API_KEY`, `OPENCODE_BASE_URL` and `OPENCODE_MODEL` to `DICTALAB_AI_OPENCODE_*`.
+Only models using the OpenAI chat-completions protocol are supported; Claude Messages, GPT Responses and
+Gemini endpoints need separate adapters. Use `https://opencode.ai/inference/go` with a Go workspace and
+`https://opencode.ai/inference` for pay-as-you-go. Go requests need a stable `x-opencode-session` header;
+the Python provider sends one automatically, plus a non-generic user agent. DeepSeek V4.1 Flash on Go also
+requires the workspace Privacy setting to be **Global**. The free model IDs are restricted to requests made
+from inside OpenCode: a direct API call returns `403 FreeTierError`, and pay-as-you-go needs account credit.
+Do not treat the free model as a general API fallback or put learner data through it.
+
 Production Python starts with conversation disabled until a cloud-evaluated conversation artifact passes its
 release gate. This does not disable the existing Java ShopAIKey conversation. Do not approve the local R1
 artifact just to make cloud readiness pass. Readiness in jobs-only cloud mode needs the service token,

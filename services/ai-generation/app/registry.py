@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+from .config import CLOUD_PROVIDERS
+
 
 class RegistryError(ValueError):
     pass
@@ -29,8 +31,9 @@ def load_artifact(settings):
             raise RegistryError("configured artifact hash mismatch")
         if artifact["model"]["name"] != settings.model:
             raise RegistryError("configured model differs from artifact")
-        if settings.production_mode and settings.selected_provider == "shopaikey" and (
-                artifact["model"].get("provider") != "shopaikey" or artifact["model"]["name"] != settings.cloud_model):
+        if settings.production_mode and settings.selected_provider in CLOUD_PROVIDERS and (
+                artifact["model"].get("provider") != settings.selected_provider
+                or artifact["model"]["name"] != settings.active_cloud_model):
             raise RegistryError("production cloud conversation requires a cloud-evaluated artifact")
         if settings.model_digest not in ("unknown", artifact["model"]["digest"]):
             raise RegistryError("configured model digest differs from artifact")
