@@ -262,6 +262,44 @@ dictalab:
     api-key: ${GEMINI_API_KEY:}
     model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
     url: ${GEMINI_URL:https://generativelanguage.googleapis.com/v1beta/openai/chat/completions}
+    quota-enabled: ${GEMINI_QUOTA_ENABLED:false}
+    quota-backend: ${GEMINI_QUOTA_BACKEND:redis}
+    global-rpm-limit: ${GEMINI_GLOBAL_RPM_LIMIT:39}
+    global-rpd-limit: ${GEMINI_GLOBAL_RPD_LIMIT:0}
+    providers:
+      - id: ${GEMINI_PROVIDER_A_ID:provider-a}
+        project-id: ${GEMINI_PROVIDER_A_PROJECT_ID:}
+        api-key: ${GEMINI_PROVIDER_A_API_KEY:}
+        model: ${GEMINI_PROVIDER_A_MODEL:gemini-3.5-flash-lite}
+        url: ${GEMINI_PROVIDER_A_URL:https://generativelanguage.googleapis.com/v1beta/openai/chat/completions}
+        rpm-limit: ${GEMINI_PROVIDER_A_RPM_LIMIT:15}
+        tpm-limit: ${GEMINI_PROVIDER_A_TPM_LIMIT:0}
+        rpd-limit: ${GEMINI_PROVIDER_A_RPD_LIMIT:0}
+        operating-rpm: ${GEMINI_PROVIDER_A_OPERATING_RPM:13}
+        enabled: ${GEMINI_PROVIDER_A_ENABLED:false}
+        priority: ${GEMINI_PROVIDER_A_PRIORITY:0}
+      - id: ${GEMINI_PROVIDER_B_ID:provider-b}
+        project-id: ${GEMINI_PROVIDER_B_PROJECT_ID:}
+        api-key: ${GEMINI_PROVIDER_B_API_KEY:}
+        model: ${GEMINI_PROVIDER_B_MODEL:gemini-3.5-flash-lite}
+        url: ${GEMINI_PROVIDER_B_URL:https://generativelanguage.googleapis.com/v1beta/openai/chat/completions}
+        rpm-limit: ${GEMINI_PROVIDER_B_RPM_LIMIT:15}
+        tpm-limit: ${GEMINI_PROVIDER_B_TPM_LIMIT:0}
+        rpd-limit: ${GEMINI_PROVIDER_B_RPD_LIMIT:0}
+        operating-rpm: ${GEMINI_PROVIDER_B_OPERATING_RPM:13}
+        enabled: ${GEMINI_PROVIDER_B_ENABLED:false}
+        priority: ${GEMINI_PROVIDER_B_PRIORITY:1}
+      - id: ${GEMINI_PROVIDER_C_ID:provider-c}
+        project-id: ${GEMINI_PROVIDER_C_PROJECT_ID:}
+        api-key: ${GEMINI_PROVIDER_C_API_KEY:}
+        model: ${GEMINI_PROVIDER_C_MODEL:gemini-3.5-flash-lite}
+        url: ${GEMINI_PROVIDER_C_URL:https://generativelanguage.googleapis.com/v1beta/openai/chat/completions}
+        rpm-limit: ${GEMINI_PROVIDER_C_RPM_LIMIT:15}
+        tpm-limit: ${GEMINI_PROVIDER_C_TPM_LIMIT:0}
+        rpd-limit: ${GEMINI_PROVIDER_C_RPD_LIMIT:0}
+        operating-rpm: ${GEMINI_PROVIDER_C_OPERATING_RPM:13}
+        enabled: ${GEMINI_PROVIDER_C_ENABLED:false}
+        priority: ${GEMINI_PROVIDER_C_PRIORITY:2}
   assessment:
     minimum-unseen-lessons: 5
     maximum-unseen-lessons: 10
