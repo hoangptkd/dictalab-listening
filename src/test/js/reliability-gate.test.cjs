@@ -63,7 +63,7 @@ test('CI retains concurrency CSV and rejects missing evidence before allowing de
     const upload = reliability.slice(reliability.indexOf('      - name: Save reliability evidence'));
     assert.match(upload, /if: always\(\)/);
     assert.ok(upload.split(/\r?\n/).some(line => line.trim() === evidence), 'Concurrency CSV must be uploaded even after a failed run');
-    assert.match(workflow.slice(workflow.indexOf('  deploy:')), /needs: \[test-build, postgres-tests, reliability\]/);
+    assert.match(workflow.slice(workflow.indexOf('  deploy:')), /needs: \[test-build, postgres-tests, reliability, ai-platform\]/);
 });
 
 test('CI runs shared checks once and PostgreSQL suites independently before deployment', () => {
@@ -93,7 +93,7 @@ test('CI runs shared checks once and PostgreSQL suites independently before depl
     assert.match(postgres, /-Dspring\.datasource\.hikari\.minimum-idle=0 -Dspring\.test\.context\.cache\.maxSize=4 test/);
     assert.match(postgres, /name: postgres-test-reports-\$\{\{ matrix\.postgres \}\}/);
     assert.match(reliability, /-Ddictalab\.race-evidence=target\/reliability\/concurrency-matrix\.csv test/);
-    assert.match(deploy, /needs: \[test-build, postgres-tests, reliability\]/);
+    assert.match(deploy, /needs: \[test-build, postgres-tests, reliability, ai-platform\]/);
     for (const section of [build, deploy]) {
         assert.ok(section.includes("if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main'"));
     }
