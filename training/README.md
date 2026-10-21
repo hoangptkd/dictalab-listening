@@ -15,7 +15,8 @@ the service image.
 | 3: preparation | Production hard validator, dedup, group splits, provenance and coverage manifest | Near-duplicate/holdout audit and P0 coverage approval still required |
 | 4: model inspection + P0 config | Pinned checkpoint revision, text module map, chat template smoke, last-assistant loss policy | Real checkpoint/tokenizer inspection and GPU forward/backward/mask smoke not run |
 
-This stage stops before training. `prepare_dataset.py` never repairs an output
+`train_sft_lora.py` now implements preflight and training; `smoke_cpu.py` tests
+the runtime locally on a tiny random model. `prepare_dataset.py` never repairs an output
 or calls a model. `datasetReady=true` means the implemented data gates passed.
 `trainingReady` remains **false** until the pending gates in the manifest have
 been completed by a later preflight step. Do not manually flip that flag.
@@ -115,13 +116,14 @@ anonymizer. Only reviewed synthetic/redacted sources belong in P0.
 Use an isolated Python 3.11/3.12 environment with PyTorch and a Transformers
 version that exports `Qwen3_5ForCausalLM`. Pin the GPU/CUDA/Transformers/TRL/PEFT
 environment on the selected training host and record its full dependency lock
-before any training. This repository currently pins **offline preparation only**.
+before any training. The repository pins offline preparation and a separate
+Windows/Python 3.12 CPU runtime. The CUDA environment is still pending.
 
 ```powershell
 python training/inspect_model.py `
   --model Qwen/Qwen3.5-9B `
   --revision <immutable-40-character-Hugging-Face-commit-SHA> `
-  --output data/fine-tuning/runs/conversation-sft-p0/module-inspection.json
+  --output data/fine-tuning/inspections/conversation-sft-p0.json
 ```
 
 Inspection downloads config/tokenizer at the requested revision and creates the
@@ -134,8 +136,10 @@ The proposed attention targets cover conventional q/k/v/o projections only;
 hybrid DeltaNet layers remain listed as unselected. Review that coverage before
 choosing a LoRA target set. No vision module is selected. Config-only inspection
 does not prove weight loading, assistant masks, forward/backward, or adapter
-save/load. These require the next preflight stage. The YAML is a proposal with
-`status: requires_preflight`, not an executable trainer.
+save/load. The trainer performs those checks separately. The YAML remains a
+proposal with `status: requires_preflight`; fill the immutable revision and
+provide the reviewed inputs before invoking it. Inspection inputs must be stored
+outside the training output directory, which must not already exist.
 
 The base model must be the Transformers checkpoint. The local Ollama GGUF is an
 inference artifact, not a training checkpoint. Training, merge, quantization and
@@ -146,3 +150,117 @@ Full implementation plan: [SFT/LoRA plan](../docs/conversation-sft-lora-integrat
 
 Rollback for this stage: stop using the offline tools and retain run directories
 for audit. There is no serving model switch to undo.
+
+## Local CPU runtime on the current PC
+
+Verified 2026-10-22: Ryzen 7 PRO 6850HS, 31.3 GiB RAM, Radeon integrated graphics
+with 0.5 GiB reported dedicated memory, no CUDA GPU. The existing QLoRA 9B
+training config requires a CUDA host. No 9B weights were downloaded or trained.
+
+The local runtime is isolated at `data/fine-tuning/.venv-cpu`; nothing is added
+to the production image. To recreate it using the installed `uv`:
+
+```powershell
+uv venv --python 3.12 data/fine-tuning/.venv-cpu
+uv pip install --python data/fine-tuning/.venv-cpu/Scripts/python.exe `
+  --index-url https://download.pytorch.org/whl/cpu torch==2.10.0+cpu
+uv pip install --python data/fine-tuning/.venv-cpu/Scripts/python.exe `
+  -r training/requirements-cpu.lock
+```
+
+Use a new output path for each run:
+
+```powershell
+data/fine-tuning/.venv-cpu/Scripts/python.exe training/smoke_cpu.py `
+  --output data/fine-tuning/runs/local-cpu-smoke-new-run
+$env:SFT_RUN_RUNTIME_TESTS = '1'
+data/fine-tuning/.venv-cpu/Scripts/python.exe -m pytest -q training/tests
+```
+
+The smoke uses a random one-layer Qwen3.5 text model and a tiny character
+tokenizer with synthetic JSON fixtures. It verifies finite forward/backward,
+nonzero LoRA gradients, frozen base weights, one optimizer update, padding/loss
+mask preservation, adapter safetensors reload on a fresh model, and an epoch
+loop with validation and best-checkpoint reload. It writes
+`run-manifest.json` with `trainingReady=false`, `realCheckpointLoaded=false`,
+and `releaseAllowed=false`. These artifacts are test fixtures, not a candidate
+Conversation model. The synthetic smoke validation set deliberately reuses
+fixtures; its loss is not a model quality measurement.
+
+Real Qwen3.5 config/tokenizer inspection also passed on this PC at revision
+`c202236235762e1c871ad0ccb60c8ee5ba337b9a`. The real tokenizer was checked on
+production-format content and translation fixtures: 2,331/248 total tokens,
+150/44 supervised target tokens. These checks load no checkpoint weights.
+
+If the default Hugging Face cache is inaccessible, use a task-local cache:
+
+```powershell
+$env:HF_HOME = Join-Path (Get-Location) 'data/fine-tuning/hf-cache'
+```
+
+## Trainer preflight and execution
+
+The trainer reads `dataset_manifest`, `dataset_approval`, `environment_lock`,
+and the module inspection path from the YAML. Config paths are relative to the
+repository root (absolute paths are also accepted). It verifies split counts,
+dataset/input/output hashes, review evidence, validator hash, group leakage,
+forced test groups, P0 size and coverage, pinned checkpoint and environment.
+The validator hash uses `digest()` on UTF-8 source text with normalized line
+endings, so Windows/Linux checkouts agree. Reprepare older exports that used
+the raw-byte validator hash; do not edit their manifests manually.
+The test split is read for integrity checks and never tokenized for training,
+validation loss or checkpoint selection.
+
+Create the following review JSON only after the actual audits are complete:
+
+```json
+{
+  "approved": false,
+  "reviewerReference": "",
+  "datasetHash": "copy from the frozen dataset manifest",
+  "datasetManifestHash": "SHA-256 of the manifest file bytes",
+  "coverageApproved": false,
+  "nearDuplicateAuditApproved": false,
+  "holdoutAuditApproved": false
+}
+```
+
+All decisions must be true, with a real reviewer reference and matching hashes.
+P0 requires at least 200 retained target records; train and validation must each
+contain A1/A2/B1 and both purposes; train must cover turns 2/3/4. Further balance
+and semantic quality checks remain part of coverage approval. The runner does
+not edit the prepared manifest or fabricate review decisions.
+
+`environment_lock` must contain the actual host's exact `package==version`
+pins, including torch, transformers, trl, peft, datasets, accelerate, safetensors
+and PyYAML. The CPU lock is tested; create a separate CUDA lock with the same
+HF library versions and the host's compatible PyTorch/bitsandbytes builds.
+The 9B CUDA/QLoRA load path has not been executed on the current PC.
+
+```powershell
+python training/train_sft_lora.py --config training/configs/conversation-sft-p0.yaml --check
+python training/train_sft_lora.py --config training/configs/conversation-sft-p0.yaml --smoke
+python training/train_sft_lora.py --config training/configs/conversation-sft-p0.yaml
+```
+
+`--check` performs offline gates only. `--smoke` additionally loads the real base
+and runs one optimizer update on approved data. Use a new run/output directory
+for full training; weights are loaded fresh. The real trainer supports one CUDA
+process/device, LoRA or QLoRA, with explicit bf16/fp16 capability checks.
+
+Loss labels are computed before TRL: system/user tokens are `-100`, final target
+and its template terminator are supervised, padding stays `-100` even if pad
+equals EOS. Template/prefix ambiguity, inserted hidden reasoning and overlength
+sequences stop the run. No silent truncation or packing is allowed. TRL receives
+pre-tokenized labels and `skip_prepare_dataset=true`; its automatic mask flags
+are disabled because the runner has already built the exact mask.
+
+A successful full run saves adapter/tokenizer, trainer checkpoints/state,
+train/validation metrics and a manifest with config/dataset/review/environment/
+inspection/adapter hashes, Git SHA, GPU/CUDA and library versions. It can set
+`trainingReady=true` in the new **run** manifest after preflight and training;
+the dataset manifest stays unchanged. `releaseAllowed` remains false until the
+separate base/candidate first-pass benchmark and release gates pass.
+
+TRL source for pre-tokenized labels and preparation bypass:
+[SFTTrainer dataset support](https://huggingface.co/docs/trl/en/sft_trainer).

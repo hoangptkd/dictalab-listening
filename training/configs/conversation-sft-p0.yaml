@@ -4,6 +4,9 @@ status: requires_preflight
 base_model: Qwen/Qwen3.5-9B
 base_revision: SET_EXPLICIT_HF_REVISION
 dataset_manifest: data/fine-tuning/approved-p0/manifest.json
+dataset_approval: data/fine-tuning/approved-p0/training-review.json
+environment_lock: data/fine-tuning/training-environment.lock
+device: cuda
 output_dir: data/fine-tuning/runs/conversation-sft-p0
 seed: 17
 max_seq_length: 4096
@@ -20,7 +23,7 @@ lora:
   alpha: 32
   dropout: 0.05
   bias: none
-  target_modules_from: data/fine-tuning/runs/conversation-sft-p0/module-inspection.json
+  target_modules_from: data/fine-tuning/inspections/conversation-sft-p0.json
 quantization:
   load_in_4bit: true
   quant_type: nf4

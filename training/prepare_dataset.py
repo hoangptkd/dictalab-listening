@@ -51,6 +51,11 @@ def digest(value: Any) -> str:
     return hashlib.sha256(canonical(value).encode("utf-8")).hexdigest()
 
 
+def validator_hash() -> str:
+    # Git may check out CRLF on Windows and LF on the training host.
+    return digest(VALIDATOR_PATH.read_text(encoding="utf-8"))
+
+
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     with path.open(encoding="utf-8") as handle:
@@ -386,7 +391,7 @@ def prepare(source_paths: list[Path], decisions_path: Path, output_dir: Path, *,
         "splitPolicy": {"seed": seed, "validationPercent": validation_percent,
                         "testPercent": test_percent, "by": "groupId", "forcedTestGroups": sorted(forced)},
         "contract": {"artifactVersion": artifact["version"], "artifactHash": artifact["sha256"],
-                     "validatorHash": hashlib.sha256(VALIDATOR_PATH.read_bytes()).hexdigest(),
+                     "validatorHash": validator_hash(),
                      "promptHashes": sorted({r["promptHash"] for r in unique}),
                      "schemaHashes": sorted({r["schemaHash"] for r in unique})},
         "sources": [{"sha256": hashlib.sha256(p.read_bytes()).hexdigest()} for p in source_paths],
