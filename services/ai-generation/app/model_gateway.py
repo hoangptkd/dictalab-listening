@@ -1,7 +1,7 @@
 """Model gateway — selects provider and handles controlled fallback.
 
 Primary: Ollama locally, Shop AI in production, or an explicit cloud provider
-(Shop AI or OpenCode).
+(Shop AI or Gemini).
 Fallback: Shop AI cloud — only when:
   - DICTALAB_AI_FALLBACK_ENABLED=true, AND
   - local provider raises TimeoutError or ProviderError with a 5xx-like cause
@@ -26,7 +26,7 @@ import httpx
 from .config import CLOUD_PROVIDERS, Settings
 from .providers.base import ModelProvider, ProviderError
 from .providers.ollama import OllamaProvider
-from .providers.opencode import OpenCodeProvider
+from .providers.gemini import GeminiProvider
 from .providers.shopaikey import ShopAiKeyProvider
 
 logger = logging.getLogger("dictalab.ai_generation.model_gateway")
@@ -56,7 +56,7 @@ class ModelGateway:
                 temperature=settings.temperature,
                 client=client,
             )
-        cloud_provider = OpenCodeProvider if settings.selected_provider == "opencode" else ShopAiKeyProvider
+        cloud_provider = GeminiProvider if settings.selected_provider == "gemini" else ShopAiKeyProvider
         self._primary_cloud = cloud_provider(
             base_url=settings.active_cloud_base_url,
             api_key=settings.active_cloud_api_key,

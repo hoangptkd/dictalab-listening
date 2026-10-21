@@ -209,21 +209,24 @@ def test_cloud_readiness_does_not_require_local_model_or_unapproved_conversation
         assert "shopaikey.com/v1/models" in get.call_args.args[0]
 
 
-def test_opencode_provider_uses_its_own_cloud_slot(monkeypatch):
-    settings = Settings(primary_provider="opencode", opencode_api_key="oc-test",
+def test_gemini_provider_uses_its_own_cloud_slot_and_models_prefix(monkeypatch):
+    settings = Settings(primary_provider="gemini", gemini_api_key="gemini-test",
                         cloud_api_key="shop-test", cloud_model="shop-model")
-    assert settings.selected_provider == "opencode"
-    assert settings.active_cloud_base_url == "https://opencode.ai/inference"
-    assert settings.active_cloud_api_key == "oc-test"
-    assert settings.active_cloud_model == "deepseek-v4.1-flash"
+    assert settings.selected_provider == "gemini"
+    assert settings.active_cloud_base_url == "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert settings.active_cloud_api_key == "gemini-test"
+    assert settings.active_cloud_model == "gemini-3.5-flash-lite"
+    assert settings.active_cloud_models_url == (
+        "https://generativelanguage.googleapis.com/v1beta/openai/models"
+    )
 
     from app import main
     monkeypatch.setattr(main, "settings", settings.model_copy(update={"conversation_enabled": False}))
-    response = httpx.Response(200, json={"data": [{"id": "deepseek-v4.1-flash"}]},
-                              request=httpx.Request("GET", "https://opencode.ai/inference/v1/models"))
+    response = httpx.Response(200, json={"data": [{"id": "models/gemini-3.5-flash-lite"}]},
+                              request=httpx.Request("GET", settings.active_cloud_models_url))
     with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=response)) as get:
         assert TestClient(main.app).get("/health/ready").status_code == 200
-        assert "opencode.ai/inference/v1/models" in get.call_args.args[0]
+        assert get.call_args.args[0] == settings.active_cloud_models_url
 
 
 def test_remote_plaintext_provider_is_rejected():

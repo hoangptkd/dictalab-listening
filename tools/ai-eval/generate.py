@@ -1,7 +1,7 @@
 """Capture the configured workflow on synthetic fixtures.
 
 Local captures use fixed Ollama seeds. Cloud captures run the same workflow and
-artifact against a configured OpenAI-compatible provider (Shop AI or OpenCode).
+artifact against a configured OpenAI-compatible provider (Shop AI or Gemini).
 Those requests have no seed parameter, so the seed is only a case-repeat label
 and that difference is recorded in metadata.
 """
@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services/ai-generation"))
 import attempt_trace
 import httpx
-from app.config import CLOUD_PROVIDERS, Settings
+from app.config import CLOUD_PROVIDERS, Settings, cloud_model_id_matches
 from app.registry import RegistryError, load_artifact, verify_model
 from app.redaction import redact
 from app.schemas import ConversationTaskRequest
@@ -57,13 +57,15 @@ def cloud_model_digest(settings):
 
 
 async def verify_cloud_model(settings, client):
-    base = settings.active_cloud_base_url.rstrip("/")
-    url = base + ("/models" if base.endswith("/v1") else "/v1/models")
-    response = await client.get(url, headers={"Authorization": "Bearer " + settings.active_cloud_api_key}, timeout=20)
+    response = await client.get(
+        settings.active_cloud_models_url,
+        headers={"Authorization": "Bearer " + settings.active_cloud_api_key},
+        timeout=20,
+    )
     response.raise_for_status()
     payload = response.json()
-    ids = [item.get("id") for item in payload.get("data", []) if isinstance(item, dict)]
-    if settings.active_cloud_model not in ids:
+    ids = [item.get("id") or "" for item in payload.get("data", []) if isinstance(item, dict)]
+    if not any(cloud_model_id_matches(settings.active_cloud_model, model_id) for model_id in ids):
         raise RegistryError("configured cloud model is missing")
 
 

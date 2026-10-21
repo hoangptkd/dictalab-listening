@@ -1,7 +1,12 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
-CLOUD_PROVIDERS = ("shopaikey", "opencode")
+CLOUD_PROVIDERS = ("shopaikey", "gemini")
+
+
+def cloud_model_id_matches(configured: str, reported: str) -> bool:
+    """Google lists model IDs with a ``models/`` prefix; chat accepts both forms."""
+    return configured.removeprefix("models/") == reported.removeprefix("models/")
 
 
 class Settings(BaseSettings):
@@ -28,9 +33,9 @@ class Settings(BaseSettings):
     cloud_base_url: str = "https://api.shopaikey.com"
     cloud_api_key: str = ""
     cloud_model: str = "gemini-2.5-flash"
-    opencode_base_url: str = "https://opencode.ai/inference"
-    opencode_api_key: str = ""
-    opencode_model: str = "deepseek-v4.1-flash"
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.5-flash-lite"
     jobs_enabled: bool = False
     jobs_database: str = "data/ai-jobs.sqlite3"
     rabbitmq_url: str = "amqp://guest:guest@127.0.0.1:5672/%2F"
@@ -65,7 +70,7 @@ class Settings(BaseSettings):
             raise ValueError("invalid HTTP pool limit")
         from urllib.parse import urlsplit
         for value, active in ((self.cloud_base_url, self.selected_provider == "shopaikey"),
-                (self.opencode_base_url, self.selected_provider == "opencode"),
+                (self.gemini_base_url, self.selected_provider == "gemini"),
                 (self.fallback_base_url, self.fallback_enabled), (self.ollama_url, self.selected_provider == "ollama"),
                 (self.cartesia_url, bool(self.cartesia_api_key))):
             uri = urlsplit(value)
@@ -105,12 +110,19 @@ class Settings(BaseSettings):
 
     @property
     def active_cloud_base_url(self) -> str:
-        return self.opencode_base_url if self.selected_provider == "opencode" else self.cloud_base_url
+        return self.gemini_base_url if self.selected_provider == "gemini" else self.cloud_base_url
 
     @property
     def active_cloud_api_key(self) -> str:
-        return self.opencode_api_key if self.selected_provider == "opencode" else self.cloud_api_key
+        return self.gemini_api_key if self.selected_provider == "gemini" else self.cloud_api_key
 
     @property
     def active_cloud_model(self) -> str:
-        return self.opencode_model if self.selected_provider == "opencode" else self.cloud_model
+        return self.gemini_model if self.selected_provider == "gemini" else self.cloud_model
+
+    @property
+    def active_cloud_models_url(self) -> str:
+        base = self.active_cloud_base_url.rstrip("/")
+        if self.selected_provider == "gemini" or base.endswith("/openai"):
+            return base + "/models"
+        return base + ("/models" if base.endswith("/v1") else "/v1/models")

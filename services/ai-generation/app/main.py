@@ -14,7 +14,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from .config import CLOUD_PROVIDERS, Settings
+from .config import CLOUD_PROVIDERS, Settings, cloud_model_id_matches
 from . import telemetry
 from .registry import RegistryError, load_artifact, resolve_version, verify_model
 from .prompt_versions import provider_calls, selected_artifact
@@ -154,8 +154,10 @@ async def ready() -> dict[str, str]:
             if provider in CLOUD_PROVIDERS:
                 if not settings.active_cloud_api_key:
                     raise ValueError("cloud key is missing")
-                base = settings.active_cloud_base_url.rstrip("/").removesuffix("/chat/completions").removesuffix("/v1")
-                response = await client.get(base + "/v1/models", headers={"Authorization": "Bearer " + settings.active_cloud_api_key})
+                response = await client.get(
+                    settings.active_cloud_models_url,
+                    headers={"Authorization": "Bearer " + settings.active_cloud_api_key},
+                )
             else:
                 response = await client.get(settings.ollama_url.rstrip("/") + "/api/tags",
                     headers={"X-Service-Token": settings.ollama_service_token} if settings.ollama_service_token else {})
@@ -167,7 +169,8 @@ async def ready() -> dict[str, str]:
                     m.get("digest", "").removeprefix("sha256:") == settings.model_digest.removeprefix("sha256:"))
                     for m in response.json().get("models", [])):
                 raise ValueError("local model missing or digest drift")
-        elif settings.active_cloud_model not in {m.get("id") for m in response.json().get("data", [])}:
+        elif not any(cloud_model_id_matches(settings.active_cloud_model, m.get("id") or "")
+                     for m in response.json().get("data", [])):
             raise ValueError("cloud model missing")
         if settings.jobs_enabled:
             from .jobs import JobStore, broker_connection, QUEUE

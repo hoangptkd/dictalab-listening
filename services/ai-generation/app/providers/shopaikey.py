@@ -1,7 +1,7 @@
 """OpenAI-compatible cloud provider — /v1/chat/completions.
 
-Used by Shop AI (primary cloud or fallback) and OpenCode Console. OpenCode
-selects the free DeepSeek model through the same request/response contract.
+Used by Shop AI (primary cloud or fallback) and Gemini's OpenAI-compatible
+endpoint through the same request/response contract.
 Only used when DICTALAB_AI_FALLBACK_ENABLED=true and the local Ollama provider
 experiences a timeout, connection failure, or model unavailability (5xx).
 Never used for 4xx errors or idempotency conflicts.
@@ -27,7 +27,7 @@ _DEADLINE_BUFFER = 1.0
 
 
 class ShopAiKeyProvider(ModelProvider):
-    """OpenAI-compatible cloud provider used by Shop AI or OpenCode."""
+    """OpenAI-compatible cloud provider used by Shop AI or Gemini."""
 
     def __init__(
         self,
@@ -41,6 +41,7 @@ class ShopAiKeyProvider(ModelProvider):
         provider_name: str = "shopaikey",
         chat_completions_path: str | None = None,
         extra_headers: dict[str, str] | None = None,
+        use_json_schema: bool = False,
     ) -> None:
         base = base_url.rstrip("/")
         if chat_completions_path:
@@ -56,6 +57,7 @@ class ShopAiKeyProvider(ModelProvider):
         self._max_tokens = max_tokens
         self._provider_name = provider_name
         self._extra_headers = dict(extra_headers or {})
+        self._use_json_schema = use_json_schema
 
     @property
     def name(self) -> str:
@@ -75,12 +77,18 @@ class ShopAiKeyProvider(ModelProvider):
         remaining = deadline - time.monotonic()
         if remaining < _DEADLINE_BUFFER:
             raise TimeoutError(f"{self._provider_name}: deadline exhausted before {purpose}")
+        response_format = (
+            {"type": "json_schema", "json_schema": {
+                "name": purpose, "strict": True, "schema": schema,
+            }}
+            if self._use_json_schema else {"type": "json_object"}
+        )
         body = {
             "model": self._model,
             "max_tokens": self._max_tokens,
             "temperature": temperature if temperature is not None else self._temperature,
             "messages": messages,
-            "response_format": {"type": "json_object"},
+            "response_format": response_format,
         }
         headers = {
             "Authorization": f"Bearer {self._api_key}",

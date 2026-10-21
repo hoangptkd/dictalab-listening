@@ -53,11 +53,12 @@ def test_cloud_digest_pins_provider_endpoint_and_model():
     assert digest == expected and len(digest) == 64
     assert generate.cloud_model_digest(_settings(cloud_model="other-model")) != digest
 
-    opencode = _settings(primary_provider="opencode", opencode_api_key="oc-key",
-                         opencode_model="deepseek-v4.1-flash-free")
+    gemini = _settings(primary_provider="gemini", gemini_api_key="gemini-key",
+                       gemini_model="gemini-3.5-flash-lite")
     expected = hashlib.sha256(
-        b"opencode|https://opencode.ai/inference|deepseek-v4.1-flash-free").hexdigest()
-    assert generate.cloud_model_digest(opencode) == expected
+        b"gemini|https://generativelanguage.googleapis.com/v1beta/openai|gemini-3.5-flash-lite"
+    ).hexdigest()
+    assert generate.cloud_model_digest(gemini) == expected
 
 
 def _verify(payload, model="claude-sonnet-4-5", **overrides):
@@ -66,6 +67,7 @@ def _verify(payload, model="claude-sonnet-4-5", **overrides):
     def handler(request):
         expected_key = settings.active_cloud_api_key
         assert request.headers["authorization"] == "Bearer " + expected_key
+        assert str(request.url) == settings.active_cloud_models_url
         return httpx.Response(200, json=payload)
 
     async def run():
@@ -81,11 +83,11 @@ def test_cloud_model_must_be_listed():
         _verify({"data": [{"id": "claude-sonnet-4-5"}]}, model="missing-model")
 
 
-def test_opencode_model_is_verified_on_its_own_endpoint():
-    _verify({"data": [{"id": "deepseek-v4.1-flash-free"}]},
-            primary_provider="opencode", opencode_api_key="oc-key",
-            opencode_model="deepseek-v4.1-flash-free")
+def test_gemini_model_is_verified_with_google_models_prefix():
+    _verify({"data": [{"id": "models/gemini-3.5-flash-lite"}]},
+            primary_provider="gemini", gemini_api_key="gemini-key",
+            gemini_model="gemini-3.5-flash-lite")
     with pytest.raises(RegistryError):
         _verify({"data": [{"id": "other"}]},
-                primary_provider="opencode", opencode_api_key="oc-key",
-                opencode_model="deepseek-v4.1-flash-free")
+                primary_provider="gemini", gemini_api_key="gemini-key",
+                gemini_model="gemini-3.5-flash-lite")

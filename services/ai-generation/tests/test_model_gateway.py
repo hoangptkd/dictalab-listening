@@ -16,7 +16,7 @@ from app.config import Settings
 from app.model_gateway import ModelGateway, _is_transport_error
 from app.providers.base import ProviderError
 from app.providers.ollama import OllamaProvider
-from app.providers.opencode import OpenCodeProvider
+from app.providers.gemini import GeminiProvider
 from app.providers.shopaikey import ShopAiKeyProvider, _parse_content
 
 
@@ -197,12 +197,12 @@ class TestShopAiKeyProvider:
 
 
 # ---------------------------------------------------------------------------
-# OpenCodeProvider
+# GeminiProvider
 # ---------------------------------------------------------------------------
 
-class TestOpenCodeProvider:
+class TestGeminiProvider:
     @pytest.mark.asyncio
-    async def test_uses_opencode_chat_completions_endpoint_and_model(self):
+    async def test_uses_gemini_openai_compatible_endpoint_and_model(self):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -211,42 +211,34 @@ class TestOpenCodeProvider:
         mock_response.raise_for_status = MagicMock()
         client = MagicMock()
         client.post = AsyncMock(return_value=mock_response)
-        provider = OpenCodeProvider(
-            base_url="https://opencode.ai/inference", api_key="oc-key",
-            model="deepseek-v4.1-flash-free", temperature=0.3, client=client
+        provider = GeminiProvider(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="gemini-key", model="gemini-3.5-flash-lite",
+            temperature=0.3, client=client,
         )
-        assert provider.name == "opencode"
+        assert provider.name == "gemini"
         assert await provider.complete(MESSAGES, SCHEMA, FAR_DEADLINE, "content") == GOOD_RESULT
-        assert client.post.call_args.args[0] == "https://opencode.ai/inference/openai/v1/chat/completions"
-        assert client.post.call_args.kwargs["json"]["model"] == "deepseek-v4.1-flash-free"
-        headers = client.post.call_args.kwargs["headers"]
-        assert headers["User-Agent"] == "dictalab-ai-generation/1.0"
-        assert headers["x-opencode-session"].startswith("ses_")
-
-    @pytest.mark.asyncio
-    async def test_go_base_url_uses_go_chat_endpoint(self):
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(GOOD_RESULT)}}]
+        assert client.post.call_args.args[0] == (
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        )
+        body = client.post.call_args.kwargs["json"]
+        assert body["model"] == "gemini-3.5-flash-lite"
+        assert body["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": "content", "strict": True, "schema": SCHEMA},
         }
-        mock_response.raise_for_status = MagicMock()
-        client = MagicMock()
-        client.post = AsyncMock(return_value=mock_response)
-        provider = OpenCodeProvider(
-            base_url="https://opencode.ai/inference/go", api_key="oc-key",
-            model="deepseek-v4.1-flash", temperature=0.3, client=client
-        )
-        await provider.complete(MESSAGES, SCHEMA, FAR_DEADLINE, "content")
-        assert client.post.call_args.args[0] == "https://opencode.ai/inference/go/openai/v1/chat/completions"
+        headers = client.post.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Bearer gemini-key"
+        assert headers["Content-Type"] == "application/json"
 
     @pytest.mark.asyncio
-    async def test_missing_key_reports_opencode_provider(self):
-        provider = OpenCodeProvider(
-            base_url="https://opencode.ai/inference", api_key="",
-            model="deepseek-v4.1-flash-free", temperature=0.3, client=MagicMock()
+    async def test_missing_key_reports_gemini_provider(self):
+        provider = GeminiProvider(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="", model="gemini-3.5-flash-lite",
+            temperature=0.3, client=MagicMock(),
         )
-        with pytest.raises(ProviderError, match=r"opencode:no_api_key_configured"):
+        with pytest.raises(ProviderError, match=r"gemini:no_api_key_configured"):
             await provider.complete(MESSAGES, SCHEMA, FAR_DEADLINE, "content")
 
 
@@ -266,18 +258,18 @@ class TestModelGateway:
         assert provider == "ollama"
 
     @pytest.mark.asyncio
-    async def test_explicit_opencode_calls_cloud_without_contacting_local(self):
-        settings = _settings(primary_provider="opencode", opencode_api_key="oc-key",
-                             opencode_model="deepseek-v4.1-flash-free")
+    async def test_explicit_gemini_calls_cloud_without_contacting_local(self):
+        settings = _settings(primary_provider="gemini", gemini_api_key="gemini-key",
+                             gemini_model="gemini-3.5-flash-lite")
         client = MagicMock()
         gw = ModelGateway(settings, client)
-        assert isinstance(gw._primary_cloud, OpenCodeProvider)
-        assert gw._primary_cloud.name == "opencode"
+        assert isinstance(gw._primary_cloud, GeminiProvider)
+        assert gw._primary_cloud.name == "gemini"
         with patch.object(gw._local, "complete", new=AsyncMock(side_effect=AssertionError("must not contact Ollama"))), \
              patch.object(gw._primary_cloud, "complete", new=AsyncMock(return_value=GOOD_RESULT)):
             result, provider = await gw.complete(MESSAGES, SCHEMA, FAR_DEADLINE, "content")
         assert result == GOOD_RESULT
-        assert provider == "opencode"
+        assert provider == "gemini"
 
     @pytest.mark.asyncio
     async def test_local_timeout_fallback_disabled_raises_timeout(self):
