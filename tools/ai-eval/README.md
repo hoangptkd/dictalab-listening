@@ -37,6 +37,27 @@ Capture format: `{metadata, capturedAt, records}`. Required metadata is `model`,
 `promptVersion`, `promptHash`, `config`, `judgeVersion`. Records have `id`, `seed`, `task`, `verdict`, and
 optional `seconds`/`transport`. The baseline approval is a separate review decision; tools do not grant it.
 
+### Attempt-level evidence for benchmark runs
+
+`generate.py --attempts PATH` writes an offline-only JSONL sidecar: one row per validation attempt plus
+failure rows, keyed by `requestId` (the `caseId:seed` capture key). Each row keeps the merged synthetic task,
+word count, validation errors, observed model-call seconds and the failure phase. The wrapper in
+`attempt_trace.py` calls the original workflow nodes exactly once and never changes prompts, seeds, schemas,
+options, temperatures or the repair count; production code never imports it.
+
+Downstream helpers:
+
+```powershell
+python tools/ai-eval/benchmark_table.py --dataset <dataset>.json --capture <raw>.json --attempts <raw>.jsonl --output <table>.json [--shadow]
+python tools/ai-eval/review_packet.py --table <table>.json --capture <raw>.json --output <packet>.md [--shadow]
+python tools/ai-eval/benchmark_report.py --run data/cefr-benchmark/<runId> --output artifacts/reports/<report>.json --markdown <summary>.md
+```
+
+`benchmark_table.py` reports first-attempt, repair and final denominators separately; a sample that never
+generated is not a first-attempt pass. `review_packet.py` selects every B1 sample, at least six per shadow
+level covering expected task types, and every failing sample. `benchmark_report.py` assembles one run
+directory and always keeps `releaseAllowed` false; AI review is never recorded as manual approval.
+
 `export_benchmark.py SOURCE DESTINATION` reconstructs the checked-in synthetic fixture captures from the
 local historical benchmark, excluding wire logs, billing logs and runtime/account data.
 `smoke.py` runs the real Java client against FastAPI and a fake Ollama server, then cleans up both servers.

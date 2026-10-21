@@ -1,6 +1,7 @@
 """Capture the configured workflow on synthetic fixtures, using fixed Ollama seeds."""
 import argparse
 import asyncio
+import contextlib
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -9,6 +10,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services/ai-generation"))
+import attempt_trace
 import httpx
 from app.config import Settings
 from app.registry import load_artifact, verify_model
@@ -37,10 +39,12 @@ class SeededClient(httpx.AsyncClient):
         return await super().post(url, **kwargs)
 
 
-async def capture(dataset, settings, output, *, shadow=False):
+async def capture(dataset, settings, output, *, shadow=False, attempts=None):
     artifact = load_artifact(settings)
     if settings.fallback_enabled or settings.selected_provider != "ollama":
         raise ValueError("paired local evaluation requires local Ollama with fallback disabled")
+    if attempts is not None:
+        attempt_trace.install()
     if shadow:
         from app.shadow import shadow_request, run_shadow_workflow
         if settings.production_mode or artifact.get("evaluationOnly") is not True:
@@ -73,14 +77,22 @@ async def capture(dataset, settings, output, *, shadow=False):
                 instruction=artifact["instruction"], context=context)
             started = time.monotonic()
             task, transport = None, "ok"
-            try:
-                async with SeededClient(seed, timeout=settings.timeout_seconds) as client:
-                    job = run_shadow_workflow(request, settings, client, artifact) if shadow else run_workflow(request, settings, client)
-                    task = await asyncio.wait_for(job, settings.timeout_seconds)
-            except TimeoutError:
-                transport = "timeout"
-            except Exception:
-                transport = "error"
+            observation = (attempt_trace.observe(attempts, request_id=key, level=request.level,
+                                                 turn=request.turnNumber, seed=seed)
+                           if attempts is not None else contextlib.nullcontext())
+            with observation:
+                try:
+                    async with SeededClient(seed, timeout=settings.timeout_seconds) as client:
+                        job = run_shadow_workflow(request, settings, client, artifact) if shadow else run_workflow(request, settings, client)
+                        task = await asyncio.wait_for(job, settings.timeout_seconds)
+                except TimeoutError as error:
+                    transport = "timeout"
+                    if attempts is not None:
+                        attempt_trace.record_failure("timeout", str(error))
+                except Exception as error:
+                    transport = "error"
+                    if attempts is not None:
+                        attempt_trace.record_failure(type(error).__name__, str(error))
             review = judge_input(context, task)
             if shadow:
                 review.update(level=request.level, levelProfile=artifact["levelProfiles"][request.level],
@@ -99,10 +111,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--attempts", type=Path,
+                        help="optional JSONL sidecar; keeps attempt 1 and any repair per case/seed")
     parser.add_argument("--shadow", action="store_true", help="offline B2/C1 only; never enables learner levels")
     args = parser.parse_args()
     if args.output.exists():
         parser.error("capture already exists; select a new output to preserve evidence")
+    if args.attempts is not None and (args.attempts.exists() or args.attempts == args.output):
+        parser.error("attempt sidecar already exists; select a new path to preserve evidence")
     from app.shadow import ARTIFACT_VERSION
     settings = Settings(artifact_version=ARTIFACT_VERSION) if args.shadow else Settings()
-    asyncio.run(capture(json.loads(args.dataset.read_text(encoding="utf-8")), settings, args.output, shadow=args.shadow))
+    asyncio.run(capture(json.loads(args.dataset.read_text(encoding="utf-8")), settings, args.output,
+                        shadow=args.shadow, attempts=args.attempts))
