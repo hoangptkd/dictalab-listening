@@ -101,6 +101,18 @@ Các nguồn Cambridge là ví dụ về thiết kế đánh giá ở từng m�
 
 Đây là định nghĩa để code và benchmark. Không bật mức mới trên UI chỉ vì đã thêm enum.
 
+### Quy tắc đọc tài liệu và giới hạn của bản thiết kế
+
+Các con số về số bước suy luận, số dấu hiệu, số slot và ngưỡng đạt benchmark dưới đây là giả thuyết thiết kế sản phẩm, không phải quy định CEFR. Các mục tiêu liệt kê cho B2/C1/C2 là yêu cầu bao phủ của bộ benchmark; không bắt mọi task đơn lẻ phải chứa toàn bộ hoặc một kỹ năng đặc trưng. Bài C1/C2 vẫn có thể hỏi thông tin trực tiếp. Thái độ, quan điểm, mục đích và suy luận không phải kỹ năng độc quyền của một mức.
+
+Các dòng Cambridge dùng từ “thêm” ở trên chỉ mô tả nội dung được nguồn đó liệt kê, không chứng minh kỹ năng đó vắng mặt ở mức thấp hơn. Riêng implication/tone trên trang C2 có cả phần Reading; không được lấy danh sách Reading làm chuẩn Listening. Listening C2 liệt kê gist/detail/function/purpose/feeling/attitude/opinion và inference. Ranh giới mức cần đánh giá đồng thời độ phức tạp văn bản, mức hiển ngôn, quan hệ diễn ngôn và yêu cầu câu hỏi.
+
+Giữ kiểm tra exact substring cho mọi trích dẫn bằng chứng, kể cả bài suy luận. Chỉ bỏ yêu cầu **kết luận phải được nói nguyên văn**. Một đoạn trích có thể chứa đủ nhiều dấu hiệu; không bắt hai câu hoặc hai segment khi một segment đã đủ. Không thay hệ thống chấm nghĩa hiện có bằng so khớp đáp án nguyên văn: hệ thống đã chấp nhận paraphrase.
+
+Trong giai đoạn chưa sửa audio, chỉ triển khai câu hỏi giải được từ transcript, giữ một người nói như luồng hiện tại. Nhiều người nói, chồng lượt, sắc thái chỉ nghe được qua giọng và giọng vùng miền là phạm vi nghiên cứu/làm sau. C2 có thể thử nghiệm hàm ý và sắc thái thể hiện bằng từ ngữ; chưa được tuyên bố bao phủ đầy đủ năng lực nghe C2.
+
+Tài liệu này là bản để chủ dự án review. Các trạng thái SHADOW/PLANNED, kiến trúc trường mới và ngưỡng benchmark là đề xuất. Trước khi giao code cần chốt schema evidence cụ thể, khoảng từ thử nghiệm của mức mới và rubric C2; model code không tự coi các câu hỏi cuối tài liệu là đã được duyệt.
+
 ### B1 sau khi chuẩn hóa
 
 B1 vẫn giữ 30–90 từ và 2–3 slot/fact, nhưng loại slot được mở rộng:
