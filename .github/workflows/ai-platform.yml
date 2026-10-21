@@ -1,0 +1,63 @@
+name: AI Platform checks
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: ['codex/**']
+    paths:
+      - 'services/ai-generation/**'
+      - 'tools/ai-eval/**'
+      - 'artifacts/prompts/**'
+      - 'artifacts/reports/ai-platform-*.json'
+      - 'src/**'
+      - 'compose.yaml'
+      - '.github/workflows/ai-platform.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Install pinned Python runtime and test tools
+        run: python -m pip install -r services/ai-generation/requirements.lock pytest==8.4.2 pytest-asyncio==0.26.0
+      - name: Python contracts, registry, readiness, regression and golden metrics
+        run: python -m pytest -q services/ai-generation/tests tools/ai-eval
+      - name: Java routing and contract tests
+        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest test
+      - name: Java to Python to fake Ollama smoke
+        run: python tools/ai-eval/smoke.py
+      - name: Validate Compose and image packaging
+        env:
+          POSTGRES_DB: test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test-only
+          RABBITMQ_USER: test
+          RABBITMQ_PASSWORD: test-only
+        run: |
+          docker compose --profile ai config --quiet
+          docker build -f services/ai-generation/Dockerfile -t dictalab-ai-check .
+          docker run --rm dictalab-ai-check python -c "from app.config import Settings; from app.registry import load_artifact; print(load_artifact(Settings())['version'])"
+      - name: Encoding and diff checks
+        run: |
+          python tools/ai-eval/check_encoding.py
+          git diff --check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ai-platform-evidence
+          path: |
+            artifacts/reports/ai-platform-*.json
+            target/surefire-reports/

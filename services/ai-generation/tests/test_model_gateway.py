@@ -271,6 +271,6 @@ class TestModelGateway:
     def test_transport_error_detection(self):
         assert _is_transport_error("ollama:content:timeout") is True
         assert _is_transport_error("ollama:content:connect_error") is True
-        assert _is_transport_error("ollama:content:incomplete_response") is True
+        assert _is_transport_error("ollama:content:incomplete_response") is False
         assert _is_transport_error("ollama:content:invalid_json") is False
         assert _is_transport_error("ollama:content:response_not_object") is False

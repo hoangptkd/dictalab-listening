@@ -118,3 +118,36 @@ Nhãn do judge máy, chưa human-review — không phải gold thật.
 - Judge chưa hiệu chỉnh không phải nguồn sự thật duy nhất.
 - Fixture phải mang seed + model version để tái chạy được.
 - Không cho AI Platform đọc trực tiếp PostgreSQL nghiệp vụ.
+
+## 8. T07–T09: regression gate và pilot controls (2026-10-21)
+
+Bộ fixture đầy đủ tại `services/ai-generation/tests/fixtures/evaluation/` chứa 15 context tổng hợp × 3 seed,
+hai bộ output R1/R2 và nhãn AI gốc đã loại dữ liệu runtime/account. Dataset hash:
+`6f9225affb840d09a33352b9b1f96459ef103c1beea33dea76c88c27f1b9fc96`.
+Hai capture dùng cùng model digest, temperature sinh **0.7**, dịch 0.1; đây là cấu hình benchmark lịch sử,
+không phải cấu hình mặc định 0.3 của workflow registry mới.
+
+Report cùng format tại `artifacts/reports/ai-platform-baseline.json` và `ai-platform-candidate.json`.
+Nhóm schema chỉ kiểm tra hình dạng JSON; evidence và chất lượng ngữ nghĩa được báo riêng.
+
+| Nhóm | R1 baseline | R2 candidate |
+| --- | --- | --- |
+| transport | 45/45 | 45/45 |
+| JSON/schema | 45/45 | 45/45 |
+| evidence substring | 43/45 | 45/45 |
+| question/fact + answerability/atomicity | 35/43 | 28/42 |
+| translation | 42/43 | 38/42 |
+| role | 33/43 | 35/42 |
+| continuity (turn 2–3) | 23/30 | 19/28 |
+| independence (turn 4) | 10/13 | 13/14 |
+| invalid verdict | 2 | 3 |
+
+Rà soát lại **9/45 mẫu mỗi arm (20%)**, nhãn **AI rà soát**, tại `ai-platform-review.json`; chưa có người duyệt.
+Các bất đồng về thứ tự slot/fact, sắc thái dịch và nhãn skill được giữ thành ghi chú cần phân xử, không tự đổi
+nhãn gốc. Gate trả `releaseAllowed=false`: baseline chưa approved, verdict chưa đầy đủ, có bất đồng và các
+metric nội dung giảm. Denominator khác nhau cũng chặn so sánh release. Không coi verdict lỗi/timeout là pass.
+
+Registry mới ghi prompt text/schema/model/config/hash thành một bundle development. Production readiness
+yêu cầu artifact được pin hash, approved và gate pass; bundle hiện tại không đủ điều kiện production. Phải
+benchmark riêng workflow registry mới trước khi phê duyệt. Shadow/canary có cờ mặc định tắt, allowlist và
+budget riêng; cách bật/rollback tại `docs/ai-platform-runbook.md`. Không thay public task schema hoặc migration.

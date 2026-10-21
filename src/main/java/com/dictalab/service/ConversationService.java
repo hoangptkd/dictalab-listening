@@ -88,6 +88,7 @@ public class ConversationService {
     private final S3MediaLifecycle s3Lifecycle;
     private final ConversationLocalClient localGeneration;
     private ConversationPythonClient pythonGeneration;
+    private ConversationRollout rollout;
     private static final Logger log = LoggerFactory.getLogger(ConversationService.class);
     @org.springframework.beans.factory.annotation.Value("${dictalab.conversation.audio-retention-days:30}")
     private int audioRetentionDays = 30;
@@ -133,6 +134,9 @@ public class ConversationService {
     void configurePythonGeneration(ConversationPythonClient pythonGeneration) {
         this.pythonGeneration = pythonGeneration;
     }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void configureRollout(ConversationRollout rollout) { this.rollout = rollout; }
 
     public Map<String, Object> catalog(long userId) {
         var result = new LinkedHashMap<String,Object>();
@@ -558,7 +562,8 @@ public class ConversationService {
     }
 
     private int generationTimeoutSeconds() {
-        if (pythonGeneration != null && pythonGeneration.enabled()) return pythonGeneration.flowTimeoutSeconds();
+        if (pythonGeneration != null && (pythonGeneration.enabled() || rollout != null && rollout.mayUsePython()))
+            return pythonGeneration.flowTimeoutSeconds();
         return localGeneration != null && localGeneration.enabled() ? localGeneration.flowTimeoutSeconds() : 45;
     }
 
@@ -576,7 +581,7 @@ public class ConversationService {
     private JsonNode generatePrompt(Row row, long deadline) {
         var context = ConversationGenerationPrompt.context(json, json.valueToTree(promptContext(row)));
         String instruction = ConversationGenerationPrompt.instruction(row.difficulty, turns(row).size() + 1);
-        boolean python = pythonGeneration != null && pythonGeneration.enabled();
+        boolean python = pythonGeneration != null && (rollout == null ? pythonGeneration.enabled() : rollout.usePython(row.user, row.id));
         boolean local = !python && localGeneration != null && localGeneration.enabled();
         for (int attempt = 0; attempt < 2; attempt++) {
             if (local || python) budget.reserveLocal(row.user); else budget.reserve(row.user,false);
@@ -593,6 +598,7 @@ public class ConversationService {
                 reviewPrompt(row, prompt, local || python || row.state.path("curatedStarter").asBoolean() ? deadline : 0);
                 if (slots.isArray()) row.state.set("pendingGenerationSlots", slots.deepCopy());
                 else row.state.remove("pendingGenerationSlots");
+                if (!python && rollout != null) rollout.shadow(row.difficulty, json.writeValueAsString(context));
                 return prompt;
             } catch (AiUsageBudget.Rejected budgetFailure) { throw budgetFailure;
             } catch (IllegalStateException invalidPrompt) {

@@ -1,0 +1,10 @@
+**
+!services/
+!services/ai-generation/
+!services/ai-generation/requirements.lock
+!services/ai-generation/app/
+!services/ai-generation/app/**/*.py
+!services/ai-generation/app/*.py
+!artifacts/
+!artifacts/prompts/
+!artifacts/prompts/*.json

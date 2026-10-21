@@ -12,7 +12,11 @@ __pycache__/
 *.pyc
 *.egg-info/
 .agents/
-artifacts/
+artifacts/*
+!artifacts/prompts/
+!artifacts/reports/
+artifacts/reports/*
+!artifacts/reports/ai-platform-*.json
 logs/
 output/
 target-*/

@@ -131,6 +131,7 @@ management:
       percentiles-histogram:
         http.server.requests: true
         dictalab.provider.duration: true
+        dictalab.conversation.python.duration: true
         dictalab.listening.job: true
   health:
     redis:
@@ -219,6 +220,13 @@ dictalab:
       python-base-url: ${DICTALAB_CONVERSATION_PYTHON_BASE_URL:http://127.0.0.1:8091}
       python-service-token: ${DICTALAB_CONVERSATION_PYTHON_SERVICE_TOKEN:}
       python-timeout-seconds: ${DICTALAB_CONVERSATION_PYTHON_TIMEOUT_SECONDS:180}
+      rollout:
+        canary-enabled: ${DICTALAB_CONVERSATION_CANARY_ENABLED:false}
+        canary-users: ${DICTALAB_CONVERSATION_CANARY_USERS:}
+        canary-sessions: ${DICTALAB_CONVERSATION_CANARY_SESSIONS:}
+        shadow-sample-rate: ${DICTALAB_CONVERSATION_SHADOW_SAMPLE_RATE:0}
+        shadow-max-requests-per-hour: ${DICTALAB_CONVERSATION_SHADOW_MAX_REQUESTS_PER_HOUR:10}
+        shadow-timeout-seconds: ${DICTALAB_CONVERSATION_SHADOW_TIMEOUT_SECONDS:30}
     session-diversity: ${DICTALAB_CONVERSATION_DIVERSITY:true}
     audio-retention-days: ${CONVERSATION_AUDIO_RETENTION_DAYS:30}
     cartesia-api-key: ${CARTESIA_API_KEY:}

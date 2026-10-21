@@ -37,7 +37,8 @@ public final class ConversationPythonClient implements ConversationAiClient {
             "recentPractice", "practiceFocus", "sessionBlueprint", "variationSeed",
             "previouslyTestedDetails", "weakSkills"
     );
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+    private final HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(3)).build();
     private final ObjectMapper json;
     private final ConversationGenerationProperties config;
     private final ProviderGuard guard;
@@ -56,6 +57,14 @@ public final class ConversationPythonClient implements ConversationAiClient {
     @Override public int flowTimeoutSeconds() { return config.pythonFlowTimeoutSeconds(); }
 
     @Override public ConversationLocalClient.GeneratedTask completeTask(String level, String input, Duration remaining) {
+        return completeTask(level, input, remaining, false);
+    }
+
+    void completeShadowTask(String level, String input, Duration remaining) {
+        completeTask(level, input, remaining, true);
+    }
+
+    private ConversationLocalClient.GeneratedTask completeTask(String level, String input, Duration remaining, boolean shadow) {
         Duration timeout = Duration.ofMillis(Math.min(config.pythonTimeoutSeconds() * 1000L, remaining.toMillis()));
         if (timeout.toMillis() < 1) throw new IllegalStateException("Conversation Python deadline exhausted");
         String requestId = UUID.randomUUID().toString();
@@ -69,6 +78,7 @@ public final class ConversationPythonClient implements ConversationAiClient {
                     .header("X-Request-Id", requestId).header("Idempotency-Key", requestId)
                     .POST(HttpRequest.BodyPublishers.ofByteArray(bytes));
             if (!config.pythonServiceToken().isBlank()) builder.header("X-Service-Token", config.pythonServiceToken());
+            if (shadow) builder.header("X-AI-Mode", "shadow");
             var pending = http.sendAsync(builder.build(), ignored -> BoundedProviderBody.bytes(32_000));
             try {
                 var response = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
@@ -101,10 +111,10 @@ public final class ConversationPythonClient implements ConversationAiClient {
             } finally {
                 pending.cancel(true);
                 long durationMs = (System.nanoTime() - startedNs) / 1_000_000L;
-                log.info("conversation_python_request request_id={} outcome={} duration_ms={} provider=python",
-                        requestId, outcome, durationMs);
+                log.info("conversation_python_request request_id={} outcome={} duration_ms={} provider=python mode={}",
+                        requestId, outcome, durationMs, shadow ? "shadow" : "foreground");
                 metrics.timer("dictalab.conversation.python.duration",
-                        "outcome", outcome, "provider", "python"
+                        "outcome", outcome, "provider", "python", "mode", shadow ? "shadow" : "foreground"
                 ).record(durationMs, java.util.concurrent.TimeUnit.MILLISECONDS);
             }
         }

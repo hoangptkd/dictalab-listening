@@ -57,7 +57,8 @@ services:
   ai-generation:
     profiles: [ai]
     build:
-      context: ./services/ai-generation
+      context: .
+      dockerfile: services/ai-generation/Dockerfile
     container_name: dictalab-ai-generation
     restart: unless-stopped
     environment:
@@ -74,17 +75,20 @@ services:
       DICTALAB_AI_TIMEOUT_SECONDS: ${DICTALAB_AI_TIMEOUT_SECONDS:-180}
       DICTALAB_AI_MAX_CONCURRENCY: ${DICTALAB_AI_MAX_CONCURRENCY:-1}
       DICTALAB_AI_CACHE_TTL_SECONDS: ${DICTALAB_AI_CACHE_TTL_SECONDS:-900}
+      DICTALAB_AI_ARTIFACT_VERSION: ${DICTALAB_AI_ARTIFACT_VERSION:-conversation-platform-r1-20261020}
+      DICTALAB_AI_ARTIFACT_SHA256: ${DICTALAB_AI_ARTIFACT_SHA256:-}
       # Fallback provider — disabled by default; never commit the API key here
       DICTALAB_AI_FALLBACK_ENABLED: ${DICTALAB_AI_FALLBACK_ENABLED:-false}
+      DICTALAB_AI_FALLBACK_API_KEY: ${DICTALAB_AI_FALLBACK_API_KEY:-}
       DICTALAB_AI_FALLBACK_BASE_URL: ${DICTALAB_AI_FALLBACK_BASE_URL:-https://api.shopai.vn}
       DICTALAB_AI_FALLBACK_MODEL: ${DICTALAB_AI_FALLBACK_MODEL:-gpt-4o-mini}
     ports:
       # Bind only to loopback — AI Platform must not be reachable from the network
       - "127.0.0.1:${DICTALAB_AI_PORT:-8091}:8091"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health/live')"]
-      interval: 5s
-      timeout: 3s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health/ready')"]
+      interval: 10s
+      timeout: 5s
       retries: 20
 
 volumes:

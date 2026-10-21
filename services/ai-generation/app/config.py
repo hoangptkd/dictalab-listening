@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -14,6 +15,9 @@ class Settings(BaseSettings):
     service_token: str = ""
     prompt_version: str = "CONVERSATION_GENERATION_V6_SLOTS"
     model_digest: str = "unknown"
+    registry_dir: str = str(Path(__file__).resolve().parents[2].parent / "artifacts" / "prompts")
+    artifact_version: str = "conversation-platform-r1-20261020"
+    artifact_sha256: str = ""
     max_concurrency: int = 1
 
     # Fallback provider (Shop AI cloud) — off by default
@@ -39,8 +43,8 @@ class Settings(BaseSettings):
             raise ValueError("invalid Ollama context or output limit")
         if self.timeout_seconds <= 0 or self.timeout_seconds > 600:
             raise ValueError("timeout_seconds must be between 0 and 600")
-        if self.max_concurrency < 1 or self.max_concurrency > 32:
-            raise ValueError("max_concurrency must be between 1 and 32")
+        if self.max_concurrency < 1 or self.max_concurrency > 5:
+            raise ValueError("max_concurrency must be between 1 and 5")
         if "\n" in self.service_token or "\r" in self.service_token:
             raise ValueError("service_token must not contain newline or carriage return")
         if self.production_mode and not self.service_token:

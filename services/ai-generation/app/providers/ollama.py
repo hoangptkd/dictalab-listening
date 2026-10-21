@@ -93,5 +93,9 @@ class OllamaProvider(ModelProvider):
             return parsed
         except (httpx.TimeoutException, httpx.ConnectError) as exc:
             raise TimeoutError(f"ollama:{purpose}:timeout") from exc
+        except httpx.HTTPStatusError as exc:
+            code = exc.response.status_code
+            category = "5xx" if code >= 500 else "client_error"
+            raise ProviderError(f"ollama:{purpose}:{category}:{code}") from exc
         except (httpx.HTTPError, json.JSONDecodeError) as exc:
             raise ProviderError(f"ollama:{purpose}:http_or_parse_error") from exc

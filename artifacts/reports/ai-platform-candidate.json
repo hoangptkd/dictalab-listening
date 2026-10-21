@@ -1,0 +1,836 @@
+{
+  "reportVersion": 1,
+  "datasetHash": "6f9225affb840d09a33352b9b1f96459ef103c1beea33dea76c88c27f1b9fc96",
+  "metadata": {
+    "model": "qwen3.5:9b",
+    "modelDigest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "promptVersion": "r2-slot-contract-v2",
+    "promptHash": "3199630ea48b33ce815fb7048621f4b0c58074ccc61f93815d7c5b7ff0d3008d",
+    "config": {
+      "content": {
+        "temperature": 0.7,
+        "num_ctx": 8192,
+        "num_predict": 1000
+      },
+      "translationTemperature": 0.1,
+      "translationNumCtx": 4096,
+      "translationNumPredict": 800
+    },
+    "judgeVersion": "listening-refinement-v14-audit-derived-flags",
+    "labels": "AI; no human approval"
+  },
+  "timestamp": "2026-10-19T20:26:50.185034+00:00",
+  "coverage": 45,
+  "metrics": {
+    "transport": {
+      "passed": 45,
+      "evaluated": 45,
+      "rate": 1.0
+    },
+    "schema": {
+      "passed": 45,
+      "evaluated": 45,
+      "rate": 1.0
+    },
+    "evidence": {
+      "passed": 45,
+      "evaluated": 45,
+      "rate": 1.0
+    },
+    "question_fact": {
+      "passed": 28,
+      "evaluated": 42,
+      "rate": 0.6666666666666666
+    },
+    "translation": {
+      "passed": 38,
+      "evaluated": 42,
+      "rate": 0.9047619047619048
+    },
+    "role": {
+      "passed": 35,
+      "evaluated": 42,
+      "rate": 0.8333333333333334
+    },
+    "continuity": {
+      "passed": 19,
+      "evaluated": 28,
+      "rate": 0.6785714285714286
+    },
+    "turn4_independence": {
+      "passed": 13,
+      "evaluated": 14,
+      "rate": 0.9285714285714286
+    }
+  },
+  "latency_seconds": {
+    "p50": 118.27,
+    "p95": 137.2,
+    "p99": 140.94
+  },
+  "verdict_status": {
+    "valid": 42,
+    "missing": 0,
+    "timeout": 0,
+    "invalid_verdict": 3
+  },
+  "rows": [
+    {
+      "key": "eval-cafe-A1-t2:17",
+      "seconds": 102.02,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": false,
+        "continuity": false,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-cafe-A1-t2:43",
+      "seconds": 109.25,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": false,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-cafe-A1-t2:97",
+      "seconds": 119.87,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": true,
+        "role": false,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-cafe-A2-t3:17",
+      "seconds": 118.96,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": true,
+        "role": false,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-cafe-A2-t3:43",
+      "seconds": 128.55,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": null,
+        "translation": null,
+        "role": null,
+        "continuity": null,
+        "turn4_independence": null,
+        "verdict_status": "invalid_verdict"
+      }
+    },
+    {
+      "key": "eval-cafe-A2-t3:97",
+      "seconds": 136.71,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": false,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-cafe-B1-t4:17",
+      "seconds": 133.43,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": true,
+        "role": false,
+        "continuity": null,
+        "turn4_independence": true,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-cafe-B1-t4:43",
+      "seconds": 123.39,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": true,
+        "role": true,
+        "continuity": null,
+        "turn4_independence": true,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-cafe-B1-t4:97",
+      "seconds": 120.14,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": true,
+        "role": false,
+        "continuity": null,
+        "turn4_independence": true,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-delivery-A1-t3:17",
+      "seconds": 116.87,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-delivery-A1-t3:43",
+      "seconds": 115.81,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-delivery-A1-t3:97",
+      "seconds": 116.74,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": true,
+        "role": true,
+        "continuity": false,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-delivery-A2-t4:17",
+      "seconds": 126.63,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": null,
+        "turn4_independence": true,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-delivery-A2-t4:43",
+      "seconds": 123.64,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": null,
+        "translation": null,
+        "role": null,
+        "continuity": null,
+        "turn4_independence": null,
+        "verdict_status": "invalid_verdict"
+      }
+    },
+    {
+      "key": "eval-delivery-A2-t4:97",
+      "seconds": 124.42,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": null,
+        "turn4_independence": true,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-delivery-B1-t2:17",
+      "seconds": 117.42,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": true,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-delivery-B1-t2:43",
+      "seconds": 118.27,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": null,
+        "translation": null,
+        "role": null,
+        "continuity": null,
+        "turn4_independence": null,
+        "verdict_status": "invalid_verdict"
+      }
+    },
+    {
+      "key": "eval-delivery-B1-t2:97",
+      "seconds": 117.1,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": false,
+        "role": true,
+        "continuity": false,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-directions-A1-t4:17",
+      "seconds": 113.43,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": null,
+        "turn4_independence": true,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-directions-A1-t4:43",
+      "seconds": 116.99,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": true,
+        "role": true,
+        "continuity": null,
+        "turn4_independence": true,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-directions-A1-t4:97",
+      "seconds": 114.62,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": true,
+        "role": true,
+        "continuity": null,
+        "turn4_independence": true,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-directions-A2-t2:17",
+      "seconds": 111.93,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-directions-A2-t2:43",
+      "seconds": 111.19,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": false,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-directions-A2-t2:97",
+      "seconds": 125.19,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-directions-B1-t3:17",
+      "seconds": 137.69,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-directions-B1-t3:43",
+      "seconds": 140.94,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": true,
+        "role": true,
+        "continuity": false,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-directions-B1-t3:97",
+      "seconds": 118.22,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": false,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-hotel-A1-t3:17",
+      "seconds": 116.74,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-hotel-A1-t3:43",
+      "seconds": 117.84,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-hotel-A1-t3:97",
+      "seconds": 129.38,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": false,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-hotel-A2-t4:17",
+      "seconds": 111.4,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": true,
+        "role": true,
+        "continuity": null,
+        "turn4_independence": true,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-hotel-A2-t4:43",
+      "seconds": 119.09,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": null,
+        "turn4_independence": true,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-hotel-A2-t4:97",
+      "seconds": 113.8,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": null,
+        "turn4_independence": true,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-hotel-B1-t2:17",
+      "seconds": 116.21,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-hotel-B1-t2:43",
+      "seconds": 122.66,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-hotel-B1-t2:97",
+      "seconds": 137.2,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-plans-A1-t2:17",
+      "seconds": 107.81,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": false,
+        "continuity": false,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-plans-A1-t2:43",
+      "seconds": 107.47,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": false,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-plans-A1-t2:97",
+      "seconds": 116.65,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": false,
+        "translation": true,
+        "role": true,
+        "continuity": false,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-plans-A2-t3:17",
+      "seconds": 124.85,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-plans-A2-t3:43",
+      "seconds": 118.91,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": false,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-plans-A2-t3:97",
+      "seconds": 126.15,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": true,
+        "turn4_independence": null,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-plans-B1-t4:17",
+      "seconds": 127.92,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": null,
+        "turn4_independence": true,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-plans-B1-t4:43",
+      "seconds": 122.26,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": null,
+        "turn4_independence": false,
+        "verdict_status": "valid"
+      }
+    },
+    {
+      "key": "eval-plans-B1-t4:97",
+      "seconds": 115.31,
+      "metrics": {
+        "transport": true,
+        "schema": true,
+        "evidence": true,
+        "question_fact": true,
+        "translation": true,
+        "role": true,
+        "continuity": null,
+        "turn4_independence": true,
+        "verdict_status": "valid"
+      }
+    }
+  ],
+  "reviewSample": [
+    {
+      "key": "eval-directions-B1-t3:97",
+      "reviewer": "ai",
+      "note": "Slot safety_warning is answered by taxi transport. English Do the bus is delayed is malformed, and translation of not to cross near the river weakens crossing to going nearby. Alignment rejection is supported.",
+      "requiresAdjudication": false,
+      "reviewReference": "artifacts/reports/ai-platform-review.json#r2-slot-contract-v2/eval-directions-B1-t3:97"
+    },
+    {
+      "key": "eval-hotel-A2-t4:43",
+      "reviewer": "ai",
+      "note": "Current question asks room number and password location, both answerable. Slot wifi_code instead asks for password value, creating a slot/question mismatch missed by the alignment flag.",
+      "requiresAdjudication": true,
+      "reviewReference": "artifacts/reports/ai-platform-review.json#r2-slot-contract-v2/eval-hotel-A2-t4:43"
+    },
+    {
+      "key": "eval-plans-A2-t3:43",
+      "reviewer": "ai",
+      "note": "Meeting place repeats a previously tested meaning and switches park to library. Instead announces a time change but does not clearly repair the settled place. Retain continuity concerns.",
+      "requiresAdjudication": false,
+      "reviewReference": "artifacts/reports/ai-platform-review.json#r2-slot-contract-v2/eval-plans-A2-t3:43"
+    },
+    {
+      "key": "eval-cafe-A2-t3:43",
+      "reviewer": "ai",
+      "note": "Source verdict is invalid and stays invalid. Question ban attributes wanting to pay to the server although customer speaks. Facts are full sentences instead of concise requested values.",
+      "requiresAdjudication": false,
+      "reviewReference": "artifacts/reports/ai-platform-review.json#r2-slot-contract-v2/eval-cafe-A2-t3:43"
+    },
+    {
+      "key": "eval-directions-B1-t3:17",
+      "reviewer": "ai",
+      "note": "Bus delay explicitly introduces walking alternative. Vietnamese vao luc for by one o'clock loses a deadline qualifier; side street also becomes alley. Translation needs rejection or adjudication.",
+      "requiresAdjudication": true,
+      "reviewReference": "artifacts/reports/ai-platform-review.json#r2-slot-contract-v2/eval-directions-B1-t3:17"
+    },
+    {
+      "key": "eval-directions-A2-t2:43",
+      "reviewer": "ai",
+      "note": "Ten past twelve is 12:10, but translation/fact say twelve minus ten (11:50). Reject translation. The unnamed street also does not identify which street.",
+      "requiresAdjudication": false,
+      "reviewReference": "artifacts/reports/ai-platform-review.json#r2-slot-contract-v2/eval-directions-A2-t2:43"
+    },
+    {
+      "key": "eval-delivery-A1-t3:97",
+      "reviewer": "ai",
+      "note": "Slot delivery_time is answered by a place, which was already tested. Recipient telling courier to pay is also semantically questionable even though pronouns alone align. Retain alignment/continuity concerns.",
+      "requiresAdjudication": false,
+      "reviewReference": "artifacts/reports/ai-platform-review.json#r2-slot-contract-v2/eval-delivery-A1-t3:97"
+    },
+    {
+      "key": "eval-plans-A1-t2:97",
+      "reviewer": "ai",
+      "note": "Question asks time of day, but first fact also includes Saturday, already tested. Warm jacket is supported. Keep atomic-answer scope under review.",
+      "requiresAdjudication": true,
+      "reviewReference": "artifacts/reports/ai-platform-review.json#r2-slot-contract-v2/eval-plans-A1-t2:97"
+    },
+    {
+      "key": "eval-delivery-B1-t2:97",
+      "reviewer": "ai",
+      "note": "Afternoon is invented from five o'clock. Signer changes from recipient's brother to courier's sister without a clear announcement. Translation and continuity rejections are supported.",
+      "requiresAdjudication": false,
+      "reviewReference": "artifacts/reports/ai-platform-review.json#r2-slot-contract-v2/eval-delivery-B1-t2:97"
+    }
+  ],
+  "approvalStatus": "unreviewed",
+  "gate": {
+    "releaseAllowed": false,
+    "reasons": [
+      "baseline_not_approved",
+      "incomplete_continuity",
+      "incomplete_judging",
+      "incomplete_question_fact",
+      "incomplete_role",
+      "incomplete_translation",
+      "incomplete_turn4_independence",
+      "regression_continuity",
+      "regression_question_fact",
+      "regression_translation",
+      "review_disagreement"
+    ]
+  }
+}

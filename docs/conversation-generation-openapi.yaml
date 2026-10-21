@@ -12,8 +12,15 @@ paths:
     get:
       operationId: ready
       responses:
-        '200': {description: Ollama is reachable}
-        '503': {description: Ollama is unavailable}
+        '200': {description: Artifact hash and configured Ollama model digest are verified}
+        '503': {description: Artifact unavailable, unapproved in production, or model missing or drifted}
+  /metrics:
+    get:
+      operationId: metrics
+      security: [{serviceToken: []}]
+      responses:
+        '200': {description: Process-local Prometheus latency histogram and bounded status counters}
+        '401': {description: Invalid service token}
   /v1/conversation/tasks:
     post:
       operationId: createConversationTask
@@ -27,6 +34,11 @@ paths:
           name: Idempotency-Key
           required: true
           schema: {type: string, minLength: 1, maxLength: 128}
+        - in: header
+          name: X-AI-Mode
+          required: false
+          schema: {type: string, enum: [foreground, shadow], default: foreground}
+          description: Internal shadow mode disables paid fallback; Java discards the response.
       requestBody:
         required: true
         content:
@@ -128,10 +140,12 @@ components:
           type: string
           minLength: 1
           maxLength: 128
+          description: Server allowlisted alias mapped to the explicitly configured immutable artifact.
         instruction:
           type: string
           minLength: 1
           maxLength: 50000
+          description: Legacy compatibility field; server executes the configured artifact instruction.
         context:
           $ref: '#/components/schemas/ConversationContext'
     ConversationTaskResponse:

@@ -1,0 +1,30 @@
+{
+  "datasetHash": "6f9225affb840d09a33352b9b1f96459ef103c1beea33dea76c88c27f1b9fc96",
+  "reviewer": "AI review by Codex, not human approval",
+  "reviewedAt": "2026-10-21",
+  "selection": "Nine deterministic case/seed keys per 45-output arm (20%); review notes do not replace original judge flags.",
+  "stages": {
+    "r1-split-translation-v2": {
+      "eval-directions-B1-t3:17": {"note": "Departure time and fare are new requested meanings; stop D is preserved. Evidence and translation agree.", "requiresAdjudication": false},
+      "eval-cafe-A2-t3:43": {"note": "Customer asks the server to pay and says we need to deliver. This reverses authored roles; the question also attributes payment to the customer. Retain rejection.", "requiresAdjudication": false},
+      "eval-hotel-A2-t4:43": {"note": "New hotel encounter is independent, but slot order is room_number then floor_level while facts are floor then room. Judge alignment=true misses this positional contract violation.", "requiresAdjudication": true},
+      "eval-directions-A2-t2:43": {"note": "Library/walking replaces museum/bus without an announced change. Continuity rejection is supported.", "requiresAdjudication": false},
+      "eval-plans-A2-t3:43": {"note": "Weather and duration add new meanings to the park meeting. Skill label reason/purpose is less well matched to the two detail questions; review learning-label calibration.", "requiresAdjudication": true},
+      "eval-directions-B1-t3:97": {"note": "Departure time and fare continue the same bus encounter, preserve stop D and have exact evidence. No role reversal found.", "requiresAdjudication": false},
+      "eval-plans-A1-t2:97": {"note": "Clock time and handshake are new details. Vietnamese chung toi can exclude the listener although English we includes both friends; translation label needs adjudication.", "requiresAdjudication": true},
+      "eval-delivery-A1-t3:97": {"note": "Arrival time and weight are new details; recipient stating these facts is not itself a proven role reversal. Evidence is exact.", "requiresAdjudication": false},
+      "eval-delivery-B1-t2:97": {"note": "Office/front-desk instructions conflict with established reception delivery without a clear correction. Preserve continuity concerns; do not infer a role reversal merely from the new address.", "requiresAdjudication": false}
+    },
+    "r2-slot-contract-v2": {
+      "eval-directions-B1-t3:17": {"note": "Bus delay explicitly introduces walking alternative. Vietnamese vao luc for by one o'clock loses a deadline qualifier; side street also becomes alley. Translation needs rejection or adjudication.", "requiresAdjudication": true},
+      "eval-cafe-A2-t3:43": {"note": "Source verdict is invalid and stays invalid. Question ban attributes wanting to pay to the server although customer speaks. Facts are full sentences instead of concise requested values.", "requiresAdjudication": false},
+      "eval-hotel-A2-t4:43": {"note": "Current question asks room number and password location, both answerable. Slot wifi_code instead asks for password value, creating a slot/question mismatch missed by the alignment flag.", "requiresAdjudication": true},
+      "eval-directions-A2-t2:43": {"note": "Ten past twelve is 12:10, but translation/fact say twelve minus ten (11:50). Reject translation. The unnamed street also does not identify which street.", "requiresAdjudication": false},
+      "eval-plans-A2-t3:43": {"note": "Meeting place repeats a previously tested meaning and switches park to library. Instead announces a time change but does not clearly repair the settled place. Retain continuity concerns.", "requiresAdjudication": false},
+      "eval-directions-B1-t3:97": {"note": "Slot safety_warning is answered by taxi transport. English Do the bus is delayed is malformed, and translation of not to cross near the river weakens crossing to going nearby. Alignment rejection is supported.", "requiresAdjudication": false},
+      "eval-plans-A1-t2:97": {"note": "Question asks time of day, but first fact also includes Saturday, already tested. Warm jacket is supported. Keep atomic-answer scope under review.", "requiresAdjudication": true},
+      "eval-delivery-A1-t3:97": {"note": "Slot delivery_time is answered by a place, which was already tested. Recipient telling courier to pay is also semantically questionable even though pronouns alone align. Retain alignment/continuity concerns.", "requiresAdjudication": false},
+      "eval-delivery-B1-t2:97": {"note": "Afternoon is invented from five o'clock. Signer changes from recipient's brother to courier's sister without a clear announcement. Translation and continuity rejections are supported.", "requiresAdjudication": false}
+    }
+  }
+}

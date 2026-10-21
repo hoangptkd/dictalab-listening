@@ -14,6 +14,15 @@ class OllamaError(RuntimeError):
     pass
 
 
+def _context_dict(request: Any) -> dict[str, Any]:
+    context = request.context
+    if hasattr(context, "model_dump"):
+        return context.model_dump(exclude_none=True)
+    if isinstance(context, dict):
+        return context
+    raise OllamaError("conversation context is not an object")
+
+
 CONTENT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -96,7 +105,7 @@ async def _chat(body: dict[str, Any], settings: Settings, client: httpx.AsyncCli
 async def generate_content(request: Any, settings: Settings, client: httpx.AsyncClient) -> dict[str, Any]:
     """Step 1: generate English-first content (utteranceEn, English facts, Vietnamese question/task/skill)."""
     user = "Create the next task for this production input.\n<data>" + json.dumps(
-        request.context, ensure_ascii=False, separators=(",", ":")
+        _context_dict(request), ensure_ascii=False, separators=(",", ":")
     ) + "</data>"
     body = {
         "model": settings.model,
@@ -116,9 +125,10 @@ async def translate_task(content: dict[str, Any], request: Any, settings: Settin
                          client: httpx.AsyncClient) -> dict[str, Any]:
     """Step 2: translate utteranceEn and English facts into Vietnamese at low temperature."""
     facts = content.get("facts", [])
+    context = _context_dict(request)
     user_payload = {
-        "partnerRole": request.context.get("partnerRole", ""),
-        "learnerRole": request.context.get("learnerRole", ""),
+        "partnerRole": context.get("partnerRole", ""),
+        "learnerRole": context.get("learnerRole", ""),
         "utteranceEn": content.get("utteranceEn", ""),
         "questionVi": content.get("questionVi", ""),
         "facts": [{"textEn": fact.get("textEn", "")} for fact in facts],

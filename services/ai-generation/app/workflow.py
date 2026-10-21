@@ -23,7 +23,8 @@ from typing import Any
 import httpx
 
 from .config import Settings
-from .ollama import OllamaError, generate_content as _generate_content, translate_task, merge_content_and_translation
+from .ollama import OllamaError, merge_content_and_translation
+from .prompt_versions import generate_content as _generate_content, translate_task
 from .schemas import ConversationContext
 from .state import WorkflowState
 from .validation import validate_task
@@ -95,7 +96,7 @@ async def node_generate_content(
 ) -> WorkflowState:
     _check_deadline(state, "generate_content")
     started = time.monotonic()
-    content = await _generate_content(request, settings, client)
+    content = await _generate_content(request, settings, client, deadline=state.deadline)
     logger.info(
         "workflow_node_done",
         extra={
@@ -118,7 +119,7 @@ async def node_translate(
         raise OllamaError("translate node reached without content")
     _check_deadline(state, "translate")
     started = time.monotonic()
-    translated = await translate_task(state.content, request, settings, client)
+    translated = await translate_task(state.content, request, settings, client, deadline=state.deadline)
     merged = merge_content_and_translation(state.content, translated)
     logger.info(
         "workflow_node_done",

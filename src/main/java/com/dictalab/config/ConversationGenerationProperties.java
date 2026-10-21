@@ -11,6 +11,7 @@ public record ConversationGenerationProperties(String provider, String localBase
         this(provider, localBaseUrl, localModel, localTimeoutSeconds, null, null, 0);
     }
 
+    @org.springframework.boot.context.properties.bind.ConstructorBinding
     public ConversationGenerationProperties {
         // Existing cloud deployments remain compatible; local development opts into Ollama explicitly.
         if (provider == null || provider.isBlank()) provider = "shopaikey";

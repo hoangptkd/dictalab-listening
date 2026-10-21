@@ -78,7 +78,7 @@ class ModelGateway:
         except TimeoutError as exc:
             return await self._try_fallback(
                 messages, schema, deadline, purpose, temperature,
-                started, reason=f"local_timeout:{exc}"
+                started, reason="local_timeout", failure=exc
             )
         except ProviderError as exc:
             err = str(exc)
@@ -86,7 +86,7 @@ class ModelGateway:
             if _is_transport_error(err):
                 return await self._try_fallback(
                     messages, schema, deadline, purpose, temperature,
-                    started, reason=f"local_provider_error:{err}"
+                    started, reason="local_transport_error", failure=exc
                 )
             raise  # re-raise prompt/schema errors
 
@@ -99,12 +99,11 @@ class ModelGateway:
         temperature: float | None,
         started: float,
         reason: str,
+        failure: Exception,
     ) -> tuple[dict[str, Any], str]:
         if not self._settings.fallback_enabled or self._cloud is None:
             self._log("local", purpose, started, fallback=False, error=reason)
-            raise TimeoutError(
-                f"local provider failed and fallback is disabled: {reason}"
-            )
+            raise failure
         if not self._settings.fallback_api_key:
             raise ProviderError("fallback_enabled but no api key configured")
         logger.warning(
@@ -142,5 +141,5 @@ class ModelGateway:
 
 def _is_transport_error(error_str: str) -> bool:
     """Return True only for connection/timeout/5xx-style errors from the local provider."""
-    transport_keywords = ("timeout", "connect", "unavailable", "5xx", "incomplete_response")
+    transport_keywords = ("timeout", "connect", "unavailable", "5xx")
     return any(kw in error_str.lower() for kw in transport_keywords)
