@@ -114,3 +114,24 @@ def test_shadow_disables_paid_fallback_and_unknown_version_rejected():
     assert "dictalab_ai_generation_active 0" in text
     assert "shadow-test" not in text
     cache.clear()
+
+
+def test_caller_deadline_bounds_shadow_workflow():
+    import asyncio
+    from app.main import app, cache
+
+    async def slow_workflow(request, settings, client):
+        assert settings.timeout_seconds == 0.01
+        assert settings.fallback_enabled is False
+        await asyncio.sleep(0.1)
+        return {}
+
+    payload = {"requestId": "deadline-test", "idempotencyKey": "deadline-test", "level": "A1", "turnNumber": 1,
+               "promptVersion": "V1", "instruction": "test", "context": {}}
+    headers = {"X-Request-Id": "deadline-test", "Idempotency-Key": "deadline-test", "X-AI-Mode": "shadow", "X-AI-Timeout-Ms": "10"}
+    cache.clear()
+    with patch("app.main.run_workflow", new=slow_workflow):
+        assert TestClient(app).post("/v1/conversation/tasks", json=payload, headers=headers).status_code == 504
+    assert "deadline-test" not in cache
+    headers["X-AI-Timeout-Ms"] = "0"
+    assert TestClient(app).post("/v1/conversation/tasks", json=payload, headers=headers).status_code == 400

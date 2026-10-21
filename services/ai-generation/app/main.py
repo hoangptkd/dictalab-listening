@@ -115,6 +115,7 @@ async def ready() -> dict[str, str]:
 @app.post("/v1/conversation/tasks", response_model=ConversationTaskResponse)
 async def create_task(payload: ConversationTaskRequest, request: Request,
                       x_service_token: str | None = Header(default=None),
+                      x_ai_timeout_ms: int | None = Header(default=None, ge=1, le=600000),
                       idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> ConversationTaskResponse:
     request_id = request.headers.get("X-Request-Id")
     if not _authorized(x_service_token):
@@ -162,19 +163,21 @@ async def create_task(payload: ConversationTaskRequest, request: Request,
             raise HTTPException(status_code=429, detail="generation capacity exhausted")
 
         started = time.monotonic()
+        runtime_seconds = min(settings.timeout_seconds, x_ai_timeout_ms / 1000) if x_ai_timeout_ms is not None else settings.timeout_seconds
         async with semaphore:
             telemetry.active += 1
             calls = []
             call_token = provider_calls.set(calls)
             artifact_token = selected_artifact.set(artifact)
             try:
-                timeout = httpx.Timeout(settings.timeout_seconds)
+                timeout = httpx.Timeout(runtime_seconds)
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     server_payload = payload.model_copy(update={"promptVersion": version,
                                                                "instruction": artifact["instruction"]})
-                    runtime_settings = settings.model_copy(update={"fallback_enabled": False}) if mode == "shadow" else settings
+                    runtime_settings = settings.model_copy(update={"timeout_seconds": runtime_seconds,
+                        "fallback_enabled": False if mode == "shadow" else settings.fallback_enabled})
                     task = await asyncio.wait_for(run_workflow(server_payload, runtime_settings, client),
-                                                  timeout=settings.timeout_seconds)
+                                                  timeout=runtime_seconds)
             except TimeoutError as exc:
                 raise HTTPException(status_code=504, detail="generation timed out") from exc
             except Exception as exc:

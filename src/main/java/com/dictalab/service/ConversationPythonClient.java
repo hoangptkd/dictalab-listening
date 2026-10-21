@@ -75,6 +75,7 @@ public final class ConversationPythonClient implements ConversationAiClient {
         try (var permit = guard.enter()) {
             var builder = HttpRequest.newBuilder(URI.create(config.pythonBaseUrl() + "/v1/conversation/tasks"))
                     .timeout(timeout).header("Content-Type", "application/json")
+                    .header("X-AI-Timeout-Ms", Long.toString(timeout.toMillis()))
                     .header("X-Request-Id", requestId).header("Idempotency-Key", requestId)
                     .POST(HttpRequest.BodyPublishers.ofByteArray(bytes));
             if (!config.pythonServiceToken().isBlank()) builder.header("X-Service-Token", config.pythonServiceToken());

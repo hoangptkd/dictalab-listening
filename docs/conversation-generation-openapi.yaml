@@ -39,6 +39,11 @@ paths:
           required: false
           schema: {type: string, enum: [foreground, shadow], default: foreground}
           description: Internal shadow mode disables paid fallback; Java discards the response.
+        - in: header
+          name: X-AI-Timeout-Ms
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 600000}
+          description: Remaining caller budget; Python uses the smaller of this value and its configured workflow timeout.
       requestBody:
         required: true
         content:

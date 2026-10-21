@@ -16,6 +16,7 @@ shared store is implemented. Java uses HTTP/1.1 because Uvicorn rejects an h2c u
 Shadow: set `DICTALAB_CONVERSATION_SHADOW_SAMPLE_RATE` between 0 and 1 (default 0),
 `DICTALAB_CONVERSATION_SHADOW_MAX_REQUESTS_PER_HOUR` (default 10 per Java process), and
 `DICTALAB_CONVERSATION_SHADOW_TIMEOUT_SECONDS` (default 30). One daemon worker uses a zero-length queue;
+Java forwards its remaining budget in `X-AI-Timeout-Ms`, which also bounds the Python workflow and model calls.
 busy or exhausted samples are skipped immediately. Shadow runs only after a successful existing-provider
 turn, sends the existing allowlisted context, discards the result and cannot update session state, history,
 score or user quota. Python disables paid fallback for `X-AI-Mode: shadow`. The hourly budget resets on Java

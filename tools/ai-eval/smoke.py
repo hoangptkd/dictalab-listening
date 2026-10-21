@@ -59,9 +59,10 @@ def main():
             process = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(port)],
                                        cwd=ROOT / "services/ai-generation", env=env, stdout=log, stderr=log)
             url = f"http://127.0.0.1:{port}"
-            for _ in range(100):
+            readiness_deadline = time.monotonic() + 30
+            while time.monotonic() < readiness_deadline:
                 try:
-                    with urllib.request.urlopen(url + "/health/ready", timeout=0.5) as response:
+                    with urllib.request.urlopen(url + "/health/ready", timeout=5) as response:
                         if response.status == 200:
                             break
                 except OSError:
@@ -70,6 +71,8 @@ def main():
                         raise RuntimeError(log.read()[-4000:])
                     time.sleep(0.1)
             else:
+                log.seek(0)
+                print(log.read()[-4000:])
                 raise RuntimeError("AI Platform smoke readiness deadline exceeded")
             maven = shutil.which("mvn")
             if not maven:
