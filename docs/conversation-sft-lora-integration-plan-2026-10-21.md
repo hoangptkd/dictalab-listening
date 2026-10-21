@@ -407,4 +407,3 @@ Vòng P0 thành công khi pipeline chạy tái lập, mask đúng, adapter load/
 Chỉ mở rộng dữ liệu/hyperparameter sau khi biết lỗi còn lại thuộc model, prompt, validator hay reviewer. Nếu candidate không cải thiện first-pass, giữ base model và sửa dữ liệu/prompt trước khi tăng rank hoặc số epoch.
 
 Không bắt đầu bước export production nếu chưa có dataset human-approved, test holdout chưa bị chạm, report comparison, artifact hash, model digest, rollback smoke và approval reference.
-
