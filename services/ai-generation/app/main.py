@@ -4,6 +4,8 @@ import json
 import logging
 import time
 import uuid
+import secrets
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -21,7 +23,32 @@ from .workflow import run_workflow
 from .schemas import ConversationContext, ConversationTaskRequest, ConversationTaskResponse
 
 settings = Settings()
-app = FastAPI(title="DictaLab AI Generation", version="0.1.0")
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    async def dispatch_jobs():
+        from .jobs import JobStore, publish_pending
+        store = JobStore(settings.jobs_database, settings.job_retention_seconds)
+        while True:
+            try:
+                await asyncio.to_thread(publish_pending, settings, store)
+            except Exception:
+                logger.warning("ai_job_publish_unavailable")
+            await asyncio.sleep(2)
+    dispatcher = asyncio.create_task(dispatch_jobs()) if settings.jobs_enabled else None
+    try:
+        yield
+    finally:
+        if dispatcher:
+            dispatcher.cancel()
+            with suppress(asyncio.CancelledError):
+                await dispatcher
+
+
+app = FastAPI(title="DictaLab AI Generation", version="0.2.0", lifespan=lifespan)
+from .job_api import router as job_router
+app.include_router(job_router)
 logger = logging.getLogger("dictalab.ai_generation")
 logger.addFilter(RedactingFilter())
 
@@ -46,6 +73,21 @@ semaphore = asyncio.Semaphore(settings.max_concurrency)
 
 
 @app.middleware("http")
+async def bound_job_requests(request: Request, call_next):
+    if request.method == "POST" and request.url.path in ("/v1/tts/jobs", "/v1/coach/reports", "/v1/review/tasks"):
+        if not _authorized(request.headers.get("X-Service-Token")):
+            return JSONResponse(status_code=401, content={"error": "invalid service token"})
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > 64000:
+                return JSONResponse(status_code=413, content={"error": "job input exceeds limit"})
+        # Starlette's cached request forwards this bounded body to the endpoint parser.
+        request._body = bytes(body)
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def observe_requests(request: Request, call_next):
     if request.url.path != "/v1/conversation/tasks":
         return await call_next(request)
@@ -61,14 +103,19 @@ async def observe_requests(request: Request, call_next):
 
 
 @app.get("/metrics", response_class=PlainTextResponse)
-async def metrics(x_service_token: str | None = Header(default=None)):
-    if not _authorized(x_service_token):
+async def metrics(x_service_token: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+    bearer = authorization[7:] if authorization and authorization.startswith("Bearer ") else None
+    if not _authorized(x_service_token or bearer):
         raise HTTPException(status_code=401, detail="invalid service token")
-    return PlainTextResponse(telemetry.render(), media_type="text/plain; version=0.0.4")
+    job_metrics = ""
+    if settings.jobs_enabled:
+        from .jobs import JobStore
+        job_metrics = JobStore(settings.jobs_database, settings.job_retention_seconds).metrics()
+    return PlainTextResponse(telemetry.render() + job_metrics, media_type="text/plain; version=0.0.4")
 
 
 def _authorized(token: str | None) -> bool:
-    return not settings.service_token or token == settings.service_token
+    return not settings.service_token or secrets.compare_digest((token or "").encode(), settings.service_token.encode())
 
 
 def _fingerprint(payload: ConversationTaskRequest) -> str:
@@ -100,14 +147,37 @@ async def live() -> dict[str, str]:
 @app.get("/health/ready")
 async def ready() -> dict[str, str]:
     try:
-        artifact = load_artifact(settings)
+        artifact = load_artifact(settings) if settings.conversation_enabled else None
         timeout = httpx.Timeout(min(settings.timeout_seconds, 3.0))
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(settings.ollama_url.rstrip("/") + "/api/tags")
+            if settings.selected_provider == "shopaikey":
+                if not settings.cloud_api_key:
+                    raise ValueError("cloud key is missing")
+                base = settings.cloud_base_url.rstrip("/").removesuffix("/chat/completions").removesuffix("/v1")
+                response = await client.get(base + "/v1/models", headers={"Authorization": "Bearer " + settings.cloud_api_key})
+            else:
+                response = await client.get(settings.ollama_url.rstrip("/") + "/api/tags",
+                    headers={"X-Service-Token": settings.ollama_service_token} if settings.ollama_service_token else {})
             response.raise_for_status()
-        verify_model(artifact, response.json())
-        return {"status": "ready", "model": settings.model, "promptVersion": artifact["version"],
-                "modelDigest": artifact["model"]["digest"]}
+        if settings.selected_provider == "ollama":
+            if artifact:
+                verify_model(artifact, response.json())
+            elif not any(m.get("name") == settings.model and (settings.model_digest == "unknown" or
+                    m.get("digest", "").removeprefix("sha256:") == settings.model_digest.removeprefix("sha256:"))
+                    for m in response.json().get("models", [])):
+                raise ValueError("local model missing or digest drift")
+        elif settings.cloud_model not in {m.get("id") for m in response.json().get("data", [])}:
+            raise ValueError("cloud model missing")
+        if settings.jobs_enabled:
+            from .jobs import JobStore, broker_connection, QUEUE
+            JobStore(settings.jobs_database, settings.job_retention_seconds).cleanup()
+            def check_broker():
+                with broker_connection(settings) as connection:
+                    connection.channel().queue_declare(queue=QUEUE, passive=True)
+            await asyncio.to_thread(check_broker)
+        return {"status": "ready", "model": settings.cloud_model if settings.selected_provider == "shopaikey" else settings.model,
+                "promptVersion": artifact["version"] if artifact else "conversation-disabled",
+                "modelDigest": artifact["model"]["digest"] if artifact else "provider-managed"}
     except Exception as exc:
         raise HTTPException(status_code=503, detail="AI artifact or Ollama model is not ready") from exc
 
@@ -125,6 +195,10 @@ async def create_task(payload: ConversationTaskRequest, request: Request,
     mode = request.headers.get("X-AI-Mode", "foreground")
     if mode not in ("foreground", "shadow"):
         raise HTTPException(status_code=400, detail="invalid generation mode")
+    if not settings.conversation_enabled:
+        raise HTTPException(status_code=503, detail="conversation capability is disabled")
+    if mode == "shadow" and settings.selected_provider == "shopaikey":
+        raise HTTPException(status_code=400, detail="cloud shadow is disabled")
 
     try:
         artifact = load_artifact(settings)
@@ -171,7 +245,7 @@ async def create_task(payload: ConversationTaskRequest, request: Request,
             artifact_token = selected_artifact.set(artifact)
             try:
                 timeout = httpx.Timeout(runtime_seconds)
-                async with httpx.AsyncClient(timeout=timeout) as client:
+                async with httpx.AsyncClient(timeout=timeout, limits=httpx.Limits(max_connections=settings.http_max_connections)) as client:
                     server_payload = payload.model_copy(update={"promptVersion": version,
                                                                "instruction": artifact["instruction"]})
                     runtime_settings = settings.model_copy(update={"timeout_seconds": runtime_seconds,
@@ -215,6 +289,7 @@ async def http_error(_: Request, exc: HTTPException) -> JSONResponse:
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
-    logger.warning("conversation_request_invalid fields=%s", [".".join(map(str, error["loc"])) for error in exc.errors()])
-    return JSONResponse(status_code=400, content={"error": "invalid conversation request"})
+async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    logger.warning("ai_request_invalid count=%s", len(exc.errors()))
+    message = "invalid conversation request" if request.url.path == "/v1/conversation/tasks" else "invalid background job request"
+    return JSONResponse(status_code=400, content={"error": message})

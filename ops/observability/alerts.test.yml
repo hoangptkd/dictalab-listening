@@ -3,6 +3,33 @@ evaluation_interval: 1m
 tests:
   - interval: 1m
     input_series:
+      - series: 'dictalab_ai_worker_up{job="dictalab-ai"}'
+        values: '0 0 1'
+      - series: 'dictalab_ai_jobs{job="dictalab-ai",status="UNKNOWN"}'
+        values: '1 1 0'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: DictaLabAiWorkerDown
+        exp_alerts:
+          - exp_labels: {job: dictalab-ai, severity: critical}
+            exp_annotations:
+              summary: AI worker heartbeat is missing
+              action: Check worker and broker health; preserve the ledger and reconcile UNKNOWN jobs before retrying.
+      - eval_time: 1m
+        alertname: DictaLabAiOutcomeUnknown
+        exp_alerts:
+          - exp_labels: {job: dictalab-ai, status: UNKNOWN, severity: warning}
+            exp_annotations:
+              summary: AI job has an uncertain provider outcome
+              action: Inspect provider outcome before an explicit Java retry; never replay a paid call blindly.
+      - eval_time: 2m
+        alertname: DictaLabAiWorkerDown
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: DictaLabAiOutcomeUnknown
+        exp_alerts: []
+  - interval: 1m
+    input_series:
       - series: 'dictalab_provider_circuit{job="dictalab",provider="shopaikey"}'
         values: '1 1 1 0 0'
     alert_rule_test:

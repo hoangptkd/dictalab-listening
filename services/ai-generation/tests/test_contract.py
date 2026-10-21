@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 
 def test_schema_and_health_contract():
     assert SCHEMA["required"][:2] == ["slots", "utteranceEn"]
-    assert {route.path for route in app.routes} >= {"/health/live", "/health/ready", "/v1/conversation/tasks"}
+    assert set(app.openapi()["paths"]) >= {"/health/live", "/health/ready", "/v1/conversation/tasks",
+                                           "/v1/tts/jobs", "/v1/coach/reports", "/v1/review/tasks"}
     assert Settings().model == "qwen3.5:9b"
 
 

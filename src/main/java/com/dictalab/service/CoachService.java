@@ -45,6 +45,10 @@ public class CoachService {
     private final org.springframework.beans.factory.ObjectProvider<AiBackgroundJobs> jobs;
     // Legacy mode only; queue workers use the shared DB concurrency budget.
     private final Semaphore generation = new Semaphore(1);
+    private AiPlatformClient platform;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configurePlatform(AiPlatformClient platform) { this.platform = platform; }
 
     public CoachService(HistoryService history, JdbcTemplate db, ObjectMapper json, CoachAnalysis analysis,
                         TranscriptTokenizer tokenizer, ShopAiKeyClient client, CoachProperties config,
@@ -66,10 +70,10 @@ public class CoachService {
         return report(userId, sessionId, generate, false);
     }
 
-    Runnable generateQueuedReport(String sessionId) {
+    Runnable generateQueuedReport(String sessionId, String attemptKey) {
         var owners = db.queryForList("SELECT user_id FROM practice_sessions WHERE id=? AND status='COMPLETED'", Long.class, sessionId);
         if (owners.isEmpty()) return () -> {}; // Deleted/ineligible sessions never send evidence to the provider.
-        var generated = report(owners.get(0), sessionId, true, true);
+        var generated = report(owners.get(0), sessionId, true, true, attemptKey);
         if (!"AI".equals(generated.source())) return null;
         String payload = json.writeValueAsString(generated);
         return () -> db.update("""
@@ -80,6 +84,10 @@ public class CoachService {
     }
 
     private CoachAnalysis.Report report(Long userId, String sessionId, boolean generate, boolean background) {
+        return report(userId, sessionId, generate, background, sessionId);
+    }
+
+    private CoachAnalysis.Report report(Long userId, String sessionId, boolean generate, boolean background, String attemptKey) {
         // Authorize even cache hits, without reconstructing attempts or assessing unrelated lessons.
         List<Map<String, Object>> authorized = db.queryForList("""
                 SELECT r.report_json FROM practice_sessions p
@@ -118,10 +126,13 @@ public class CoachService {
         CoachAnalysis.Progress progress = analysis.progress(result.firstAttemptAccuracy(), scores,
                 Boolean.TRUE.equals(context.get("first_exposure")), context.get("room_id") != null, result.level().name());
         List<CoachAnalysis.ReviewItem> candidates = analysis.candidates(result, names, repeats);
-        boolean enabled = config.enabled() && (config.local() || client.configured());
+        boolean platformRoute = platform != null && platform.enabled("coach", userId);
+        boolean enabled = config.enabled() && (platformRoute || config.local() || client.configured());
         CoachAnalysis.Report fallback = analysis.baseline(candidates, progress, enabled, "RULES");
         if (!enabled || candidates.isEmpty()) return fallback;
         var queue = jobs.getIfAvailable();
+        if (platformRoute && queue == null && !background)
+            return analysis.baseline(candidates, progress, true, "UNAVAILABLE");
         if (queue != null && !background) {
             String state = generate ? queue.coach(sessionId, true) : queue.coachStatus(sessionId);
             String source = switch (state) {
@@ -139,7 +150,7 @@ public class CoachService {
             // Check again after acquiring the API slot: another request may just have saved this report.
             List<String> cached = db.queryForList("SELECT report_json FROM dictation_coach_reports WHERE session_id=?", String.class, sessionId);
             if (!cached.isEmpty()) return json.readValue(cached.get(0), CoachAnalysis.Report.class);
-            var selected = candidates.stream().limit(config.local() ? 12 : 40).toList();
+            var selected = candidates.stream().limit(config.local() || platformRoute ? 12 : 40).toList();
             var evidence = new LinkedHashMap<String, Object>();
             evidence.put("level", result.level());
             if (!config.local()) {
@@ -151,7 +162,17 @@ public class CoachService {
                             "sentence", item.transcript(), "priority", item.priority(), "occurrences", item.occurrences())).toList());
             CoachAnalysis.Report interpreted;
             try {
-                if (config.local()) {
+                var platformInput = Map.of("kind", "coach", "level", result.level(), "candidates",
+                        selected.stream().limit(12).map(item -> Map.of("id", item.id(), "pattern", item.pattern(),
+                                "heard", item.heard(), "expected", item.expected(), "sentence", item.transcript(),
+                                "priority", item.priority(), "occurrences", item.occurrences())).toList());
+                if (background && platformRoute) {
+                    reservePlatform(userId);
+                    var generated = platform.complete("coach", userId, "coach/" + sessionId + "/" + attemptKey, platformInput);
+                    interpreted = analysis.interpretLocal(generated.path("task"), selected, progress)
+                            .withGeneration(new CoachAnalysis.Generation(generated.path("provider").asText(),
+                                    generated.path("model").asText(), generated.path("promptVersion").asText(), "FOCUS_V2"));
+                } else if (config.local()) {
                     budget.reserveLocal(userId);
                     interpreted = analysis.interpretLocal(local.completeJson(json.writeValueAsString(evidence)), selected, progress)
                             .withGeneration(new CoachAnalysis.Generation("ollama", config.localModel(),
@@ -159,8 +180,11 @@ public class CoachService {
                 } else {
                     budget.reserve(userId,false);
                     interpreted = analysis.interpret(client.completeJson(INSTRUCTION, json.writeValueAsString(evidence)), selected, progress)
-                            .withGeneration(new CoachAnalysis.Generation("shopaikey", client.model(), "COACH_LEGACY_V1", "REPORT_V1"));
+                            .withGeneration(new CoachAnalysis.Generation(platform != null && platform.local() ? "ollama" : "shopaikey",
+                                    client.model(), "COACH_LEGACY_V1", "REPORT_V1"));
                 }
+                if (background && platform != null && !platformRoute)
+                    platform.compare("coach", userId, "coach/" + sessionId, platformInput, () -> reservePlatform(null));
             } catch (RuntimeException exception) {
                 org.slf4j.LoggerFactory.getLogger(CoachService.class).warn("Coach generation failed, reason={}, errorType={}, errorId={}",
                         ShopAiKeyClient.reason(exception),exception.getClass().getSimpleName(),UUID.randomUUID());
@@ -182,6 +206,10 @@ public class CoachService {
     }
 
     public record BankEntry(String sessionId, CoachAnalysis.ReviewItem item) {}
+
+    private void reservePlatform(Long userId) {
+        if (platform.local()) budget.reserveLocal(userId); else budget.reserve(userId, false);
+    }
 
     @org.springframework.transaction.annotation.Transactional(timeout = 5)
     public void recordEvent(Long userId, String sessionId, String name, String runId) {

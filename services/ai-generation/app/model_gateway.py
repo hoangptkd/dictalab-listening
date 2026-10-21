@@ -1,6 +1,6 @@
 """Model gateway — selects provider and handles controlled fallback.
 
-Primary: Ollama local (always).
+Primary: Ollama locally, ShopAIKey in production (or explicit configuration).
 Fallback: Shop AI cloud — only when:
   - DICTALAB_AI_FALLBACK_ENABLED=true, AND
   - local provider raises TimeoutError or ProviderError with a 5xx-like cause
@@ -42,6 +42,7 @@ class ModelGateway:
             num_ctx=settings.num_ctx,
             num_predict=settings.num_predict,
             client=client,
+            service_token=settings.ollama_service_token,
         )
         self._cloud: ModelProvider | None = None
         if settings.fallback_enabled and settings.fallback_api_key:
@@ -49,9 +50,13 @@ class ModelGateway:
                 base_url=settings.fallback_base_url,
                 api_key=settings.fallback_api_key,
                 model=settings.fallback_model,
+                max_tokens=settings.num_predict,
                 temperature=settings.temperature,
                 client=client,
             )
+        self._primary_cloud = ShopAiKeyProvider(base_url=settings.cloud_base_url,
+            api_key=settings.cloud_api_key, model=settings.cloud_model,
+            temperature=settings.temperature, client=client, max_tokens=settings.num_predict)
 
     async def complete(
         self,
@@ -69,6 +74,10 @@ class ModelGateway:
         (result_dict, provider_name)
         """
         started = time.monotonic()
+        if self._settings.selected_provider == "shopaikey":
+            result = await self._primary_cloud.complete(messages, schema, deadline, purpose, temperature=temperature)
+            self._log("shopaikey", purpose, started, fallback=False)
+            return result, "shopaikey"
         try:
             result = await self._local.complete(
                 messages, schema, deadline, purpose, temperature=temperature

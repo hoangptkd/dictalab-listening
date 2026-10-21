@@ -132,6 +132,7 @@ management:
         http.server.requests: true
         dictalab.provider.duration: true
         dictalab.conversation.python.duration: true
+        dictalab.ai.platform.duration: true
         dictalab.listening.job: true
   health:
     redis:
@@ -162,6 +163,15 @@ dictalab:
     dispatch-delay-ms: 5000
     index-delay-ms: 10000
   ai:
+    platform:
+      base-url: ${DICTALAB_AI_PLATFORM_BASE_URL:http://127.0.0.1:8091}
+      service-token: ${DICTALAB_AI_SERVICE_TOKEN:}
+      text-provider: ${DICTALAB_AI_TEXT_PROVIDER:shopaikey}
+      timeout-seconds: ${DICTALAB_AI_JOB_TIMEOUT_SECONDS:80}
+      tts: ${DICTALAB_AI_TTS_MODE:legacy}
+      coach: ${DICTALAB_AI_COACH_MODE:legacy}
+      review: ${DICTALAB_AI_REVIEW_MODE:legacy}
+      canary-users: ${DICTALAB_AI_CAPABILITY_CANARY_USERS:}
     budget:
       enabled: ${AI_BUDGET_ENABLED:true}
       global-microusd: ${AI_GLOBAL_DAILY_MICROUSD:5000000}

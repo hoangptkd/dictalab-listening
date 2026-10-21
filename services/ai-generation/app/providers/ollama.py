@@ -32,6 +32,7 @@ class OllamaProvider(ModelProvider):
         num_ctx: int = 8192,
         num_predict: int = 1000,
         client: httpx.AsyncClient,
+        service_token: str = "",
     ) -> None:
         self._url = ollama_url.rstrip("/") + "/api/chat"
         self._model = model
@@ -39,6 +40,7 @@ class OllamaProvider(ModelProvider):
         self._num_ctx = num_ctx
         self._num_predict = num_predict
         self._client = client
+        self._headers = {"X-Service-Token": service_token} if service_token else {}
 
     @property
     def name(self) -> str:
@@ -73,7 +75,7 @@ class OllamaProvider(ModelProvider):
         }
         try:
             timeout = httpx.Timeout(max(remaining - 0.5, 1.0))
-            response = await self._client.post(self._url, json=body, timeout=timeout)
+            response = await self._client.post(self._url, json=body, timeout=timeout, headers=self._headers)
             response.raise_for_status()
             envelope = response.json()
             content = envelope.get("message", {}).get("content")

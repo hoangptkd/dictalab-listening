@@ -34,6 +34,7 @@ class AiBackgroundJobsIntegrationTest {
     @MockitoBean CartesiaClient tts;
     @MockitoBean ShopAiKeyClient ai;
     @MockitoBean RabbitTemplate rabbit;
+    @MockitoBean AiPlatformClient platform;
     private final List<Long> users = new ArrayList<>();
     private long owner;
 
@@ -106,6 +107,62 @@ class AiBackgroundJobsIntegrationTest {
         }
         assertThat(conversation.play(owner, id, 1, "original", false).path("audioStatus").asText()).isEqualTo("EXHAUSTED");
         then(tts).should(times(3)).synthesize(anyString());
+    }
+
+    @Test void pythonAudioUsesExistingFenceAndExplicitRetryHasANewIdempotencyKey() {
+        given(platform.enabled("tts", owner)).willReturn(true);
+        given(platform.complete(eq("tts"), eq(owner), anyString(), any())).willThrow(new IllegalStateException("uncertain"));
+        String id = audioSession(); conversation.play(owner, id, 1, "original", false);
+        String first = job(id); jobs.consumeAudio(first); jobs.consumeAudio(first);
+        assertThat(state(first)).isEqualTo("FAILED");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM ai_conversation_audio WHERE session_id=?", Integer.class, id)).isZero();
+        given(platform.complete(eq("tts"), eq(owner), anyString(), any())).willReturn(json.createObjectNode());
+        given(platform.audio(any())).willReturn(new byte[]{1,2,3});
+        conversation.play(owner, id, 1, "original", false);
+        jobs.consumeAudio(job(id)); jobs.consumeAudio(job(id));
+        assertThat(state(job(id))).isEqualTo("DONE");
+        var keys = org.mockito.ArgumentCaptor.forClass(String.class);
+        then(platform).should(times(2)).complete(eq("tts"), eq(owner), keys.capture(), any());
+        assertThat(keys.getAllValues().get(0)).isNotEqualTo(keys.getAllValues().get(1));
+        then(tts).should(never()).synthesize(anyString());
+    }
+
+    @Test void pythonCoachRejectsInventedEvidenceThenPersistsValidReportWithoutChangingProgress() {
+        given(platform.enabled("coach", owner)).willReturn(true);
+        String id = practice();
+        var baseline = coach.report(owner, id, false);
+        var item = baseline.reviewItems().get(0);
+        var output = json.createObjectNode().put("provider", "shopaikey").put("model", "test-model")
+                .put("promptVersion", "COACH_PLATFORM_FOCUS_V1");
+        output.set("task", json.valueToTree(Map.of("focus", Map.of("pattern", item.pattern(),
+                "evidenceIds", List.of("invented"), "insight", "Bạn đã bỏ lỡ từ quen trong câu."), "reviewIds", List.of())));
+        given(platform.complete(eq("coach"), eq(owner), anyString(), any())).willReturn(output);
+        coach.report(owner, id, true);
+        String first = db.queryForObject("SELECT id FROM ai_background_jobs WHERE practice_id=?", String.class, id);
+        jobs.consumeCoach(first);
+        assertThat(state(first)).isEqualTo("FAILED");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM dictation_coach_reports WHERE session_id=?", Integer.class, id)).isZero();
+        output.set("task", json.valueToTree(Map.of("focus", Map.of("pattern", item.pattern(),
+                "evidenceIds", List.of(item.id()), "insight", "Bạn đã bỏ lỡ từ quen trong câu."), "reviewIds", List.of(item.id()))));
+        coach.report(owner, id, true);
+        String second = db.queryForObject("SELECT id FROM ai_background_jobs WHERE practice_id=?", String.class, id);
+        jobs.consumeCoach(second); jobs.consumeCoach(second);
+        assertThat(coach.report(owner, id, false).source()).isEqualTo("AI");
+        assertThat(coach.report(owner, id, false).progressInsight()).isEqualTo(baseline.progressInsight());
+        then(ai).should(never()).completeJson(anyString(), anyString());
+    }
+
+    @Test void accountDeletedDuringPythonCallCannotReceiveAudio() {
+        given(platform.enabled("tts", owner)).willReturn(true);
+        given(platform.complete(eq("tts"), eq(owner), anyString(), any())).willAnswer(call -> {
+            db.update("DELETE FROM app_users WHERE id=?", owner);
+            return json.createObjectNode();
+        });
+        given(platform.audio(any())).willReturn(new byte[]{1,2,3});
+        String id = audioSession(); conversation.play(owner, id, 1, "original", false);
+        jobs.consumeAudio(job(id));
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM ai_conversation_audio WHERE session_id=?", Integer.class, id)).isZero();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM ai_background_jobs WHERE conversation_id=?", Integer.class, id)).isZero();
     }
 
     @Test void crashedWorkerIsUnknownAndNeverBlindlyRedeliveredToProvider() {

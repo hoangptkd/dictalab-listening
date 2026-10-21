@@ -21,6 +21,8 @@ public class AiUsageBudget {
     private final int globalCalls, userCalls;
     private final boolean enabled;
     private PremiumAccessService premium;
+    @Value("${dictalab.ai.platform.text-provider:shopaikey}")
+    private String textProvider = "shopaikey";
 
     @org.springframework.beans.factory.annotation.Autowired
     void configurePremium(PremiumAccessService premium) { this.premium=premium; }
@@ -45,7 +47,7 @@ public class AiUsageBudget {
     }
 
     public void reserve(Long userId, boolean tts) {
-        reserve(userId, tts, false);
+        reserve(userId, tts, !tts && textProvider.equals("ollama"));
     }
 
     public void reserveLocal(Long userId) {

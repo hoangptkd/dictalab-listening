@@ -50,3 +50,39 @@ groups:
         annotations:
           summary: Verified backup is missing or older than 25 hours
           action: Check backup task, free disk and checksum manifest; run isolated restore drill before declaring recovery ready.
+  - name: dictalab-ai-platform
+    rules:
+      - alert: DictaLabAiWorkerDown
+        expr: dictalab_ai_worker_up{job="dictalab-ai"} == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: AI worker heartbeat is missing
+          action: Check worker and broker health; preserve the ledger and reconcile UNKNOWN jobs before retrying.
+      - alert: DictaLabAiOutcomeUnknown
+        expr: dictalab_ai_jobs{job="dictalab-ai",status="UNKNOWN"} > 0
+        labels: {severity: warning}
+        annotations:
+          summary: AI job has an uncertain provider outcome
+          action: Inspect provider outcome before an explicit Java retry; never replay a paid call blindly.
+      - alert: DictaLabAiQueueWait
+        expr: dictalab_ai_job_queue_wait_seconds{job="dictalab-ai"} > 20
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Oldest AI job waits over 20 seconds
+          action: Pause canary expansion and inspect model capacity and queue depth before adding workers.
+      - alert: DictaLabAiQueueBacklog
+        expr: dictalab_ai_jobs{job="dictalab-ai",status="PENDING"} > 100
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: AI job backlog exceeds 100
+          action: Check provider capacity and admission budgets; do not reset attempts or delete queued jobs.
+      - alert: DictaLabAiJobFailures
+        expr: (sum by (kind) (increase(dictalab_ai_platform_duration_seconds_count{outcome="failed"}[15m])) / clamp_min(sum by (kind) (increase(dictalab_ai_platform_duration_seconds_count[15m])),1) > 0.01) and on (kind) (sum by (kind) (increase(dictalab_ai_platform_duration_seconds_count[15m])) >= 100)
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: AI capability failure rate exceeds the pilot threshold
+          action: Stop expansion and roll back the affected capability independently; preserve learner history.

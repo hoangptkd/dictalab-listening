@@ -89,6 +89,9 @@ public class ConversationService {
     private final ConversationLocalClient localGeneration;
     private ConversationPythonClient pythonGeneration;
     private ConversationRollout rollout;
+    private AiPlatformClient platform;
+    @org.springframework.beans.factory.annotation.Autowired
+    void configurePlatform(AiPlatformClient platform) { this.platform = platform; }
     private static final Logger log = LoggerFactory.getLogger(ConversationService.class);
     @org.springframework.beans.factory.annotation.Value("${dictalab.conversation.audio-retention-days:30}")
     private int audioRetentionDays = 30;
@@ -584,7 +587,8 @@ public class ConversationService {
         boolean python = pythonGeneration != null && (rollout == null ? pythonGeneration.enabled() : rollout.usePython(row.user, row.id));
         boolean local = !python && localGeneration != null && localGeneration.enabled();
         for (int attempt = 0; attempt < 2; attempt++) {
-            if (local || python) budget.reserveLocal(row.user); else budget.reserve(row.user,false);
+            if (local || python && platform != null && platform.local()) budget.reserveLocal(row.user);
+            else budget.reserve(row.user,false);
             JsonNode raw = python
                     ? pythonGeneration.completeTask(row.difficulty, json.writeValueAsString(context), remaining(deadline)).raw()
                     : local
@@ -767,13 +771,13 @@ public class ConversationService {
         return future;
     }
 
-    Runnable generateQueuedAudio(String id, int number, String variant, String expectedHash) {
+    Runnable generateQueuedAudio(String id, int number, String variant, String expectedHash, String attemptKey) {
         var owners = db.queryForList("SELECT user_id FROM ai_conversation_sessions WHERE id=?", Long.class, id);
         if (owners.isEmpty() || audioExists(id, number, variant)) return () -> {};
         Row row = load(owners.get(0), id);
         String utterance = audioUtterance(row, number, variant);
         if (!AiBackgroundJobs.hash(utterance).equals(expectedHash)) throw new IllegalStateException("Stale audio task");
-        return generateAudioWrite(row, number, variant, utterance);
+        return generateAudioWrite(row, number, variant, utterance, attemptKey);
     }
 
     private void synthesizeAudio(Row row, int number, String variant, String utterance) {
@@ -781,8 +785,17 @@ public class ConversationService {
     }
 
     private Runnable generateAudioWrite(Row row, int number, String variant, String utterance) {
+        return generateAudioWrite(row, number, variant, utterance, UUID.randomUUID().toString());
+    }
+
+    private Runnable generateAudioWrite(Row row, int number, String variant, String utterance, String attemptKey) {
         budget.reserve(row.user,true);
-        byte[] audio = tts.synthesize(utterance);
+        var payload = Map.of("kind", "tts", "text", utterance);
+        String key = "audio/" + row.id + "/" + number + "/" + variant + "/" + AiBackgroundJobs.hash(utterance) + "/" + attemptKey;
+        byte[] audio = platform != null && platform.enabled("tts", row.user)
+                ? platform.audio(platform.complete("tts", row.user, key, payload)) : tts.synthesize(utterance);
+        if (platform != null && !platform.enabled("tts", row.user))
+            platform.compare("tts", row.user, key, payload, () -> budget.reserve(null, true));
         if (audio == null) throw new IllegalStateException("Missing audio");
         // Upload before the DB phase, including background-worker transaction/lease handling.
         String s3Url = media != null && media.s3Enabled() ? media.storeConversationAudio(audio) : null;

@@ -35,12 +35,15 @@ class ShopAiKeyProvider(ModelProvider):
         model: str,
         temperature: float = 0.3,
         client: httpx.AsyncClient,
+        max_tokens: int = 2200,
     ) -> None:
-        self._url = base_url.rstrip("/") + "/v1/chat/completions"
+        base = base_url.rstrip("/")
+        self._url = base if base.endswith("/chat/completions") else base + ("/chat/completions" if base.endswith("/v1") else "/v1/chat/completions")
         self._api_key = api_key   # never logged
         self._model = model
         self._temperature = temperature
         self._client = client
+        self._max_tokens = max_tokens
 
     @property
     def name(self) -> str:
@@ -62,6 +65,7 @@ class ShopAiKeyProvider(ModelProvider):
             raise TimeoutError(f"ShopAiKeyProvider: deadline exhausted before {purpose}")
         body = {
             "model": self._model,
+            "max_tokens": self._max_tokens,
             "temperature": temperature if temperature is not None else self._temperature,
             "messages": messages,
             "response_format": {"type": "json_object"},

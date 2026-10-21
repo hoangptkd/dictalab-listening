@@ -23,6 +23,17 @@ public class ShopAiKeyClient {
     private final ProviderGuard guard;
     private Duration assessmentTimeout=Duration.ofSeconds(60);
     private Duration generationTimeout=Duration.ofSeconds(30);
+    private boolean local;
+    private String localBaseUrl = "http://127.0.0.1:11434", localModel = "qwen3.5:9b";
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureLocal(@Value("${dictalab.ai.platform.text-provider:shopaikey}") String provider,
+                        @Value("${dictalab.conversation.generation.local-base-url:http://127.0.0.1:11434}") String baseUrl,
+                        @Value("${dictalab.conversation.generation.local-model:qwen3.5:9b}") String model) {
+        var validated = new com.dictalab.config.ConversationGenerationProperties("ollama", baseUrl, model, 60);
+        if (!java.util.Set.of("ollama", "shopaikey").contains(provider)) throw new IllegalArgumentException("Invalid AI provider");
+        local = provider.equals("ollama"); localBaseUrl = validated.localBaseUrl(); localModel = validated.localModel();
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     void configureTimeouts(@Value("${dictalab.shopaikey.assessment-timeout-seconds:25}") int assessment,
@@ -69,10 +80,10 @@ public class ShopAiKeyClient {
     }
 
     public boolean configured() {
-        return !key.isBlank();
+        return local || !key.isBlank();
     }
 
-    public String model() { return model; }
+    public String model() { return local ? localModel : model; }
 
     public JsonNode completeJson(String instruction, String input) {
         return requestJson(instruction, input, model, assessmentTimeout);
@@ -95,15 +106,18 @@ public class ShopAiKeyClient {
         if (requestModel == null || requestModel.isBlank()) throw new IllegalArgumentException("Missing ShopAIKey model");
         try (var permit=guard.enter()) {
           try {
-            String body = json.writeValueAsString(Map.of(
+            String body = json.writeValueAsString(local ? Map.of("model", localModel, "stream", false, "think", false,
+                    "format", "json", "options", Map.of("temperature", 0, "num_ctx", 8192, "num_predict", 2200),
+                    "messages", List.of(Map.of("role", "system", "content", instruction), Map.of("role", "user", "content", input))) : Map.of(
                     "model", requestModel, "temperature", 0, "max_tokens", 2200,
                     "messages", List.of(Map.of("role", "system", "content", instruction),
                             Map.of("role", "user", "content", input))));
-            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+            var builder = HttpRequest.newBuilder(URI.create(local ? localBaseUrl + "/api/chat" : url))
                     .timeout(timeout)
-                    .header("Authorization", "Bearer " + key)
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+                    .POST(HttpRequest.BodyPublishers.ofString(body));
+            if (!local) builder.header("Authorization", "Bearer " + key);
+            HttpRequest request = builder.build();
             var pending = http.sendAsync(request, info -> BoundedProviderBody.bytes(100_000));
             HttpResponse<byte[]> response;
             try {
@@ -123,11 +137,14 @@ public class ShopAiKeyClient {
                 }
                 throw new Failure("HTTP_"+response.statusCode(),"ShopAIKey trả HTTP " + response.statusCode());
             }
-            JsonNode choice = json.readTree(response.body()).path("choices").path(0);
+            JsonNode envelope = json.readTree(response.body());
+            if (local && (!envelope.path("done").asBoolean() || !"stop".equals(envelope.path("done_reason").asText())))
+                throw new Failure("OUTPUT_TRUNCATED", "Incomplete local AI response");
+            JsonNode choice = envelope.path("choices").path(0);
             if ("length".equals(choice.path("finish_reason").asText())) {
                 throw new Failure("OUTPUT_TRUNCATED","Phản hồi AI vượt giới hạn nội dung.");
             }
-            JsonNode answer = choice.path("message").path("content");
+            JsonNode answer = (local ? envelope : choice).path("message").path("content");
             if (!answer.isTextual() || answer.asText().isBlank() || answer.asText().length() > 12_000) {
                 throw new Failure("INVALID_CONTENT","ShopAIKey không trả nội dung hợp lệ.");
             }

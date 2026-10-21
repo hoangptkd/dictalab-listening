@@ -1,0 +1,10 @@
+# Text AI stays on this machine, including legacy grading/review callers.
+dictalab:
+  ai:
+    platform:
+      text-provider: ollama
+  conversation:
+    generation:
+      provider: ${DICTALAB_CONVERSATION_GENERATION_PROVIDER:ollama}
+  coach:
+    provider: ${DICTALAB_COACH_PROVIDER:ollama}

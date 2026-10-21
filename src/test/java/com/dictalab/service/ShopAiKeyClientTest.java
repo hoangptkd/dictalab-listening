@@ -85,6 +85,23 @@ class ShopAiKeyClientTest {
         assertThat(config.toString()).doesNotContain("secret-value");
     }
 
+    @Test void localModeNeverSendsACloudCredentialAndRejectsIncompleteOutput() throws Exception {
+        server.createContext("/api/chat", exchange -> {
+            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            received.set(json.readTree(exchange.getRequestBody().readAllBytes()));
+            byte[] body = json.writeValueAsBytes(Map.of("done", true, "done_reason", finishReason.get(),
+                    "message", Map.of("content", content.get())));
+            exchange.sendResponseHeaders(200, body.length);
+            try (var output = exchange.getResponseBody()) { output.write(body); }
+        });
+        client.configureLocal("ollama", "http://127.0.0.1:" + server.getAddress().getPort(), "qwen3.5:9b");
+        assertThat(client.completeJson("Review", "Evidence", "cloud-model").path("ok").asBoolean()).isTrue();
+        assertThat(received.get().path("model").asText()).isEqualTo("qwen3.5:9b");
+        assertThat(authorization.get()).isNull();
+        finishReason.set("length");
+        assertThatThrownBy(() -> client.completeJson("Review", "Evidence")).isInstanceOf(ShopAiKeyClient.Failure.class);
+    }
+
     @Test void missingKeyRejectsRequestsBeforeSendingAnyContext() {
         var unconfigured = new ShopAiKeyClient(json, "", "claude-sonnet-4-5",
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");

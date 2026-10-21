@@ -28,13 +28,22 @@ $env:DB_URL = "jdbc:postgresql://localhost:$env:POSTGRES_PORT/$env:POSTGRES_DB"
 $env:DB_USERNAME = $env:POSTGRES_USER
 $env:DB_PASSWORD = $env:POSTGRES_PASSWORD
 $env:PORT = $env:APP_PORT
+$env:SPRING_PROFILES_ACTIVE = 'local'
+$env:DICTALAB_AI_TEXT_PROVIDER = 'ollama'
+$env:DICTALAB_AI_PRIMARY_PROVIDER = 'ollama'
+$env:DICTALAB_AI_PRODUCTION_MODE = 'false'
+$env:DICTALAB_AI_FALLBACK_ENABLED = 'false'
+if ($env:DICTALAB_CONVERSATION_GENERATION_PROVIDER -ne 'python') {
+    $env:DICTALAB_CONVERSATION_GENERATION_PROVIDER = 'ollama'
+}
+$env:DICTALAB_COACH_PROVIDER = 'ollama'
 
 Push-Location $projectRoot
 try {
     $appPort = [int]$env:APP_PORT
     $postgresPort = [int]$env:POSTGRES_PORT
 
-    if ($WithConversationLocal -or $env:DICTALAB_CONVERSATION_GENERATION_PROVIDER -eq 'ollama') {
+    if ($WithConversationLocal -or ($env:DICTALAB_CONVERSATION_ENABLED -eq 'true' -and $env:DICTALAB_CONVERSATION_GENERATION_PROVIDER -eq 'ollama')) {
         $env:DICTALAB_CONVERSATION_GENERATION_PROVIDER = 'ollama'
         $conversationBase = if ($env:DICTALAB_CONVERSATION_LOCAL_BASE_URL) { $env:DICTALAB_CONVERSATION_LOCAL_BASE_URL.TrimEnd('/') } else { 'http://127.0.0.1:11434' }
         $conversationUri = [Uri]$conversationBase
@@ -49,14 +58,14 @@ try {
         if ($conversationTimeout -lt 1 -or $conversationTimeout -gt 600) { throw 'Conversation local timeout phai tu 1 den 600 giay.' }
         $conversationModels = Invoke-RestMethod "$conversationBase/api/tags" -TimeoutSec 5 -MaximumRedirection 0
         if ($conversationModel -notin @($conversationModels.models.name)) { throw "Ollama chua co model $conversationModel." }
-        if ([string]::IsNullOrWhiteSpace($env:SHOPAIKEY_API_KEY) -or [string]::IsNullOrWhiteSpace($env:CARTESIA_API_KEY)) {
-            throw 'Can ShopAIKey cho danh gia va Cartesia cho audio; chi phan tao cau chay local.'
+        if ([string]::IsNullOrWhiteSpace($env:CARTESIA_API_KEY)) {
+            throw 'Can Cartesia cho audio. AI van ban va danh gia dung Ollama local.'
         }
         $env:DICTALAB_CONVERSATION_ENABLED = 'true'
         # Load weights before serving; the actual generation still has its own bounded deadline.
         $warmup = @{model=$conversationModel; stream=$false; keep_alive='5m'; options=@{num_ctx=8192}} | ConvertTo-Json -Depth 3
         $null = Invoke-RestMethod "$conversationBase/api/generate" -Method Post -ContentType 'application/json' -Body $warmup -TimeoutSec $conversationTimeout -MaximumRedirection 0
-        Write-Host "Conversation generation: Ollama local / $conversationModel. Danh gia va TTS van dung cloud."
+        Write-Host "AI van ban va danh gia: Ollama local / $conversationModel. TTS: Cartesia."
     }
 
     if ($WithCoach) {
