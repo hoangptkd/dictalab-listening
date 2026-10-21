@@ -1,5 +1,9 @@
 # Hội thoại luyện nghe AI — V1
 
+> Historical implementation record from the October 2026 cutover. The current cloud text provider is
+> Google Gemini; see `docs/ai-platform-runbook.md` and `docs/current-system-reference.md` for current
+> configuration. References to ShopAIKey below document the earlier deployment and are not current setup.
+
 ## Bản sửa local ngày 03/10/2026 — câu hỏi thử thách hơn
 
 - A1 giữ hai ý được hỏi, thêm thay đổi nhỏ hoặc phương án bị loại; A2 nối chi tiết giữa các câu; B1 nghe điều kiện, lý do hoặc kế hoạch sửa đổi. Không tăng độ khó bằng từ vựng ngoài trình độ hay suy luận mơ hồ.

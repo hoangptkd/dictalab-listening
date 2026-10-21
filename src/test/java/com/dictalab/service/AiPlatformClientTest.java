@@ -51,7 +51,7 @@ class AiPlatformClientTest {
         assertThat(calls.get()).isEqualTo(1);
     }
     @Test void mismatchAndTransportFailureNeverTriggerLegacyOrAutomaticRetry() {
-        provider = "shopaikey";
+        provider = "gemini";
         assertThatThrownBy(() -> client.complete("review", 42, "attempt", Map.of())).isInstanceOf(IllegalStateException.class);
         assertThat(calls.get()).isEqualTo(1);
         status = 503;

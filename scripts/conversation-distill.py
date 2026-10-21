@@ -19,8 +19,8 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data/conversation-distillation"
-TEACHER = "deepseek-v3.2"
-JUDGE = "claude-sonnet-4-5"
+TEACHER = "gemini-3.5-flash-lite"
+JUDGE = "gemini-3.5-flash-lite"
 JUDGE_VERSION = "offline-listening-judge-v3"
 CORE = ("cafe", "hotel", "directions", "plans", "delivery")
 FIELDS = ("taskVi", "questionVi", "utteranceEn", "translationVi", "skill", "facts")
@@ -201,38 +201,12 @@ class Cloud:
                 if "=" in line and not line.lstrip().startswith("#"):
                     k, v = line.split("=", 1)
                     settings[k.strip()] = v.strip().strip("\"'")
-        self.key = os.environ.get("SHOPAIKEY_API_KEY") or settings.get("SHOPAIKEY_API_KEY")
+        self.key = os.environ.get("GEMINI_API_KEY") or settings.get("GEMINI_API_KEY")
         if not self.key:
-            raise RuntimeError("SHOPAIKEY_API_KEY unavailable")
+            raise RuntimeError("GEMINI_API_KEY unavailable")
         self.opener = urllib.request.build_opener(NoRedirect)
 
-    def balance(self):
-        # Provider documents this query-based endpoint; never log its URL or raw response.
-        try:
-            with self.opener.open("https://api.shopaikey.com/usage?apiKey=" + self.key, timeout=30) as response:
-                info = json.loads(response.read(20_000))
-            value = float(info["balance"])
-            if not math.isfinite(value):
-                raise ValueError()
-            return value
-        except Exception:
-            raise RuntimeError("Cannot verify provider credit balance; stopping paid calls") from None
-
-    def check_budget(self, force=False):
-        path = DATA / "billing-start.json"
-        if not path.exists():
-            initial = self.balance()
-            save(path.name, {"initialCredit": initial, "maxCreditSpend": min(12.0, max(0, initial-0.25)), "time": time.time()})
-        start = json.loads(path.read_text(encoding="utf-8"))
-        if force or len(load("api-reservations.jsonl")) % 10 == 0:
-            remaining = self.balance()
-            spent = round(start["initialCredit"]-remaining, 4)
-            save("billing-latest.json", {"creditSpentSinceStart": spent, "remainingCredit": remaining, "time": time.time()})
-            if spent >= start["maxCreditSpend"] or remaining < 0.25:
-                raise RuntimeError("Provider credit safety cap reached; no automatic top-up")
-
     def call(self, model, messages, purpose, max_tokens=2200):
-        self.check_budget()
         reservations = load("api-reservations.jsonl")
         reserve = len(packed(messages).encode("utf-8")) + max_tokens
         if len(reservations) >= MAX_CALLS or sum(r["reservedTokens"] for r in reservations) + reserve > MAX_RESERVED_TOKENS:
@@ -240,10 +214,8 @@ class Cloud:
         append("api-reservations.jsonl", {"number": len(reservations)+1, "model": model, "purpose": purpose,
                "reservedTokens": reserve, "time": time.time()})
         body = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0,
-                "stream": False, "response_format": {"type": "json_object"}, "enable_thinking": False}
-        if model.startswith("deepseek"):
-            body["thinking"] = {"type": "disabled"}
-        request = urllib.request.Request("https://api.shopaikey.com/v1/chat/completions", data=packed(body).encode(),
+                "stream": False, "response_format": {"type": "json_object"}}
+        request = urllib.request.Request("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", data=packed(body).encode(),
                     headers={"Authorization": "Bearer " + self.key, "Content-Type": "application/json"})
         started = time.monotonic()
         try:
@@ -261,7 +233,7 @@ class Cloud:
             content = choice["message"]["content"].strip()
             if content.startswith("```"):
                 content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content)
-            # Match production ShopAiKeyClient's tolerance for prose/fences around a JSON object.
+            # Match production GeminiClient's tolerance for prose/fences around a JSON object.
             start, end = content.find("{"), content.rfind("}")
             if start >= 0 and end >= start:
                 content = content[start:end+1]
@@ -270,7 +242,7 @@ class Cloud:
             except json.JSONDecodeError:
                 append("provider-invalid-content.jsonl", {"purpose": purpose, "model": model,
                        "content": content.replace(self.key, "[redacted]")[:12000]})
-                raise RuntimeError("ShopAIKey invalid JSON content") from None
+                raise RuntimeError("Gemini invalid JSON content") from None
         except urllib.error.HTTPError as error:
             detail = ""
             try:
@@ -280,11 +252,11 @@ class Cloud:
                 detail = re.sub(r"sk-[A-Za-z0-9_-]+", "[redacted]", detail)[:350]
             except Exception:
                 pass
-            raise RuntimeError(f"ShopAIKey HTTP {error.code}: {detail}") from None
+            raise RuntimeError(f"Gemini HTTP {error.code}: {detail}") from None
         except (urllib.error.URLError, TimeoutError):
-            raise RuntimeError("ShopAIKey transport/timeout") from None
+            raise RuntimeError("Gemini transport/timeout") from None
         except (json.JSONDecodeError, KeyError, IndexError, TypeError, AttributeError, UnicodeDecodeError):
-            raise RuntimeError("ShopAIKey invalid JSON/envelope") from None
+            raise RuntimeError("Gemini invalid JSON/envelope") from None
 
 
 def messages(context, spec):
@@ -681,15 +653,6 @@ def finalize():
                 for turn in (2, 3, 4):
                     writer.writerow([scenario, level, turn, coverage[(scenario, level, turn)]])
     coverage_temporary.replace(DATA / "coverage.csv")
-    summary["creditDeltaScope"] = "Account balance decrease since budget snapshot; may include other activity and exclude earlier probes"
-    if (DATA / "billing-start.json").exists():
-        try:
-            remaining = Cloud().balance()
-            initial = json.loads((DATA / "billing-start.json").read_text(encoding="utf-8"))["initialCredit"]
-            summary["creditSpentSinceStart"] = round(initial-remaining, 4)
-            summary["billingVerified"] = True
-        except RuntimeError:
-            pass  # Keep offline exports available if the read-only billing endpoint is down.
     save("summary.json", summary)
     # Local second copy survives loss/cleanup of the working directory; never uploads runtime data.
     backup = Path.home() / "Documents/DictaLab-research-backup/conversation-distillation"

@@ -30,14 +30,12 @@ async def execute(event, settings):
             task = await asyncio.wait_for(tts.synthesize(event.payload, settings, client, deadline), remaining)
         else:
             module, output = (coach, coach.CoachOutput) if event.payload.kind == "coach" else (review, review.ReviewOutput)
-            raw, provider = await asyncio.wait_for(ModelGateway(settings.model_copy(update={"fallback_enabled": False}), client).complete(
+            raw, provider = await asyncio.wait_for(ModelGateway(settings, client).complete(
                 [{"role": "system", "content": module.INSTRUCTION},
                  {"role": "user", "content": event.payload.model_dump_json()}],
                 output.model_json_schema(), deadline, event.payload.kind, temperature=0), remaining)
             task = module.validate_output(raw, event.payload)
             metadata["provider"] = provider
-            if provider == "shopaikey" and settings.selected_provider == "ollama":
-                metadata["model"] = settings.fallback_model
     return {**metadata, "generationId": str(uuid.uuid4()), "requestId": str(event.requestId), "task": task}
 
 

@@ -6,8 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record CoachProperties(boolean enabled, String provider, String localBaseUrl, String localModel,
                               int localTimeoutSeconds) {
     public CoachProperties {
-        if (provider == null || provider.isBlank()) provider = "shopaikey";
-        if (!java.util.Set.of("shopaikey", "ollama").contains(provider))
+        if (provider == null || provider.isBlank()) provider = "gemini";
+        if (!java.util.Set.of("gemini", "ollama").contains(provider))
             throw new IllegalArgumentException("Unsupported Coach provider");
         if (localBaseUrl == null || localBaseUrl.isBlank()) localBaseUrl = "http://127.0.0.1:11434";
         var uri = java.net.URI.create(localBaseUrl);

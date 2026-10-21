@@ -45,7 +45,7 @@ class ListeningGradingQueueIntegrationTest {
     @Autowired RabbitListenerEndpointRegistry listeners;
     @Autowired PlatformTransactionManager manager;
     @Autowired MeterRegistry metrics;
-    @MockitoBean ShopAiKeyClient ai;
+    @MockitoBean GeminiClient ai;
     private final List<String> sessions=new ArrayList<>();
     private final List<Long> users=new ArrayList<>();
 

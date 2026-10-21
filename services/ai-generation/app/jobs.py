@@ -70,8 +70,8 @@ def capability_metadata(payload, settings):
 
 def execution_fingerprint(payload, settings):
     return digest({"payload": payload.model_dump(), "metadata": capability_metadata(payload, settings),
-        "config": {name: getattr(settings, name) for name in ("num_ctx", "num_predict", "ollama_url", "cloud_base_url",
-                    "cartesia_url", "cartesia_voice", "cartesia_version")}})
+        "config": {name: getattr(settings, name) for name in ("num_ctx", "num_predict", "ollama_url", "gemini_base_url",
+                    "gemini_model", "cartesia_url", "cartesia_voice", "cartesia_version")}})
 
 
 class Conflict(ValueError):

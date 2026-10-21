@@ -252,8 +252,7 @@ async def create_task(payload: ConversationTaskRequest, request: Request,
                 async with httpx.AsyncClient(timeout=timeout, limits=httpx.Limits(max_connections=settings.http_max_connections)) as client:
                     server_payload = payload.model_copy(update={"promptVersion": version,
                                                                "instruction": artifact["instruction"]})
-                    runtime_settings = settings.model_copy(update={"timeout_seconds": runtime_seconds,
-                        "fallback_enabled": False if mode == "shadow" else settings.fallback_enabled})
+                    runtime_settings = settings.model_copy(update={"timeout_seconds": runtime_seconds})
                     task = await asyncio.wait_for(run_workflow(server_payload, runtime_settings, client),
                                                   timeout=runtime_seconds)
             except TimeoutError as exc:

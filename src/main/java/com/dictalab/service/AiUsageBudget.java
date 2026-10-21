@@ -21,8 +21,8 @@ public class AiUsageBudget {
     private final int globalCalls, userCalls;
     private final boolean enabled;
     private PremiumAccessService premium;
-    @Value("${dictalab.ai.platform.text-provider:shopaikey}")
-    private String textProvider = "shopaikey";
+    @Value("${dictalab.ai.platform.text-provider:gemini}")
+    private String textProvider = "gemini";
 
     @org.springframework.beans.factory.annotation.Autowired
     void configurePremium(PremiumAccessService premium) { this.premium=premium; }

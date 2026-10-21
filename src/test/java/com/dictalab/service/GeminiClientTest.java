@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.*;
 
-class ShopAiKeyClientTest {
+class GeminiClientTest {
     private final ObjectMapper json = new ObjectMapper();
     private final AtomicReference<String> content = new AtomicReference<>("{\"ok\":true}");
     private final AtomicReference<Integer> status = new AtomicReference<>(200);
@@ -27,7 +27,7 @@ class ShopAiKeyClientTest {
     private final AtomicReference<java.util.concurrent.CountDownLatch> gate = new AtomicReference<>(new java.util.concurrent.CountDownLatch(0));
     private final java.util.concurrent.atomic.AtomicInteger requests = new java.util.concurrent.atomic.AtomicInteger();
     private HttpServer server;
-    private ShopAiKeyClient client;
+    private GeminiClient client;
 
     @BeforeEach void setup() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -44,15 +44,15 @@ class ShopAiKeyClientTest {
             try (var output = exchange.getResponseBody()) { output.write(body); }
         });
         server.start();
-        client = new ShopAiKeyClient(json, "test-only-key", "claude-sonnet-4-5",
+        client = new GeminiClient(json, "test-only-key", "gemini-3.5-flash-lite",
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");
     }
 
     @AfterEach void stop() { server.stop(0); }
 
     @Test void conversationOverrideDoesNotChangeTheAssessmentModelAndPreservesVietnamese() {
-        assertThat(client.completeJson("Tạo câu nghe.", "{\"scenario\":\"Hỏi đường\"}", "gemini-2.5-flash").path("ok").asBoolean()).isTrue();
-        assertThat(received.get().path("model").asText()).isEqualTo("gemini-2.5-flash");
+        assertThat(client.completeJson("Tạo câu nghe.", "{\"scenario\":\"Hỏi đường\"}", "gemini-3.5-flash-lite").path("ok").asBoolean()).isTrue();
+        assertThat(received.get().path("model").asText()).isEqualTo("gemini-3.5-flash-lite");
         assertThat(received.get().path("messages").path(0).path("role").asText()).isEqualTo("system");
         assertThat(received.get().path("messages").path(0).path("content").asText()).isEqualTo("Tạo câu nghe.");
         assertThat(received.get().path("messages").path(1).path("content").asText()).contains("Hỏi đường");
@@ -62,8 +62,8 @@ class ShopAiKeyClientTest {
         assertThat(received.get().has("session_id")).isFalse();
         assertThat(received.get().has("conversation_id")).isFalse();
         client.completeJson("Assessment", "Transcript");
-        assertThat(received.get().path("model").asText()).isEqualTo("claude-sonnet-4-5");
-        assertThat(client.model()).isEqualTo("claude-sonnet-4-5");
+        assertThat(received.get().path("model").asText()).isEqualTo("gemini-3.5-flash-lite");
+        assertThat(client.model()).isEqualTo("gemini-3.5-flash-lite");
     }
 
     @Test void fencesRemainCompatibleButEmptyOversizedOrAmbiguousOutputIsRejected() {
@@ -71,7 +71,7 @@ class ShopAiKeyClientTest {
         assertThat(client.completeJson("Instruction", "Context").path("ok").asBoolean()).isTrue();
         for (String invalid : List.of("", " ", "[]", "{\"ok\":true} {\"ok\":false}", "x".repeat(12_001))) {
             content.set(invalid);
-            assertThatThrownBy(() -> client.completeJson("Instruction", "Context", "gemini-2.5-flash"))
+            assertThatThrownBy(() -> client.completeJson("Instruction", "Context", "gemini-3.5-flash-lite"))
                     .isInstanceOf(IllegalStateException.class);
         }
         status.set(429);
@@ -81,7 +81,7 @@ class ShopAiKeyClientTest {
 
     @Test void conversationDefaultsToFlashWithoutLeakingKeys() {
         var config = new ConversationProperties(true, null, "secret-value", null, null, null);
-        assertThat(config.generationModel()).isEqualTo("gemini-2.5-flash");
+        assertThat(config.generationModel()).isEqualTo("gemini-3.5-flash-lite");
         assertThat(config.toString()).doesNotContain("secret-value");
     }
 
@@ -99,11 +99,11 @@ class ShopAiKeyClientTest {
         assertThat(received.get().path("model").asText()).isEqualTo("qwen3.5:9b");
         assertThat(authorization.get()).isNull();
         finishReason.set("length");
-        assertThatThrownBy(() -> client.completeJson("Review", "Evidence")).isInstanceOf(ShopAiKeyClient.Failure.class);
+        assertThatThrownBy(() -> client.completeJson("Review", "Evidence")).isInstanceOf(GeminiClient.Failure.class);
     }
 
     @Test void missingKeyRejectsRequestsBeforeSendingAnyContext() {
-        var unconfigured = new ShopAiKeyClient(json, "", "claude-sonnet-4-5",
+        var unconfigured = new GeminiClient(json, "", "gemini-3.5-flash-lite",
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");
         assertThat(unconfigured.configured()).isFalse();
         assertThatThrownBy(() -> unconfigured.completeJson("Instruction", "Learner evidence"))
@@ -114,11 +114,11 @@ class ShopAiKeyClientTest {
     @Test void truncatedAndMalformedOutputAreTypedFailuresWithoutRetry() {
         finishReason.set("length");
         assertThatThrownBy(()->client.completeJson("synthetic","synthetic"))
-                .isInstanceOfSatisfying(ShopAiKeyClient.Failure.class,f->assertThat(f.reason()).isEqualTo("OUTPUT_TRUNCATED"));
+                .isInstanceOfSatisfying(GeminiClient.Failure.class,f->assertThat(f.reason()).isEqualTo("OUTPUT_TRUNCATED"));
         assertThat(requests.get()).isEqualTo(1);
         finishReason.set("stop"); content.set("{broken}");
         assertThatThrownBy(()->client.completeJson("synthetic","synthetic"))
-                .isInstanceOfSatisfying(ShopAiKeyClient.Failure.class,f->assertThat(f.reason()).isEqualTo("INVALID_JSON"));
+                .isInstanceOfSatisfying(GeminiClient.Failure.class,f->assertThat(f.reason()).isEqualTo("INVALID_JSON"));
         assertThat(requests.get()).isEqualTo(2);
     }
 
@@ -133,7 +133,7 @@ class ShopAiKeyClientTest {
     @Test void provider429And500ReleasePermitWithoutHiddenRetries() {
         var metrics=new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         try{
-            var single=new ShopAiKeyClient(json,"fake","fixture","http://127.0.0.1:"+server.getAddress().getPort()+"/v1/chat/completions",
+            var single=new GeminiClient(json,"fake","fixture","http://127.0.0.1:"+server.getAddress().getPort()+"/v1/chat/completions",
                     1,metrics,io.micrometer.observation.ObservationRegistry.NOOP,5,30);
             status.set(429);retryAfter.set("2");
             assertThatThrownBy(()->single.completeJson("fixture","fixture"))
@@ -154,7 +154,7 @@ class ShopAiKeyClientTest {
         var metrics=new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         var stalled=new java.util.concurrent.CountDownLatch(1);gate.set(stalled);
         try{
-            var single=new ShopAiKeyClient(json,"fake","fixture","http://127.0.0.1:"+server.getAddress().getPort()+"/v1/chat/completions",
+            var single=new GeminiClient(json,"fake","fixture","http://127.0.0.1:"+server.getAddress().getPort()+"/v1/chat/completions",
                     1,metrics,io.micrometer.observation.ObservationRegistry.NOOP,5,30);
             long began=System.nanoTime();
             assertThatThrownBy(()->single.completeJson("fixture","fixture","fixture")).isInstanceOf(IllegalStateException.class);
@@ -173,7 +173,7 @@ class ShopAiKeyClientTest {
         var stalled=new java.util.concurrent.CountDownLatch(1);gate.set(stalled);
         try {
             assertThatThrownBy(()->client.completeJson("synthetic","synthetic"))
-                    .isInstanceOfSatisfying(ShopAiKeyClient.Failure.class,f->assertThat(f.reason()).isEqualTo("TIMEOUT"));
+                    .isInstanceOfSatisfying(GeminiClient.Failure.class,f->assertThat(f.reason()).isEqualTo("TIMEOUT"));
             assertThat(requests.get()).isEqualTo(1);
         } finally {stalled.countDown();}
         assertThat(client.completeJson("synthetic","synthetic").path("ok").asBoolean()).isTrue();
@@ -183,14 +183,14 @@ class ShopAiKeyClientTest {
     @Test @org.junit.jupiter.api.Timeout(10)
     void remainingConversationBudgetBoundsCallsAndRejectsExpiredWorkWithoutSending() {
         assertThatThrownBy(() -> client.completeJson("synthetic", "synthetic", "fixture", java.time.Duration.ZERO))
-                .isInstanceOfSatisfying(ShopAiKeyClient.Failure.class, failure -> assertThat(failure.reason()).isEqualTo("TIMEOUT"));
+                .isInstanceOfSatisfying(GeminiClient.Failure.class, failure -> assertThat(failure.reason()).isEqualTo("TIMEOUT"));
         assertThat(requests.get()).isZero();
         var stalled = new java.util.concurrent.CountDownLatch(1);
         gate.set(stalled);
         long began = System.nanoTime();
         try {
             assertThatThrownBy(() -> client.completeJson("synthetic", "synthetic", "fixture", java.time.Duration.ofMillis(200)))
-                    .isInstanceOfSatisfying(ShopAiKeyClient.Failure.class, failure -> assertThat(failure.reason()).isEqualTo("TIMEOUT"));
+                    .isInstanceOfSatisfying(GeminiClient.Failure.class, failure -> assertThat(failure.reason()).isEqualTo("TIMEOUT"));
             assertThat(java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - began)).isLessThan(3000L);
             assertThat(requests.get()).isEqualTo(1);
         } finally { stalled.countDown(); }

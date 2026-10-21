@@ -15,7 +15,7 @@ thành AI Platform Python độc lập. Nó là mốc so sánh để đo regress
 
 | Mục | Giá trị |
 | --- | --- |
-| Provider mặc định (Java) | `shopaikey` (cloud fallback); `ollama` khi bật local; `python` khi bật AI Platform |
+| Provider mặc định (Java) | `gemini` (cloud); `ollama` khi bật local; `python` khi bật AI Platform |
 | Local model | `qwen3.5:9b` |
 | Local base URL | `http://127.0.0.1:11434` |
 | Model digest | `56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90` |

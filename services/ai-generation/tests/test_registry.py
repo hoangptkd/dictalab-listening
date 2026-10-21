@@ -92,12 +92,12 @@ def test_real_workflow_uses_registry_gateway_and_metadata():
     cache.clear()
 
 
-def test_shadow_disables_paid_fallback_and_unknown_version_rejected():
+def test_shadow_uses_local_provider_and_rejects_unknown_version():
     from app.main import app, cache
     observed = []
 
     async def workflow(request, settings, client):
-        observed.append(settings.fallback_enabled)
+        observed.append(settings.selected_provider)
         return {}
 
     payload = {"requestId": "shadow-test", "idempotencyKey": "shadow-test", "level": "A1", "turnNumber": 1,
@@ -107,7 +107,7 @@ def test_shadow_disables_paid_fallback_and_unknown_version_rejected():
     with patch("app.main.run_workflow", new=workflow):
         response = TestClient(app).post("/v1/conversation/tasks", json=payload, headers=headers)
         assert response.status_code == 200
-        assert observed == [False]
+        assert observed == ["ollama"]
         payload["promptVersion"] = "untrusted-path"
         assert TestClient(app).post("/v1/conversation/tasks", json=payload, headers=headers).status_code == 400
     text = TestClient(app).get("/metrics").text
@@ -122,7 +122,7 @@ def test_caller_deadline_bounds_shadow_workflow():
 
     async def slow_workflow(request, settings, client):
         assert settings.timeout_seconds == 0.01
-        assert settings.fallback_enabled is False
+        assert settings.selected_provider == "ollama"
         await asyncio.sleep(0.1)
         return {}
 

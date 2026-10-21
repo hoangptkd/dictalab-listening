@@ -3,7 +3,7 @@
 This service is an optional boundary for conversation generation. Spring Boot remains the owner of
 authentication, sessions, history, quota and persistence. The default provider is unchanged; set
 `DICTALAB_CONVERSATION_GENERATION_PROVIDER=python` only after this service and its evaluated provider are ready.
-Production text AI uses ShopAIKey; local text AI uses Ollama. Cartesia remains the audio provider.
+Production text AI uses Google Gemini; local text AI uses Ollama. Cartesia remains the audio provider.
 
 Run locally:
 
@@ -32,9 +32,9 @@ readiness yet. Each result reports the selected prompt version and actual last-c
 retain the content/translation provider sequence. Unknown client versions return 400.
 
 With conversation enabled, readiness verifies the artifact and the selected provider. Local model digests
-are checked against Ollama; cloud readiness checks authenticated `/v1/models` without a billable completion.
-Set `DICTALAB_AI_CONVERSATION_ENABLED=false` to run background capabilities while the cloud conversation
-artifact is awaiting evaluation. Existing Java conversation remains on ShopAIKey in production.
+are checked against Ollama; cloud readiness checks Gemini's authenticated `/models` endpoint without a
+billable completion. Set `DICTALAB_AI_CONVERSATION_ENABLED=false` to run background capabilities while the
+cloud conversation artifact is awaiting evaluation. Existing Java conversation remains on Gemini in production.
 `/metrics` exposes status counters, latency
 buckets, active workflows and a zero queue gauge (admission is fail-fast). Send `X-Service-Token` to scrape
 metrics when configured. See `docs/ai-platform-runbook.md` for shadow, canary and rollback, and
@@ -54,5 +54,5 @@ the Python output. Cloud shadow requires deliberately selecting this capability 
 automatic shadow mechanism rejects a cloud primary. No automatic cloud fallback runs inside background jobs.
 
 Run `python tools/ai-eval/jobs_smoke.py` for Java/API/RabbitMQ/worker tests in both local and production modes,
-using fake Ollama/ShopAIKey/Cartesia. It creates/removes a disposable Docker broker unless
+using fake Ollama/Gemini/Cartesia. It creates/removes a disposable Docker broker unless
 `AI_TEST_RABBITMQ_URL` identifies a disposable test broker. No paid model calls occur.

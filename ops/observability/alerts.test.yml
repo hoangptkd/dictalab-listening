@@ -30,13 +30,13 @@ tests:
         exp_alerts: []
   - interval: 1m
     input_series:
-      - series: 'dictalab_provider_circuit{job="dictalab",provider="shopaikey"}'
+      - series: 'dictalab_provider_circuit{job="dictalab",provider="gemini"}'
         values: '1 1 1 0 0'
     alert_rule_test:
       - eval_time: 2m
         alertname: DictaLabProviderOpen
         exp_alerts:
-          - exp_labels: {job: dictalab, provider: shopaikey, severity: warning}
+          - exp_labels: {job: dictalab, provider: gemini, severity: warning}
             exp_annotations:
               summary: Provider circuit remains open
               action: Verify credentials/quota/provider outage; keep learner drafts and allow one half-open recovery probe.

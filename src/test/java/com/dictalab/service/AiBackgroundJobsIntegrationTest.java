@@ -32,7 +32,7 @@ class AiBackgroundJobsIntegrationTest {
     @Autowired ObjectMapper json;
     @Autowired ApplicationContext context;
     @MockitoBean CartesiaClient tts;
-    @MockitoBean ShopAiKeyClient ai;
+    @MockitoBean GeminiClient ai;
     @MockitoBean RabbitTemplate rabbit;
     @MockitoBean AiPlatformClient platform;
     private final List<Long> users = new ArrayList<>();
@@ -132,7 +132,7 @@ class AiBackgroundJobsIntegrationTest {
         String id = practice();
         var baseline = coach.report(owner, id, false);
         var item = baseline.reviewItems().get(0);
-        var output = json.createObjectNode().put("provider", "shopaikey").put("model", "test-model")
+        var output = json.createObjectNode().put("provider", "gemini").put("model", "test-model")
                 .put("promptVersion", "COACH_PLATFORM_FOCUS_V1");
         output.set("task", json.valueToTree(Map.of("focus", Map.of("pattern", item.pattern(),
                 "evidenceIds", List.of("invented"), "insight", "Bạn đã bỏ lỡ từ quen trong câu."), "reviewIds", List.of())));

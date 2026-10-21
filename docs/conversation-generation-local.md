@@ -52,7 +52,7 @@ Kết quả lưu riêng tại `target/conversation-local-configured-model-smoke.
 - Bộ `ci-unit`: 115 test đạt, 8 test opt-in bỏ qua; 9 test prompt/client riêng cũng đạt. PowerShell parser, kiểm tra UTF-8 và `git diff --check` đạt.
 - Chưa chạy lại bộ 12 ca, chưa kiểm tra toàn luồng generation + reviewer + TTS và chưa khởi động lại ứng dụng. Không deploy production. Không xác nhận được GitHub Actions qua API do không có quyền truy cập API phù hợp.
 
-Backend và `.env.example` giữ provider `shopaikey` để không bật một pilot chưa đạt cổng chất lượng. Cờ chạy local hoặc cấu hình `ollama` ở trên chọn local rõ ràng. Không thay `SHOPAIKEY_MODEL` hay `DICTALAB_CONVERSATION_MODEL`: model cloud vẫn kiểm duyệt đầu ra trước khi đưa vào phiên học.
+Backend và `.env.example` giữ provider `gemini` để không bật một pilot chưa đạt cổng chất lượng. Cờ chạy local hoặc cấu hình `ollama` ở trên chọn local rõ ràng. Không thay `GEMINI_MODEL` hay `DICTALAB_CONVERSATION_MODEL`: model cloud vẫn kiểm duyệt đầu ra trước khi đưa vào phiên học.
 
 Chỉ chấp nhận địa chỉ loopback, không theo redirect và không dùng tag cloud. Request/response có giới hạn dung lượng; tắt thinking, dùng JSON schema, giới hạn một request generation local đồng thời và circuit breaker. Coach có giới hạn riêng, vì vậy bật cả hai vẫn có thể tranh CPU.
 
@@ -70,7 +70,7 @@ JSON schema không bảo đảm đúng nghĩa. Backend vẫn kiểm tra groundin
 
 ```powershell
 mvn --batch-mode --no-transfer-progress '-Dtest=ConversationGenerationPromptTest,ConversationLocalClientTest' test
-& scripts/test-postgres.ps1 -PostgresBin 'C:/Users/HP/Tools/postgresql-18.4/pgsql/bin' -Port 15439 -MavenArgs @('-Dtest=ConversationIntegrationTest,ConversationUxIntegrationTest,ShopAiKeyClientTest,CoachLocalServiceIntegrationTest','test')
+& scripts/test-postgres.ps1 -PostgresBin 'C:/Users/HP/Tools/postgresql-18.4/pgsql/bin' -Port 15439 -MavenArgs @('-Dtest=ConversationIntegrationTest,ConversationUxIntegrationTest,GeminiClientTest,CoachLocalServiceIntegrationTest','test')
 mvn --batch-mode --no-transfer-progress '-Dtest=ConversationLocalEvaluationTest' '-Dconversation.evaluate=true' test
 ```
 

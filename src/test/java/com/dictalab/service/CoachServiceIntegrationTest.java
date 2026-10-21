@@ -20,10 +20,10 @@ class CoachServiceIntegrationTest {
     @Autowired CoachService coach;
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
-    @MockitoBean ShopAiKeyClient client;
+    @MockitoBean GeminiClient client;
 
     @Test
-    void missingShopAiKeyFallsBackWithoutSendingLearnerEvidence() {
+    void missingGeminiKeyFallsBackWithoutSendingLearnerEvidence() {
         long user = user();
         String session = session(user);
         given(client.configured()).willReturn(false);
@@ -72,7 +72,7 @@ class CoachServiceIntegrationTest {
         long user = user();
         String session = session(user);
         given(client.configured()).willReturn(true);
-        given(client.completeJson(anyString(), anyString())).willThrow(new IllegalStateException("ShopAIKey offline"));
+        given(client.completeJson(anyString(), anyString())).willThrow(new IllegalStateException("Gemini offline"));
         var report = coach.report(user, session, true);
         assertEquals("UNAVAILABLE", report.source());
         assertEquals(1, report.reviewItems().size());

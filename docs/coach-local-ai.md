@@ -29,7 +29,7 @@ pwsh -File scripts/run-local.ps1 -WithCoach
 
 Script kiểm tra model đã được tải. Ollama cần đang chạy. Nếu thêm `-WithMessaging`, Coach dùng hàng đợi hiện có; trường hợp còn lại gọi trực tiếp sau khi giao diện đã nhận baseline. Frontend chờ tối đa 105 giây cho POST, polling chỉ đọc tối đa 180 giây. HTTP local mặc định 60 giây, cho phép 1–90 giây; lease worker hiện có là 180 giây. Model lỗi, sai JSON, quá hạn hoặc quá tải đều giữ baseline, không tự gửi bằng chứng sang cloud.
 
-Provider mặc định trong mã và `.env.example` vẫn là `shopaikey`. Chỉ `.env` của máy HP được bật Ollama. `SHOPAIKEY_URL` và `SHOPAIKEY_MODEL` của Listening/Conversation không đổi. Quay lại cloud bằng `DICTALAB_COACH_PROVIDER=shopaikey`, cung cấp khóa theo cấu hình hiện có rồi khởi động lại app. Report đã cache không đổi theo provider.
+Provider mặc định trong mã và `.env.example` vẫn là `gemini`. Chỉ `.env` của máy HP được bật Ollama. `GEMINI_URL` và `GEMINI_MODEL` của Listening/Conversation không đổi. Quay lại cloud bằng `DICTALAB_COACH_PROVIDER=gemini`, cung cấp khóa theo cấu hình hiện có rồi khởi động lại app. Report đã cache không đổi theo provider.
 
 ## Hợp đồng và vận hành
 
@@ -39,7 +39,7 @@ flowchart LR
     B --> C[Baseline và ôn nhanh dùng được ngay]
     B --> D{Provider Coach}
     D -->|ollama| E[Qwen3.5 4B trên loopback]
-    D -->|shopaikey| F[Client cloud hiện có]
+    D -->|gemini| F[Client cloud hiện có]
     E --> G[Kiểm tra schema và bằng chứng]
     F --> G
     G -->|hợp lệ| H[Cache một report mỗi phiên]
@@ -59,7 +59,7 @@ Local dùng các scope `LOCAL_GLOBAL`, `LOCAL_USER:<id>` trong bảng ngân sác
 ## Kiểm thử và đánh giá
 
 ```powershell
-mvn '-Dtest=CoachAnalysisTest,CoachServiceIntegrationTest,CoachLocalClientTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,AiUsageBudgetIntegrationTest,AiBackgroundJobsIntegrationTest,ShopAiKeyClientTest' test
+mvn '-Dtest=CoachAnalysisTest,CoachServiceIntegrationTest,CoachLocalClientTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,AiUsageBudgetIntegrationTest,AiBackgroundJobsIntegrationTest,GeminiClientTest' test
 node --test src/test/js/*.cjs
 pwsh -File scripts/test-postgres.ps1 -MavenArgs @('-Dtest=CoachAnalysisTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,AiUsageBudgetIntegrationTest,AiBackgroundJobsIntegrationTest','test')
 ```

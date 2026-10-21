@@ -3,7 +3,7 @@
 **Trạng thái:** Bản thiết kế v1 để review, chưa triển khai tính năng.  
 **Ngày khảo sát:** 28/09/2026.  
 **Nền tảng:** Java 17, Spring Boot 4.1.1, PostgreSQL/Flyway, HTML/CSS/JavaScript thuần.  
-**AI provider:** ShopAIKey, theo quyết định của chủ project.
+**AI provider:** Gemini, theo quyết định của chủ project.
 
 ## 1. Mục tiêu và phạm vi
 
@@ -44,7 +44,7 @@ Thay D02/D04/D05 sau khi có dữ liệu phải tạo protocol/content version m
 | `SecurityConfig`, `DictaLabPrincipal`, CSRF, `SpaController` | Dùng chung bảo mật, định danh và điều hướng |
 | `AdminContentService`, `MediaStorageService` | Dùng quyền quản trị, upload và quy tắc khóa nội dung; mở rộng kiểm tra tham chiếu Listening |
 | `PersonalContentImportService` | Giữ quyền ADMIN của nội dung cá nhân; có thể tạo Listening Unit nếu đủ audio/timing |
-| `scripts/enrich-preview-vocabulary.py` | Dùng lại cách xác thực và định dạng gọi ShopAIKey; Java backend tự gọi HTTP, không chạy Python theo request |
+| `scripts/enrich-preview-vocabulary.py` | Dùng lại cách xác thực và định dạng gọi Gemini; Java backend tự gọi HTTP, không chạy Python theo request |
 
 Các điểm phải sửa có chủ đích:
 
@@ -105,7 +105,7 @@ flowchart TD
     H --> I[RECALL rồi QUESTIONS Pass 2]
     I --> J
     J --> K[Report và Listening Review]
-    J --> L[Chấm recall ở nền bằng ShopAIKey]
+    J --> L[Chấm recall ở nền bằng Gemini]
     L --> K
     C -->|Dừng hoặc mất lượt phát| M[INTERRUPTED]
     H -->|Dừng hoặc mất lượt phát| M
@@ -257,21 +257,21 @@ History có thể liệt kê mọi session theo filter, nhưng dashboard mặc �
 
 Report và history luôn ghi nguồn chấm `AI` hoặc `ADMIN_REVIEWED` cùng revision. COMPLETED của AI chỉ nghĩa là đã có output hợp lệ theo hợp đồng, không bảo đảm nhãn ngữ nghĩa luôn đúng. Khi admin sửa nhãn, giữ bản gốc và thời điểm sửa; cập nhật score/delta/summary có nguồn revision mới.
 
-## 9. ShopAIKey và hợp đồng AI
+## 9. Gemini và hợp đồng AI
 
 ### 9.1 Cấu hình và trách nhiệm
 
-Tích hợp phía Java backend với `java.net.http.HttpClient` và Jackson đã có trong project. Một `ShopAiKeyClient` dùng cho hai mục đích nội dung và recall; không cần Spring AI, LangChain hay Python service.
+Tích hợp phía Java backend với `java.net.http.HttpClient` và Jackson đã có trong project. Một `GeminiClient` dùng cho hai mục đích nội dung và recall; không cần Spring AI, LangChain hay Python service.
 
 | Cấu hình đề xuất | Ý nghĩa |
 |---|---|
-| `SHOPAIKEY_API_KEY` | Khóa môi trường phía server; không lưu DB/browser/log |
-| `SHOPAIKEY_BASE_URL` | Mặc định `https://api.shopaikey.com/v1`; chỉ cấu hình vận hành được phép đổi |
-| `SHOPAIKEY_MODEL` | Model dùng cho grading; bắt buộc khi bật AI, kiểm tra khả dụng khi thiết lập |
-| `SHOPAIKEY_CONTENT_MODEL` | Tùy chọn model soạn nội dung; mặc định dùng model grading |
+| `GEMINI_API_KEY` | Khóa môi trường phía server; không lưu DB/browser/log |
+| `GEMINI_URL` | Mặc định `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`; chỉ cấu hình vận hành được phép đổi |
+| `GEMINI_MODEL` | Model dùng cho grading; bắt buộc khi bật AI, kiểm tra khả dụng khi thiết lập |
+| `GEMINI_CONTENT_MODEL` | Tùy chọn model soạn nội dung; mặc định dùng model grading |
 | `DICTALAB_LISTENING_ENABLED` | Bật/tắt nhận session mới và điều hướng tính năng |
 
-Script cũ mặc định `claude-opus-5`. Đây là dấu vết cấu hình, không phải xác nhận model còn khả dụng hoặc là lựa chọn tốt nhất cho grading. Dùng endpoint danh sách model của ShopAIKey và phép thử nhỏ khi có khóa; chọn một model qua bộ mẫu được gán nhãn trước. Ghim model/prompt/rubric version trong session để hai pass có cùng điều kiện chấm. Không âm thầm đổi sang model khác khi lỗi.
+Script cũ từng ghim một model cloud mặc định. Đây là dấu vết cấu hình, không phải xác nhận model còn khả dụng hoặc là lựa chọn tốt nhất cho grading. Dùng endpoint danh sách model của Gemini và phép thử nhỏ khi có khóa; chọn model `gemini-3.5-flash-lite` qua bộ mẫu được gán nhãn trước. Ghim model/prompt/rubric version trong session để hai pass có cùng điều kiện chấm. Không âm thầm đổi sang model khác khi lỗi.
 
 Khóa hiện chưa có trong biến môi trường đang chạy hoặc `.env` project tại lần kiểm tra trước. Thiết kế không chứa khóa. Khi triển khai cần nối cấu hình vào script local/Windows Service; không giả định Spring tự đọc `.env`.
 
@@ -403,7 +403,7 @@ Trước assessment không trả questions chưa đến bước, facts, đáp á
 - GET/POST `/units`: tìm lesson/audio phù hợp, tạo unit draft từ dữ liệu sẵn có.
 - POST `/units/{id}/versions`: tạo bản sửa dựa trên version cũ.
 - PUT `/versions/{versionId}`: sửa facts/questions/snapshot trong DRAFT.
-- POST `/versions/{versionId}/generate`: tạo nội dung qua ShopAIKey, trả job status; chỉ ghi vào draft đúng revision.
+- POST `/versions/{versionId}/generate`: tạo nội dung qua Gemini, trả job status; chỉ ghi vào draft đúng revision.
 - GET `/versions/{versionId}`: lấy nội dung và trạng thái generation để review.
 - PUT `/versions/{versionId}/publication`: publish/retire sau validation; không nhận AI output từ browser làm đã duyệt.
 - GET `/grading?status=NEEDS_REVIEW`: danh sách cần kiểm tra, phân trang.
@@ -482,13 +482,13 @@ Giữ cách chia domain/dto/repository/service/web của project. Không tạo m
 
 | Phạm vi | Tệp/thành phần dự kiến |
 |---|---|
-| Cấu hình | `ListeningProperties`, `ShopAiKeyProperties`; cấu hình trong `application.yml` và `.env.example` |
+| Cấu hình | `ListeningProperties`, `GeminiClient`; cấu hình trong `application.yml` và `.env.example` |
 | Domain/repository | Entity/repository cho sáu bảng mới; enum mode/stage/fact status/question type/difficulty type |
 | DTO | `ListeningDtos`, `ListeningAdminDtos`; không kéo field riêng của Listening vào `ApiDtos.SentenceState` |
 | Flow | `ListeningService`: owner, state transitions, drafts, submit, playback; transaction nhỏ |
 | Điểm/report | `ComprehensionScoringService`: chấm MCQ, tính recall từ nhãn, delta, type breakdown, insight; `ListeningQueryService` đọc catalog/report/history |
 | Nội dung | `ListeningContentService`: nhóm audio, version, validation, publish và draft generation |
-| AI | `ShopAiKeyClient`, `RecallGradingService`, `ListeningAiWorker`; dùng pending rows, không thêm queue server |
+| AI | `GeminiClient`, `RecallGradingService`, `ListeningAiWorker`; dùng pending rows, không thêm queue server |
 | Exposure | `AudioExposureService`; gọi từ `PracticeService`, `CatalogService`, `HistoryService`, admin và Listening |
 | Web | `ListeningController`, `ListeningAdminController`; cập nhật `SpaController`, `SecurityConfig`, lỗi Listening |
 | Frontend | Thêm `listening.js` cho flow/render của module, cập nhật router và các mount point trong `app.js`/`index.html`; CSS scoped theo view |
@@ -529,7 +529,7 @@ Chạy mỗi mẫu hai lần để đo mức dao động. Gate đề xuất cho 
 - `node --check` cho `app.js`, `listening.js`; `node --test src/test/js/*.test.cjs` cho logic browser độc lập, theo nền test Node hiện có.
 - Test integration PostgreSQL riêng cho Flyway, JSONB, partial unique và concurrent transitions; không dùng PostgreSQL production hoặc volume local đang học.
 - Test UI trên Chrome/Edge desktop và mobile viewport; ít nhất một thiết bị mobile thật cho autoplay/AudioContext gián đoạn trước mở rộng rollout.
-- Test mock ShopAIKey bằng HTTP server local; live smoke test bằng khóa môi trường có sẵn và mẫu tổng hợp, không chép khóa vào test.
+- Test mock Gemini bằng HTTP server local; live smoke test bằng khóa môi trường có sẵn và mẫu tổng hợp, không chép khóa vào test.
 - Kiểm tra UTF-8 với skill Vietnamese Encoding Guard cho file tiếng Việt được sửa.
 
 ## 15. Migration, triển khai và vận hành
@@ -537,7 +537,7 @@ Chạy mỗi mẫu hai lần để đo mức dao động. Gate đề xuất cho 
 1. Chốt D01–D10 và protocol v1, thêm schema mới bằng migration tiến tới. Các bảng mới chưa ảnh hưởng lượt học cũ; cột audio key nullable cho phép backfill.
 2. Tính duration/audio identity, tạo unit draft, backfill exposure và kiểm tra nội dung quyền riêng tư. Bắt đầu tracking ở mọi đường cấp nội dung trước khi bật benchmark.
 3. Chặn metadata transcript công khai và kiểm tra regression audio/import scripts. Ghi mốc tracking thực sự hoạt động, không dùng mốc schema migration nếu instrumentation chưa bật đủ.
-4. Cấu hình ShopAIKey trên server, chọn model bằng bộ mẫu, tạo và duyệt 8–12 unit đầu nếu đủ audio phù hợp. Không tự publish toàn bộ kho bằng AI.
+4. Cấu hình Gemini trên server, chọn model bằng bộ mẫu, tạo và duyệt 8–12 unit đầu nếu đủ audio phù hợp. Không tự publish toàn bộ kho bằng AI.
 5. Mở feature flag cho nhóm thử nghiệm, theo dõi completion rate, tỷ lệ interruption, AI failure/retry, token usage, số phiên EXPOSED/UNKNOWN, và phản hồi câu hỏi mơ hồ.
 6. Mở rộng khi đạt nghiệm thu. Nếu có lỗi, tắt tạo session mới; phiên đang làm vẫn được nộp, report cũ vẫn đọc được. Giữ migration và dữ liệu; không rollback bằng drop tables.
 
@@ -550,7 +550,7 @@ Nhật ký vận hành có correlation ID, session/pass ID, transition, provider
 | Đợt | Deliverable | Gate trước đợt tiếp theo |
 |---|---|---|
 | 1 — Dữ liệu và exposure | Schema, audio mapping, unit/version, theo dõi exposure, chặn metadata transcript | Migration/PostgreSQL + regression Dictation; chưa public Listening |
-| 2 — Nội dung và AI | ShopAIKey client, draft generation, admin review/publish, bộ mẫu recall | Mock lỗi + live smoke khi có key + nội dung pilot được duyệt |
+| 2 — Nội dung và AI | Gemini client, draft generation, admin review/publish, bộ mẫu recall | Mock lỗi + live smoke khi có key + nội dung pilot được duyệt |
 | 3 — Assessment | State machine, playback, recall/questions, One-Pass/Two-Pass, nháp và idempotency | Test đầy đủ thứ tự, retry, refresh, nhiều tab và giấu đáp án |
 | 4 — Report và Review | Grading worker, điểm hai pass, transcript đồng bộ, annotations, history | Scoring fixtures, AI rubric gate, quyền report/review và UI keyboard/mobile |
 | 5 — Pilot | Feature flag, metrics, deploy staging rồi nhóm thử | Nghiệm thu trọn flow, đủ evidence rằng Dictation vẫn hoạt động |
@@ -560,7 +560,7 @@ Các đợt là cách chia review, không có nghĩa xuất bản một bản Li
 ## 17. Nguồn tham khảo và quyết định dùng lại
 
 - Code hiện có: `LessonSentence`, `PracticeService`, `CatalogService`, `ListeningAssessmentService`, `AdminContentService`, `MediaStorageService`, router/player trong `app.js`, script `enrich-preview-vocabulary.py`, các migration V1–V14 và test hiện có đã khảo sát.
-- [ShopAIKey — định dạng gọi API](https://shopaikey.com/docs/openai-format): endpoint chat completions và Bearer authentication. Hỗ trợ tham số/model cụ thể cần live probe, không suy ra từ giao thức chung.
+- [Gemini — OpenAI compatibility](https://ai.google.dev/gemini-api/docs/openai): endpoint chat completions và Bearer authentication. Hỗ trợ tham số/model cụ thể cần live probe, không suy ra từ giao thức chung.
 - [LingoLearn — tạo quiz từ transcript](https://github.com/Prateek1771/LingoLearn/blob/main/src/lib/groq.ts): tham khảo thiết kế prompt, options/explanation và evidence theo thời gian. README ghi MIT nhưng lần khảo sát chưa thấy LICENSE riêng; không đưa nguyên mã/prompt vào bản thiết kế này.
 - [DeepListen — SubtitleSession](https://github.com/swiftczz/DeepListen/blob/main/Sources/DeepListen/Services/SubtitleSession.swift): tham khảo việc xác định câu active và xử lý khoảng nghỉ; repository công bố Apache-2.0. DictaLab dùng player và timestamp của mình.
 - [Automated Students' Short Answers Assessment](https://github.com/f74dragon/Automated-Students-short-answers-assessment/blob/main/backend/app/services/ollama_service.py): tham khảo đối chiếu câu trả lời, nhưng không dùng parser điểm/fallback 0,5 hay bê kiến trúc FastAPI/Ollama vào project.
@@ -575,6 +575,6 @@ Thiết kế này chưa sao chép source code của repository bên ngoài. Nế
 - [ ] Chốt rubric 1 / 0,5 / 0 và cách xử lý mâu thuẫn, unsupported claims (D05).
 - [ ] Đồng ý Review mở sau nộp đủ bài dù AI chưa xong (D07).
 - [ ] Chốt cách xử lý audio gián đoạn và UNKNOWN cho dữ liệu cũ (D08–D09).
-- [ ] Xác nhận bộ pilot, người duyệt nội dung và model ShopAIKey sau phép thử.
+- [ ] Xác nhận bộ pilot, người duyệt nội dung và model Gemini sau phép thử.
 - [ ] Review sáu bảng mới, API theo stage và các điểm sửa chéo Dictation.
 - [ ] Review gate kiểm thử, feature flag và thứ tự triển khai trước khi sửa code tính năng.

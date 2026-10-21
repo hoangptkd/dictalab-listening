@@ -5,7 +5,7 @@ import com.dictalab.repository.AppUserRepository;
 import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.CartesiaClient;
 import com.dictalab.service.ConversationService;
-import com.dictalab.service.ShopAiKeyClient;
+import com.dictalab.service.GeminiClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -34,7 +34,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties = {"dictalab.conversation.enabled=true", "dictalab.coach.enabled=false", "dictalab.conversation.curated-starters=false"})
+@SpringBootTest(properties = {"dictalab.conversation.enabled=true", "dictalab.coach.enabled=false", "dictalab.conversation.curated-starters=false", "dictalab.conversation.generation.repair-enabled=true"})
 @AutoConfigureMockMvc
 class ConversationIntegrationTest {
     @Test void recentSessionsReportCompletionWithoutExposingTheirStoredState() {
@@ -56,7 +56,7 @@ class ConversationIntegrationTest {
     @Autowired com.dictalab.config.ConversationProperties config;
     @Autowired com.dictalab.service.AiUsageBudget budget;
     @Autowired MockMvc mvc;
-    @MockitoBean ShopAiKeyClient ai;
+    @MockitoBean GeminiClient ai;
     @MockitoBean CartesiaClient tts;
     long owner;
 
@@ -366,7 +366,7 @@ class ConversationIntegrationTest {
         assertThat(db.queryForObject("SELECT COUNT(*) FROM ai_conversation_audio WHERE session_id=?", Integer.class, busy)).isZero();
     }
 
-    @Test void clarificationUsesShopAiKeyWithExplicitContextAndDoesNotDependOnCoach() {
+    @Test void clarificationUsesGeminiWithExplicitContextAndDoesNotDependOnCoach() {
         assertThat(service.catalog(owner).get("enabled")).isEqualTo(true);
         String id = start();
         String utterance = prompt("ten").path("utteranceEn").asText();
@@ -426,7 +426,7 @@ class ConversationIntegrationTest {
         String id = service.create(owner, "cafe", "A1").path("id").asText();
         assertThat(service.next(owner, id, 0).path("turnNumber").asInt()).isEqualTo(1);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), eq("gemini-2.5-flash"));
+        verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), eq("gemini-3.5-flash-lite"));
         JsonNode first = generationContext(input.getAllValues().get(0)), repaired = generationContext(input.getAllValues().get(1));
         assertThat(repaired.path("scenario")).isEqualTo(first.path("scenario"));
         assertThat(repaired.path("turnNumber").asInt()).isEqualTo(1);
@@ -492,7 +492,7 @@ class ConversationIntegrationTest {
         doReturn(prompt("eleven")).when(ai).completeJson(startsWith("You design"), anyString(), anyString());
         assertThat(service.next(owner, id, 1).path("turnNumber").asInt()).isEqualTo(2);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), eq("gemini-2.5-flash"));
+        verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), eq("gemini-3.5-flash-lite"));
         JsonNode history = generationContext(input.getAllValues().get(1)).path("history").path(0);
         assertThat(history.path("facts").size()).isEqualTo(2);
         assertThat(history.path("evaluation").path("facts").path(0).path("status").asText()).isEqualTo("CAPTURED");
@@ -811,8 +811,8 @@ class ConversationIntegrationTest {
         assertThat(service.next(owner, id, 1).path("turnNumber").asInt()).isEqualTo(2);
         service.next(owner, id, 1);
         verify(ai, times(1)).completeJson(anyString(), anyString());
-        verify(ai, times(2)).completeJson(startsWith("You design"), anyString(), eq("gemini-2.5-flash"));
-        verify(ai, times(2)).completeJson(startsWith("Audit a listening task"), anyString(), eq("gemini-2.5-flash"));
+        verify(ai, times(2)).completeJson(startsWith("You design"), anyString(), eq("gemini-3.5-flash-lite"));
+        verify(ai, times(2)).completeJson(startsWith("Audit a listening task"), anyString(), eq("gemini-3.5-flash-lite"));
         service.play(owner, id, 2, "original", false);
         verify(tts, times(1)).synthesize(contains("eleven"));
     }

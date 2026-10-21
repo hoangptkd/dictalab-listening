@@ -22,8 +22,8 @@ def shadow_request(context, key, artifact):
 
 
 async def run_shadow_workflow(request, settings, client, artifact):
-    if settings.production_mode or settings.fallback_enabled or settings.selected_provider != "ollama":
-        raise ValueError("shadow generation requires non-production local Ollama without fallback")
+    if settings.production_mode or settings.selected_provider != "ollama":
+        raise ValueError("shadow generation requires non-production local Ollama")
     if not isinstance(request, ShadowConversationTaskRequest):
         raise ValueError("shadow generation requires an offline request")
     request = shadow_request(request.context.model_dump(exclude_none=True), request.requestId, artifact)

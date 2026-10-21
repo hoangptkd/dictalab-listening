@@ -39,7 +39,7 @@ class AllAudioS3IntegrationTest {
     @Autowired ObjectMapper json;
     @MockitoBean S3Client s3;
     @MockitoBean S3Presigner signer;
-    @MockitoBean ShopAiKeyClient ai;
+    @MockitoBean GeminiClient ai;
     @MockitoBean CartesiaClient tts;
 
     @Test void legacyRoutesKeepAccessRulesAndNeverFallBackToLocalAudio() throws Exception {

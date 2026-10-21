@@ -13,7 +13,7 @@ class ConversationGenerationPromptTest {
     void malformedSlotPlanRepairsOnlyWhenExplicitlyEnabled(boolean repairEnabled) throws Exception {
         var service = org.mockito.Mockito.mock(ConversationService.class, org.mockito.Mockito.CALLS_REAL_METHODS);
         var local = org.mockito.Mockito.mock(ConversationLocalClient.class);
-        var ai = org.mockito.Mockito.mock(ShopAiKeyClient.class);
+        var ai = org.mockito.Mockito.mock(GeminiClient.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "json", json);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "localGeneration", local);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "ai", ai);

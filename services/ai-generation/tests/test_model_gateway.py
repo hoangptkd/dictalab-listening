@@ -1,6 +1,6 @@
 """T04 — Unit tests for the model gateway and provider implementations.
 
-No real Ollama or cloud connections are made.
+No real Ollama or Gemini connections are made.
 """
 from __future__ import annotations
 
@@ -13,11 +13,11 @@ import pytest
 import httpx
 
 from app.config import Settings
-from app.model_gateway import ModelGateway, _is_transport_error
+from app.model_gateway import ModelGateway
 from app.providers.base import ProviderError
 from app.providers.ollama import OllamaProvider
 from app.providers.gemini import GeminiProvider
-from app.providers.shopaikey import ShopAiKeyProvider, _parse_content
+from app.providers.openai_compatible import OpenAiCompatibleProvider, _parse_content
 
 
 # ---------------------------------------------------------------------------
@@ -33,10 +33,6 @@ PAST_DEADLINE = time.monotonic() - 1.0
 
 def _settings(**overrides) -> Settings:
     base = dict(
-        fallback_enabled=False,
-        fallback_api_key="",
-        fallback_base_url="https://api.shopai.vn",
-        fallback_model="gpt-4o-mini",
         ollama_url="http://127.0.0.1:11434",
         model="qwen3.5:9b",
         temperature=0.3,
@@ -108,10 +104,10 @@ class TestOllamaProvider:
 
 
 # ---------------------------------------------------------------------------
-# ShopAiKeyProvider
+# OpenAiCompatibleProvider
 # ---------------------------------------------------------------------------
 
-class TestShopAiKeyProvider:
+class TestOpenAiCompatibleProvider:
     @pytest.mark.asyncio
     async def test_success_returns_parsed_dict(self):
         mock_response = MagicMock()
@@ -122,23 +118,24 @@ class TestShopAiKeyProvider:
         mock_response.raise_for_status = MagicMock()
         client = MagicMock()
         client.post = AsyncMock(return_value=mock_response)
-        provider = ShopAiKeyProvider(
-            base_url="https://api.shopai.vn", api_key="key123",
-            model="gpt-4o-mini", temperature=0.3, client=client
+        provider = OpenAiCompatibleProvider(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="key123", model="gemini-3.5-flash-lite",
+            temperature=0.3, client=client,
         )
         result = await provider.complete(MESSAGES, SCHEMA, FAR_DEADLINE, "test")
         assert result == GOOD_RESULT
-        # API key must NOT appear in any logged call args
-        call_kwargs = client.post.call_args.kwargs or {}
-        call_headers = (call_kwargs.get("headers") or {})
-        assert "key123" not in json.dumps(call_headers).replace("Bearer key123", "")
+        headers = client.post.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Bearer key123"
+        assert headers["Content-Type"] == "application/json"
 
     @pytest.mark.asyncio
     async def test_no_api_key_raises_provider_error(self):
         client = MagicMock()
-        provider = ShopAiKeyProvider(
-            base_url="https://api.shopai.vn", api_key="",
-            model="gpt-4o-mini", temperature=0.3, client=client
+        provider = OpenAiCompatibleProvider(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="", model="gemini-3.5-flash-lite",
+            temperature=0.3, client=client,
         )
         with pytest.raises(ProviderError, match="no_api_key"):
             await provider.complete(MESSAGES, SCHEMA, FAR_DEADLINE, "test")
@@ -153,22 +150,24 @@ class TestShopAiKeyProvider:
         mock_response.raise_for_status = MagicMock()
         client = MagicMock()
         client.post = AsyncMock(return_value=mock_response)
-        provider = ShopAiKeyProvider(
-            base_url="https://api.shopai.vn", api_key="key",
-            model="gpt-4o-mini", temperature=0.3, client=client
+        provider = OpenAiCompatibleProvider(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="key", model="gemini-3.5-flash-lite",
+            temperature=0.3, client=client,
         )
         with pytest.raises(ProviderError, match="output_truncated"):
             await provider.complete(MESSAGES, SCHEMA, FAR_DEADLINE, "test")
 
     @pytest.mark.asyncio
-    async def test_4xx_raises_provider_error_no_fallback(self):
+    async def test_4xx_raises_provider_error(self):
         mock_response = MagicMock()
         mock_response.status_code = 400
         client = MagicMock()
         client.post = AsyncMock(return_value=mock_response)
-        provider = ShopAiKeyProvider(
-            base_url="https://api.shopai.vn", api_key="key",
-            model="gpt-4o-mini", temperature=0.3, client=client
+        provider = OpenAiCompatibleProvider(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="key", model="gemini-3.5-flash-lite",
+            temperature=0.3, client=client,
         )
         with pytest.raises(ProviderError, match="client_error:400"):
             await provider.complete(MESSAGES, SCHEMA, FAR_DEADLINE, "test")
@@ -176,9 +175,10 @@ class TestShopAiKeyProvider:
     @pytest.mark.asyncio
     async def test_deadline_before_call_raises_timeout(self):
         client = MagicMock()
-        provider = ShopAiKeyProvider(
-            base_url="https://api.shopai.vn", api_key="key",
-            model="gpt-4o-mini", temperature=0.3, client=client
+        provider = OpenAiCompatibleProvider(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="key", model="gemini-3.5-flash-lite",
+            temperature=0.3, client=client,
         )
         with pytest.raises(TimeoutError):
             await provider.complete(MESSAGES, SCHEMA, PAST_DEADLINE, "test")
@@ -272,30 +272,19 @@ class TestModelGateway:
         assert provider == "gemini"
 
     @pytest.mark.asyncio
-    async def test_local_timeout_fallback_disabled_raises_timeout(self):
-        settings = _settings(fallback_enabled=False)
+    async def test_local_timeout_is_not_retried_on_cloud(self):
+        settings = _settings()
         client = MagicMock()
         gw = ModelGateway(settings, client)
-        with patch.object(gw._local, "complete", new=AsyncMock(side_effect=TimeoutError("t"))):
+        with patch.object(gw._local, "complete", new=AsyncMock(side_effect=TimeoutError("t"))), \
+             patch.object(gw._primary_cloud, "complete", new=AsyncMock(
+                 side_effect=AssertionError("must not fall back to Gemini"))):
             with pytest.raises(TimeoutError):
                 await gw.complete(MESSAGES, SCHEMA, FAR_DEADLINE, "content")
 
     @pytest.mark.asyncio
-    async def test_local_timeout_fallback_enabled_calls_cloud_once(self):
-        settings = _settings(fallback_enabled=True, fallback_api_key="cloudkey")
-        client = MagicMock()
-        gw = ModelGateway(settings, client)
-        with patch.object(gw._local, "complete", new=AsyncMock(side_effect=TimeoutError("t"))), \
-             patch.object(gw._cloud, "complete", new=AsyncMock(return_value=GOOD_RESULT)) as cloud_mock:
-            result, provider = await gw.complete(MESSAGES, SCHEMA, FAR_DEADLINE, "content")
-        assert result == GOOD_RESULT
-        assert provider == "shopaikey"
-        cloud_mock.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_local_4xx_error_does_not_fallback(self):
-        """Non-transport errors from local must not trigger fallback."""
-        settings = _settings(fallback_enabled=True, fallback_api_key="cloudkey")
+    async def test_local_validation_error_propagates(self):
+        settings = _settings()
         client = MagicMock()
         gw = ModelGateway(settings, client)
         non_transport_err = ProviderError("ollama:content:invalid_json")
@@ -305,8 +294,7 @@ class TestModelGateway:
 
     @pytest.mark.asyncio
     async def test_api_key_not_in_logged_metadata(self):
-        """Verify gateway logs never expose the fallback API key."""
-        settings = _settings(fallback_enabled=True, fallback_api_key="supersecretkey123")
+        settings = _settings(primary_provider="gemini", gemini_api_key="supersecretkey123")
         client = MagicMock()
         gw = ModelGateway(settings, client)
         import logging
@@ -319,8 +307,7 @@ class TestModelGateway:
         handler = Capture()
         logging.getLogger("dictalab.ai_generation.model_gateway").addHandler(handler)
         try:
-            with patch.object(gw._local, "complete", new=AsyncMock(side_effect=TimeoutError("t"))), \
-                 patch.object(gw._cloud, "complete", new=AsyncMock(return_value=GOOD_RESULT)):
+            with patch.object(gw._primary_cloud, "complete", new=AsyncMock(return_value=GOOD_RESULT)):
                 await gw.complete(MESSAGES, SCHEMA, FAR_DEADLINE, "content")
         finally:
             logging.getLogger("dictalab.ai_generation.model_gateway").removeHandler(handler)
@@ -328,10 +315,3 @@ class TestModelGateway:
         for record in log_records:
             assert "supersecretkey123" not in str(record.getMessage())
             assert "supersecretkey123" not in str(getattr(record, "reason", ""))
-
-    def test_transport_error_detection(self):
-        assert _is_transport_error("ollama:content:timeout") is True
-        assert _is_transport_error("ollama:content:connect_error") is True
-        assert _is_transport_error("ollama:content:incomplete_response") is False
-        assert _is_transport_error("ollama:content:invalid_json") is False
-        assert _is_transport_error("ollama:content:response_not_object") is False

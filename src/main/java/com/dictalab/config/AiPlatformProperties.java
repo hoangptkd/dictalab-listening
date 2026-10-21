@@ -21,8 +21,8 @@ public record AiPlatformProperties(String baseUrl, String serviceToken, String t
         if (!Set.of("localhost", "127.0.0.1", "[::1]").contains(uri.getHost())
                 && (!"https".equals(uri.getScheme()) || serviceToken.isBlank()))
             throw new IllegalArgumentException("Remote AI Platform requires TLS and a service token");
-        if (textProvider == null || textProvider.isBlank()) textProvider = "shopaikey";
-        if (!Set.of("shopaikey", "ollama").contains(textProvider)) throw new IllegalArgumentException("Invalid AI text provider");
+        if (textProvider == null || textProvider.isBlank()) textProvider = "gemini";
+        if (!Set.of("gemini", "ollama").contains(textProvider)) throw new IllegalArgumentException("Invalid AI text provider");
         if (timeoutSeconds == 0) timeoutSeconds = 80;
         if (timeoutSeconds < 1 || timeoutSeconds > 90) throw new IllegalArgumentException("AI job timeout must be 1-90 seconds");
         if (tts == null || tts.isBlank()) tts = "legacy";

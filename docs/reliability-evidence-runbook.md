@@ -78,14 +78,14 @@ Yêu cầu Java 17+, Maven và PostgreSQL binary thật. Script dưới đây t�
   '-Ddictalab.build.directory=target/evidence-replay',
   '-Ddictalab.race-tests=true', '-Ddictalab.race-repeats=2',
   '-Ddictalab.race-evidence=target/evidence-replay/concurrency-matrix.csv',
-  '-Dtest=CapacitySeedTest,ConcurrencyMatrixTest,ProductionReliabilityTest,EmailOutboxRecoveryTest,MigrationUpgradeTest,ConversationIntegrationTest,ShopAiKeyClientTest,ProviderGuardTest', 'test')
+  '-Dtest=CapacitySeedTest,ConcurrencyMatrixTest,ProductionReliabilityTest,EmailOutboxRecoveryTest,MigrationUpgradeTest,ConversationIntegrationTest,GeminiClientTest,ProviderGuardTest', 'test')
 node --test src/test/js/load-contracts.test.cjs
 python scripts/load/fake-provider.py --self-test
 ```
 
 `EmailOutboxRecoveryTest` có tiến trình Java con bị kết thúc thật sau điểm SMTP acceptance giả lập. Khởi động lại trước hết hạn không gửi tiếp; sau khi làm lease hết hạn có kiểm soát thì reclaim. SMTP là at-least-once: acceptance trước crash có thể dẫn tới email trùng theo nghiệp vụ. Thử nghiệm này không chứng nhận SMTP thật hoặc Listening/RabbitMQ process crash.
 
-`ShopAiKeyClientTest` thực hiện HTTP timeout 30 giây thật, 429/Retry-After, 500, JSON sai và body quá lớn; xác minh trả permit và gọi lại được. Không sửa timeout production để rút ngắn kiểm thử.
+`GeminiClientTest` thực hiện HTTP timeout 30 giây thật, 429/Retry-After, 500, JSON sai và body quá lớn; xác minh trả permit và gọi lại được. Không sửa timeout production để rút ngắn kiểm thử.
 
 ## Smoke và restore ở HP
 

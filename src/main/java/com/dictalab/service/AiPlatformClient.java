@@ -80,7 +80,7 @@ public class AiPlatformClient {
                 throw new IllegalStateException("AI job did not complete");
             JsonNode result = state.path("result");
             if (!"1".equals(result.path("schemaVersion").asText()) || !result.path("task").isObject()
-                    || !Set.of("ollama", "shopaikey", "cartesia").contains(result.path("provider").asText())
+                    || !Set.of("ollama", "gemini", "cartesia").contains(result.path("provider").asText())
                     || !result.path("promptHash").asText().matches("[a-f0-9]{64}"))
                 throw new IllegalStateException("Invalid AI job result");
             if (!kind.equals("tts") && !config.textProvider().equals(result.path("provider").asText()))

@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory=$true)][string]$ExpectedSha256
 )
 $ErrorActionPreference = 'Stop'
-# Legacy rollback tool only; not called by the current ShopAIKey deployment workflow.
+# Legacy rollback tool only; not called by the current Gemini deployment workflow.
 $ProgressPreference = 'SilentlyContinue'
 $bridgeRoot = 'C:\DictaLab\coach-bridge'
 $taskName = 'DictaLabCoachBridge'

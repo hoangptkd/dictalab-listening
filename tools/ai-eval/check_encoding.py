@@ -8,7 +8,7 @@ ROOTS = ("services/ai-generation", "tools/ai-eval", "artifacts/prompts", "artifa
          ".github/workflows", "docs/ai-platform-runbook.md", "docs/ai-platform-baseline.md", ".env.example", "compose.yaml",
          ".env.ai-production.example", ".env.ai-local.example", "ops/observability", "src/main/resources/application-local.yml",
          "src/test/java/com/dictalab/service/AiPlatformClientTest.java", "src/test/java/com/dictalab/service/AiPlatformSmokeTest.java",
-         "src/test/java/com/dictalab/service/AiBackgroundJobsIntegrationTest.java", "src/test/java/com/dictalab/service/ShopAiKeyClientTest.java")
+         "src/test/java/com/dictalab/service/AiBackgroundJobsIntegrationTest.java", "src/test/java/com/dictalab/service/GeminiClientTest.java")
 MARKERS = ("\u00c3", "\u00c4", "\u00e1\u00bb", "\u00e1\u00ba", "\u00c6", "\u00e2\u20ac", "\u00f0\u0178", "\ufffd", "?" * 4)
 
 

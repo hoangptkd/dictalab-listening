@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
-CLOUD_PROVIDERS = ("shopaikey", "gemini")
+CLOUD_PROVIDERS = ("gemini",)
 
 
 def cloud_model_id_matches(configured: str, reported: str) -> bool:
@@ -30,9 +30,6 @@ class Settings(BaseSettings):
     max_concurrency: int = 1
     primary_provider: str = "auto"
     conversation_enabled: bool = True
-    cloud_base_url: str = "https://api.shopaikey.com"
-    cloud_api_key: str = ""
-    cloud_model: str = "gemini-2.5-flash"
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.5-flash-lite"
@@ -46,12 +43,6 @@ class Settings(BaseSettings):
     cartesia_voice: str = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
     cartesia_version: str = "2026-08-14"
     http_max_connections: int = 10
-
-    # Fallback provider (Shop AI cloud) — off by default
-    fallback_enabled: bool = False
-    fallback_base_url: str = "https://api.shopaikey.com"
-    fallback_api_key: str = ""
-    fallback_model: str = "gpt-4o-mini"
 
     # Production mode: when true, service_token is mandatory and startup
     # fails if it is empty or contains unsafe characters.
@@ -69,9 +60,8 @@ class Settings(BaseSettings):
         if not 1 <= self.http_max_connections <= 100:
             raise ValueError("invalid HTTP pool limit")
         from urllib.parse import urlsplit
-        for value, active in ((self.cloud_base_url, self.selected_provider == "shopaikey"),
-                (self.gemini_base_url, self.selected_provider == "gemini"),
-                (self.fallback_base_url, self.fallback_enabled), (self.ollama_url, self.selected_provider == "ollama"),
+        for value, active in ((self.gemini_base_url, self.selected_provider == "gemini"),
+                (self.ollama_url, self.selected_provider == "ollama"),
                 (self.cartesia_url, bool(self.cartesia_api_key))):
             uri = urlsplit(value)
             if uri.scheme not in ("http", "https") or not uri.hostname or uri.username or uri.password or uri.query or uri.fragment:
@@ -106,23 +96,20 @@ class Settings(BaseSettings):
     def selected_provider(self) -> str:
         if self.primary_provider != "auto":
             return self.primary_provider
-        return "shopaikey" if self.production_mode else "ollama"
+        return "gemini" if self.production_mode else "ollama"
 
     @property
     def active_cloud_base_url(self) -> str:
-        return self.gemini_base_url if self.selected_provider == "gemini" else self.cloud_base_url
+        return self.gemini_base_url
 
     @property
     def active_cloud_api_key(self) -> str:
-        return self.gemini_api_key if self.selected_provider == "gemini" else self.cloud_api_key
+        return self.gemini_api_key
 
     @property
     def active_cloud_model(self) -> str:
-        return self.gemini_model if self.selected_provider == "gemini" else self.cloud_model
+        return self.gemini_model
 
     @property
     def active_cloud_models_url(self) -> str:
-        base = self.active_cloud_base_url.rstrip("/")
-        if self.selected_provider == "gemini" or base.endswith("/openai"):
-            return base + "/models"
-        return base + ("/models" if base.endswith("/v1") else "/v1/models")
+        return self.active_cloud_base_url.rstrip("/") + "/models"

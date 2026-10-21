@@ -2,16 +2,16 @@
 
 Gemini exposes an OpenAI chat-completions surface at
 ``https://generativelanguage.googleapis.com/v1beta/openai``. The provider keeps
-the existing JSON-object request contract and never logs the API key.
+the existing JSON-schema request contract and never logs the API key.
 """
 from __future__ import annotations
 
 import httpx
 
-from .shopaikey import ShopAiKeyProvider
+from .openai_compatible import OpenAiCompatibleProvider
 
 
-class GeminiProvider(ShopAiKeyProvider):
+class GeminiProvider(OpenAiCompatibleProvider):
     """Gemini model served through Google's OpenAI-compatible endpoint."""
 
     def __init__(

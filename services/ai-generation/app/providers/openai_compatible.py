@@ -1,10 +1,7 @@
-"""OpenAI-compatible cloud provider — /v1/chat/completions.
+"""Provider-neutral OpenAI-compatible chat-completions client.
 
-Used by Shop AI (primary cloud or fallback) and Gemini's OpenAI-compatible
-endpoint through the same request/response contract.
-Only used when DICTALAB_AI_FALLBACK_ENABLED=true and the local Ollama provider
-experiences a timeout, connection failure, or model unavailability (5xx).
-Never used for 4xx errors or idempotency conflicts.
+Gemini's OpenAI-compatible endpoint uses this request/response contract. The
+client is only selected when the configured provider is a cloud provider.
 
 API key is read from config and never written to logs or exception messages.
 """
@@ -20,14 +17,14 @@ import httpx
 
 from ..providers.base import ModelProvider, ProviderError
 
-logger = logging.getLogger("dictalab.ai_generation.providers.shopaikey")
+logger = logging.getLogger("dictalab.ai_generation.providers.openai_compatible")
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
 _DEADLINE_BUFFER = 1.0
 
 
-class ShopAiKeyProvider(ModelProvider):
-    """OpenAI-compatible cloud provider used by Shop AI or Gemini."""
+class OpenAiCompatibleProvider(ModelProvider):
+    """OpenAI-compatible cloud provider used by Gemini."""
 
     def __init__(
         self,
@@ -38,7 +35,7 @@ class ShopAiKeyProvider(ModelProvider):
         temperature: float = 0.3,
         client: httpx.AsyncClient,
         max_tokens: int = 2200,
-        provider_name: str = "shopaikey",
+        provider_name: str = "openai_compatible",
         chat_completions_path: str | None = None,
         extra_headers: dict[str, str] | None = None,
         use_json_schema: bool = False,
@@ -122,7 +119,7 @@ class ShopAiKeyProvider(ModelProvider):
             raise ProviderError(f"{self._provider_name}:{purpose}:http_or_parse_error") from exc
 
 
-def _parse_content(raw: str, purpose: str, provider_name: str = "shopaikey") -> dict[str, Any]:
+def _parse_content(raw: str, purpose: str, provider_name: str = "openai_compatible") -> dict[str, Any]:
     """Strip optional markdown fences then strict-parse JSON."""
     stripped = raw.strip()
     match = _FENCE_RE.search(stripped)

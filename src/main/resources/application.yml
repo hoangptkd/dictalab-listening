@@ -166,7 +166,7 @@ dictalab:
     platform:
       base-url: ${DICTALAB_AI_PLATFORM_BASE_URL:http://127.0.0.1:8091}
       service-token: ${DICTALAB_AI_SERVICE_TOKEN:}
-      text-provider: ${DICTALAB_AI_TEXT_PROVIDER:shopaikey}
+      text-provider: ${DICTALAB_AI_TEXT_PROVIDER:gemini}
       timeout-seconds: ${DICTALAB_AI_JOB_TIMEOUT_SECONDS:80}
       tts: ${DICTALAB_AI_TTS_MODE:legacy}
       coach: ${DICTALAB_AI_COACH_MODE:legacy}
@@ -221,9 +221,9 @@ dictalab:
     maximum-entries: ${RATE_LIMIT_MAX_ENTRIES:20000}
   conversation:
     enabled: ${DICTALAB_CONVERSATION_ENABLED:false}
-    generation-model: ${DICTALAB_CONVERSATION_MODEL:gemini-2.5-flash}
+    generation-model: ${DICTALAB_CONVERSATION_MODEL:gemini-3.5-flash-lite}
     generation:
-      provider: ${DICTALAB_CONVERSATION_GENERATION_PROVIDER:shopaikey}
+      provider: ${DICTALAB_CONVERSATION_GENERATION_PROVIDER:gemini}
       repair-enabled: ${DICTALAB_CONVERSATION_GENERATION_REPAIR_ENABLED:false}
       local-base-url: ${DICTALAB_CONVERSATION_LOCAL_BASE_URL:http://127.0.0.1:11434}
       local-model: ${DICTALAB_CONVERSATION_LOCAL_MODEL:qwen3.5:9b}
@@ -248,20 +248,20 @@ dictalab:
     tts-url: ${TTS_URL:https://api.cartesia.ai/tts/bytes}
   coach:
     enabled: ${DICTALAB_COACH_ENABLED:false}
-    provider: ${DICTALAB_COACH_PROVIDER:shopaikey}
+    provider: ${DICTALAB_COACH_PROVIDER:gemini}
     local-base-url: ${DICTALAB_COACH_LOCAL_BASE_URL:http://127.0.0.1:11434}
     local-model: ${DICTALAB_COACH_LOCAL_MODEL:qwen3.5:4b}
     local-timeout-seconds: ${DICTALAB_COACH_LOCAL_TIMEOUT_SECONDS:60}
   public-url: ${DICTALAB_PUBLIC_URL:http://localhost:18081}
   support-email: ${DICTALAB_SUPPORT_EMAIL:}
   mail-from: ${DICTALAB_MAIL_FROM:}
-  shopaikey:
+  gemini:
     assessment-timeout-seconds: ${AI_ASSESSMENT_TIMEOUT_SECONDS:25}
     generation-timeout-seconds: ${AI_GENERATION_TIMEOUT_SECONDS:25}
     concurrency: ${AI_CONCURRENCY:8}
-    api-key: ${SHOPAIKEY_API_KEY:}
-    model: ${SHOPAIKEY_MODEL:claude-sonnet-4-5}
-    url: ${SHOPAIKEY_URL:https://api.shopaikey.com/v1/chat/completions}
+    api-key: ${GEMINI_API_KEY:}
+    model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
+    url: ${GEMINI_URL:https://generativelanguage.googleapis.com/v1beta/openai/chat/completions}
   assessment:
     minimum-unseen-lessons: 5
     maximum-unseen-lessons: 10

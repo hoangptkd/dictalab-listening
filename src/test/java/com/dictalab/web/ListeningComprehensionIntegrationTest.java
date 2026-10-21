@@ -5,7 +5,7 @@ import com.dictalab.exception.InvalidPracticeStateException;
 import com.dictalab.repository.AppUserRepository;
 import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.ListeningComprehensionService;
-import com.dictalab.service.ShopAiKeyClient;
+import com.dictalab.service.GeminiClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -52,7 +52,7 @@ class ListeningComprehensionIntegrationTest {
     @Autowired AppUserRepository users;
     @Autowired ListeningComprehensionService service;
     @Autowired PlatformTransactionManager transactions;
-    @MockitoBean ShopAiKeyClient ai;
+    @MockitoBean GeminiClient ai;
 
     @Test
     void seededListeningUnitsCoverEveryLevelWithAlignedAudioAndValidContent() throws Exception {

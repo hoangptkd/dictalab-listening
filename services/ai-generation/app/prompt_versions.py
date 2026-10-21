@@ -34,8 +34,7 @@ async def _complete(request, settings, client, schema, purpose, data, temperatur
     calls = provider_calls.get()
     if calls is not None:
         calls.append({"purpose": purpose, "provider": provider,
-                      "model": settings.model if provider == "ollama" else
-                          settings.active_cloud_model if settings.selected_provider in CLOUD_PROVIDERS else settings.fallback_model,
+                      "model": settings.model if provider == "ollama" else settings.active_cloud_model,
                       "modelDigest": artifact["model"]["digest"] if provider == "ollama" else "unpinned-cloud"})
     return result
 

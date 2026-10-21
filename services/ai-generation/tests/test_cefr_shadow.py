@@ -120,7 +120,7 @@ async def test_shadow_runs_real_pipeline_with_matching_schema_and_resets_context
 @pytest.mark.asyncio
 async def test_shadow_is_local_only_and_does_not_run_with_default_bundle(artifact):
     request = shadow_request(artifact["fewShotExamples"][0]["input"], "isolated", artifact)
-    for settings in (Settings(fallback_enabled=True), Settings(primary_provider="shopaikey"),
+    for settings in (Settings(primary_provider="gemini"),
                      Settings(production_mode=True, service_token="synthetic-test")):
         with pytest.raises(ValueError, match="non-production local"):
             await run_shadow_workflow(request, settings, None, artifact)

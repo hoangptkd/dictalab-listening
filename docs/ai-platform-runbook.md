@@ -20,7 +20,7 @@ Shadow: set `DICTALAB_CONVERSATION_SHADOW_SAMPLE_RATE` between 0 and 1 (default 
 Java forwards its remaining budget in `X-AI-Timeout-Ms`, which also bounds the Python workflow and model calls.
 busy or exhausted samples are skipped immediately. Shadow runs only after a successful existing-provider
 turn, sends the existing allowlisted context, discards the result and cannot update session state, history,
-score or user quota. Python disables paid fallback for `X-AI-Mode: shadow`. The hourly budget resets on Java
+score or user quota. Python rejects cloud providers for `X-AI-Mode: shadow`; shadow requires local Ollama. The hourly budget resets on Java
 restart, so do not scale pilot processes without coordinating that limit. Python's global concurrency limit
 still applies; shadow may briefly consume local model capacity. Set sample rate 0 and restart to stop it.
 
@@ -30,7 +30,7 @@ An empty allowlist is rejected. Every turn in a listed session/user follows Pyth
 the configured existing provider. All normal validation, quota and persistence stay in Java. There is no
 automatic percentage expansion or alternate-provider retry after an ambiguous failure.
 
-Rollback: set canary false, shadow sample rate 0, and generation provider to the prior `ollama` or `shopaikey`,
+Rollback: set canary false, shadow sample rate 0, and generation provider to the prior `ollama` or `gemini`,
 then restart Java. No migration or learner-data edit is required. For prompt/model rollback, select another
 approved artifact/version/model/hash and restart Python. Mount the reviewed artifact directory read-only to
 switch bundles without rebuilding Java. Unknown client versions return 400; old aliases resolve only to the
@@ -62,13 +62,13 @@ Do not put learner transcripts, credentials, API keys or raw provider output in 
 
 Use `.env.ai-production.example` or `.env.ai-local.example` as routing overlays, keeping the actual keys,
 service token and URL-encoded broker URL in protected runtime configuration. Compose forwards
-`SHOPAIKEY_API_KEY` to Python's `DICTALAB_AI_CLOUD_API_KEY` and `CARTESIA_API_KEY` to its TTS client.
+`GEMINI_API_KEY` to Python's `DICTALAB_AI_GEMINI_API_KEY` and `CARTESIA_API_KEY` to its TTS client.
 For native Python set those Python variables explicitly. The local launcher selects Spring's `local` profile
-and forces Ollama for text AI, including legacy grading and review; it no longer needs a ShopAIKey key.
-Audio still requires Cartesia. Default Java production routing remains ShopAIKey, including rollback clients.
+and forces Ollama for text AI, including legacy grading and review; it needs no cloud provider key.
+Audio still requires Cartesia. Default Java production routing uses Gemini, including rollback clients.
 Java `DICTALAB_AI_TEXT_PROVIDER` must match Python's selected primary; mismatches fail before paid job calls.
 
-Gemini is an explicit Python cloud primary (`DICTALAB_AI_PRIMARY_PROVIDER=gemini`). Compose forwards
+Gemini is the only cloud text provider (`DICTALAB_AI_PRIMARY_PROVIDER=gemini`). Compose forwards
 `GEMINI_API_KEY`, `GEMINI_BASE_URL` and `GEMINI_MODEL` to `DICTALAB_AI_GEMINI_*`. The Python provider uses
 Google's OpenAI-compatible endpoint (`https://generativelanguage.googleapis.com/v1beta/openai`) with the
 `gemini-3.5-flash-lite` model. Google lists this model as `models/gemini-3.5-flash-lite`; readiness accepts
@@ -76,7 +76,7 @@ both forms. The key stays in protected runtime configuration. Do not use a free-
 without an explicit data-handling decision, and do not treat the benchmark result as production approval.
 
 Production Python starts with conversation disabled until a cloud-evaluated conversation artifact passes its
-release gate. This does not disable the existing Java ShopAIKey conversation. Do not approve the local R1
+release gate. This does not disable the existing Java Gemini conversation. Do not approve the local R1
 artifact just to make cloud readiness pass. Readiness in jobs-only cloud mode needs the service token,
 configured cloud model in `/v1/models`, the ledger and RabbitMQ; it never contacts Ollama.
 
@@ -133,7 +133,7 @@ delete the volume or reset RUNNING to PENDING. A model-host rollback never requi
 
 ## T12: measured host separation, currently deferred
 
-Production currently uses ShopAIKey and has no local model host. Keep this topology until measured evidence
+Production currently uses Gemini and has no local model host. Keep this topology until measured evidence
 justifies a change. Collect at least seven representative days, including peak traffic, with sample counts:
 Java `dictalab_ai_platform_duration_seconds` p50/p95/p99 by capability/outcome, provider timeouts/429/schema
 errors, `dictalab_ai_jobs{status=...}`, `dictalab_ai_job_queue_wait_seconds`, `dictalab_ai_worker_up`, RabbitMQ

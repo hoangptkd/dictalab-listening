@@ -18,13 +18,13 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
-@SpringBootTest(properties={"dictalab.conversation.enabled=true", "dictalab.coach.enabled=false"})
+@SpringBootTest(properties={"dictalab.conversation.enabled=true", "dictalab.coach.enabled=false", "dictalab.conversation.generation.repair-enabled=true"})
 class ConversationUxIntegrationTest {
     @Autowired ConversationService service;
     @Autowired AppUserRepository users;
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
-    @MockitoBean ShopAiKeyClient ai;
+    @MockitoBean GeminiClient ai;
     @MockitoBean CartesiaClient tts;
     @MockitoBean ConversationLocalClient local;
     @MockitoSpyBean AiUsageBudget budget;

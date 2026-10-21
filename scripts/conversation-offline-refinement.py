@@ -218,7 +218,7 @@ def prepare():
         if row["key"] not in existing:
             a.append(STAGES[0] + "-outputs.jsonl", dict(row, stage=STAGES[0], cached=True))
     a.freeze("judge-contract-" + VERSION + ".json", {"version": VERSION, "model": a.d.JUDGE,
-        "provider": "ShopAIKey chat completions (alias; provider checkpoint not pinned)",
+        "provider": "Gemini chat completions (alias; provider checkpoint not pinned)",
         "temperature": 0, "maxTokens": {"blind": 1200, "verdict": 3200},
         "thinking": False, "responseFormat": "json_object", "blind": a.BLIND,
         "rubric": RUBRIC, "continuation": a.CONTINUATION, "transfer": TRANSFER,

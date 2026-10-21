@@ -14,8 +14,8 @@ public record ConversationGenerationProperties(String provider, String localBase
     @org.springframework.boot.context.properties.bind.ConstructorBinding
     public ConversationGenerationProperties {
         // Existing cloud deployments remain compatible; local development opts into Ollama explicitly.
-        if (provider == null || provider.isBlank()) provider = "shopaikey";
-        if (!java.util.Set.of("shopaikey", "ollama", "python").contains(provider))
+        if (provider == null || provider.isBlank()) provider = "gemini";
+        if (!java.util.Set.of("gemini", "ollama", "python").contains(provider))
             throw new IllegalArgumentException("Unsupported conversation generation provider");
         if (localBaseUrl == null || localBaseUrl.isBlank()) localBaseUrl = "http://127.0.0.1:11434";
         var uri = java.net.URI.create(localBaseUrl);

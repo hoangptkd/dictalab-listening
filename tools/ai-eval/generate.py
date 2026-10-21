@@ -1,9 +1,9 @@
 """Capture the configured workflow on synthetic fixtures.
 
 Local captures use fixed Ollama seeds. Cloud captures run the same workflow and
-artifact against a configured OpenAI-compatible provider (Shop AI or Gemini).
-Those requests have no seed parameter, so the seed is only a case-repeat label
-and that difference is recorded in metadata.
+artifact against Gemini's OpenAI-compatible endpoint. Those requests have no
+seed parameter, so the seed is only a case-repeat label and that difference is
+recorded in metadata.
 """
 import argparse
 import asyncio
@@ -42,7 +42,7 @@ class SeededClient(httpx.AsyncClient):
 
     async def post(self, url, **kwargs):
         # This subclass exists only in the offline executable; production requests cannot set a seed.
-        # Shop AI bodies have no Ollama options object: the provider does not accept a seed.
+        # Cloud bodies have no Ollama options object: Gemini does not accept a seed.
         body = kwargs.get("json")
         if isinstance(body, dict) and isinstance(body.get("options"), dict):
             body["options"]["seed"] = self.seed
@@ -73,8 +73,6 @@ async def capture(dataset, settings, output, *, shadow=False, attempts=None):
     if settings.repair_enabled:
         raise ValueError("first-pass evaluation requires repair disabled")
     artifact = load_artifact(settings)
-    if settings.fallback_enabled:
-        raise ValueError("evaluation requires fallback disabled")
     provider = settings.selected_provider
     if provider in CLOUD_PROVIDERS:
         if shadow:

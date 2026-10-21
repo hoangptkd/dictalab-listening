@@ -92,14 +92,12 @@ def test_mismatched_or_duplicate_captures_are_rejected(inputs, defect):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("defect", ["cloud", "fallback", "production", "dataset", "config"])
+@pytest.mark.parametrize("defect", ["cloud", "production", "dataset", "config"])
 async def test_shadow_capture_rejects_unsafe_or_unpaired_runs_before_network(inputs, tmp_path, defect):
     dataset, _, artifact = inputs
     settings = Settings(artifact_version=ARTIFACT_VERSION)
     if defect == "cloud":
-        settings = Settings(primary_provider="shopaikey")
-    elif defect == "fallback":
-        settings = Settings(fallback_enabled=True)
+        settings = Settings(primary_provider="gemini")
     elif defect == "production":
         settings = Settings(production_mode=True, primary_provider="ollama", service_token="synthetic-test")
     elif defect == "dataset":

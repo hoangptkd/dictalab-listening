@@ -85,7 +85,7 @@ public class ConversationService {
                     """;
     private final JdbcTemplate db;
     private final ObjectMapper json;
-    private final ShopAiKeyClient ai;
+    private final GeminiClient ai;
     private final ConversationProperties config;
     private final CartesiaClient tts;
     private final org.springframework.transaction.support.TransactionTemplate transaction;
@@ -114,7 +114,7 @@ public class ConversationService {
             new ArrayBlockingQueue<>(8), new ThreadPoolExecutor.AbortPolicy());
     private final Map<String, CompletableFuture<Void>> audioJobs = new java.util.concurrent.ConcurrentHashMap<>();
 
-    public ConversationService(JdbcTemplate db, ObjectMapper json, ShopAiKeyClient ai, CartesiaClient tts,
+    public ConversationService(JdbcTemplate db, ObjectMapper json, GeminiClient ai, CartesiaClient tts,
                                ConversationProperties config, org.springframework.transaction.PlatformTransactionManager manager,
                                io.micrometer.core.instrument.MeterRegistry metrics,
                                io.micrometer.observation.ObservationRegistry observations,
@@ -123,7 +123,7 @@ public class ConversationService {
     }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public ConversationService(JdbcTemplate db, ObjectMapper json, ShopAiKeyClient ai, CartesiaClient tts,
+    public ConversationService(JdbcTemplate db, ObjectMapper json, GeminiClient ai, CartesiaClient tts,
                                ConversationProperties config, org.springframework.transaction.PlatformTransactionManager manager,
                                io.micrometer.core.instrument.MeterRegistry metrics,
                                io.micrometer.observation.ObservationRegistry observations,
@@ -1147,7 +1147,7 @@ public class ConversationService {
                             ? "TASK_MEANING" : "NONE";
                 } : "NONE";
         log.warn("Conversation operation failed, operation={}, reason={}, validationRule={}, errorType={}, errorId={}",
-                operation,ShopAiKeyClient.reason(failure),validationRule,failure.getClass().getSimpleName(),UUID.randomUUID());
+                operation,GeminiClient.reason(failure),validationRule,failure.getClass().getSimpleName(),UUID.randomUUID());
     }
     private void fail(HttpStatus status, String message) { throw new ResponseStatusException(status, message); }
 }

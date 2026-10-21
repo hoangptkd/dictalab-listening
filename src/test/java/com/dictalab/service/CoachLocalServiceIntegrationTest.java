@@ -18,7 +18,7 @@ class CoachLocalServiceIntegrationTest {
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
     @MockitoBean CoachLocalClient local;
-    @MockitoBean ShopAiKeyClient cloud;
+    @MockitoBean GeminiClient cloud;
 
     @Test void localIsIndependentOfCloudKeepsCacheAndChargesNoCloudBudget() {
         long user = user(); String session = session(user);

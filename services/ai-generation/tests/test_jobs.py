@@ -183,13 +183,13 @@ def test_job_api_contract_auth_scope_and_worker_result(tmp_path, monkeypatch, ki
     assert process(body, settings, store, lambda _: {**capability_metadata(req.payload, settings), "task": {"ok": True}}) == "ACK"
     assert client.get("/v1/jobs/" + str(req.jobId), headers=headers).json()["status"] == "DONE"
     assert client.get("/v1/jobs/" + str(req.jobId), headers={**headers, "X-User-Scope": "b" * 64}).status_code == 404
-    assert client.post(path, headers={**headers, "X-AI-Provider": "shopaikey"}, json=req.model_dump(mode="json")).status_code == (202 if kind == "tts" else 409)
+    assert client.post(path, headers={**headers, "X-AI-Provider": "gemini"}, json=req.model_dump(mode="json")).status_code == (202 if kind == "tts" else 409)
 
 
 @pytest.mark.asyncio
-async def test_production_uses_cloud_without_contacting_ollama():
-    settings = Settings(production_mode=True, service_token="test-only", cloud_api_key="test-cloud", conversation_enabled=False)
-    assert settings.selected_provider == "shopaikey"
+async def test_production_uses_gemini_without_contacting_ollama():
+    settings = Settings(production_mode=True, service_token="test-only", gemini_api_key="test-cloud", conversation_enabled=False)
+    assert settings.selected_provider == "gemini"
     assert Settings().selected_provider == "ollama"
     from app.model_gateway import ModelGateway
     from unittest.mock import AsyncMock
@@ -197,21 +197,20 @@ async def test_production_uses_cloud_without_contacting_ollama():
         gateway = ModelGateway(settings, client)
         gateway._local.complete = AsyncMock(side_effect=AssertionError("must not contact Ollama"))
         gateway._primary_cloud.complete = AsyncMock(return_value={"ok": True})
-        assert await gateway.complete([], {}, time.monotonic() + 10, "review") == ({"ok": True}, "shopaikey")
+        assert await gateway.complete([], {}, time.monotonic() + 10, "review") == ({"ok": True}, "gemini")
 
 
 def test_cloud_readiness_does_not_require_local_model_or_unapproved_conversation(monkeypatch):
     from app import main
-    monkeypatch.setattr(main, "settings", Settings(production_mode=True, service_token="test-only", cloud_api_key="test-cloud", conversation_enabled=False))
-    response = httpx.Response(200, json={"data": [{"id": "gemini-2.5-flash"}]}, request=httpx.Request("GET", "https://cloud/v1/models"))
+    monkeypatch.setattr(main, "settings", Settings(production_mode=True, service_token="test-only", gemini_api_key="test-cloud", conversation_enabled=False))
+    response = httpx.Response(200, json={"data": [{"id": "gemini-3.5-flash-lite"}]}, request=httpx.Request("GET", "https://cloud/v1/models"))
     with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=response)) as get:
         assert TestClient(main.app).get("/health/ready").status_code == 200
-        assert "shopaikey.com/v1/models" in get.call_args.args[0]
+        assert get.call_args.args[0] == "https://generativelanguage.googleapis.com/v1beta/openai/models"
 
 
-def test_gemini_provider_uses_its_own_cloud_slot_and_models_prefix(monkeypatch):
-    settings = Settings(primary_provider="gemini", gemini_api_key="gemini-test",
-                        cloud_api_key="shop-test", cloud_model="shop-model")
+def test_gemini_provider_uses_models_prefix(monkeypatch):
+    settings = Settings(primary_provider="gemini", gemini_api_key="gemini-test")
     assert settings.selected_provider == "gemini"
     assert settings.active_cloud_base_url == "https://generativelanguage.googleapis.com/v1beta/openai"
     assert settings.active_cloud_api_key == "gemini-test"

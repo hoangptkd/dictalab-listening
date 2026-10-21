@@ -33,7 +33,7 @@ public class ListeningComprehensionService {
     private static final Logger log = LoggerFactory.getLogger(ListeningComprehensionService.class);
     private final JdbcTemplate db;
     private final ObjectMapper json;
-    private final ShopAiKeyClient ai;
+    private final GeminiClient ai;
     private final TransactionTemplate transaction;
     private final java.util.concurrent.ThreadPoolExecutor gradeWorkers;
     private final io.micrometer.observation.ObservationRegistry observations;
@@ -54,7 +54,7 @@ public class ListeningComprehensionService {
     void configurePremium(PremiumAccessService premium) { this.premium=premium; }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public ListeningComprehensionService(JdbcTemplate db, ObjectMapper json, ShopAiKeyClient ai,
+    public ListeningComprehensionService(JdbcTemplate db, ObjectMapper json, GeminiClient ai,
                                         PlatformTransactionManager manager,
                                         @org.springframework.beans.factory.annotation.Value("${dictalab.listening.workers:2}") int workers,
                                          io.micrometer.core.instrument.MeterRegistry metrics,
@@ -74,7 +74,7 @@ public class ListeningComprehensionService {
         this.s3Lifecycle=s3Lifecycle;
         this.budget=budget;
     }
-    public ListeningComprehensionService(JdbcTemplate db, ObjectMapper json, ShopAiKeyClient ai,
+    public ListeningComprehensionService(JdbcTemplate db, ObjectMapper json, GeminiClient ai,
                                          PlatformTransactionManager manager, int workers,
                                          io.micrometer.core.instrument.MeterRegistry metrics,
                                          io.micrometer.observation.ObservationRegistry observations) {
@@ -82,7 +82,7 @@ public class ListeningComprehensionService {
                 (org.springframework.beans.factory.ObjectProvider<ListeningGradingQueue>) null, null,
                 new AiUsageBudget(db,manager,true,5000000,2000000,50000,50000,100,40));
     }
-    public ListeningComprehensionService(JdbcTemplate db,ObjectMapper json,ShopAiKeyClient ai,PlatformTransactionManager manager){
+    public ListeningComprehensionService(JdbcTemplate db,ObjectMapper json,GeminiClient ai,PlatformTransactionManager manager){
         this(db,json,ai,manager,2,new io.micrometer.core.instrument.simple.SimpleMeterRegistry(),io.micrometer.observation.ObservationRegistry.NOOP,
                 (org.springframework.beans.factory.ObjectProvider<ListeningGradingQueue>) null, null,
                 new AiUsageBudget(db,manager,true,5000000,2000000,50000,50000,100,40));

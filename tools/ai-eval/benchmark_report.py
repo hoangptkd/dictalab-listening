@@ -196,7 +196,7 @@ def build(run_dir, baseline_dir=None):
         "The observer records attempts but does not change prompts, seeds, schemas, options or repair count.",
     ]
     model = manifest.get("model") or {}
-    cloud_provider = model.get("provider") in ("shopaikey", "gemini")
+    cloud_provider = model.get("provider") == "gemini"
     if cloud_provider:
         limits += [
             "The frozen bundle is pinned to Ollama qwen3.5:9b; this cloud run changes provider and model, so "

@@ -20,7 +20,7 @@ class CoachLocalQueueIntegrationTest {
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
     @MockitoBean CoachLocalClient local;
-    @MockitoBean ShopAiKeyClient cloud;
+    @MockitoBean GeminiClient cloud;
     @MockitoBean RabbitTemplate rabbit;
 
     @Test void localQueuePersistsOnceAndOfflineFailureDoesNotSwitchToCloud() {

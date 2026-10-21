@@ -137,7 +137,9 @@ class CloudConfigurationTest(unittest.TestCase):
 
     def test_production_restores_provider_flags_but_preserves_cloud_and_linux_settings(self):
         source = self.env() | {'DB_PASSWORD': 'old-test-only', 'DB_URL': 'jdbc:postgresql://old/test',
-                              'DICTALAB_COACH_ENABLED': 'true', 'SHOPAIKEY_API_KEY': 'provider-test-only',
+                              'DICTALAB_COACH_ENABLED': 'true', 'GEMINI_API_KEY': 'provider-test-only',
+                              'SHOPAIKEY_API_KEY': 'retired-test-only',
+                              'DICTALAB_AI_FALLBACK_API_KEY': 'retired-fallback-test-only',
                               'DICTALAB_LOG_FILE': 'C:\\old\\app.log', 'LISTENING_DISPATCH_MS': '1000',
                               'SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT': '9999'}
         current = self.env() | {'DB_URL': 'jdbc:postgresql://cloud/test',
@@ -148,7 +150,9 @@ class CloudConfigurationTest(unittest.TestCase):
         self.assertEqual('jdbc:postgresql://cloud/test', env['DB_URL'])
         self.assertEqual('test-only', env['DB_PASSWORD'])
         self.assertEqual('true', env['DICTALAB_COACH_ENABLED'])
-        self.assertEqual('provider-test-only', env['SHOPAIKEY_API_KEY'])
+        self.assertEqual('provider-test-only', env['GEMINI_API_KEY'])
+        self.assertNotIn('SHOPAIKEY_API_KEY', env)
+        self.assertNotIn('DICTALAB_AI_FALLBACK_API_KEY', env)
         self.assertEqual('1000', env['LISTENING_DISPATCH_MS'])
         self.assertEqual('/var/lib/dictalab/logs/dictalab.json', env['DICTALAB_LOG_FILE'])
         self.assertNotIn('SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT', env)

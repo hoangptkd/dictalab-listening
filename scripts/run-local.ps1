@@ -32,7 +32,6 @@ $env:SPRING_PROFILES_ACTIVE = 'local'
 $env:DICTALAB_AI_TEXT_PROVIDER = 'ollama'
 $env:DICTALAB_AI_PRIMARY_PROVIDER = 'ollama'
 $env:DICTALAB_AI_PRODUCTION_MODE = 'false'
-$env:DICTALAB_AI_FALLBACK_ENABLED = 'false'
 if ($env:DICTALAB_CONVERSATION_GENERATION_PROVIDER -ne 'python') {
     $env:DICTALAB_CONVERSATION_GENERATION_PROVIDER = 'ollama'
 }
@@ -69,7 +68,7 @@ try {
     }
 
     if ($WithCoach) {
-        $coachProvider = if ($env:DICTALAB_COACH_PROVIDER) { $env:DICTALAB_COACH_PROVIDER } else { 'shopaikey' }
+        $coachProvider = if ($env:DICTALAB_COACH_PROVIDER) { $env:DICTALAB_COACH_PROVIDER } else { 'gemini' }
         if ($coachProvider -eq 'ollama') {
             $coachBase = if ($env:DICTALAB_COACH_LOCAL_BASE_URL) { $env:DICTALAB_COACH_LOCAL_BASE_URL.TrimEnd('/') } else { 'http://127.0.0.1:11434' }
             $coachModel = if ($env:DICTALAB_COACH_LOCAL_MODEL) { $env:DICTALAB_COACH_LOCAL_MODEL } else { 'qwen3.5:4b' }
@@ -77,12 +76,12 @@ try {
             if ($coachModel -notin @($coachModels.models.name)) { throw "Ollama chua co model $coachModel. Hay tai model truoc." }
             Write-Host "AI Coach: Ollama local / $coachModel."
         }
-        elseif ($coachProvider -ne 'shopaikey') { throw 'DICTALAB_COACH_PROVIDER chi nhan shopaikey hoac ollama.' }
-        elseif ([string]::IsNullOrWhiteSpace($env:SHOPAIKEY_API_KEY)) {
-            throw 'Can SHOPAIKEY_API_KEY trong .env de bat Coach.'
+        elseif ($coachProvider -ne 'gemini') { throw 'DICTALAB_COACH_PROVIDER chi nhan gemini hoac ollama.' }
+        elseif ([string]::IsNullOrWhiteSpace($env:GEMINI_API_KEY)) {
+            throw 'Can GEMINI_API_KEY trong .env de bat Coach.'
         }
         $env:DICTALAB_COACH_ENABLED = 'true'
-        if ($coachProvider -eq 'shopaikey') { Write-Host 'AI Coach: ShopAIKey API.' }
+        if ($coachProvider -eq 'gemini') { Write-Host 'AI Coach: Gemini API.' }
     }
 
     if ($WithMessaging) {

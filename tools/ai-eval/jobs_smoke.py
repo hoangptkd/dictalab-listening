@@ -111,14 +111,14 @@ def main():
         threading.Thread(target=fake.serve_forever, daemon=True).start()
         with tempfile.TemporaryDirectory() as directory:
             for production in (False, True):
-                provider = "shopaikey" if production else "ollama"
+                provider = "gemini" if production else "ollama"
                 port = free_port(); url = f"http://127.0.0.1:{port}"
                 env = {k: v for k, v in os.environ.items() if not k.startswith("DICTALAB_AI_")}
                 env.update({"DICTALAB_AI_JOBS_ENABLED": "true", "DICTALAB_AI_JOBS_DATABASE": str(Path(directory) / (provider + ".sqlite3")),
                     "DICTALAB_AI_RABBITMQ_URL": broker, "DICTALAB_AI_CONVERSATION_ENABLED": "false",
                     "DICTALAB_AI_PRODUCTION_MODE": str(production).lower(), "DICTALAB_AI_SERVICE_TOKEN": "smoke-only-token",
-                    "DICTALAB_AI_CLOUD_API_KEY": "test-only-cloud", "DICTALAB_AI_CLOUD_MODEL": "test-cloud",
-                    "DICTALAB_AI_CLOUD_BASE_URL": f"http://127.0.0.1:{fake.server_port}",
+                    "DICTALAB_AI_GEMINI_API_KEY": "test-only-cloud", "DICTALAB_AI_GEMINI_MODEL": "test-cloud",
+                    "DICTALAB_AI_GEMINI_BASE_URL": f"http://127.0.0.1:{fake.server_port}",
                     "DICTALAB_AI_OLLAMA_URL": f"http://127.0.0.1:{fake.server_port}",
                     "DICTALAB_AI_CARTESIA_API_KEY": "test-only-tts", "DICTALAB_AI_CARTESIA_URL": f"http://127.0.0.1:{fake.server_port}/tts/bytes"})
                 with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as log:
