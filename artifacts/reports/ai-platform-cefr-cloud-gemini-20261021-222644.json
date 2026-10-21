@@ -1,0 +1,476 @@
+{
+  "reportVersion": 1,
+  "kind": "cefr-real-model-benchmark",
+  "runId": "20261021-222644-gemini-supported",
+  "status": "complete",
+  "statusNote": "Supported arm captured in full; shadow arm is not in scope for this run. No B2/C1 quality claim is made.",
+  "plan": "docs/conversation-cefr-real-model-benchmark-handoff-2026-10-21.md",
+  "git": {
+    "head": "70aa549",
+    "branch": "codex/practice-drafts-audio-20261017",
+    "note": "Gemini integration commit; benchmark evidence was captured from the same working tree."
+  },
+  "environment": {
+    "runtime": {
+      "python": "3.14.0",
+      "note": "host Python; cloud inference, no local model load"
+    },
+    "hardware": {
+      "cpu": "AMD Ryzen 7 PRO 6850HS",
+      "ramGb": 31.3,
+      "gpu": null,
+      "note": "cloud provider; host CPU not used for inference"
+    },
+    "model": {
+      "provider": "gemini",
+      "name": "gemini-3.5-flash-lite",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "digestKind": "provider-descriptor-sha256",
+      "seedMode": "not-transmitted",
+      "artifactPin": {
+        "name": "qwen3.5:9b",
+        "digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
+      },
+      "digest": "5fc72a1ca52038f24859bc4fc6d24e57f8b6e08e50184739d89fe3053c2a26b7"
+    },
+    "timeoutSeconds": 600,
+    "generationConfig": {
+      "primary_provider": "gemini",
+      "production_mode": false,
+      "fallback_enabled": false,
+      "repair_enabled": false,
+      "model": "qwen3.5:9b",
+      "gemini_model": "gemini-3.5-flash-lite",
+      "temperature": 0.3,
+      "translation_temperature": 0.1,
+      "num_ctx": 8192,
+      "num_predict": 1000,
+      "max_concurrency": 1
+    }
+  },
+  "observation": {
+    "tool": "tools/ai-eval/attempt_trace.py",
+    "sidecar": "supported-attempts.jsonl"
+  },
+  "arms": {
+    "supported": {
+      "dataset": "cefr-b1-v7-10x3.json",
+      "bundle": "conversation-cefr-b1-v7-20261021",
+      "datasetHash": "cb7e7cd336f6fcb52e445132ba65ea4ac1208e998e917c1a860a72de7ef08d41",
+      "expected": 30,
+      "captured": 30,
+      "metrics": {
+        "transport": {
+          "passed": 27,
+          "evaluated": 30,
+          "rate": 0.9
+        },
+        "schema": {
+          "passed": 27,
+          "evaluated": 30,
+          "rate": 0.9
+        },
+        "evidence": {
+          "passed": 27,
+          "evaluated": 30,
+          "rate": 0.9
+        },
+        "question_fact": {
+          "passed": 27,
+          "evaluated": 30,
+          "rate": 0.9
+        },
+        "translation": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        },
+        "role": {
+          "passed": 27,
+          "evaluated": 30,
+          "rate": 0.9
+        },
+        "continuity": {
+          "passed": 18,
+          "evaluated": 21,
+          "rate": 0.8571428571428571
+        },
+        "turn4_independence": {
+          "passed": 9,
+          "evaluated": 9,
+          "rate": 1.0
+        }
+      },
+      "latencySeconds": {
+        "p50": 11.362552700011292,
+        "p95": 14.598899300006451,
+        "p99": 77.58310880002682
+      },
+      "levels": {
+        "A1": {
+          "expected": 12,
+          "captured": 12,
+          "coverage": 1.0,
+          "firstAttemptMeasured": 12,
+          "firstAttemptLengthValid": 1.0,
+          "firstAttemptStructureValid": 0.9167,
+          "firstAttemptLengthValidWhenMeasured": 1.0,
+          "repairAttempted": 0,
+          "repairSucceeded": 0,
+          "repairFailed": 0,
+          "finalValid": 0.9167,
+          "finalLengthValidOnExpected": 0.9167,
+          "finalPresent": 11,
+          "finalLengthValidOnPresent": 1.0,
+          "finalTransportFailures": 1,
+          "latencySeconds": {
+            "n": 12,
+            "p50": 11.362552700011292,
+            "p95": 14.077755799982697,
+            "p99": 14.077755799982697,
+            "max": 14.077755799982697,
+            "note": "cold start included; timeout 600s offline quality run"
+          },
+          "semanticReview": "PENDING_REVIEW",
+          "taskTypeCoverage": null,
+          "semanticReviewPassed": 10,
+          "semanticReviewRate": 0.8333,
+          "semanticReviewRateOnCaptured": 0.8333,
+          "finalValidOnCaptured": 0.9167,
+          "complete": true
+        },
+        "A2": {
+          "expected": 9,
+          "captured": 9,
+          "coverage": 1.0,
+          "firstAttemptMeasured": 9,
+          "firstAttemptLengthValid": 0.8889,
+          "firstAttemptStructureValid": 1.0,
+          "firstAttemptLengthValidWhenMeasured": 0.8889,
+          "repairAttempted": 0,
+          "repairSucceeded": 0,
+          "repairFailed": 0,
+          "finalValid": 0.8889,
+          "finalLengthValidOnExpected": 0.8889,
+          "finalPresent": 8,
+          "finalLengthValidOnPresent": 1.0,
+          "finalTransportFailures": 1,
+          "latencySeconds": {
+            "n": 9,
+            "p50": 10.321681000001263,
+            "p95": 77.58310880002682,
+            "p99": 77.58310880002682,
+            "max": 77.58310880002682,
+            "note": "cold start included; timeout 600s offline quality run"
+          },
+          "semanticReview": "PENDING_REVIEW",
+          "taskTypeCoverage": null,
+          "semanticReviewPassed": 8,
+          "semanticReviewRate": 0.8889,
+          "semanticReviewRateOnCaptured": 0.8889,
+          "finalValidOnCaptured": 0.8889,
+          "complete": true
+        },
+        "B1": {
+          "expected": 9,
+          "captured": 9,
+          "coverage": 1.0,
+          "firstAttemptMeasured": 9,
+          "firstAttemptLengthValid": 1.0,
+          "firstAttemptStructureValid": 0.8889,
+          "firstAttemptLengthValidWhenMeasured": 1.0,
+          "repairAttempted": 0,
+          "repairSucceeded": 0,
+          "repairFailed": 0,
+          "finalValid": 0.8889,
+          "finalLengthValidOnExpected": 0.8889,
+          "finalPresent": 8,
+          "finalLengthValidOnPresent": 1.0,
+          "finalTransportFailures": 1,
+          "latencySeconds": {
+            "n": 9,
+            "p50": 12.915139999997336,
+            "p95": 14.157425300014438,
+            "p99": 14.157425300014438,
+            "max": 14.157425300014438,
+            "note": "cold start included; timeout 600s offline quality run"
+          },
+          "semanticReview": "PENDING_REVIEW",
+          "taskTypeCoverage": null,
+          "semanticReviewPassed": 7,
+          "semanticReviewRate": 0.7778,
+          "semanticReviewRateOnCaptured": 0.7778,
+          "finalValidOnCaptured": 0.8889,
+          "complete": true
+        }
+      }
+    }
+  },
+  "review": {
+    "method": "AI semantic review of every captured sample (12 flags); not manual approval",
+    "supportedManualReview": null,
+    "shadowManualReview": "not in scope",
+    "packet": "data/cefr-benchmark/<runId>/supported-review-packet.md (gitignored evidence)"
+  },
+  "gate": {
+    "supported": {
+      "schemaAndGrounding100Percent": false,
+      "length95PercentOnExpected": false,
+      "semantic90PercentOnExpected": false,
+      "decision": "FAIL",
+      "reason": "Structure/grounding, length or AI semantic review is below the planned thresholds; manual review has not happened."
+    },
+    "releaseAllowed": false
+  },
+  "errorTable": [
+    {
+      "key": "cefr-v7-hotel-A1-t3:17",
+      "level": "A1",
+      "transport": "ok",
+      "categories": [
+        "translation_defect"
+      ],
+      "firstAttemptErrors": [],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "Password 'guest one two three' was translated as 'guest một hai ba', so the code was not preserved exactly. Other checks pass.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-hotel-A1-t3:17"
+    },
+    {
+      "key": "cefr-v7-hotel-A1-t3:71",
+      "level": "A1",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].textVi:leaked_in_taskVi"
+      ],
+      "repairErrors": [],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Validator rejected fact[0].textVi because it leaked into taskVi; no final task exists.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-hotel-A1-t3:71"
+    },
+    {
+      "key": "cefr-v7-cafe-A2-t3:17",
+      "level": "A2",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "utteranceEn:word_count=16,min=18,max=55"
+      ],
+      "repairErrors": [],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "First attempt had 16 words, below the A2 minimum of 18; validator rejected it and no final task exists.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-cafe-A2-t3:17"
+    },
+    {
+      "key": "cefr-v7-directions-B1-t3:43",
+      "level": "B1",
+      "transport": "ok",
+      "categories": [
+        "translation_defect"
+      ],
+      "firstAttemptErrors": [],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "The advice and gist align, but 'before boarding' became 'trước khi lên tàu' although the context is a bus; the vehicle wording is inaccurate.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-directions-B1-t3:43"
+    },
+    {
+      "key": "cefr-v7-hotel-B1-t2:17",
+      "level": "B1",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[1].evidenceEn:not_substring_of_utteranceEn"
+      ],
+      "repairErrors": [],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "fact[1].evidenceEn is not an exact substring of utteranceEn; no final task exists.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-hotel-B1-t2:17"
+    }
+  ],
+  "limits": [
+    "AI review by the same agent that ran the benchmark; not independent human adjudication.",
+    "B1 supported arm has 9 samples only; A1/A2 cannot compensate for B1.",
+    "600s timeout is an offline quality setting; it does not prove the 180s default or production SLA.",
+    "The observer records attempts but does not change prompts, seeds, schemas, options or repair count.",
+    "The frozen bundle is pinned to Ollama qwen3.5:9b; this cloud run changes provider and model, so differences cannot be attributed to the prompt alone.",
+    "gemini requests do not carry the Ollama seed option; each seed is a repeated case label, not a reproducible sampling seed."
+  ],
+  "nextSteps": [
+    "Owner manual review of the nine B1 samples (and any failing sample); AI verdicts are not approval.",
+    "Keep this run as provider evidence; do not promote or approve the bundle from a cloud result.",
+    "Run the shadow arm separately if B2/C1 evidence is needed; it cannot run on a cloud provider."
+  ],
+  "comparison": {
+    "baselineRunId": "20261021-184520",
+    "baselineModel": "qwen3.5:9b",
+    "baselineRepairPolicy": "repair enabled in the baseline; compare against its attempt-1 rates",
+    "levels": {
+      "A1": {
+        "baseline": {
+          "expected": 12,
+          "firstAttemptLengthValid": 1.0,
+          "firstAttemptStructureValid": 0.8333,
+          "finalValid": 0.9167,
+          "finalLengthValidOnExpected": 0.9167,
+          "semanticReviewRate": 0.5
+        },
+        "candidate": {
+          "expected": 12,
+          "firstAttemptLengthValid": 1.0,
+          "firstAttemptStructureValid": 0.9167,
+          "finalValid": 0.9167,
+          "finalLengthValidOnExpected": 0.9167,
+          "semanticReviewRate": 0.8333
+        }
+      },
+      "A2": {
+        "baseline": {
+          "expected": 9,
+          "firstAttemptLengthValid": 0.6667,
+          "firstAttemptStructureValid": 1.0,
+          "finalValid": 0.7778,
+          "finalLengthValidOnExpected": 0.7778,
+          "semanticReviewRate": 0.5556
+        },
+        "candidate": {
+          "expected": 9,
+          "firstAttemptLengthValid": 0.8889,
+          "firstAttemptStructureValid": 1.0,
+          "finalValid": 0.8889,
+          "finalLengthValidOnExpected": 0.8889,
+          "semanticReviewRate": 0.8889
+        }
+      },
+      "B1": {
+        "baseline": {
+          "expected": 9,
+          "firstAttemptLengthValid": 0.6667,
+          "firstAttemptStructureValid": 0.8889,
+          "finalValid": 0.7778,
+          "finalLengthValidOnExpected": 0.7778,
+          "semanticReviewRate": 0.4444
+        },
+        "candidate": {
+          "expected": 9,
+          "firstAttemptLengthValid": 1.0,
+          "firstAttemptStructureValid": 0.8889,
+          "finalValid": 0.8889,
+          "finalLengthValidOnExpected": 0.8889,
+          "semanticReviewRate": 0.7778
+        }
+      }
+    },
+    "metrics": {
+      "transport": {
+        "baseline": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        },
+        "candidate": {
+          "passed": 27,
+          "evaluated": 30,
+          "rate": 0.9
+        }
+      },
+      "schema": {
+        "baseline": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        },
+        "candidate": {
+          "passed": 27,
+          "evaluated": 30,
+          "rate": 0.9
+        }
+      },
+      "evidence": {
+        "baseline": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        },
+        "candidate": {
+          "passed": 27,
+          "evaluated": 30,
+          "rate": 0.9
+        }
+      },
+      "question_fact": {
+        "baseline": {
+          "passed": 20,
+          "evaluated": 30,
+          "rate": 0.6666666666666666
+        },
+        "candidate": {
+          "passed": 27,
+          "evaluated": 30,
+          "rate": 0.9
+        }
+      },
+      "translation": {
+        "baseline": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        },
+        "candidate": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        }
+      },
+      "role": {
+        "baseline": {
+          "passed": 19,
+          "evaluated": 30,
+          "rate": 0.6333333333333333
+        },
+        "candidate": {
+          "passed": 27,
+          "evaluated": 30,
+          "rate": 0.9
+        }
+      },
+      "continuity": {
+        "baseline": {
+          "passed": 17,
+          "evaluated": 21,
+          "rate": 0.8095238095238095
+        },
+        "candidate": {
+          "passed": 18,
+          "evaluated": 21,
+          "rate": 0.8571428571428571
+        }
+      },
+      "turn4_independence": {
+        "baseline": {
+          "passed": 8,
+          "evaluated": 9,
+          "rate": 0.8888888888888888
+        },
+        "candidate": {
+          "passed": 9,
+          "evaluated": 9,
+          "rate": 1.0
+        }
+      }
+    }
+  }
+}
