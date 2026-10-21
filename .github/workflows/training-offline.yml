@@ -1,0 +1,25 @@
+name: SFT offline preparation checks
+
+on:
+  push:
+    paths: ['training/**', 'services/ai-generation/app/validation.py', 'artifacts/prompts/**', '.github/workflows/training-offline.yml']
+  pull_request:
+    paths: ['training/**', 'services/ai-generation/app/validation.py', 'artifacts/prompts/**', '.github/workflows/training-offline.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r training/requirements-prepare.lock pytest==8.4.2
+      - run: python -m pytest -q training/tests
+      - run: python -m compileall -q training
+      - run: git diff --check

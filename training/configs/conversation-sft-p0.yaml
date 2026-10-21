@@ -1,0 +1,37 @@
+run_id: conversation-sft-p0
+# Proposal only; trainer must fail until revision, mask and preflight gates pass.
+status: requires_preflight
+base_model: Qwen/Qwen3.5-9B
+base_revision: SET_EXPLICIT_HF_REVISION
+dataset_manifest: data/fine-tuning/approved-p0/manifest.json
+output_dir: data/fine-tuning/runs/conversation-sft-p0
+seed: 17
+max_seq_length: 4096
+packing: false
+assistant_only_loss: true
+loss_mask_policy: last-assistant-only
+require_loss_mask_smoke: true
+enable_thinking: false
+repair_enabled: false
+fallback_enabled: false
+lora:
+  method: qlora
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  bias: none
+  target_modules_from: data/fine-tuning/runs/conversation-sft-p0/module-inspection.json
+quantization:
+  load_in_4bit: true
+  quant_type: nf4
+  double_quant: true
+  compute_dtype: bfloat16
+training:
+  learning_rate: 0.0001
+  warmup_ratio: 0.05
+  scheduler: cosine
+  epochs: 2
+  per_device_batch_size: 1
+  gradient_accumulation_steps: 8
+  gradient_checkpointing: true
+  use_cache: false
