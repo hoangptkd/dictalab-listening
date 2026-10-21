@@ -1,0 +1,590 @@
+{
+  "reportVersion": 1,
+  "kind": "cefr-real-model-benchmark",
+  "runId": "20261021-205451",
+  "status": "complete",
+  "statusNote": "Supported arm captured in full; shadow arm is not in scope for this run. No B2/C1 quality claim is made.",
+  "plan": "docs/conversation-cefr-real-model-benchmark-handoff-2026-10-21.md",
+  "git": {
+    "head": "dd44e0a062a84916d368242c95a9bd7829ee5dae",
+    "branch": "codex/practice-drafts-audio-20261017"
+  },
+  "environment": {
+    "runtime": {
+      "python": "3.14.0",
+      "note": "host Python; cloud inference, no local model load"
+    },
+    "hardware": {
+      "cpu": "AMD Ryzen 7 PRO 6850HS",
+      "ramGb": 31.3,
+      "gpu": null,
+      "note": "cloud provider; host CPU not used for inference"
+    },
+    "model": {
+      "provider": "shopaikey",
+      "name": "claude-sonnet-4-5",
+      "baseUrl": "https://api.shopaikey.com",
+      "digestKind": "provider-descriptor-sha256",
+      "seedMode": "not-transmitted",
+      "artifactPin": {
+        "name": "qwen3.5:9b",
+        "digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
+      },
+      "digest": "17b71a0e4c344b9fa609de76765d649630be5fe8d774b9ee3f1d5d83c0790408"
+    },
+    "timeoutSeconds": 600,
+    "generationConfig": {
+      "primary_provider": "shopaikey",
+      "production_mode": false,
+      "fallback_enabled": false,
+      "repair_enabled": false,
+      "model": "qwen3.5:9b",
+      "cloud_model": "claude-sonnet-4-5",
+      "temperature": 0.3,
+      "translation_temperature": 0.1,
+      "num_ctx": 8192,
+      "num_predict": 1000,
+      "max_concurrency": 1
+    }
+  },
+  "observation": {
+    "tool": "tools/ai-eval/attempt_trace.py",
+    "sidecar": "supported-attempts.jsonl"
+  },
+  "arms": {
+    "supported": {
+      "dataset": "cefr-b1-v7-10x3.json",
+      "bundle": "conversation-cefr-b1-v7-20261021",
+      "datasetHash": "cb7e7cd336f6fcb52e445132ba65ea4ac1208e998e917c1a860a72de7ef08d41",
+      "expected": 30,
+      "captured": 30,
+      "metrics": {
+        "transport": {
+          "passed": 20,
+          "evaluated": 30,
+          "rate": 0.6666666666666666
+        },
+        "schema": {
+          "passed": 20,
+          "evaluated": 30,
+          "rate": 0.6666666666666666
+        },
+        "evidence": {
+          "passed": 20,
+          "evaluated": 30,
+          "rate": 0.6666666666666666
+        },
+        "question_fact": {
+          "passed": 19,
+          "evaluated": 30,
+          "rate": 0.6333333333333333
+        },
+        "translation": {
+          "passed": 20,
+          "evaluated": 30,
+          "rate": 0.6666666666666666
+        },
+        "role": {
+          "passed": 20,
+          "evaluated": 30,
+          "rate": 0.6666666666666666
+        },
+        "continuity": {
+          "passed": 16,
+          "evaluated": 21,
+          "rate": 0.7619047619047619
+        },
+        "turn4_independence": {
+          "passed": 4,
+          "evaluated": 9,
+          "rate": 0.4444444444444444
+        }
+      },
+      "latencySeconds": {
+        "p50": 17.28920850000577,
+        "p95": 45.284081799996784,
+        "p99": 50.36962440000207
+      },
+      "levels": {
+        "A1": {
+          "expected": 12,
+          "captured": 12,
+          "coverage": 1.0,
+          "firstAttemptMeasured": 12,
+          "firstAttemptLengthValid": 1.0,
+          "firstAttemptStructureValid": 0.75,
+          "firstAttemptLengthValidWhenMeasured": 1.0,
+          "repairAttempted": 0,
+          "repairSucceeded": 0,
+          "repairFailed": 0,
+          "finalValid": 0.75,
+          "finalLengthValidOnExpected": 0.75,
+          "finalPresent": 9,
+          "finalLengthValidOnPresent": 1.0,
+          "finalTransportFailures": 3,
+          "latencySeconds": {
+            "n": 12,
+            "p50": 13.317193100010627,
+            "p95": 32.76580660000036,
+            "p99": 32.76580660000036,
+            "max": 32.76580660000036,
+            "note": "cold start included; timeout 600s offline quality run"
+          },
+          "semanticReview": "PENDING_REVIEW",
+          "taskTypeCoverage": null,
+          "semanticReviewPassed": 8,
+          "semanticReviewRate": 0.6667,
+          "semanticReviewRateOnCaptured": 0.6667,
+          "finalValidOnCaptured": 0.75,
+          "complete": true
+        },
+        "A2": {
+          "expected": 9,
+          "captured": 9,
+          "coverage": 1.0,
+          "firstAttemptMeasured": 9,
+          "firstAttemptLengthValid": 1.0,
+          "firstAttemptStructureValid": 0.4444,
+          "firstAttemptLengthValidWhenMeasured": 1.0,
+          "repairAttempted": 0,
+          "repairSucceeded": 0,
+          "repairFailed": 0,
+          "finalValid": 0.4444,
+          "finalLengthValidOnExpected": 0.4444,
+          "finalPresent": 4,
+          "finalLengthValidOnPresent": 1.0,
+          "finalTransportFailures": 5,
+          "latencySeconds": {
+            "n": 9,
+            "p50": 12.090918199988664,
+            "p95": 37.09746420000738,
+            "p99": 37.09746420000738,
+            "max": 37.09746420000738,
+            "note": "cold start included; timeout 600s offline quality run"
+          },
+          "semanticReview": "PENDING_REVIEW",
+          "taskTypeCoverage": null,
+          "semanticReviewPassed": 4,
+          "semanticReviewRate": 0.4444,
+          "semanticReviewRateOnCaptured": 0.4444,
+          "finalValidOnCaptured": 0.4444,
+          "complete": true
+        },
+        "B1": {
+          "expected": 9,
+          "captured": 9,
+          "coverage": 1.0,
+          "firstAttemptMeasured": 9,
+          "firstAttemptLengthValid": 1.0,
+          "firstAttemptStructureValid": 0.7778,
+          "firstAttemptLengthValidWhenMeasured": 1.0,
+          "repairAttempted": 0,
+          "repairSucceeded": 0,
+          "repairFailed": 0,
+          "finalValid": 0.7778,
+          "finalLengthValidOnExpected": 0.7778,
+          "finalPresent": 7,
+          "finalLengthValidOnPresent": 1.0,
+          "finalTransportFailures": 2,
+          "latencySeconds": {
+            "n": 9,
+            "p50": 38.779175700008636,
+            "p95": 50.36962440000207,
+            "p99": 50.36962440000207,
+            "max": 50.36962440000207,
+            "note": "cold start included; timeout 600s offline quality run"
+          },
+          "semanticReview": "PENDING_REVIEW",
+          "taskTypeCoverage": null,
+          "semanticReviewPassed": 7,
+          "semanticReviewRate": 0.7778,
+          "semanticReviewRateOnCaptured": 0.7778,
+          "finalValidOnCaptured": 0.7778,
+          "complete": true
+        }
+      }
+    }
+  },
+  "review": {
+    "method": "AI semantic review of every captured sample (12 flags); not manual approval",
+    "supportedManualReview": null,
+    "shadowManualReview": "not in scope",
+    "packet": "data/cefr-benchmark/<runId>/supported-review-packet.md (gitignored evidence)"
+  },
+  "gate": {
+    "supported": {
+      "schemaAndGrounding100Percent": false,
+      "length95PercentOnExpected": false,
+      "semantic90PercentOnExpected": false,
+      "decision": "FAIL",
+      "reason": "Structure/grounding, length or AI semantic review is below the planned thresholds; manual review has not happened."
+    },
+    "releaseAllowed": false
+  },
+  "errorTable": [
+    {
+      "key": "cefr-v7-cafe-A1-t2:43",
+      "level": "A1",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].textVi:leaked_in_questionVi"
+      ],
+      "repairErrors": [],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Validator chặn: textVi 'nóng' nằm sẵn trong questionVi ('bánh mì nóng hay nguội') nên lộ đáp án; không có task cuối để chấm semantic.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-cafe-A1-t2:43"
+    },
+    {
+      "key": "cefr-v7-cafe-A1-t2:71",
+      "level": "A1",
+      "transport": "ok",
+      "categories": [
+        "non_atomic_answer"
+      ],
+      "firstAttemptErrors": [],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "Fact 2 gộp 'trà nóng và bánh mì lạnh' trong khi câu hỏi chỉ hỏi đồ uống nóng hay lạnh; phần bánh mì là ý không được hỏi nên fact không atomic.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-cafe-A1-t2:71"
+    },
+    {
+      "key": "cefr-v7-directions-A1-t4:17",
+      "level": "A1",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].textVi:empty",
+        "fact[1].textVi:empty"
+      ],
+      "repairErrors": [],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không có task cuối: hai fact textVi rỗng sau bước dịch, validator chặn.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-directions-A1-t4:17"
+    },
+    {
+      "key": "cefr-v7-hotel-A1-t3:17",
+      "level": "A1",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].textVi:empty",
+        "fact[1].textVi:empty"
+      ],
+      "repairErrors": [],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không có task cuối: cả hai fact có textVi rỗng. Chẩn đoán cùng dạng cho thấy bước dịch của Shop AI đôi khi trả khóa 'translationVi' trong từng fact thay vì 'textVi' mà schema yêu cầu.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-hotel-A1-t3:17"
+    },
+    {
+      "key": "cefr-v7-directions-A2-t2:17",
+      "level": "A2",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].textVi:empty",
+        "fact[1].textVi:empty"
+      ],
+      "repairErrors": [],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không có task cuối: các fact textVi rỗng; bước dịch không trả đúng khóa textVi.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-directions-A2-t2:17"
+    },
+    {
+      "key": "cefr-v7-directions-A2-t2:71",
+      "level": "A2",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].textVi:empty",
+        "fact[1].textVi:empty"
+      ],
+      "repairErrors": [],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không có task cuối: các fact textVi rỗng, validator chặn ở bước dịch.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-directions-A2-t2:71"
+    },
+    {
+      "key": "cefr-v7-hotel-A2-t4:17",
+      "level": "A2",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].textVi:empty",
+        "fact[1].textVi:empty"
+      ],
+      "repairErrors": [],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không có task cuối: giờ ăn sáng và mật khẩu wifi đều bị textVi rỗng.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-hotel-A2-t4:17"
+    },
+    {
+      "key": "cefr-v7-hotel-A2-t4:43",
+      "level": "A2",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].textVi:empty",
+        "fact[1].textVi:empty"
+      ],
+      "repairErrors": [],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không có task cuối: các fact textVi rỗng; lỗi dịch lặp lại ở lượt 4 mới.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-hotel-A2-t4:43"
+    },
+    {
+      "key": "cefr-v7-hotel-A2-t4:71",
+      "level": "A2",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].textVi:empty",
+        "fact[1].textVi:empty"
+      ],
+      "repairErrors": [],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không có task cuối: giờ trả phòng và nơi ăn sáng đều bị textVi rỗng.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-hotel-A2-t4:71"
+    },
+    {
+      "key": "cefr-v7-cafe-B1-t4:17",
+      "level": "B1",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].textVi:empty",
+        "fact[1].textVi:empty",
+        "fact[2].textVi:empty"
+      ],
+      "repairErrors": [],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không có task cuối: ba fact textVi rỗng sau bước dịch; nội dung tiếng Anh có món, cách chế biến và ý kiến nhưng không dùng được.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-cafe-B1-t4:17"
+    },
+    {
+      "key": "cefr-v7-hotel-B1-t2:43",
+      "level": "B1",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[2].reasoningEvidence:ungrounded_or_duplicate_segment"
+      ],
+      "repairErrors": [],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Validator chặn: segment 'Your room key…' viết hoa chữ Y trong khi transcript là 'your room key…', nên quote không phải substring chính xác; không có task cuối.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-hotel-B1-t2:43"
+    }
+  ],
+  "limits": [
+    "AI review by the same agent that ran the benchmark; not independent human adjudication.",
+    "B1 supported arm has 9 samples only; A1/A2 cannot compensate for B1.",
+    "600s timeout is an offline quality setting; it does not prove the 180s default or production SLA.",
+    "The observer records attempts but does not change prompts, seeds, schemas, options or repair count.",
+    "The frozen bundle is pinned to Ollama qwen3.5:9b; this cloud run changes provider and model, so differences cannot be attributed to the prompt alone.",
+    "Shop AI requests do not carry the Ollama seed option; each seed is a repeated case label, not a reproducible sampling seed."
+  ],
+  "nextSteps": [
+    "Owner manual review of the nine B1 samples (and any failing sample); AI verdicts are not approval.",
+    "Keep this run as provider evidence; do not promote or approve the bundle from a cloud result.",
+    "Run the shadow arm separately if B2/C1 evidence is needed; it cannot run on Shop AI."
+  ],
+  "comparison": {
+    "baselineRunId": "20261021-184520",
+    "baselineModel": "qwen3.5:9b",
+    "baselineRepairPolicy": "repair enabled in the baseline; compare against its attempt-1 rates",
+    "levels": {
+      "A1": {
+        "baseline": {
+          "expected": 12,
+          "firstAttemptLengthValid": 1.0,
+          "firstAttemptStructureValid": 0.8333,
+          "finalValid": 0.9167,
+          "finalLengthValidOnExpected": 0.9167,
+          "semanticReviewRate": 0.5
+        },
+        "candidate": {
+          "expected": 12,
+          "firstAttemptLengthValid": 1.0,
+          "firstAttemptStructureValid": 0.75,
+          "finalValid": 0.75,
+          "finalLengthValidOnExpected": 0.75,
+          "semanticReviewRate": 0.6667
+        }
+      },
+      "A2": {
+        "baseline": {
+          "expected": 9,
+          "firstAttemptLengthValid": 0.6667,
+          "firstAttemptStructureValid": 1.0,
+          "finalValid": 0.7778,
+          "finalLengthValidOnExpected": 0.7778,
+          "semanticReviewRate": 0.5556
+        },
+        "candidate": {
+          "expected": 9,
+          "firstAttemptLengthValid": 1.0,
+          "firstAttemptStructureValid": 0.4444,
+          "finalValid": 0.4444,
+          "finalLengthValidOnExpected": 0.4444,
+          "semanticReviewRate": 0.4444
+        }
+      },
+      "B1": {
+        "baseline": {
+          "expected": 9,
+          "firstAttemptLengthValid": 0.6667,
+          "firstAttemptStructureValid": 0.8889,
+          "finalValid": 0.7778,
+          "finalLengthValidOnExpected": 0.7778,
+          "semanticReviewRate": 0.4444
+        },
+        "candidate": {
+          "expected": 9,
+          "firstAttemptLengthValid": 1.0,
+          "firstAttemptStructureValid": 0.7778,
+          "finalValid": 0.7778,
+          "finalLengthValidOnExpected": 0.7778,
+          "semanticReviewRate": 0.7778
+        }
+      }
+    },
+    "metrics": {
+      "transport": {
+        "baseline": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        },
+        "candidate": {
+          "passed": 20,
+          "evaluated": 30,
+          "rate": 0.6666666666666666
+        }
+      },
+      "schema": {
+        "baseline": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        },
+        "candidate": {
+          "passed": 20,
+          "evaluated": 30,
+          "rate": 0.6666666666666666
+        }
+      },
+      "evidence": {
+        "baseline": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        },
+        "candidate": {
+          "passed": 20,
+          "evaluated": 30,
+          "rate": 0.6666666666666666
+        }
+      },
+      "question_fact": {
+        "baseline": {
+          "passed": 20,
+          "evaluated": 30,
+          "rate": 0.6666666666666666
+        },
+        "candidate": {
+          "passed": 19,
+          "evaluated": 30,
+          "rate": 0.6333333333333333
+        }
+      },
+      "translation": {
+        "baseline": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        },
+        "candidate": {
+          "passed": 20,
+          "evaluated": 30,
+          "rate": 0.6666666666666666
+        }
+      },
+      "role": {
+        "baseline": {
+          "passed": 19,
+          "evaluated": 30,
+          "rate": 0.6333333333333333
+        },
+        "candidate": {
+          "passed": 20,
+          "evaluated": 30,
+          "rate": 0.6666666666666666
+        }
+      },
+      "continuity": {
+        "baseline": {
+          "passed": 17,
+          "evaluated": 21,
+          "rate": 0.8095238095238095
+        },
+        "candidate": {
+          "passed": 16,
+          "evaluated": 21,
+          "rate": 0.7619047619047619
+        }
+      },
+      "turn4_independence": {
+        "baseline": {
+          "passed": 8,
+          "evaluated": 9,
+          "rate": 0.8888888888888888
+        },
+        "candidate": {
+          "passed": 4,
+          "evaluated": 9,
+          "rate": 0.4444444444444444
+        }
+      }
+    }
+  }
+}

@@ -1,8 +1,14 @@
-"""Capture the configured workflow on synthetic fixtures, using fixed Ollama seeds."""
+"""Capture the configured workflow on synthetic fixtures.
+
+Local captures use fixed Ollama seeds. Cloud captures run the same workflow and
+artifact against Shop AI; OpenAI-compatible requests have no seed parameter, so
+the seed is only a case-repeat label and that difference is recorded in metadata.
+"""
 import argparse
 import asyncio
 import contextlib
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -13,7 +19,7 @@ sys.path.insert(0, str(ROOT / "services/ai-generation"))
 import attempt_trace
 import httpx
 from app.config import Settings
-from app.registry import load_artifact, verify_model
+from app.registry import RegistryError, load_artifact, verify_model
 from app.redaction import redact
 from app.schemas import ConversationTaskRequest
 from app.workflow import run_workflow
@@ -35,16 +41,46 @@ class SeededClient(httpx.AsyncClient):
 
     async def post(self, url, **kwargs):
         # This subclass exists only in the offline executable; production requests cannot set a seed.
-        kwargs["json"]["options"]["seed"] = self.seed
+        # Shop AI bodies have no Ollama options object: the provider does not accept a seed.
+        body = kwargs.get("json")
+        if isinstance(body, dict) and isinstance(body.get("options"), dict):
+            body["options"]["seed"] = self.seed
         return await super().post(url, **kwargs)
+
+
+def cloud_model_digest(settings):
+    """Pin the cloud endpoint/model pair without pretending it is an Ollama digest."""
+    identity = f"shopaikey|{settings.cloud_base_url.rstrip('/')}|{settings.cloud_model}"
+    return hashlib.sha256(identity.encode()).hexdigest()
+
+
+async def verify_cloud_model(settings, client):
+    base = settings.cloud_base_url.rstrip("/")
+    url = base + ("/models" if base.endswith("/v1") else "/v1/models")
+    response = await client.get(url, headers={"Authorization": "Bearer " + settings.cloud_api_key}, timeout=20)
+    response.raise_for_status()
+    payload = response.json()
+    ids = [item.get("id") for item in payload.get("data", []) if isinstance(item, dict)]
+    if settings.cloud_model not in ids:
+        raise RegistryError("configured Shop AI model is missing")
 
 
 async def capture(dataset, settings, output, *, shadow=False, attempts=None):
     if settings.repair_enabled:
         raise ValueError("first-pass evaluation requires repair disabled")
     artifact = load_artifact(settings)
-    if settings.fallback_enabled or settings.selected_provider != "ollama":
-        raise ValueError("paired local evaluation requires local Ollama with fallback disabled")
+    if settings.fallback_enabled:
+        raise ValueError("evaluation requires fallback disabled")
+    provider = settings.selected_provider
+    if provider == "shopaikey":
+        if shadow:
+            raise ValueError("shadow capture requires local Ollama")
+        if settings.primary_provider != "shopaikey":
+            raise ValueError("cloud capture requires an explicitly configured primary provider")
+        if not settings.cloud_api_key:
+            raise ValueError("cloud capture requires an API key")
+    elif provider != "ollama":
+        raise ValueError("unsupported evaluation provider")
     if attempts is not None:
         attempt_trace.install()
     if shadow:
@@ -60,12 +96,26 @@ async def capture(dataset, settings, output, *, shadow=False, attempts=None):
             shadow_request(case["context"], case["id"], artifact)
     elif artifact.get("evaluationOnly") is True:
         raise ValueError("evaluation artifact requires --shadow")
-    async with httpx.AsyncClient(timeout=3) as client:
-        response = await client.get(settings.ollama_url.rstrip("/") + "/api/tags")
-        response.raise_for_status()
-        verify_model(artifact, response.json())
+    if provider == "shopaikey":
+        async with httpx.AsyncClient(timeout=30) as client:
+            await verify_cloud_model(settings, client)
+        model_name = settings.cloud_model
+        model_digest = cloud_model_digest(settings)
+        model_digest_kind = "provider-descriptor-sha256"
+        seed_mode = "not-transmitted"
+    else:
+        async with httpx.AsyncClient(timeout=3) as client:
+            response = await client.get(settings.ollama_url.rstrip("/") + "/api/tags")
+            response.raise_for_status()
+            verify_model(artifact, response.json())
+        model_name = settings.model
+        model_digest = artifact["model"]["digest"]
+        model_digest_kind = "ollama-model-digest"
+        seed_mode = "ollama-options"
     result = {"capturedAt": datetime.now(timezone.utc).isoformat(), "datasetHash": digest(dataset),
-              "metadata": {"model": settings.model, "modelDigest": artifact["model"]["digest"],
+              "metadata": {"model": model_name, "modelDigest": model_digest,
+                           "modelDigestKind": model_digest_kind, "provider": provider,
+                           "seedMode": seed_mode,
                            "promptVersion": artifact["version"], "promptHash": artifact["sha256"],
                            "config": {k: getattr(settings, k) for k in artifact["generationConfig"]},
                            "judgeVersion": "pending-offline-judge", "labels": "unjudged",
