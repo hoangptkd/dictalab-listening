@@ -208,9 +208,13 @@ test('native practice rendering preserves active inputs and does not grade parti
         await send('Page.navigate', {url: 'http://127.0.0.1:' + server.address().port});
         let result;
         do {
-            const evaluated = await send('Runtime.evaluate', {returnByValue: true,
-                expression: "({status: document.querySelector('#result')?.dataset.status, message: document.querySelector('#result')?.textContent})"});
-            result = evaluated.result.value;
+            try {
+                const evaluated = await send('Runtime.evaluate', {returnByValue: true,
+                    expression: "({status: document.querySelector('#result')?.dataset.status, message: document.querySelector('#result')?.textContent})"});
+                result = evaluated.result.value;
+            } catch (error) {
+                if (error.message !== 'Inspected target navigated or closed') throw error;
+            }
             if (result?.status === 'pass' || result?.status === 'fail') break;
             await delay(25);
         } while (Date.now() < deadline);
