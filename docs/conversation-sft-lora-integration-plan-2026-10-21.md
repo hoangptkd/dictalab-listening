@@ -179,18 +179,18 @@ Trước khi train, ghi lock dependency, device/dtype, ước tính RAM CPU ho�
 ### Preflight bắt buộc
 
 - Download checkpoint từ revision cố định; kiểm tra đủ file và dung lượng.
-- Load tokenizer/model ở device_map=auto.
+- Load tokenizer/model trên thiết bị đã cấu hình rõ (`cpu` hiện tại); không tự offload sang thiết bị khác.
 - Render 3 message mẫu bằng chat template.
 - Chạy one-example forward/backward.
 - Chạy PEFT module inspection.
-- Kiểm tra assistant_only_loss tạo mask khác -100 ở assistant tokens và mask toàn bộ system/user.
-- Nếu chat template không hỗ trợ generation markers, chuyển sang prompt-completion dataset với completion_only_loss=true; không âm thầm train full sequence.
+- Kiểm tra nhãn đã token hóa chỉ giám sát assistant output cuối và terminator; toàn bộ system/user và padding là -100. TRL nhận nhãn đã kiểm tra, tắt automatic assistant/completion mask để tránh tạo mask lần hai.
+- Nếu prefix/token boundary của chat template không rõ hoặc có hidden reasoning chèn thêm, dừng; không đoán mask, không train full sequence và không truncation.
 
 ## 7. Cấu hình pilot SFT/QLoRA
 
 ### Cấu hình P0 đề xuất
 
-- Quantization: 4-bit NF4, double quantization, compute dtype bfloat16 nếu GPU hỗ trợ; nếu không, fp16 có loss scaling.
+- Cấu hình đang dùng trên máy hiện tại: CPU LoRA float32, không quantize trọng số. QLoRA 4-bit NF4/double quantization/bfloat16 hoặc fp16 chỉ thuộc cấu hình CUDA riêng ở vòng sau.
 - LoRA rank r=16, alpha=32, dropout 0.05, bias=none.
 - Learning rate 1e-4 cho adapter; warmup ratio 0.05; cosine scheduler.
 - Epochs 2; max_steps chỉ dùng cho smoke test.
