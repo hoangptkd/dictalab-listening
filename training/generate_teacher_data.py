@@ -22,7 +22,8 @@ from training.prepare_dataset import ROOT, DatasetError, _contract, _contains_se
 
 ARTIFACT = ROOT / "artifacts/prompts/conversation-cefr-b1-v7-20261021.json"
 CATALOGUE = ROOT / "data/conversation-distillation/production-contract.json"
-TEACHER, JUDGE = "gemini-3.8-flash", "gemini-3.6-flash"
+TEACHER = JUDGE = "gemini-3-flash-preview"
+BATCH_SIZE, REQUEST_CAP = 24, 19  # One earlier health probe used the twentieth daily request.
 CORE = {"cafe", "hotel", "directions", "plans", "delivery"}
 REVIEW_VERSION = "gemini-sft-semantic-v1"
 CHECKS = ("rolesCorrect", "historyConsistent", "newMeanings", "questionFactsAligned",
@@ -195,12 +196,12 @@ class Gemini:
         reservations = [json.loads(line) for line in (self.output / "api-reservations.jsonl").read_text(encoding="utf-8").splitlines()] \
             if (self.output / "api-reservations.jsonl").exists() else []
         used = [r for r in reservations if r["model"] == model]
-        if model not in (TEACHER, JUDGE) or len(used) >= (18 if model == TEACHER else 20):
+        if model not in (TEACHER, JUDGE) or len(used) >= REQUEST_CAP:
             raise DatasetError("run request cap reached; quota/billing changes require a separate decision")
         if used:
             time.sleep(max(0, 13 - (time.time() - used[-1]["time"])))
         body = {"model": model, "stream": False, "reasoning_effort": "medium",
-            "max_tokens": 24576 if model == TEACHER else 10000,
+            "max_tokens": 32768 if name.startswith("teacher-") else 10000,
             "response_format": {"type": "json_object"},
             "messages": [{"role": "system", "content": system},
                          {"role": "user", "content": json.dumps(data, ensure_ascii=False)}]}
@@ -282,6 +283,7 @@ def build_records(item: dict, context: dict, group: dict, artifact: dict, refere
             "promptHash": digest(messages[0]["content"]), "schemaHash": digest(schema),
             "teacherProvenance": {"mode": "batched-content-and-translation-supervision",
                 "productionWireRequest": False, "requestReference": reference.replace("judge-", "teacher-").replace(".response", ".request"),
+                "judgeModel": JUDGE, "independentJudgeModel": TEACHER != JUDGE,
                 "note": "Production messages are reconstructed for SFT; this is not a production first-pass benchmark."}}
         _contract(row, artifact)
         if _contains_secret(row):
@@ -341,10 +343,11 @@ def export_review(output: Path, candidates: list[dict], artifact: dict, holdouts
     for row in retained:
         task, context = row["task"], row["context"]
         cards.append("<details><summary>" + html.escape(row["id"] + " — " + context["scenario"]) + "</summary><pre>"
-            + html.escape(json.dumps({"context": context, "task": task, "independentReview": row["verdict"],
+            + html.escape(json.dumps({"context": context, "task": task, "semanticReview": row["verdict"],
                                       "recordIds": [r["id"] for r in row["records"]]}, ensure_ascii=False, indent=2)) + "</pre></details>")
     (output / "human-review.html").write_text("<!doctype html><html lang='vi'><meta charset='utf-8'><title>Duyệt dữ liệu SFT</title>"
         "<h1>Dữ liệu Gemini — chờ người duyệt</h1><p>AI review không thay thế human review. "
+        "Teacher và judge dùng cùng model trong các lời gọi riêng; đây không phải đánh giá bằng model độc lập. "
         "Kiểm tra vai, lịch sử, câu hỏi, CEFR, suy luận và bản dịch; ghi quyết định vào CSV cùng hash.</p>"
         + "\n".join(cards) + "</html>", encoding="utf-8", newline="\n")
     summary = {"teacher": TEACHER, "judge": JUDGE, "candidateTasks": len(candidates),
@@ -354,7 +357,7 @@ def export_review(output: Path, candidates: list[dict], artifact: dict, holdouts
         "taskTypes": dict(Counter(f.get("taskType", "unspecified") for r in retained for f in r["task"]["facts"])),
         "datasetReady": False, "trainingReady": False, "releaseAllowed": False,
         "pendingGates": ["human-review", "near-duplicate-audit", "holdout-audit", "coverage-approval"],
-        "exportHash": digest(rows), "productionBenchmark": False}
+        "exportHash": digest(rows), "productionBenchmark": False, "independentJudgeModel": TEACHER != JUDGE}
     write_json(output / "summary.json", summary)
     return summary
 
@@ -370,7 +373,8 @@ def run(output: Path, *, prepare_only: bool = False) -> dict:
         "catalogueHash": digest(read_json(CATALOGUE)), "validatorHash": validator_hash(), "groups": groups,
         "teacher": TEACHER, "judge": JUDGE, "reviewVersion": REVIEW_VERSION,
         "teacherInstructionHash": digest(TEACHER_BATCH), "judgeInstructionHash": digest(JUDGE_SYSTEM),
-        "teacherRequestCap": 18, "judgeRequestCap": 20, "batchSize": 12,
+        "sharedModelRequestCap": REQUEST_CAP, "batchSize": BATCH_SIZE,
+        "independentJudgeModel": TEACHER != JUDGE,
         "holdoutGroups": holdouts, "repairEnabled": False, "fallbackEnabled": False,
         "humanApproved": False, "trainingReady": False}
     if not output.exists():
@@ -391,11 +395,11 @@ def run(output: Path, *, prepare_only: bool = False) -> dict:
     for level in ("A1", "A2", "B1"):
         selected = [r for r in groups if r["level"] == level]
         for turn in (2, 3, 4):
-            for offset in (0, 12):
+            for offset in range(0, len(selected), BATCH_SIZE):
                 batch, lookup = [], {}
-                name = f"{level}-t{turn}-b{offset//12+1}"
+                name = f"{level}-t{turn}-b{offset//BATCH_SIZE+1}"
                 reference = f"judge-{name}.response.json"
-                for index, group in enumerate(selected[offset:offset+12], offset):
+                for index, group in enumerate(selected[offset:offset+BATCH_SIZE], offset):
                     prior = prior_by_group.get(group["groupId"], [])
                     if turn == 3 and not prior:
                         continue

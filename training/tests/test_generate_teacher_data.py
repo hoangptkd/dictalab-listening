@@ -4,10 +4,12 @@ import copy
 import csv
 import json
 import re
+from io import BytesIO
+from types import SimpleNamespace
 
 import pytest
 
-from training.generate_teacher_data import (CHECKS, Gemini, build_records, export_review,
+from training.generate_teacher_data import (CHECKS, TEACHER, JUDGE, REQUEST_CAP, Gemini, build_records, export_review,
     judge_pass, make_context, plan_groups, roles, unpack_batch)
 from training.prepare_dataset import DatasetError, ROOT, digest
 from training.tests.test_prepare_dataset import ARTIFACT, _row
@@ -98,7 +100,7 @@ def test_interrupted_requests_are_not_retried_or_switched_to_other_models(tmp_pa
     client.output = tmp_path
     (tmp_path / "batch.request.json").write_text("{}", encoding="utf-8")
     with pytest.raises(DatasetError, match="refusing automatic retry"):
-        client.call("gemini-3.8-flash", "system", {}, "batch")
+        client.call(TEACHER, "system", {}, "batch")
     with pytest.raises(DatasetError, match="request cap"):
         client.call("gemini-4-argon", "system", {}, "another-batch")
 
@@ -106,19 +108,39 @@ def test_interrupted_requests_are_not_retried_or_switched_to_other_models(tmp_pa
 def test_cached_provider_response_requires_matching_input_and_output_hashes(tmp_path):
     client = object.__new__(Gemini)
     client.output = tmp_path
-    wire = {"model": "gemini-3.8-flash", "messages": [{"role": "system", "content": "system"},
+    wire = {"model": TEACHER, "messages": [{"role": "system", "content": "system"},
                                                        {"role": "user", "content": "{}"}]}
     result = {"items": []}
     (tmp_path / "batch.request.json").write_text(json.dumps(wire), encoding="utf-8")
     response = {"result": result, "requestHash": digest(wire), "responseHash": digest(result)}
     (tmp_path / "batch.response.json").write_text(json.dumps(response), encoding="utf-8")
-    assert client.call("gemini-3.8-flash", "system", {}, "batch") == result
+    assert client.call(TEACHER, "system", {}, "batch") == result
     with pytest.raises(DatasetError, match="integrity mismatch"):
-        client.call("gemini-3.8-flash", "changed-system", {}, "batch")
+        client.call(TEACHER, "changed-system", {}, "batch")
     response["result"] = {"items": [{"id": "tampered"}]}
     (tmp_path / "batch.response.json").write_text(json.dumps(response), encoding="utf-8")
     with pytest.raises(DatasetError, match="integrity mismatch"):
-        client.call("gemini-3.8-flash", "system", {}, "batch")
+        client.call(TEACHER, "system", {}, "batch")
+
+
+def test_teacher_and_judge_share_quota_but_use_separate_output_budgets(tmp_path, monkeypatch):
+    client = object.__new__(Gemini)
+    client.output, client.key = tmp_path, "test-only"
+    envelope = {"choices": [{"finish_reason": "stop", "message": {"content": '{"items":[]}'}}]}
+    client.opener = SimpleNamespace(open=lambda *a, **kw: BytesIO(json.dumps(envelope).encode()))
+    monkeypatch.setattr("training.generate_teacher_data.time.sleep", lambda _: None)
+    assert TEACHER == JUDGE
+    client.call(TEACHER, "author", {}, "teacher-first")
+    client.call(JUDGE, "audit", {}, "judge-first")
+    assert json.loads((tmp_path / "teacher-first.request.json").read_text())["max_tokens"] == 32768
+    assert json.loads((tmp_path / "judge-first.request.json").read_text())["max_tokens"] == 10000
+    ledger = tmp_path / "api-reservations.jsonl"
+    used = ledger.read_text().splitlines()
+    ledger.write_text("\n".join(used + [used[0]] * (REQUEST_CAP - len(used))) + "\n", encoding="utf-8")
+    for model, name in ((TEACHER, "teacher-next"), (JUDGE, "judge-next")):
+        with pytest.raises(DatasetError, match="request cap"):
+            client.call(model, "system", {}, name)
+        assert not (tmp_path / f"{name}.request.json").exists()
 
 
 def test_review_export_does_not_fabricate_human_approval_and_excludes_failed_groups(tmp_path):
@@ -129,6 +151,7 @@ def test_review_export_does_not_fabricate_human_approval_and_excludes_failed_gro
     summary = export_review(tmp_path, [candidate], ARTIFACT, ["cafe/standard/A1"])
     assert summary["pendingTargetRecords"] == 2
     assert not summary["datasetReady"] and not summary["trainingReady"]
+    assert summary["independentJudgeModel"] is False
     with (tmp_path / "human-review-decisions.csv").open(encoding="utf-8", newline="") as handle:
         decisions = list(csv.DictReader(handle))
     assert all(row["decision"] == "pending" and row["reviewer"] == "" for row in decisions)
