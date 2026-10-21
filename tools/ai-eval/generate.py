@@ -40,6 +40,8 @@ class SeededClient(httpx.AsyncClient):
 
 
 async def capture(dataset, settings, output, *, shadow=False, attempts=None):
+    if settings.repair_enabled:
+        raise ValueError("first-pass evaluation requires repair disabled")
     artifact = load_artifact(settings)
     if settings.fallback_enabled or settings.selected_provider != "ollama":
         raise ValueError("paired local evaluation requires local Ollama with fallback disabled")
@@ -68,6 +70,7 @@ async def capture(dataset, settings, output, *, shadow=False, attempts=None):
                            "config": {k: getattr(settings, k) for k in artifact["generationConfig"]},
                            "judgeVersion": "pending-offline-judge", "labels": "unjudged",
                            "evaluationOnly": shadow}, "records": []}
+    result["metadata"]["generationPolicy"] = {"repairEnabled": False, "maxGenerationAttempts": 1}
     for case in dataset["cases"]:
         for seed in dataset["seeds"]:
             context = case["context"]
@@ -112,7 +115,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--attempts", type=Path,
-                        help="optional JSONL sidecar; keeps attempt 1 and any repair per case/seed")
+                        help="optional JSONL sidecar; keeps first-attempt output and errors per case/seed")
     parser.add_argument("--shadow", action="store_true", help="offline B2/C1 only; never enables learner levels")
     args = parser.parse_args()
     if args.output.exists():

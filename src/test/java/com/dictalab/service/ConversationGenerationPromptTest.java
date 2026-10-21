@@ -8,13 +8,16 @@ import static org.junit.jupiter.api.Assertions.*;
 class ConversationGenerationPromptTest {
     private final ObjectMapper json = new ObjectMapper();
 
-    @Test void malformedSlotPlanGetsTheExistingSingleRepairWithoutLosingTheRawPlan() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void malformedSlotPlanRepairsOnlyWhenExplicitlyEnabled(boolean repairEnabled) throws Exception {
         var service = org.mockito.Mockito.mock(ConversationService.class, org.mockito.Mockito.CALLS_REAL_METHODS);
         var local = org.mockito.Mockito.mock(ConversationLocalClient.class);
         var ai = org.mockito.Mockito.mock(ShopAiKeyClient.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "json", json);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "localGeneration", local);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "ai", ai);
+        if (repairEnabled) org.springframework.test.util.ReflectionTestUtils.setField(service, "generationRepairEnabled", true);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "budget", org.mockito.Mockito.mock(AiUsageBudget.class));
         org.springframework.test.util.ReflectionTestUtils.setField(service, "config",
                 new com.dictalab.config.ConversationProperties(true, "unit-model", null, null, null, null));
@@ -42,6 +45,17 @@ class ConversationGenerationPromptTest {
                 .filter(c -> c.getSimpleName().equals("Row")).findFirst().orElseThrow();
         var constructor = rowClass.getDeclaredConstructors()[0]; constructor.setAccessible(true);
         var row = constructor.newInstance("synthetic", 0L, "hotel", "A1", state, 0L);
+        if (!repairEnabled) {
+            var error = assertThrows(IllegalStateException.class, () ->
+                    org.springframework.test.util.ReflectionTestUtils.invokeMethod(service,
+                            "generatePrompt", row, System.nanoTime() + java.time.Duration.ofSeconds(60).toNanos()));
+            assertEquals("Slot/fact count mismatch", error.getMessage());
+            org.mockito.Mockito.verify(local, org.mockito.Mockito.times(1)).completeTask(org.mockito.ArgumentMatchers.eq("A1"),
+                    org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(java.time.Duration.class));
+            org.mockito.Mockito.verifyNoInteractions(ai);
+            assertFalse(state.has("pendingGenerationSlots"));
+            return;
+        }
         tools.jackson.databind.JsonNode result = org.springframework.test.util.ReflectionTestUtils.invokeMethod(service,
                 "generatePrompt", row, System.nanoTime() + java.time.Duration.ofSeconds(60).toNanos());
         assertEquals(ConversationLocalClient.normalizeOutput(good), result);

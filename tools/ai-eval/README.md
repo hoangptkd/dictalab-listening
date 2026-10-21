@@ -39,6 +39,14 @@ optional `seconds`/`transport`. The baseline approval is a separate review decis
 
 ### Attempt-level evidence for benchmark runs
 
+Current captures measure first-pass quality only. Repair is disabled by default; `generate.py` refuses
+`DICTALAB_AI_REPAIR_ENABLED=true` before provider calls. Capture metadata records
+`generationPolicy: {repairEnabled: false, maxGenerationAttempts: 1}` separately from the frozen prompt config.
+Keep fallback disabled. A workflow still uses one English generation call and one translation call.
+Use `--attempts` to retain invalid first outputs even when the public capture has `task=null`.
+Every rejected, timed-out or missing sample stays in the planned denominator. Historical captures with
+repair remain unchanged; compare their first-attempt evidence, not repaired final success, against new runs.
+
 `generate.py --attempts PATH` writes an offline-only JSONL sidecar: one row per validation attempt plus
 failure rows, keyed by `requestId` (the `caseId:seed` capture key). Each row keeps the merged synthetic task,
 word count, validation errors, observed model-call seconds and the failure phase. The wrapper in

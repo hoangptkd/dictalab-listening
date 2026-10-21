@@ -2,7 +2,7 @@
 
 Pipeline
 --------
-normalize_context → generate_content → translate → validate → (repair_once if errors)
+normalize_context → generate_content → translate → validate → return or reject
 
 Each node:
 - Receives a WorkflowState and an httpx.AsyncClient.
@@ -11,8 +11,8 @@ Each node:
 - Raises TimeoutError if deadline is already past.
 - Raises OllamaError for unrecoverable generation errors.
 
-repair_once runs at most once; if the repaired output still fails validation the
-workflow raises OllamaError rather than looping further.
+Repair is disabled by default to measure first-pass prompt quality. When explicitly
+enabled, repair_once runs at most once; invalid output is always rejected.
 """
 from __future__ import annotations
 
@@ -233,6 +233,11 @@ async def run_workflow(
     state = node_validate(state, request)
 
     if state.validation_errors:
+        if not settings.repair_enabled:
+            raise OllamaError(
+                f"first-attempt task invalid (repair disabled): {list(state.validation_errors)} "
+                f"trace_id={state.trace_id}"
+            )
         state = await node_repair_once(state, request, settings, client)
 
     logger.info(

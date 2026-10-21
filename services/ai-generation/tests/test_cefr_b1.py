@@ -145,11 +145,11 @@ async def test_workflow_repairs_short_b1_once_with_actual_errors(repaired_words,
     with patch("app.workflow._generate_content", new=AsyncMock(side_effect=contents)) as generate, \
          patch("app.workflow.translate_task", new=AsyncMock(return_value=translation)):
         if succeeds:
-            result = await run_workflow(request, Settings(), None)
+            result = await run_workflow(request, Settings(repair_enabled=True), None)
             assert validate_task(result, level="B1") == []
         else:
             with pytest.raises(OllamaError, match="repaired task still invalid"):
-                await run_workflow(request, Settings(), None)
+                await run_workflow(request, Settings(repair_enabled=True), None)
         assert generate.await_count == 2
         repair = generate.await_args_list[1].args[0]
         assert "word_count=29,min=30,max=90" in repair.context.validationError

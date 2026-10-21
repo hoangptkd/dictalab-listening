@@ -2,20 +2,22 @@
 
 ## Mục tiêu và phạm vi
 
-Chạy đúng pipeline đã triển khai với Ollama `qwen3.5:9b`, giữ kết quả của cả lần sinh đầu và lần repair, rồi đánh giá riêng cấu trúc, độ dài và chất lượng CEFR. Đây là kế hoạch giao việc; chưa có kết quả benchmark mới.
+Chạy pipeline với Ollama `qwen3.5:9b`, chỉ lấy lần sinh đầu để đánh giá cấu trúc, độ dài và chất lượng CEFR của prompt. **Cập nhật theo yêu cầu chủ dự án: tạm tắt repair và mọi lần sinh lại để cứu chất lượng.** Mỗi workflow gồm một lần sinh tiếng Anh và một lần dịch; validation vẫn chạy, output sai bị từ chối và giữ trong trace/mẫu số.
 
-- Code nền: commit `ac4dada74e075168e976b86b50cf1b99defdac10`, nhánh `codex/practice-drafts-audio-20261017`. Ghi lại HEAD thực tế khi chạy; commit tài liệu sau mốc này không làm thay đổi hợp đồng sinh bài.
+Baseline cũ `ai-platform-cefr-real-benchmark-20261021-184520.json` có repair và được giữ nguyên. Các run tiếp theo phải dùng thư mục mới, ghi `generationPolicy.repairEnabled=false`, so sánh với attempt 1 của baseline. Tài liệu này là hướng dẫn chạy khi được giao benchmark, không tự tiếp tục phần shadow đã dừng.
+
+- Dùng HEAD hiện tại đã bổ sung chế độ không repair trên nhánh `codex/practice-drafts-audio-20261017`; ghi lại HEAD thực tế khi chạy. Không checkout commit cũ vì có thể bật lại repair.
 - Chạy offline, dữ liệu synthetic, một workflow mỗi lần. Không cần khởi động Java, FastAPI, RabbitMQ, PostgreSQL hay Docker để chạy CLI capture.
-- Giữ nguyên prompt, bundle, dataset, seed, schema, validator và số lần repair trong lần đo đầu tiên. Không chỉnh prompt giữa chừng để cứu kết quả.
+- Giữ nguyên prompt, bundle, dataset, seed, schema và validator trong một run. Repair phải tắt, fallback phải tắt; không retry, chọn lại output hoặc chỉnh prompt giữa chừng để cứu kết quả. Khi cải thiện prompt ở vòng sau, tạo bundle/version mới và dùng cùng dataset/seed để so sánh.
 - Audio/TTS, triển khai production và mở mức cho người học nằm ngoài đợt benchmark. C2 giữ PLANNED, không sinh bài C2.
 
 ## Checklist thực hiện
 
 - [ ] Kiểm tra checkout, môi trường Python/Ollama, model digest và hash hai bundle/dataset.
-- [ ] Chuẩn bị thư mục run riêng và trace hai attempt; kiểm tra phần quan sát không đổi hành vi pipeline.
+- [ ] Chuẩn bị thư mục run riêng và trace attempt 1; kiểm tra repair tắt ở Python và Java.
 - [ ] Chạy đủ 30 mẫu A1/A2/B1 và giữ mọi mẫu lỗi trong mẫu số.
 - [ ] Chạy đủ 60 mẫu shadow B2/C1 với cùng cấu hình đã khóa.
-- [ ] Chấm deterministic từ capture và trace; tách first attempt, repair và kết quả cuối.
+- [ ] Chấm deterministic từ capture và trace; mọi kết quả chất lượng phải dựa trên attempt 1, số repair phải bằng 0.
 - [ ] Review semantic độc lập; chuẩn bị mẫu cho chủ dự án review thủ công.
 - [ ] Tổng hợp số liệu, ví dụ lỗi, giới hạn và lệnh tái hiện; không tự cấp quyền release.
 - [ ] Kiểm tra thay đổi thuộc nhiệm vụ, commit/push theo AGENTS.md và xác minh remote nếu có sửa code/tài liệu.
@@ -27,7 +29,7 @@ Chạy đúng pipeline đã triển khai với Ollama `qwen3.5:9b`, giữ kết 
 | A1/A2/B1 | `cefr-b1-v7-10x3.json` | `conversation-cefr-b1-v7-20261021.json` | A1: 12, A2: 9, B1: 9 |
 | B2/C1 shadow | `cefr-shadow-v1-10x3.json` | `conversation-cefr-shadow-v1-20261021.json` | B2: 30, C1: 30 |
 
-Tổng cộng **90 workflow**. Mỗi dataset dùng seed **17, 43, 71**. Workflow bình thường gồm sinh tiếng Anh và dịch; khi validation lỗi chỉ được repair một lần theo code hiện có. Không gọi model thêm để chọn đáp án đẹp hơn.
+Tổng cộng **90 workflow** nếu được giao chạy cả hai dataset. Mỗi dataset dùng seed **17, 43, 71**. Workflow gồm sinh tiếng Anh và dịch; khi validation lỗi dừng ngay, không repair. Không gọi model thêm để chọn đáp án đẹp hơn.
 
 **Bộ đầu không phải 30 mẫu riêng B1.** B1 chỉ có ba tình huống × ba seed = chín mẫu. Đây là kiểm tra hồi quy ban đầu, chưa đủ để khẳng định chất lượng B1 nói chung. Nếu sau này cần 30 mẫu riêng B1, tạo dataset và bundle phiên bản mới sau lần đo này; không sửa dataset hiện tại.
 
@@ -77,24 +79,24 @@ Chọn **timeout 600 giây/workflow** cho lần đo chất lượng offline này
 
 ### Giới hạn công cụ hiện tại
 
-- `generate.py` giữ task cuối được chấp nhận. Khi repair vẫn lỗi, record có `task=null`, `transport=error`; lỗi cuối không tự được lưu đầy đủ trong record.
+- `generate.py` giữ task được chấp nhận. Khi attempt 1 lỗi, record có `task=null`, `transport=error`; phải dùng sidecar để xem output/lỗi đã bị validator chặn. Nhãn `transport=error` hiện bao gồm validation rejection, không mặc nhiên là lỗi mạng.
 - Vì vậy, tỷ lệ độ dài của task cuối có thể đẹp chỉ vì validator đã loại bài sai. Không dùng chỉ số đó thay cho tỷ lệ model sinh đúng ngay lần đầu.
 - `run.py`/`metrics.py` có schema, exact evidence và các semantic flag cũ; **chưa kiểm tra đủ số từ, reasoningEvidence hoặc mức CEFR mới**.
 - `shadow_report.py` có các kiểm tra shadow và mẫu số đầy đủ, nhưng chưa tổng hợp trace từng attempt hoặc latency percentile.
 
-### Công việc nhỏ model nhận nhiệm vụ cần làm trước
+### Observer đã có, cần dùng khi capture
 
-Bổ sung cơ chế quan sát **chỉ trong runner offline**, đủ lưu sidecar JSONL theo `(caseId, seed, attempt)`; dùng lại `generate.capture`, `run_workflow`, `run_shadow_workflow`, `SeededClient` và validator đang có. Có thể bọc node validation hiện tại để ghi state trước/sau khi gọi hàm gốc. Không viết lại pipeline hoặc sửa luật production để lấy số liệu.
+Dùng `generate.py --attempts PATH` và observer offline `attempt_trace.py` đã có để lưu sidecar JSONL theo `(caseId, seed, attempt)`. Dùng lại `generate.capture`, `run_workflow`, `run_shadow_workflow`, `SeededClient` và validator đang có. Không viết lại pipeline để lấy số liệu.
 
-Sidecar tối thiểu gồm: request ID, level, turn, seed, attempt 1/2, merged task synthetic khi có, danh sách validation error, số từ, thời lượng/phần gọi model quan sát được, trạng thái timeout/provider/translation failure. Với lỗi xảy ra trước validation, ghi phase và loại lỗi; không gán nhầm là lỗi độ dài. Không ghi header Authorization, token hoặc toàn bộ HTTP request.
+Sidecar tối thiểu gồm: request ID, level, turn, seed, attempt 1, merged task synthetic khi có, danh sách validation error, số từ, thời lượng/phần gọi model quan sát được, trạng thái timeout/provider/translation failure. Nếu xuất hiện attempt 2, run sai chính sách và không được dùng làm kết quả first-pass. Với lỗi xảy ra trước validation, ghi phase và loại lỗi; không gán nhầm là lỗi độ dài. Không ghi header Authorization, token hoặc toàn bộ HTTP request.
 
-Thêm kiểm tra nhỏ chứng minh wrapper gọi hàm gốc đúng một lần, giữ nguyên seed/prompt/schema/options/temperature, không thêm repair, không nuốt exception và vẫn lưu attempt bị chặn. Chỉ đo observer overhead nếu có ảnh hưởng đáng kể. Hiện chưa có flag `--trace-attempts`; không gọi một flag chưa được triển khai.
+Các test observer phải chứng minh wrapper gọi hàm gốc đúng một lần, giữ nguyên seed/prompt/schema/options/temperature, không thêm repair, không nuốt exception và vẫn lưu attempt bị chặn. Dùng flag có sẵn `--attempts`, không dùng `--trace-attempts`.
 
 Không cần chạy model thật chỉ để test wrapper. Nếu có pilot sinh thật, lưu riêng và ghi rõ không thuộc 90 mẫu chính; không chọn lại seed hoặc chọn kết quả pilot làm kết quả chính.
 
 ## 4. Thứ tự chạy và lệnh có sẵn
 
-Các lệnh dưới là CLI hiện có, chưa có sidecar tự động. Sau khi bổ sung observer offline ở bước 3, giữ nguyên các tham số và ngữ nghĩa capture. Chạy tại thư mục gốc repo bằng PowerShell; cấu hình environment chỉ có hiệu lực trong process đang chạy. Nếu mỗi tool call mở process mới, phải lặp lại phần cấu hình và đúng đường dẫn run đã tạo.
+Các lệnh dưới dùng CLI và sidecar đã có. Chạy tại thư mục gốc repo bằng PowerShell; cấu hình environment chỉ có hiệu lực trong process đang chạy. Nếu mỗi tool call mở process mới, phải lặp lại phần cấu hình và đúng đường dẫn run đã tạo.
 
 ### 4.1. Khởi tạo một run
 
@@ -106,6 +108,8 @@ $env:PYTHONUNBUFFERED = '1'
 $env:DICTALAB_AI_PRODUCTION_MODE = 'false'
 $env:DICTALAB_AI_PRIMARY_PROVIDER = 'ollama'
 $env:DICTALAB_AI_FALLBACK_ENABLED = 'false'
+$env:DICTALAB_AI_REPAIR_ENABLED = 'false'
+$env:DICTALAB_CONVERSATION_GENERATION_REPAIR_ENABLED = 'false'
 $env:DICTALAB_AI_OLLAMA_URL = 'http://127.0.0.1:11434'
 $env:DICTALAB_AI_MODEL = 'qwen3.5:9b'
 $env:DICTALAB_AI_MODEL_DIGEST = '56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
@@ -125,7 +129,7 @@ Lưu tên thư mục tuyệt đối vào ghi chú bàn giao để tiếp tục �
 ```powershell
 $env:DICTALAB_AI_ARTIFACT_VERSION = 'conversation-cefr-b1-v7-20261021'
 $env:DICTALAB_AI_ARTIFACT_SHA256 = '09274af4b93c9562aa188ed920bc24cea3cb2016c74680083fcdddfacc3f1ae5'
-python tools/ai-eval/generate.py --dataset services/ai-generation/tests/fixtures/evaluation/cefr-b1-v7-10x3.json --output "$benchRun/supported-raw.json"
+python tools/ai-eval/generate.py --dataset services/ai-generation/tests/fixtures/evaluation/cefr-b1-v7-10x3.json --output "$benchRun/supported-raw.json" --attempts "$benchRun/supported-attempts.jsonl"
 if ($LASTEXITCODE -ne 0) { throw 'Supported capture failed; inspect evidence before continuing.' }
 ```
 
@@ -138,7 +142,7 @@ B1 smoke trước có bài lệch vai khách/nhân viên, bài 26 từ và gắn
 ```powershell
 $env:DICTALAB_AI_ARTIFACT_VERSION = 'conversation-cefr-shadow-v1-20261021'
 $env:DICTALAB_AI_ARTIFACT_SHA256 = '23a4e2adc68842a01aa19b0e686fa4f031f2e2ca87bea02189762293e1dbb97b'
-python tools/ai-eval/generate.py --shadow --dataset services/ai-generation/tests/fixtures/evaluation/cefr-shadow-v1-10x3.json --output "$benchRun/shadow-raw.json"
+python tools/ai-eval/generate.py --shadow --dataset services/ai-generation/tests/fixtures/evaluation/cefr-shadow-v1-10x3.json --output "$benchRun/shadow-raw.json" --attempts "$benchRun/shadow-attempts.jsonl"
 if ($LASTEXITCODE -ne 0) { throw 'Shadow capture failed; inspect evidence.' }
 ```
 
@@ -157,7 +161,7 @@ Mỗi dòng báo cáo dùng key `caseId:seed`, kèm level, turn, task type dự 
 | Coverage | Đã hoàn tất / dự kiến: A1 12, A2 9, B1 9, B2 30, C1 30; ghi riêng thiếu/trùng |
 | First-attempt length | Số mẫu có attempt 1 hợp lệ về độ dài / toàn bộ mẫu dự kiến của mức; mẫu chưa sinh được không tính pass |
 | First-attempt structure/evidence | Gọi validator thực theo level/profile; tách word count, grounding, slot/fact, taskType và reasoningEvidence |
-| Repair | Số mẫu cần repair, repair thành công, repair thất bại; mẫu số repair và mẫu số toàn bộ phải được ghi rõ |
+| Repair | Phải bằng 0; không có attempt 2. Giữ các cột repair của tool để đọc baseline cũ, không dùng repair để nâng điểm run mới |
 | Final output | Số workflow trả task hợp lệ / toàn bộ mẫu dự kiến; ghi riêng provider error, timeout, dịch lỗi, validation rejection |
 | Final length | Báo cả tỷ lệ trên toàn bộ mẫu dự kiến và trên số task cuối thực sự có; không gọi hai mẫu số là cùng một tỷ lệ |
 | Latency | p50/p95/p99 và max theo mức, số mẫu có thời gian; ghi cold/warm và timeout 600 giây |
@@ -218,7 +222,7 @@ Tool kiểm tra hash dataset/bundle, model và generation config. Nó luôn tr�
 
 ### Ngưỡng đọc kết quả
 
-- Theo kế hoạch sản phẩm: 100% task được chấp nhận phải qua schema và exact grounding; tối thiểu 95% mẫu dự kiến trong khoảng từ; tối thiểu 90% mẫu dự kiến qua semantic review độc lập. Báo first-pass riêng, kể cả khi final sau repair đạt ngưỡng.
+- Theo kế hoạch sản phẩm: 100% task được chấp nhận phải qua schema và exact grounding; tối thiểu 95% mẫu dự kiến trong khoảng từ; tối thiểu 90% mẫu dự kiến qua semantic review độc lập. Chấm attempt 1 trên toàn bộ mẫu dự kiến, kể cả output bị từ chối; không lấy tỷ lệ trong tập được chấp nhận thay cho chất lượng sinh.
 - Với 30 mẫu/mức B2/C1: ngưỡng độ dài 95% tương đương ít nhất **29/30**, semantic 90% tương đương **27/30**. Shadow tool còn yêu cầu transport/structure/focus đạt 100% và đủ manual coverage; không bỏ các điều kiện này để công bố pass.
 - Với chín mẫu B1: hai ngưỡng trên đều cần **9/9**, nhưng cỡ mẫu nhỏ nên không kết luận chắc chắn về chất lượng tổng quát. Ghi kết quả A1/A2 riêng, không gộp để che lỗi B1.
 - Nếu chưa có reviewer hoặc human review, ghi **PENDING REVIEW** cho phần tương ứng. Không chạy C2, không bật SUPPORTED và không sửa bundle development thành approved.
@@ -232,7 +236,7 @@ Trong thư mục run đã tạo, cần có:
 3. Hai capture đã review, reviewer references và review packet thủ công; chưa review phải đánh dấu rõ.
 4. Báo cáo supported, shadow và bảng bổ sung first-pass/repair/length/CEFR/latency theo từng mức.
 5. Bảng lỗi có key, loại lỗi, đoạn bằng chứng, expected/actual và lệnh tái hiện. Tách lỗi model, prompt/rubric, validator và hạ tầng.
-6. Kết luận ngắn: mức nào đạt/chưa đạt/chờ review, lỗi độ dài còn bao nhiêu ở attempt 1 và sau repair, độ phân biệt B1/B2/C1, giới hạn format ngắn và đề xuất sửa tiếp.
+6. Kết luận ngắn: mức nào đạt/chưa đạt/chờ review, lỗi độ dài và semantic ở attempt 1, xác nhận không repair, độ phân biệt B1/B2/C1, giới hạn format ngắn và đề xuất sửa prompt tiếp.
 
 `data/` đã được Git ignore. Chỉ đưa báo cáo synthetic đã rà soát vào Git nếu cần, dùng tên `artifacts/reports/ai-platform-cefr-real-benchmark-<runId>.json`; không stage credential, environment hoặc toàn bộ log. Nếu có code observer/tests hoặc tài liệu mới, chạy kiểm tra liên quan và UTF-8, rồi commit/push đúng nhánh theo AGENTS.md. Xác minh remote SHA; báo riêng nếu GitHub Actions không đọc được. Không triển khai production.
 
@@ -240,4 +244,4 @@ Khi quality fail, hoàn tất báo cáo trước. Việc sửa prompt/model là 
 
 ## Prompt ngắn để giao model khác
 
-> Đọc và thực hiện `docs/conversation-cefr-real-model-benchmark-handoff-2026-10-21.md` trên nhánh hiện tại. Chạy benchmark model thật Ollama qwen3.5:9b: 30 mẫu A1/A2/B1 và 60 mẫu B2/C1 shadow. Bổ sung quan sát offline tối thiểu để giữ cả attempt đầu và repair; giữ nguyên prompt, bundle, seed, schema, validator và cấu hình sinh. Lưu đủ raw evidence, số liệu theo từng mức, review packet và báo cáo. Không tự điền manual approval, không sửa prompt để cứu baseline, không chạy C2 hoặc sửa audio, không deploy. Theo dõi tiến trình dài đến khi hoàn tất hoặc có blocker hạ tầng cụ thể; ghi rõ phần chưa review và không tuyên bố chất lượng đạt khi thiếu bằng chứng.
+> Đọc và thực hiện `docs/conversation-cefr-real-model-benchmark-handoff-2026-10-21.md` trên HEAD hiện tại. Khi được giao chạy, benchmark Ollama qwen3.5:9b trên dataset được chỉ định: supported 30 mẫu A1/A2/B1, shadow 60 mẫu B2/C1 nếu có trong phạm vi. Tắt repair ở cả Python và Java, tắt fallback; chỉ một lần sinh tiếng Anh và một lần dịch mỗi mẫu, không retry hoặc chọn lại output. Dùng `--attempts` giữ output/lỗi lần đầu, kể cả khi task cuối bị reject. Giữ nguyên prompt, bundle, seed, schema, validator và cấu hình trong từng run; lưu đủ bằng chứng và chấm mọi mẫu lỗi trong mẫu số. Khi sửa prompt, tạo version/run mới và so với attempt 1 baseline bằng cùng seed/dataset. Không tự điền manual approval, không chạy C2 hoặc sửa audio, không deploy. Ghi rõ phần chưa review và không tuyên bố đạt chất lượng khi thiếu bằng chứng.

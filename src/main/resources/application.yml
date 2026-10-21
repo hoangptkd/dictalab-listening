@@ -224,6 +224,7 @@ dictalab:
     generation-model: ${DICTALAB_CONVERSATION_MODEL:gemini-2.5-flash}
     generation:
       provider: ${DICTALAB_CONVERSATION_GENERATION_PROVIDER:shopaikey}
+      repair-enabled: ${DICTALAB_CONVERSATION_GENERATION_REPAIR_ENABLED:false}
       local-base-url: ${DICTALAB_CONVERSATION_LOCAL_BASE_URL:http://127.0.0.1:11434}
       local-model: ${DICTALAB_CONVERSATION_LOCAL_MODEL:qwen3.5:9b}
       local-timeout-seconds: ${DICTALAB_CONVERSATION_LOCAL_TIMEOUT_SECONDS:180}

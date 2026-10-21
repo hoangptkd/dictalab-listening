@@ -147,13 +147,32 @@ async def test_shadow_repairs_missing_reasoning_once_and_preserves_request_type(
     translation = {"translationVi": "Bản dịch kiểm tra.", "facts": [{"textVi": "Kết luận"}, {"textVi": "Tài liệu"}]}
     with patch("app.workflow._generate_content", new=AsyncMock(side_effect=[broken, example["output"]])) as generate, \
          patch("app.workflow.translate_task", new=AsyncMock(return_value=translation)):
-        result = await run_shadow_workflow(request, Settings(), None, artifact)
+        result = await run_shadow_workflow(request, Settings(repair_enabled=True), None, artifact)
     assert generate.await_count == 2
     repair = generate.await_args_list[1].args[0]
     assert isinstance(repair, ShadowConversationTaskRequest)
     assert "reasoningEvidence:required" in repair.context.validationError
     assert request.context.validationError is None
     assert result["facts"][0]["reasoningEvidence"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("level", ["B2", "C1"])
+async def test_shadow_rejects_first_attempt_without_repair_by_default(artifact, level):
+    example = next(e for e in artifact["fewShotExamples"] if e["input"]["difficulty"] == level)
+    broken = copy.deepcopy(example["output"])
+    del broken["facts"][0]["reasoningEvidence"]
+    request = shadow_request(example["input"], "no-repair", artifact)
+    translation = {"translationVi": "Bản dịch kiểm tra.", "facts": [{"textVi": "Kết luận"}, {"textVi": "Tài liệu"}]}
+    before = selected_artifact.get()
+    from app.ollama import OllamaError
+    with patch("app.workflow._generate_content", new=AsyncMock(return_value=broken)) as generate, \
+         patch("app.workflow.translate_task", new=AsyncMock(return_value=translation)) as translate:
+        with pytest.raises(OllamaError, match="first-attempt task invalid.*reasoningEvidence:required"):
+            await run_shadow_workflow(request, Settings(), None, artifact)
+    generate.assert_awaited_once()
+    translate.assert_awaited_once()
+    assert selected_artifact.get() is before
 
 
 def test_shadow_dataset_has_ten_cases_per_level_and_three_seeds(artifact):

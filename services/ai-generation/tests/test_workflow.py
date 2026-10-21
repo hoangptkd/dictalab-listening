@@ -92,6 +92,7 @@ def _make_settings() -> MagicMock:
     s.translation_temperature = 0.1
     s.num_ctx = 8192
     s.num_predict = 1000
+    s.repair_enabled = False
     s.ollama_url = "http://127.0.0.1:11434"
     return s
 
@@ -349,6 +350,7 @@ class TestRunWorkflow:
     async def test_invalid_output_triggers_repair(self):
         req = _make_request()
         settings = _make_settings()
+        settings.repair_enabled = True
         bad_merged = {**_good_merged(), "utteranceEn": ""}
         call_count = {"n": 0}
 
@@ -368,6 +370,21 @@ class TestRunWorkflow:
             result = await run_workflow(req, settings, MagicMock())
         assert call_count["n"] == 2   # generate_content called twice (original + repair)
         assert result == _good_merged()
+
+    @pytest.mark.asyncio
+    async def test_invalid_first_attempt_is_rejected_without_repair_by_default(self):
+        from app.config import Settings
+        settings = Settings()
+        assert settings.repair_enabled is False
+        with patch("app.workflow._generate_content", new=AsyncMock(return_value=_good_content())) as generate, \
+             patch("app.workflow.translate_task", new=AsyncMock(return_value=_good_translation())) as translate, \
+             patch("app.workflow.merge_content_and_translation", return_value={**_good_merged(), "utteranceEn": ""}), \
+             patch("app.workflow.node_repair_once", new=AsyncMock()) as repair:
+            with pytest.raises(OllamaError, match="first-attempt task invalid.*repair disabled"):
+                await run_workflow(_make_request(), settings, MagicMock())
+        generate.assert_awaited_once()
+        translate.assert_awaited_once()
+        repair.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_timeout_at_generate_raises_timeout_error(self):

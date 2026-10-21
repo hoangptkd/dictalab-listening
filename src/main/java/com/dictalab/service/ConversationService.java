@@ -107,6 +107,8 @@ public class ConversationService {
     private boolean curatedStarters = true;
     @org.springframework.beans.factory.annotation.Value("${dictalab.conversation.session-diversity:true}")
     private boolean sessionDiversity = true;
+    @org.springframework.beans.factory.annotation.Value("${dictalab.conversation.generation.repair-enabled:false}")
+    private boolean generationRepairEnabled = false;
     // Legacy mode only. RabbitMQ mode never submits paid work to these local workers.
     private final ExecutorService audioWorkers = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(8), new ThreadPoolExecutor.AbortPolicy());
@@ -611,7 +613,7 @@ public class ConversationService {
                 return prompt;
             } catch (AiUsageBudget.Rejected budgetFailure) { throw budgetFailure;
             } catch (IllegalStateException invalidPrompt) {
-                if (attempt == 1) throw invalidPrompt;
+                if (!generationRepairEnabled || attempt == 1) throw invalidPrompt;
                 // One bounded repair of rejected output; do not retry network failures.
                 context.put("validationError", invalidPrompt.getMessage());
                 context.set("previousInvalidPrompt", raw);

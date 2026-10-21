@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     num_ctx: int = 8192
     num_predict: int = 1000
     timeout_seconds: float = 180.0
+    repair_enabled: bool = False
     service_token: str = ""
     prompt_version: str = "CONVERSATION_GENERATION_V7_B1_EVIDENCE"
     model_digest: str = "unknown"

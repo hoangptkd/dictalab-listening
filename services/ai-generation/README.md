@@ -16,6 +16,11 @@ uvicorn app.main:app --port 8091
 Configuration uses `DICTALAB_AI_` variables. Set `DICTALAB_AI_SERVICE_TOKEN` and the matching Java
 `DICTALAB_CONVERSATION_PYTHON_SERVICE_TOKEN` when the endpoint is reachable beyond loopback.
 
+Conversation repair is temporarily disabled by default (`DICTALAB_AI_REPAIR_ENABLED=false`). Each workflow
+generates English once, translates once, then validates. Invalid output is rejected without regeneration.
+Java's outer repair is also off (`DICTALAB_CONVERSATION_GENERATION_REPAIR_ENABLED=false`). Keep both off
+while improving first-pass prompt quality. Repair remains available for a separate production decision.
+
 From the repository root, build with `docker compose --profile ai build ai-generation`.
 The image uses one Uvicorn process and 1-5 concurrent workflows (`DICTALAB_AI_MAX_CONCURRENCY`, default 1).
 Do not add Uvicorn workers while idempotency is process-local.

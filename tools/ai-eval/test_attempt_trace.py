@@ -17,8 +17,8 @@ def _request():
                            context=SimpleNamespace(history=[], recentPractice=[]))
 
 
-def _settings():
-    return SimpleNamespace(timeout_seconds=600, model="test-model")
+def _settings(*, repair_enabled=True):
+    return SimpleNamespace(timeout_seconds=600, model="test-model", repair_enabled=repair_enabled)
 
 
 def _fakes(calls, texts, *, valid_attempts):
@@ -110,6 +110,27 @@ def test_rejected_repair_is_recorded_and_exception_propagates(observed):
     rows = _rows(sidecar)
     assert [row["status"] for row in rows] == ["invalid", "invalid"]
     assert all(row["validationErrors"] for row in rows)
+
+
+def test_disabled_repair_keeps_first_invalid_output_and_never_regenerates(observed):
+    activate, state, tmp_path = observed
+    activate(["one two three"], valid_attempts=set())
+    sidecar = tmp_path / "first-only.jsonl"
+    with attempt_trace.observe(sidecar, request_id="case:17", level="B1", turn=2, seed=17):
+        with pytest.raises(OllamaError, match="repair disabled"):
+            asyncio.run(workflow.run_workflow(_request(), _settings(repair_enabled=False), None))
+    rows = _rows(sidecar)
+    assert len(rows) == 1
+    assert rows[0]["attempt"] == 1 and rows[0]["status"] == "invalid"
+    assert rows[0]["merged"]["utteranceEn"] == "one two three"
+    assert rows[0]["validationErrors"]
+    assert state["calls"] == [("generate_content", 1), ("translate", 1), ("validate", 1)]
+
+
+def test_capture_refuses_enabled_repair_before_any_model_calls(tmp_path):
+    with pytest.raises(ValueError, match="first-pass evaluation requires repair disabled"):
+        asyncio.run(generate.capture({}, _settings(), tmp_path / "capture.json"))
+    assert not (tmp_path / "capture.json").exists()
 
 
 def test_transport_failure_keeps_phase_and_reraises(observed, monkeypatch):
