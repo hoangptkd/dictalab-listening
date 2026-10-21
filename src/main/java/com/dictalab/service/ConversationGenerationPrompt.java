@@ -50,8 +50,8 @@ final class ConversationGenerationPrompt {
 
     static String turnBrief(tools.jackson.databind.JsonNode context) {
         int turn = context.path("turnNumber").asInt();
-        int minimum = context.path("levelProfile").path("minWords").asInt(8);
-        int maximum = context.path("levelProfile").path("maxWords").asInt(35);
+        int minimum = context.path("levelProfile").path("minWords").asInt(ConversationLevelProfile.A1.wordBounds().get("minWords"));
+        int maximum = context.path("levelProfile").path("maxWords").asInt(ConversationLevelProfile.A1.wordBounds().get("maxWords"));
         return "\n<turn_brief>Turn " + turn + ". Speaker: " + context.path("partnerRole").asText()
                 + "; listener: " + context.path("learnerRole").asText() + ". "
                 + "Aim for about " + ((minimum + maximum) / 2) + " English words. "
@@ -78,10 +78,7 @@ final class ConversationGenerationPrompt {
     }
 
     static java.util.Map<String,Object> exampleInput(String level, int turn) {
-        if (!java.util.Set.of("A1", "A2", "B1").contains(level))
-            throw new IllegalArgumentException("Unsupported conversation level");
-        int minimum = level.equals("A1") ? 8 : level.equals("A2") ? 18 : 30;
-        int maximum = level.equals("A1") ? 35 : level.equals("A2") ? 55 : 90;
+        var profile = ConversationLevelProfile.require(level);
         // Stable serialization matters for paired-seed experiments and prompt caching.
         var result = new java.util.LinkedHashMap<String,Object>();
         result.put("scenario", "Tham gia lớp làm gốm");
@@ -103,9 +100,7 @@ final class ConversationGenerationPrompt {
                     """));
         }
         result.put("history", history);
-        var bounds = new java.util.LinkedHashMap<String,Integer>();
-        bounds.put("maxWords", maximum); bounds.put("minWords", minimum);
-        result.put("levelProfile", bounds); result.put("turnNumber", turn); result.put("difficulty", level);
+        result.put("levelProfile", profile.wordBounds()); result.put("turnNumber", turn); result.put("difficulty", level);
         var skills = new java.util.LinkedHashMap<String,String>();
         for (String key : java.util.List.of("condition", "change", "gist", "reason", "instructions", "details"))
             skills.put(key, ConversationContent.SKILLS.get(key));

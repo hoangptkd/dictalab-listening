@@ -91,10 +91,10 @@ public class ConversationLocalClient implements ConversationAiClient {
     }
 
     static JsonNode schemaEnglish(String level) {
-        if (!Set.of("A1", "A2", "B1").contains(level)) throw new IllegalArgumentException("Unsupported conversation level");
+        var profile = ConversationLevelProfile.require(level);
         var schema = new ObjectMapper().readTree(SCHEMA_ENGLISH);
-        if (level.equals("A1")) for (String field : List.of("slots", "facts"))
-            ((ObjectNode) schema.path("properties").path(field)).put("maxItems", 2);
+        for (String field : List.of("slots", "facts"))
+            ((ObjectNode) schema.path("properties").path(field)).put("minItems", profile.minSlots()).put("maxItems", profile.maxSlots());
         return schema;
     }
 
@@ -105,10 +105,10 @@ public class ConversationLocalClient implements ConversationAiClient {
     }
 
     static JsonNode schema(String level) {
-        if (!Set.of("A1", "A2", "B1").contains(level)) throw new IllegalArgumentException("Unsupported conversation level");
+        var profile = ConversationLevelProfile.require(level);
         var schema = new ObjectMapper().readTree(SCHEMA);
-        if (level.equals("A1")) for (String field : List.of("slots", "facts"))
-            ((ObjectNode) schema.path("properties").path(field)).put("maxItems", 2);
+        for (String field : List.of("slots", "facts"))
+            ((ObjectNode) schema.path("properties").path(field)).put("minItems", profile.minSlots()).put("maxItems", profile.maxSlots());
         return schema;
     }
 

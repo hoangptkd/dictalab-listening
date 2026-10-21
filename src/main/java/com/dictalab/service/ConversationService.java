@@ -21,7 +21,6 @@ import org.slf4j.LoggerFactory;
 @Service
 public class ConversationService {
     public static final Map<String, String> SCENARIOS = ConversationContent.labels();
-    private static final Set<String> LEVELS = Set.of("A1", "A2", "B1");
     private static final Set<String> STATUSES = Set.of("CAPTURED", "PARTIAL", "MISSED", "INCORRECT", "UNCERTAIN");
     private static final String GRADE_INSTRUCTION = """
                     Evaluate MEANING of Vietnamese typed replies to English listening, not spelling/grammar/translation quality.
@@ -144,7 +143,7 @@ public class ConversationService {
     public Map<String, Object> catalog(long userId) {
         var result = new LinkedHashMap<String,Object>();
         result.put("enabled", config.enabled() && ai.configured() && tts.enabled());
-        result.put("scenarios", SCENARIOS); result.put("levels", List.of("A1", "A2", "B1"));
+        result.put("scenarios", SCENARIOS); result.put("levels", ConversationLevelProfile.SUPPORTED_LEVELS);
         var page = history(userId, 0, 12);
         result.put("sessions", page.get("sessions")); result.put("hasMore", page.get("hasMore"));
         result.put("scenarioCatalog", ConversationContent.SCENES.stream().map(s -> Map.of(
@@ -156,17 +155,13 @@ public class ConversationService {
         result.put("scenarioGroups", groups.values());
         var examples = new LinkedHashMap<String,Object>();
         var profiles = new ArrayList<Map<String,Object>>();
-        for (String level : List.of("A1", "A2", "B1")) {
+        for (String level : ConversationLevelProfile.SUPPORTED_LEVELS) {
             JsonNode sample = ConversationContent.starter(json, "cafe", level);
             if (level.equals("B1")) {
                 ((ObjectNode) sample).put("utteranceEn", "We had planned to meet at the cafe, but it closes early today. The library has a quiet room available, so let's meet there instead. If you finish work before six, please collect the room key from reception.")
                         .put("translationVi", "Chúng ta đã định gặp ở quán cà phê nhưng hôm nay quán đóng sớm. Thư viện có phòng yên tĩnh nên hãy gặp ở đó. Nếu bạn tan làm trước sáu giờ, hãy lấy chìa khóa phòng ở lễ tân.");
             }
-            String description = switch (level) {
-                case "A1" -> "Thông tin trực tiếp, câu ngắn và quen thuộc. Có thể nghe chậm.";
-                case "A2" -> "Nối thông tin qua vài câu; nghe ý chính và lý do rõ ràng.";
-                default -> "Theo dõi thông điệp chính, mục đích, lý do và điều kiện trong ngữ cảnh quen thuộc.";
-            };
+            String description = ConversationLevelProfile.require(level).descriptionVi();
             examples.put(level, Map.of("utteranceEn", sample.path("utteranceEn").asText(), "translationVi", sample.path("translationVi").asText()));
             profiles.add(Map.of("id", level, "label", level, "descriptionVi", description,
                     "sampleEn", sample.path("utteranceEn").asText(), "sampleVi", sample.path("translationVi").asText()));
@@ -197,7 +192,7 @@ public class ConversationService {
 
     public ObjectNode create(long userId, String scenario, String difficulty, String sourceSessionId) {
         available();
-        if (!SCENARIOS.containsKey(scenario) || !LEVELS.contains(difficulty)) fail(HttpStatus.BAD_REQUEST, "Tình huống hoặc độ khó không hợp lệ.");
+        if (!SCENARIOS.containsKey(scenario) || !ConversationLevelProfile.SUPPORTED_LEVELS.contains(difficulty)) fail(HttpStatus.BAD_REQUEST, "Tình huống hoặc độ khó không hợp lệ.");
         String practiceFocus = "";
         if (sourceSessionId != null) {
             Row source = load(userId, sourceSessionId);
@@ -549,7 +544,7 @@ public class ConversationService {
         var context = new LinkedHashMap<String,Object>(Map.of("scenario", SCENARIOS.get(row.scenario), "difficulty", row.difficulty,
                 "scenarioJourney", journey, "practiceFocus", row.state.path("practiceFocus").asText(),
                 "turnNumber", turns(row).size() + 1, "history", history,
-                "levelProfile", row.state.path("curatedStarter").asBoolean() ? levelBounds(row.difficulty) : Map.of("minWords", 20, "maxWords", 65),
+                "levelProfile", row.state.path("curatedStarter").asBoolean() ? ConversationLevelProfile.require(row.difficulty).wordBounds() : ConversationLevelProfile.LEGACY_BOUNDS,
                 "listeningSkills", ConversationContent.SKILLS));
         if (row.state.has("sessionBlueprint")) {
             context.put("sessionBlueprint", row.state.path("sessionBlueprint"));
@@ -655,19 +650,21 @@ public class ConversationService {
     private void validateNextPrompt(Row row, JsonNode prompt) {
         validatePrompt(prompt);
         String generated = normalized(prompt.path("utteranceEn").asText());
-        if (LEVELS.stream().anyMatch(level -> java.util.stream.Stream.of(2, 4).anyMatch(turn ->
+        if (ConversationLevelProfile.SUPPORTED_LEVELS.stream().anyMatch(level -> java.util.stream.Stream.of(2, 4).anyMatch(turn ->
                 generated.equals(normalized(json.readTree(ConversationGenerationPrompt.example(level, turn))
                         .path("utteranceEn").asText())))))
             throw new IllegalStateException("Copied generation example");
         int words = prompt.path("utteranceEn").asText().trim().split("\\s+").length;
+        var profile = ConversationLevelProfile.require(row.difficulty);
         Map<String,Integer> bounds = row.state.path("curatedStarter").asBoolean()
-                ? levelBounds(row.difficulty) : Map.of("minWords", 20, "maxWords", 65);
+                ? profile.wordBounds() : ConversationLevelProfile.LEGACY_BOUNDS;
         // Curated opening is a short warm-up, not evidence of proficiency at the selected level.
-        if (turns(row).isEmpty() && row.state.path("curatedStarter").asBoolean()) bounds = Map.of("minWords", 8, "maxWords", 55);
+        if (turns(row).isEmpty() && row.state.path("curatedStarter").asBoolean()) bounds = ConversationLevelProfile.WARMUP_BOUNDS;
         if (words < bounds.get("minWords") || words > bounds.get("maxWords")) throw new IllegalStateException("Invalid utterance word count");
         if (row.state.path("curatedStarter").asBoolean() && !ConversationContent.SKILLS.containsValue(prompt.path("skill").asText()))
             throw new IllegalStateException("Invalid listening skill");
-        if (row.difficulty.equals("A1") && prompt.path("facts").size() != 2) throw new IllegalStateException("A1 requires exactly two facts");
+        if (prompt.path("facts").size() < profile.minSlots() || prompt.path("facts").size() > profile.maxSlots())
+            throw new IllegalStateException("Invalid fact count for conversation level");
         if (turns(row).valueStream().anyMatch(t -> t.path("prompt").path("utteranceEn").asText()
                 .equalsIgnoreCase(prompt.path("utteranceEn").asText()))) {
             throw new IllegalStateException("Repeated conversation prompt");
@@ -717,14 +714,6 @@ public class ConversationService {
         turn.putArray("attempts"); turns(row).add(turn);
         turn.put("skillId", ConversationContent.skillId(prompt.path("skill").asText()));
         if (turns(row).size() == 1 && row.state.path("curatedStarter").asBoolean()) turn.put("warmup", true);
-    }
-
-    private Map<String,Integer> levelBounds(String level) {
-        return switch (level) {
-            case "A1" -> Map.of("minWords", 8, "maxWords", 35);
-            case "A2" -> Map.of("minWords", 18, "maxWords", 55);
-            default -> Map.of("minWords", 30, "maxWords", 90);
-        };
     }
 
     private void warmAudio(Row row, int number, String variant) {

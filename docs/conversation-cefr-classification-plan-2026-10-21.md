@@ -223,6 +223,14 @@ Số từ cho B2/C1/C2 chưa được chốt trong tài liệu này. Chỉ đặ
 
 ## Kế hoạch triển khai theo thứ tự
 
+### Tiến độ thực hiện ngày 21/10/2026
+
+- **Bước 1 hoàn tất:** `ConversationLevelProfile` là nguồn chung cho danh sách mức được hỗ trợ, khoảng từ, số slot và mô tả mức ở backend. Catalog, context sinh bài, few-shot và schema local đều dùng profile này.
+- Giữ A1 8–35 từ/2 slot, A2 18–55 từ/2–3 slot, B1 30–90 từ/2–3 slot; legacy 20–65 từ và warm-up 8–55 từ. B2/C1/C2 vẫn bị từ chối khi tạo phiên.
+- Kiểm tra local: 98 test Java pass, 1 test race có điều kiện chưa bật; 28 test JavaScript pass; kiểm tra UTF-8 và whitespace pass. Ca phát lại audio từng lỗi 503 ở lần chạy đầu; chạy riêng và chạy lại toàn nhóm đều pass, không sửa code audio.
+- Workflow AI Platform đã bổ sung test profile mới. Kết quả local không thay thế benchmark sinh bài bằng model thật.
+- **Chưa hoàn tất bước 2–8.** Bước kế tiếp là sửa rubric B1 cùng evidence cho suy luận. Lỗi thiếu kiểm tra độ dài trong Python vẫn cần sửa và chạy lại bộ 10×3; bước tập trung hóa profile chưa chứng minh tỷ lệ lỗi sinh bài đã giảm.
+
 ### 1. Tập trung hóa profile
 
 - Tạo một nguồn profile dùng chung ở backend.

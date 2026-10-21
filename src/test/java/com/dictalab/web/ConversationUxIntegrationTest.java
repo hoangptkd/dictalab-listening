@@ -157,6 +157,13 @@ class ConversationUxIntegrationTest {
         for(int i=0;i<13;i++) service.create(owner,"cafe","A1");
         service.create(user(),"plans","B1");
         var catalog=json.valueToTree(service.catalog(owner));
+        assertThat(catalog.path("levels")).isEqualTo(json.valueToTree(List.of("A1", "A2", "B1")));
+        assertThat(catalog.path("levelProfiles").valueStream().map(p -> p.path("id").asText()).toList())
+                .containsExactly("A1", "A2", "B1");
+        for (String level : List.of("B2", "C1", "C2"))
+            assertThatThrownBy(() -> service.create(owner, "cafe", level))
+                    .isInstanceOfSatisfying(ResponseStatusException.class,
+                            e -> assertThat(e.getStatusCode().value()).isEqualTo(400));
         assertThat(catalog.path("scenarioCatalog").size()).isEqualTo(24);
         assertThat(catalog.path("scenarioGroups").size()).isEqualTo(6);
         assertThat(catalog.path("sessions").size()).isEqualTo(12);
