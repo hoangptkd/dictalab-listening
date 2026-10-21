@@ -171,10 +171,10 @@ async function main() {
     const root = path.resolve(output), manifestPath = path.join(root, "manifest.json");
     await fs.mkdir(root, {recursive: true});
     if (mode === "generate") {
-        assert(process.env.SHOPAIKEY_API_KEY, "Missing ShopAIKey key");
+        assert(process.env.GEMINI_API_KEY, "Missing Gemini key");
         try { await fs.access(manifestPath); throw new Error("Manifest already exists; review/resume it instead"); }
         catch (error) { if (error.code !== "ENOENT") throw error; }
-        const model = process.env.DICTALAB_CONVERSATION_MODEL || "gemini-2.5-flash";
+        const model = process.env.DICTALAB_CONVERSATION_MODEL || "gemini-3.5-flash-lite";
         const manifest = {level: "B1", generationModel:model, generatedAt:new Date().toISOString(), lessons:[]};
         for (const topic of topics) {
             let parsed, count, context = topic.context;
@@ -185,8 +185,9 @@ async function main() {
                 try { body = JSON.parse(await fs.readFile(cache,"utf8")); }
                 catch (error) {
                     if (error.code !== "ENOENT") throw error;
-                    body = JSON.parse((await request(process.env.SHOPAIKEY_URL || "https://api.shopaikey.com/v1/chat/completions",
-                        process.env.SHOPAIKEY_API_KEY, {model, temperature:0, max_tokens:2200,
+                    body = JSON.parse((await request(process.env.GEMINI_URL || "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                        process.env.GEMINI_API_KEY, {model, temperature:0, max_tokens:2200,
+                            response_format:{type:"json_object"},
                             messages:[{role:"system",content:instruction},{role:"user",content:context}]})).toString("utf8"));
                     await fs.writeFile(cache, JSON.stringify(body,null,2)+"\n", "utf8");
                 }
@@ -202,7 +203,7 @@ async function main() {
                 }
             }
             manifest.lessons.push({slug:`ai-b1-${topic.id}-20261002`, title:`B1 · ${topic.title}`, topic:topic.topic,
-                description:"Hội thoại B1 nguyên bản do ShopAIKey tạo, giọng nói tổng hợp Cartesia. Luyện nghe hai người nói và chép từng câu; mức B1 chưa được hiệu chỉnh bằng bài kiểm tra chuẩn hóa.",
+                description:"Hội thoại B1 nguyên bản do Gemini tạo, giọng nói tổng hợp Cartesia. Luyện nghe hai người nói và chép từng câu; mức B1 chưa được hiệu chỉnh bằng bài kiểm tra chuẩn hóa.",
                 wordCount:count, sentences:parsed.sentences});
             console.log(`GENERATED ${topic.id}: ${count} words, twelve sentences`);
         }

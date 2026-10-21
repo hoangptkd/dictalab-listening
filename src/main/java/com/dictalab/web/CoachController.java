@@ -28,6 +28,18 @@ public class CoachController {
         return coach.report(user.id(), sessionId, true);
     }
 
+    public record Event(
+            @NotBlank @Pattern(regexp = "coach_result_viewed|coach_details_opened|coach_quick_review_started|coach_quick_review_completed") String name,
+            @Pattern(regexp = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}") String reviewRunId) {}
+
+    @PostMapping("/practice-sessions/{sessionId}/coach/events")
+    public void event(@AuthenticationPrincipal DictaLabPrincipal user, @PathVariable String sessionId,
+                      @Valid @RequestBody Event event) {
+        if (event.name().startsWith("coach_quick_review_") && event.reviewRunId() == null)
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST);
+        coach.recordEvent(user.id(), sessionId, event.name(), event.reviewRunId());
+    }
+
     public record SaveError(@NotBlank String sessionId, @Pattern(regexp = "[0-9]+:[0-9]+") @NotBlank String itemId) {}
 
     @PostMapping("/error-bank")

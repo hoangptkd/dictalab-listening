@@ -19,12 +19,12 @@ def main():
             name, value = line.split('=', 1)
             values = shlex.split(value)
             settings[name] = values[0] if values else ''
-    key = settings.get('SHOPAIKEY_API_KEY', '')
+    key = settings.get('GEMINI_API_KEY', '')
     if not key:
         print(json.dumps({'result': 'NOT_CONFIGURED'}))
         return
-    models = list(dict.fromkeys([settings.get('SHOPAIKEY_MODEL', 'claude-sonnet-4-5'),
-                                settings.get('DICTALAB_CONVERSATION_MODEL', 'gemini-2.5-flash')]))
+    models = list(dict.fromkeys([settings.get('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
+                                settings.get('DICTALAB_CONVERSATION_MODEL', 'gemini-3.5-flash-lite')]))
     if args.grading_source:
         instruction = re.search(r'private static final String GRADE_INSTRUCTION = """(.*?)""";',
                                 args.grading_source.read_text(encoding='utf-8'), re.S)
@@ -42,6 +42,7 @@ def main():
         for model in models:
             for name, answer, expected in cases:
                 body = {'model': model, 'temperature': 0, 'max_tokens': 2200,
+                        'response_format': {'type': 'json_object'},
                         'messages': [{'role': 'system', 'content': instruction},
                                      {'role': 'user', 'content': json.dumps({'prompt': prompt,
                                        'attempts': [{'answerVi': answer}]}, ensure_ascii=False)}]}
@@ -49,7 +50,7 @@ def main():
                 result = {'model': model, 'case': name, 'expected': expected}
                 try:
                     with urllib.request.urlopen(urllib.request.Request(
-                            settings.get('SHOPAIKEY_URL', 'https://api.shopaikey.com/v1/chat/completions'),
+                            settings.get('GEMINI_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'),
                             data=json.dumps(body).encode(), headers={'Authorization': 'Bearer ' + key,
                             'Content-Type': 'application/json'}), timeout=25) as response:
                         raw = response.read(100001)
@@ -78,9 +79,10 @@ def main():
         return
     for model in models:
         body = json.dumps({'model': model, 'temperature': 0, 'max_tokens': 120,
+                          'response_format': {'type': 'json_object'},
                           'messages': [{'role': 'system', 'content': 'Return only JSON: {"ok":true}.'},
                                        {'role': 'user', 'content': 'Synthetic connectivity probe.'}]}).encode()
-        request = urllib.request.Request(settings.get('SHOPAIKEY_URL', 'https://api.shopaikey.com/v1/chat/completions'),
+        request = urllib.request.Request(settings.get('GEMINI_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'),
                                          data=body, headers={'Authorization': 'Bearer ' + key,
                                                              'Content-Type': 'application/json'})
         began = time.monotonic()

@@ -192,17 +192,17 @@ Avoid simple word-copy distractors; an option must not be true elsewhere in a wa
 async function cachedJson(file,system,user,model,maxTokens=5500){
  let body;try{body=JSON.parse(await fs.readFile(file,'utf8'))}catch(e){
   if(e.code!=='ENOENT')throw e;
-  body=JSON.parse((await request(process.env.SHOPAIKEY_URL||'https://api.shopaikey.com/v1/chat/completions',process.env.SHOPAIKEY_API_KEY,
-   {model,temperature:0.35,max_tokens:maxTokens,messages:[{role:'system',content:system},{role:'user',content:user}]},{},150000)).toString('utf8'));
+  body=JSON.parse((await request(process.env.GEMINI_URL||'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',process.env.GEMINI_API_KEY,
+   {model,temperature:0.35,max_tokens:maxTokens,response_format:{type:'json_object'},messages:[{role:'system',content:system},{role:'user',content:user}]},{},150000)).toString('utf8'));
   await fs.writeFile(file,JSON.stringify(body,null,2)+'\n',{encoding:'utf8',flag:'wx'});
  }
  const content=body.choices?.[0]?.message?.content;assert(typeof content==='string'&&content.length<=40000);
  return JSON.parse(content.slice(content.indexOf('{'),content.lastIndexOf('}')+1));
 }
 async function generate(){
- assert(process.env.SHOPAIKEY_API_KEY,'Missing text provider runtime configuration');
+ assert(process.env.GEMINI_API_KEY,'Missing text provider runtime configuration');
  await fs.mkdir(path.join(root,'text-cache'),{recursive:true});
- const model=process.env.DICTALAB_CONVERSATION_MODEL||'gemini-2.5-flash',lessons=[];
+ const model=process.env.DICTALAB_CONVERSATION_MODEL||'gemini-3.5-flash-lite',lessons=[];
  const specs=specifications();
  async function one(spec){
   let l,last='';
@@ -357,7 +357,7 @@ async function main(){
   assert.throws(()=>validateLesson({...s[0],sentences:[],questions:[]}));
   console.log('SELF_TEST_OK: 90 unique specs, B1 targets, strict validation');return;
  }
- if(!process.env.CARTESIA_API_KEY||!process.env.SHOPAIKEY_API_KEY)process.loadEnvFile(path.resolve('.env'));
+ if(!process.env.CARTESIA_API_KEY||!process.env.GEMINI_API_KEY)process.loadEnvFile(path.resolve('.env'));
  if(mode==='generate')await generate();else if(mode==='audio')await audio();else if(mode==='export')await exportBatch();else if(mode==='validate'){const b=JSON.parse(await fs.readFile(path.join(root,'brief.json'),'utf8'));console.log(JSON.stringify(validateBatch(b)))}else throw Error('Expected generate|audio|export|validate|self-test');
 }
 module.exports={specifications,validateLesson,validateBatch,buildSql};

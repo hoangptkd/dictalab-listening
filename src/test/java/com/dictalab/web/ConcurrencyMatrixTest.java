@@ -47,7 +47,7 @@ class ConcurrencyMatrixTest {
     @Autowired ListeningComprehensionService listening;
     @Autowired ObjectMapper json;
     @MockitoSpyBean AppUserRepository users;
-    @MockitoBean ShopAiKeyClient ai;
+    @MockitoBean GeminiClient ai;
     final int repeats=Integer.getInteger("dictalab.race-repeats",2);
     String caseName;
 

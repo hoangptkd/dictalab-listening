@@ -35,7 +35,7 @@ services:
       retries: 20
 
   rabbitmq:
-    profiles: [messaging]
+    profiles: [messaging, ai-worker]
     image: rabbitmq:4.3.6-management-alpine
     container_name: dictalab-rabbitmq
     restart: unless-stopped
@@ -54,7 +54,73 @@ services:
       timeout: 5s
       retries: 20
 
+  ai-generation:
+    profiles: [ai]
+    build: &ai-build
+      context: .
+      dockerfile: services/ai-generation/Dockerfile
+    container_name: dictalab-ai-generation
+    restart: unless-stopped
+    environment: &ai-environment
+      DICTALAB_AI_OLLAMA_URL: ${DICTALAB_AI_OLLAMA_URL:-http://host.docker.internal:11434}
+      DICTALAB_AI_OLLAMA_SERVICE_TOKEN: ${DICTALAB_AI_OLLAMA_SERVICE_TOKEN:-}
+      DICTALAB_AI_PRIMARY_PROVIDER: ${DICTALAB_AI_PRIMARY_PROVIDER:-auto}
+      DICTALAB_AI_CONVERSATION_ENABLED: ${DICTALAB_AI_CONVERSATION_ENABLED:-true}
+      DICTALAB_AI_GEMINI_BASE_URL: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai}
+      DICTALAB_AI_GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      DICTALAB_AI_GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      DICTALAB_AI_JOBS_ENABLED: ${DICTALAB_AI_JOBS_ENABLED:-false}
+      DICTALAB_AI_JOBS_DATABASE: /app/data/ai-jobs.sqlite3
+      DICTALAB_AI_RABBITMQ_URL: ${DICTALAB_AI_RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
+      DICTALAB_AI_JOB_RETENTION_SECONDS: ${DICTALAB_AI_JOB_RETENTION_SECONDS:-900}
+      DICTALAB_AI_HTTP_MAX_CONNECTIONS: ${DICTALAB_AI_HTTP_MAX_CONNECTIONS:-10}
+      DICTALAB_AI_CARTESIA_API_KEY: ${CARTESIA_API_KEY:-}
+      DICTALAB_AI_CARTESIA_MODEL: ${CARTESIA_MODEL:-sonic-3.6}
+      DICTALAB_AI_CARTESIA_VOICE: ${CARTESIA_VOICE:-db6b0ed5-d5d3-463d-ae85-518a07d3c2b4}
+      DICTALAB_AI_CARTESIA_VERSION: ${CARTESIA_VERSION:-2026-08-14}
+      DICTALAB_AI_MODEL: ${DICTALAB_AI_MODEL:-qwen3.5:9b}
+      # Service-to-service auth token — must be non-empty in production.
+      # Set DICTALAB_AI_PRODUCTION_MODE=true to enforce fail-fast on startup.
+      DICTALAB_AI_SERVICE_TOKEN: ${DICTALAB_AI_SERVICE_TOKEN:-}
+      DICTALAB_AI_PRODUCTION_MODE: ${DICTALAB_AI_PRODUCTION_MODE:-false}
+      DICTALAB_AI_TEMPERATURE: ${DICTALAB_AI_TEMPERATURE:-0.3}
+      DICTALAB_AI_TRANSLATION_TEMPERATURE: ${DICTALAB_AI_TRANSLATION_TEMPERATURE:-0.1}
+      DICTALAB_AI_NUM_CTX: ${DICTALAB_AI_NUM_CTX:-8192}
+      DICTALAB_AI_NUM_PREDICT: ${DICTALAB_AI_NUM_PREDICT:-1000}
+      DICTALAB_AI_TIMEOUT_SECONDS: ${DICTALAB_AI_TIMEOUT_SECONDS:-180}
+      DICTALAB_AI_MAX_CONCURRENCY: ${DICTALAB_AI_MAX_CONCURRENCY:-1}
+      DICTALAB_AI_CACHE_TTL_SECONDS: ${DICTALAB_AI_CACHE_TTL_SECONDS:-900}
+      DICTALAB_AI_ARTIFACT_VERSION: ${DICTALAB_AI_ARTIFACT_VERSION:-conversation-cefr-b1-v7-20261021}
+      DICTALAB_AI_ARTIFACT_SHA256: ${DICTALAB_AI_ARTIFACT_SHA256:-}
+    ports:
+      # Bind only to loopback — AI Platform must not be reachable from the network
+      - "127.0.0.1:${DICTALAB_AI_PORT:-8091}:8091"
+    volumes:
+      - dictalab_ai_jobs:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  ai-worker:
+    profiles: [ai-worker]
+    build: *ai-build
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 100s
+    command: ["python", "-m", "app.worker"]
+    environment:
+      <<: *ai-environment
+      DICTALAB_AI_JOBS_ENABLED: "true"
+    volumes:
+      - dictalab_ai_jobs:/app/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
 volumes:
   dictalab_postgres_data:
   dictalab_redis_data:
   dictalab_rabbitmq_data:
+  dictalab_ai_jobs:

@@ -6,6 +6,8 @@ MVP web luyện nghe chép chính tả tiếng Anh theo CEFR A1–B2. Người h
 
 ## Chức năng đã có
 
+Coach hỗ trợ Qwen3.5 4B qua Ollama local với provider riêng, tiến bộ có dữ liệu cấu trúc, ôn nhanh tối đa ba câu và phương án dự phòng khi AI lỗi. Hướng dẫn cấu hình, kiểm thử và đánh giá: [Coach local](docs/coach-local-ai.md).
+
 - Đăng ký, đăng nhập, đăng xuất bằng email; mật khẩu băm BCrypt, JWT access/refresh token dùng cookie HttpOnly và Redis quản lý phiên token.
 - Lịch sử luyện, điểm số, dashboard và gợi ý bài được tách riêng theo từng tài khoản.
 - Chọn level A1, A2, B1, B2 và bài luyện.
@@ -188,8 +190,8 @@ chính địa chỉ đó. Cần cấu hình `DICTALAB_PUBLIC_URL`, `DICTALAB_MAI
 vì vậy cần rà danh sách admin trước khi phát hành bản mới.
 
 Tên riêng và từ khó được phân loại ngoại tuyến bằng `scripts/enrich-preview-vocabulary.py`, sau đó
-lưu vào PostgreSQL. API key ShopAIKey chỉ nhập khi chạy script trên máy quản trị; web và VPS không giữ
-key cho bước này. Module Listening dùng khóa ShopAIKey trên backend để tạo câu hỏi và chấm nhớ ý.
+lưu vào PostgreSQL. API key Google Gemini chỉ nhập khi chạy script trên máy quản trị; web và VPS không
+giữ key cho bước này. Module Listening dùng khóa Gemini trên backend để tạo câu hỏi và chấm nhớ ý.
 
 ```powershell
 python scripts/enrich-preview-vocabulary.py `
@@ -233,19 +235,19 @@ Người học có thể nghe lại đoạn audio gốc, luyện điền từ t�
 vào Error Bank theo tài khoản. Lượt ôn không thay đổi điểm Dictation. Toàn bộ câu, telemetry,
 ước lượng năng lực và xuất dữ liệu nằm trong **Phân tích chi tiết**, mặc định đóng.
 
-Backend gọi ShopAIKey trực tiếp qua HTTPS; không cần Chrome, đăng nhập ChatGPT hoặc bridge.
+Backend gọi Google Gemini trực tiếp qua HTTPS; không cần Chrome, đăng nhập ChatGPT hoặc bridge.
 Các cấu hình sau chỉ đặt trên **máy chạy backend DictaLab**:
 
 ```env
-SHOPAIKEY_API_KEY=<khóa riêng trên máy chủ>
-SHOPAIKEY_MODEL=claude-sonnet-4-5
-SHOPAIKEY_URL=https://api.shopaikey.com/v1/chat/completions
+GEMINI_API_KEY=<khóa riêng trên máy chủ>
+GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_URL=https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
 DICTALAB_COACH_ENABLED=true
 ```
 
-Coach, chấm/làm rõ Hội thoại AI và Listening Comprehension dùng model `SHOPAIKEY_MODEL`.
-Sinh câu Hội thoại AI dùng riêng `DICTALAB_CONVERSATION_MODEL=gemini-2.5-flash`; giọng đọc vẫn dùng Cartesia.
-Khóa ShopAIKey không gửi xuống trình duyệt hoặc ghi vào prompt/log.
+Coach, chấm/làm rõ Hội thoại AI và Listening Comprehension dùng model `GEMINI_MODEL`.
+Sinh câu Hội thoại AI dùng riêng `DICTALAB_CONVERSATION_MODEL=gemini-3.5-flash-lite`; giọng đọc vẫn dùng Cartesia.
+Khóa Gemini không gửi xuống trình duyệt hoặc ghi vào prompt/log. Ollama chỉ dùng cho phát triển local.
 
 Màn hình `/conversation` hiển thị **Nghe hiểu tình huống**: 24 tình huống trong 6 nhóm,
 nghe tiếng Anh và trả lời bằng tiếng Việt, không phải luyện nói. Phiên mới bắt đầu
@@ -258,7 +260,7 @@ Bản nháp lưu riêng theo người dùng trên thiết bị trong 24 giờ. G
 lưu trong phiên, không tự thay đổi điểm và chưa có hàng đợi xử lý riêng cho quản trị.
 Migration V37 chỉ mở rộng CHECK tình huống; triển khai theo quy trình dừng ghi và sao lưu hiện có.
 
-Chạy local với `.env` đã cấu hình ShopAIKey:
+Chạy local với `.env` đã cấu hình Gemini (hoặc dùng Ollama qua biến local):
 
 ```powershell
 pwsh -File .\scripts\run-local.ps1 -WithCoach
@@ -268,7 +270,7 @@ pwsh -File .\scripts\run-local.ps1 -WithCoach
 `scripts/check-coach-local.ps1` có thể kiểm tra thật bằng tài khoản QA mới trong database local;
 không chạy lên production chỉ để thử tích hợp.
 
-Trên Windows VPS, cấu hình `SHOPAIKEY_API_KEY` trong môi trường dịch vụ rồi dùng
+Trên Windows VPS, cấu hình `GEMINI_API_KEY` trong môi trường dịch vụ rồi dùng
 `scripts/enable-coach-vps.ps1` sau khi deploy bản mới. Script thử API với dữ liệu tổng hợp trước
 khi bật Coach, khôi phục môi trường dịch vụ nếu app không lên health. Các biến
 `DICTALAB_COACH_URL/MODEL/API_KEY/TIMEOUT` cũ không còn được đọc bởi ứng dụng.
@@ -296,7 +298,7 @@ bỏ qua hai bảng này khi rollback. Kiểm tra sau deploy bằng phiên đã 
 Kiểm thử phần Coach:
 
 ```powershell
-mvn '-Dtest=CoachAnalysisTest,ShopAiKeyClientTest,CoachServiceIntegrationTest,PracticeServiceIntegrationTest' test
+mvn '-Dtest=CoachAnalysisTest,GeminiClientTest,CoachServiceIntegrationTest,PracticeServiceIntegrationTest' test
 node --test src/test/js/coach.test.cjs
 ```
 
@@ -365,9 +367,9 @@ sau khi hoàn thành assessment. Nếu lượt nghe bị gián đoạn, người
 phiên mới; lượt đã gián đoạn không có báo cáo. Báo cáo dùng lượt 1 làm chỉ số chính, hiển thị điểm
 hiểu/nhớ theo lượt, mức thay đổi và độ chính xác theo loại câu hỏi.
 
-Một bài A1 mẫu được tạo bởi migration. Quản trị viên mở **Trang quản trị → Nghe hiểu** tại `/admin/listening`, chọn audio đã căn mốc để ShopAIKey tạo bản nháp hoặc nhập thủ công, sau đó duyệt/sửa
-facts, câu hỏi, đáp án và giải thích trước khi xuất bản. Đặt `SHOPAIKEY_API_KEY` trên máy chủ;
-có thể đổi `SHOPAIKEY_MODEL` và `SHOPAIKEY_URL`. Nếu chưa có khóa, phần câu hỏi vẫn chấm được,
+Một bài A1 mẫu được tạo bởi migration. Quản trị viên mở **Trang quản trị → Nghe hiểu** tại `/admin/listening`, chọn audio đã căn mốc để Gemini tạo bản nháp hoặc nhập thủ công, sau đó duyệt/sửa
+facts, câu hỏi, đáp án và giải thích trước khi xuất bản. Đặt `GEMINI_API_KEY` trên máy chủ;
+có thể đổi `GEMINI_MODEL` và `GEMINI_URL`. Nếu chưa có khóa, phần câu hỏi vẫn chấm được,
 còn recall hiển thị là chưa chấm. Bản nháp cần audio hội thoại và mốc thời gian câu đã có trong
 lesson. Bài đã xuất bản không thể sửa trực tiếp; quản trị viên tạo bản sửa mới và xuất bản
 phiên bản đó, trong khi các kết quả cũ vẫn giữ nội dung của phiên bản trước.

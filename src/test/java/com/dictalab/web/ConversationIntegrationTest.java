@@ -5,7 +5,7 @@ import com.dictalab.repository.AppUserRepository;
 import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.CartesiaClient;
 import com.dictalab.service.ConversationService;
-import com.dictalab.service.ShopAiKeyClient;
+import com.dictalab.service.GeminiClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -34,7 +34,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties = {"dictalab.conversation.enabled=true", "dictalab.coach.enabled=false", "dictalab.conversation.curated-starters=false"})
+@SpringBootTest(properties = {"dictalab.conversation.enabled=true", "dictalab.coach.enabled=false", "dictalab.conversation.curated-starters=false", "dictalab.conversation.generation.repair-enabled=true"})
 @AutoConfigureMockMvc
 class ConversationIntegrationTest {
     @Test void recentSessionsReportCompletionWithoutExposingTheirStoredState() {
@@ -56,7 +56,7 @@ class ConversationIntegrationTest {
     @Autowired com.dictalab.config.ConversationProperties config;
     @Autowired com.dictalab.service.AiUsageBudget budget;
     @Autowired MockMvc mvc;
-    @MockitoBean ShopAiKeyClient ai;
+    @MockitoBean GeminiClient ai;
     @MockitoBean CartesiaClient tts;
     long owner;
 
@@ -69,6 +69,9 @@ class ConversationIntegrationTest {
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
         when(ai.completeJson(startsWith("Audit a clarification"), anyString(), anyString()))
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
+    }
+    private JsonNode generationContext(String input) {
+        return json.readTree(input.split("\n<turn_brief>", 2)[0]);
     }
     private JsonNode prompt(String detail) {
         return json.readTree("""
@@ -178,7 +181,7 @@ class ConversationIntegrationTest {
         service.next(owner, followup, 0);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(ai, times(5)).completeJson(startsWith("You design"), input.capture(), anyString());
-        var context = json.readTree(input.getAllValues().get(4));
+        var context = generationContext(input.getAllValues().get(4));
         assertThat(context.path("scenarioJourney").asText()).contains("Same customer and server");
         assertThat(context.path("practiceFocus").asText()).isEqualTo("Nghe giờ và địa điểm");
         assertThatThrownBy(() -> service.create(owner, "tickets", "B1", id)).isInstanceOf(ResponseStatusException.class);
@@ -251,7 +254,7 @@ class ConversationIntegrationTest {
         assertThat(service.next(owner, id, 0).path("turnNumber").asInt()).isEqualTo(1);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), anyString());
-        JsonNode repair = json.readTree(input.getAllValues().get(1));
+        JsonNode repair = generationContext(input.getAllValues().get(1));
         assertThat(repair.path("validationError").asText()).contains("Ticket is not requested");
         assertThat(repair.path("previousInvalidPrompt")).isEqualTo(invalid);
         var stored = json.readTree(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=?", String.class, id));
@@ -316,10 +319,10 @@ class ConversationIntegrationTest {
 
     @Test void challengeAndPreciseMeaningRulesReachTheProvider() {
         String id = start();
-        verify(ai).completeJson(contains("A small correction is optional, never mandatory"), anyString(), anyString());
-        verify(ai).completeJson(contains("A1: 8-35 words"), anyString(), anyString());
-        verify(ai).completeJson(contains("A2: 18-55 words"), anyString(), anyString());
-        verify(ai).completeJson(contains("B1: 30-90 words"), anyString(), anyString());
+        verify(ai).completeJson(contains("avoid relative clauses and deliberately inserted distractors or self-corrections"), anyString(), anyString());
+        verify(ai).completeJson(contains("levelProfile: {minWords,maxWords}, authoritative word bounds"), anyString(), anyString());
+        verify(ai).completeJson(contains("A2: short connected sentences"), anyString(), anyString());
+        verify(ai).completeJson(contains("B1: connected familiar speech"), anyString(), anyString());
         when(ai.completeJson(anyString(), anyString())).thenReturn(grade("PARTIAL", "INCORRECT", "quán"));
         var result = service.answer(owner, id, 1, UUID.randomUUID(), "quán");
         assertThat(result.path("turns").path(0).path("done").asBoolean()).isFalse();
@@ -363,7 +366,7 @@ class ConversationIntegrationTest {
         assertThat(db.queryForObject("SELECT COUNT(*) FROM ai_conversation_audio WHERE session_id=?", Integer.class, busy)).isZero();
     }
 
-    @Test void clarificationUsesShopAiKeyWithExplicitContextAndDoesNotDependOnCoach() {
+    @Test void clarificationUsesGeminiWithExplicitContextAndDoesNotDependOnCoach() {
         assertThat(service.catalog(owner).get("enabled")).isEqualTo(true);
         String id = start();
         String utterance = prompt("ten").path("utteranceEn").asText();
@@ -423,8 +426,8 @@ class ConversationIntegrationTest {
         String id = service.create(owner, "cafe", "A1").path("id").asText();
         assertThat(service.next(owner, id, 0).path("turnNumber").asInt()).isEqualTo(1);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), eq("gemini-2.5-flash"));
-        JsonNode first = json.readTree(input.getAllValues().get(0)), repaired = json.readTree(input.getAllValues().get(1));
+        verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), eq("gemini-3.5-flash-lite"));
+        JsonNode first = generationContext(input.getAllValues().get(0)), repaired = generationContext(input.getAllValues().get(1));
         assertThat(repaired.path("scenario")).isEqualTo(first.path("scenario"));
         assertThat(repaired.path("turnNumber").asInt()).isEqualTo(1);
         assertThat(repaired.path("validationError").asText()).isEqualTo("Invalid JSON schema");
@@ -489,8 +492,8 @@ class ConversationIntegrationTest {
         doReturn(prompt("eleven")).when(ai).completeJson(startsWith("You design"), anyString(), anyString());
         assertThat(service.next(owner, id, 1).path("turnNumber").asInt()).isEqualTo(2);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), eq("gemini-2.5-flash"));
-        JsonNode history = json.readTree(input.getAllValues().get(1)).path("history").path(0);
+        verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), eq("gemini-3.5-flash-lite"));
+        JsonNode history = generationContext(input.getAllValues().get(1)).path("history").path(0);
         assertThat(history.path("facts").size()).isEqualTo(2);
         assertThat(history.path("evaluation").path("facts").path(0).path("status").asText()).isEqualTo("CAPTURED");
     }
@@ -808,8 +811,8 @@ class ConversationIntegrationTest {
         assertThat(service.next(owner, id, 1).path("turnNumber").asInt()).isEqualTo(2);
         service.next(owner, id, 1);
         verify(ai, times(1)).completeJson(anyString(), anyString());
-        verify(ai, times(2)).completeJson(startsWith("You design"), anyString(), eq("gemini-2.5-flash"));
-        verify(ai, times(2)).completeJson(startsWith("Audit a listening task"), anyString(), eq("gemini-2.5-flash"));
+        verify(ai, times(2)).completeJson(startsWith("You design"), anyString(), eq("gemini-3.5-flash-lite"));
+        verify(ai, times(2)).completeJson(startsWith("Audit a listening task"), anyString(), eq("gemini-3.5-flash-lite"));
         service.play(owner, id, 2, "original", false);
         verify(tts, times(1)).synthesize(contains("eleven"));
     }

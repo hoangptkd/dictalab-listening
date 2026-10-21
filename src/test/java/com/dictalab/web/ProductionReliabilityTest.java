@@ -33,7 +33,7 @@ class ProductionReliabilityTest {
     @Autowired EmailOutbox outbox;
     @Autowired PlatformTransactionManager manager;
     @Autowired ObjectMapper json;
-    @MockitoBean ShopAiKeyClient ai;
+    @MockitoBean GeminiClient ai;
     @MockitoBean JavaMailSender mail;
 
     private AppUser user(){return users.saveAndFlush(new AppUser("reliability-"+UUID.randomUUID()+"@test.local","Learner","unused",Instant.now()));}

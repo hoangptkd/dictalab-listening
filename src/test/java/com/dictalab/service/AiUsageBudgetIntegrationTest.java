@@ -74,4 +74,28 @@ class AiUsageBudgetIntegrationTest {
         budget.setEnabled(actor,true);
         budget.reserve(actor,false);
     }
+
+    @Test void localCallsHaveTheirOwnLimitsAndNoCloudDollarReservation() {
+        var budget = budget(100,100,1);
+        budget.reserveLocal(actor);
+        assertThat(db.queryForObject("SELECT calls FROM ai_daily_budget WHERE scope='LOCAL_GLOBAL'",Integer.class)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT reserved_microusd FROM ai_daily_budget WHERE scope='LOCAL_GLOBAL'",Long.class)).isZero();
+        assertThatThrownBy(() -> budget.reserveLocal(actor)).isInstanceOf(AiUsageBudget.Rejected.class);
+        budget.reserve(actor,false);
+        assertThat(db.queryForObject("SELECT reserved_microusd FROM ai_daily_budget WHERE scope='GLOBAL'",Long.class)).isEqualTo(10);
+        budget.setEnabled(actor,false);
+        assertThatThrownBy(() -> budget.reserveLocal(actor)).isInstanceOf(AiUsageBudget.Rejected.class);
+    }
+
+    @Test void localRoutingAndShadowKeepDollarAndLearnerAllowancesSeparate() {
+        var budget = budget(100,100,10);
+        org.springframework.test.util.ReflectionTestUtils.setField(budget, "textProvider", "ollama");
+        budget.reserve(actor,false);
+        budget.reserve(null,false); // Shadow reserves global resources, without a learner debit.
+        assertThat(db.queryForObject("SELECT calls FROM ai_daily_budget WHERE scope='LOCAL_GLOBAL'",Integer.class)).isEqualTo(2);
+        assertThat(db.queryForObject("SELECT calls FROM ai_daily_budget WHERE scope=?",Integer.class,"LOCAL_USER:"+actor)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT reserved_microusd FROM ai_daily_budget WHERE scope='LOCAL_GLOBAL'",Long.class)).isZero();
+        budget.reserve(actor,true); // Cartesia remains a paid provider in local text mode.
+        assertThat(db.queryForObject("SELECT reserved_microusd FROM ai_daily_budget WHERE scope='GLOBAL'",Long.class)).isEqualTo(20);
+    }
 }

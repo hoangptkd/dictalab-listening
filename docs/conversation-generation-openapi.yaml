@@ -1,0 +1,243 @@
+openapi: 3.1.0
+info:
+  title: DictaLab AI Generation Service
+  version: 1.0.0
+x-cefr-offline-evaluation:
+  levels: {B2: SHADOW, C1: SHADOW, C2: PLANNED}
+  artifact: conversation-cefr-shadow-v1-20261021
+  entrypoint: tools/ai-eval/generate.py --shadow
+  httpEnabled: false
+  note: Offline evaluation uses a separate request model; X-AI-Mode does not expand the HTTP level enum.
+paths:
+  /health/live:
+    get:
+      operationId: live
+      responses:
+        '200': {description: Process is running}
+  /health/ready:
+    get:
+      operationId: ready
+      responses:
+        '200': {description: Artifact hash and configured Ollama model digest are verified}
+        '503': {description: Artifact unavailable, unapproved in production, or model missing or drifted}
+  /metrics:
+    get:
+      operationId: metrics
+      security: [{serviceToken: []}]
+      responses:
+        '200': {description: Process-local Prometheus latency histogram and bounded status counters}
+        '401': {description: Invalid service token}
+  /v1/conversation/tasks:
+    post:
+      operationId: createConversationTask
+      security: [{serviceToken: []}]
+      parameters:
+        - in: header
+          name: X-Request-Id
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - in: header
+          name: X-AI-Mode
+          required: false
+          schema: {type: string, enum: [foreground, shadow], default: foreground}
+          description: Internal shadow mode disables paid fallback; Java discards the response.
+        - in: header
+          name: X-AI-Timeout-Ms
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 600000}
+          description: Remaining caller budget; Python uses the smaller of this value and its configured workflow timeout.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ConversationTaskRequest'}
+      responses:
+        '200':
+          description: Generated task
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConversationTaskResponse'}
+        '400': {description: Invalid request — missing required field or wrong type}
+        '401': {description: Invalid service token}
+        '409': {description: Idempotency conflict — key reused with different fingerprint}
+        '429': {description: Generation capacity exhausted}
+        '503': {description: Model unavailable}
+        '504': {description: Model timeout}
+components:
+  securitySchemes:
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+  schemas:
+    ConversationContext:
+      type: object
+      description: >
+        Allowlisted context passed to the AI model. Unknown fields are silently dropped
+        before reaching the prompt. This object must never carry credentials, account
+        data, emails, tokens, or cookies.
+      additionalProperties: false
+      properties:
+        scenario:
+          type: string
+          maxLength: 200
+        difficulty:
+          type: string
+          enum: [A1, A2, B1]
+        turnNumber:
+          type: integer
+          minimum: 1
+          maximum: 4
+        partnerRole:
+          type: string
+          maxLength: 120
+        learnerRole:
+          type: string
+          maxLength: 120
+        levelProfile:
+          type: object
+          additionalProperties: true
+        listeningSkills:
+          type: object
+          additionalProperties: true
+        allowedTaskTypes:
+          type: array
+          items: {type: string}
+        scenarioJourney:
+          type: string
+          maxLength: 4000
+        history:
+          type: array
+          items: {type: object, additionalProperties: true}
+        recentPractice:
+          type: array
+          items: {type: object, additionalProperties: true}
+        practiceFocus:
+          type: string
+          maxLength: 2000
+        sessionBlueprint:
+          type: object
+          additionalProperties: true
+        variationSeed:
+          type: integer
+        previouslyTestedDetails:
+          type: array
+          items: {type: object, additionalProperties: true}
+        weakSkills:
+          type: array
+          items: {type: string}
+        validationError:
+          type: string
+          maxLength: 4000
+        previousInvalidPrompt:
+          type: object
+          additionalProperties: true
+    ConversationTaskRequest:
+      type: object
+      required: [requestId, idempotencyKey, level, turnNumber, promptVersion, instruction, context]
+      additionalProperties: false
+      properties:
+        requestId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 128
+        level:
+          type: string
+          enum: [A1, A2, B1]
+        turnNumber:
+          type: integer
+          minimum: 1
+          maximum: 4
+        promptVersion:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Server allowlisted alias mapped to the explicitly configured immutable artifact.
+        instruction:
+          type: string
+          minLength: 1
+          maxLength: 50000
+          description: Legacy compatibility field; server executes the configured artifact instruction.
+        context:
+          $ref: '#/components/schemas/ConversationContext'
+    ConversationTaskResponse:
+      type: object
+      required: [task, model, modelDigest, promptVersion, generationId, requestId, contractVersion]
+      properties:
+        task:
+          $ref: '#/components/schemas/GeneratedConversationTask'
+        model:
+          type: string
+        modelDigest:
+          type: string
+        promptVersion:
+          type: string
+        generationId:
+          type: string
+        requestId:
+          type: string
+        contractVersion:
+          type: string
+          description: Schema contract version; current value is "1"
+    GeneratedConversationTask:
+      type: object
+      required: [slots, utteranceEn, facts, questionVi, taskVi, skill, translationVi]
+      properties:
+        slots:
+          type: array
+          minItems: 2
+          maxItems: 3
+          items:
+            type: object
+            required: [kind, askVi]
+            properties:
+              kind: {type: string, minLength: 1, maxLength: 64}
+              askVi: {type: string, minLength: 1, maxLength: 100}
+        utteranceEn:
+          type: string
+          maxLength: 1200
+          description: English words split on ASCII whitespace. Profile bounds apply; legacy sessions may supply 20-65.
+        questionVi: {type: string, maxLength: 180}
+        taskVi: {type: string, maxLength: 180}
+        skill: {type: string, maxLength: 180}
+        translationVi: {type: string, maxLength: 1200}
+        facts:
+          type: array
+          minItems: 2
+          maxItems: 3
+          items:
+            type: object
+            required: [textVi, evidenceEn]
+            properties:
+              textVi: {type: string, maxLength: 160}
+              evidenceEn:
+                type: string
+                minLength: 1
+                maxLength: 300
+                description: Exact transcript quote; the inferred answer itself need not be verbatim.
+              taskType:
+                type: string
+                description: Optional on legacy facts; new B1 generation includes it. Does not determine CEFR level by itself.
+                enum: [direct_detail, gist, reason_purpose, change_revision, instruction_sequence, condition, opinion_attitude, inference_prediction]
+              reasoningEvidence:
+                type: object
+                description: Required for inference_prediction. One segment can contain multiple contextual cues. Only B1 currently accepts this metadata.
+                required: [segmentsEn, rationaleEn]
+                additionalProperties: false
+                properties:
+                  segmentsEn:
+                    type: array
+                    minItems: 1
+                    maxItems: 4
+                    uniqueItems: true
+                    items: {type: string, minLength: 1, maxLength: 300}
+                    description: Distinct exact transcript quotations; at least one contains evidenceEn verbatim.
+                  rationaleEn: {type: string, minLength: 1, maxLength: 300}

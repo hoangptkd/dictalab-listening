@@ -60,7 +60,7 @@ class AiRabbitQueueIntegrationTest {
     @Autowired AiQueueProperties config;
     @Autowired io.micrometer.core.instrument.MeterRegistry metrics;
     @MockitoBean CartesiaClient tts;
-    @MockitoBean ShopAiKeyClient ai;
+    @MockitoBean GeminiClient ai;
     private long owner;
     private String session;
 
@@ -308,7 +308,7 @@ class AiRabbitQueueIntegrationTest {
         for(String property:new String[]{"dictalab.media.s3.enabled","dictalab.media.s3.cleanup-enabled","dictalab.listening.queue.enabled",
                 "dictalab.coach.enabled","dictalab.personal-content.enabled","management.health.rabbit.enabled","management.health.mail.enabled",
                 "management.health.redis.enabled","management.tracing.export.otlp.enabled","management.otlp.metrics.export.enabled","management.logging.export.otlp.enabled"})settings.put(property,false);
-        settings.put("dictalab.conversation.cartesia-api-key","");settings.put("dictalab.shopaikey.api-key","");
+        settings.put("dictalab.conversation.cartesia-api-key","");settings.put("dictalab.gemini.api-key","");
         settings.put("dictalab.ai.queue.enabled",true);settings.put("dictalab.ai.queue.exchange",config.exchange());
         settings.put("dictalab.ai.queue.audio-queue",config.audioQueue());settings.put("dictalab.ai.queue.coach-queue",config.coachQueue());
         settings.put("dictalab.ai.queue.audio-workers",config.audioWorkers());settings.put("dictalab.ai.queue.coach-workers",config.coachWorkers());

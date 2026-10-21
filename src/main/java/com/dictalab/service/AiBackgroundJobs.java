@@ -201,9 +201,9 @@ public class AiBackgroundJobs {
         try {
             if (kind.equals("AUDIO")) {
                 resultWrite = conversation.getObject().generateQueuedAudio((String) job.get("conversation_id"),
-                        ((Number) job.get("turn_number")).intValue(), (String) job.get("variant"), (String) job.get("input_hash"));
+                        ((Number) job.get("turn_number")).intValue(), (String) job.get("variant"), (String) job.get("input_hash"), id);
             } else {
-                resultWrite = coach.getObject().generateQueuedReport((String) job.get("practice_id"));
+                resultWrite = coach.getObject().generateQueuedReport((String) job.get("practice_id"), id);
             }
         } catch (RuntimeException failure) {
             if (failure instanceof ProviderGuard.Unavailable unavailable && unavailable.retrySafe()) {

@@ -80,7 +80,7 @@ public class RequestRateLimitFilter extends OncePerRequestFilter {
             throws ServletException,IOException {
         if(!enabled || request.getMethod().equals("GET")){chain.doFilter(request,response);return;}
         String path=request.getRequestURI().substring(request.getContextPath().length());
-        String group=path.startsWith("/api/auth/")?"auth":path.startsWith("/api/v1/conversation/")||path.endsWith("/coach")||path.startsWith("/api/admin/listening")
+        String group=path.startsWith("/api/auth/")?"auth":path.startsWith("/api/v1/conversation/")||path.endsWith("/coach")||path.endsWith("/coach/events")||path.startsWith("/api/admin/listening")
                 || path.startsWith("/api/v1/listening/") && (path.contains("/grading/") && path.endsWith("/retry")
                     || request.getMethod().equals("POST") && path.endsWith("/answers"))?"ai"
                 :path.startsWith("/api/admin/") && request.getContentType()!=null && request.getContentType().startsWith("multipart/")?"upload":"";

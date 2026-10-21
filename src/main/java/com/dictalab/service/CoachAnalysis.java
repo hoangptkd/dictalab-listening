@@ -26,9 +26,31 @@ public class CoachAnalysis {
                              int priority, int occurrences) {}
     public record Weakness(String pattern, String title, String insight, List<String> evidenceIds) {}
     public record Action(String pattern, String instruction) {}
-    public record Progress(String status, String text) {}
+    public record Progress(String status, String text, Double currentAccuracy, Double baselineAccuracy,
+                           Double deltaPoints, Integer comparedLessonCount, String level, String comparisonReason) {
+        public Progress(String status, String text) { this(status, text, null, null, null, null, null, null); }
+    }
+    public record Generation(String provider, String model, String promptVersion, String schemaVersion) {}
     public record Report(String source, boolean aiEnabled, List<Weakness> weaknesses, Progress progressInsight,
-                         List<Action> nextActions, List<ReviewItem> reviewItems) {}
+                         List<Action> nextActions, List<ReviewItem> reviewItems,
+                         List<ReviewItem> quickReviewItems, Generation generation) {
+        public Report {
+            if (quickReviewItems == null) quickReviewItems = quickReview(reviewItems);
+        }
+        public Report(String source, boolean enabled, List<Weakness> weaknesses, Progress progress,
+                      List<Action> actions, List<ReviewItem> review) {
+            this(source, enabled, weaknesses, progress, actions, review, null, null);
+        }
+        public Report withGeneration(Generation value) {
+            return new Report(source, aiEnabled, weaknesses, progressInsight, nextActions, reviewItems, quickReviewItems, value);
+        }
+    }
+
+    public static List<ReviewItem> quickReview(List<ReviewItem> items) {
+        Set<Long> sentences = new HashSet<>();
+        return items.stream().filter(item -> item.audioUrl() != null && !item.audioUrl().isBlank())
+                .filter(item -> sentences.add(item.sentenceId())).limit(3).toList();
+    }
 
     public List<ReviewItem> candidates(ApiDtos.LessonResult result, Set<String> properNames,
                                        Map<String, Integer> earlierMistakes) {
@@ -92,18 +114,67 @@ public class CoachAnalysis {
     }
 
     public Progress progress(double accuracy, List<Double> previous, boolean comparable) {
-        if (!comparable) return new Progress("NOT_COMPARABLE",
-                "Bài học lại hoặc học cùng bạn: dùng kết quả này để ôn, chưa kết luận tiến bộ nghe độc lập.");
+        return progress(accuracy, previous, comparable, false, null);
+    }
+
+    public Progress progress(double accuracy, List<Double> previous, boolean firstExposure, boolean shared, String level) {
+        if (shared || !firstExposure) return new Progress("NOT_COMPARABLE",
+                shared ? "Buổi học cùng bạn" : "Kết quả luyện lại", accuracy, null, null, 0, level,
+                shared ? "SHARED" : "REPEAT");
         if (previous.size() < 2) return new Progress("INSUFFICIENT",
-                "Chưa đủ bài mới cùng cấp độ để so sánh. Hoàn thành thêm một bài mới để theo dõi tiến bộ.");
-        double delta = Math.round((accuracy - previous.stream().mapToDouble(Double::doubleValue).average().orElse(0)) * 10) / 10.0;
+                "Chưa đủ dữ liệu so sánh", accuracy, null, null, previous.size(), level, "NEW");
+        double baseline = previous.stream().mapToDouble(Double::doubleValue).average().orElseThrow();
+        double delta = Math.round((accuracy - baseline) * 10) / 10.0;
         String direction = delta >= 3 ? "UP" : delta <= -3 ? "DOWN" : "STEADY";
         String text = switch (direction) {
             case "UP" -> "Độ đúng lần đầu cao hơn trung bình " + previous.size() + " bài mới cùng cấp độ trước đó " + Math.abs(delta) + " điểm %.";
             case "DOWN" -> "Độ đúng lần đầu thấp hơn trung bình " + previous.size() + " bài mới cùng cấp độ trước đó " + Math.abs(delta) + " điểm %.";
             default -> "Độ đúng lần đầu đang ổn định so với " + previous.size() + " bài mới cùng cấp độ trước đó.";
         };
-        return new Progress(direction, text + " Độ khó từng bài có thể khác nhau.");
+        return new Progress(direction, text + " Độ khó từng bài có thể khác nhau.", accuracy,
+                baseline, delta, previous.size(), level, "NEW");
+    }
+
+    /** Local schema is independent of the legacy cloud report contract. */
+    public Report interpretLocal(JsonNode ai, List<ReviewItem> candidates, Progress progress) {
+        require(ai.isObject() && ai.size() == 2 && ai.has("focus") && ai.has("reviewIds"), "local object");
+        Map<String, ReviewItem> byId = candidates.stream().collect(Collectors.toMap(ReviewItem::id, x -> x));
+        JsonNode ids = ai.path("reviewIds"), focus = ai.path("focus");
+        require(ids.isArray() && ids.size() <= 3, "local review limit");
+        List<String> preferred = new ArrayList<>();
+        for (JsonNode id : ids) {
+            require(id.isTextual() && byId.containsKey(id.asText()) && !preferred.contains(id.asText()), "local review evidence");
+            preferred.add(id.asText());
+        }
+        List<Weakness> weaknesses = new ArrayList<>();
+        if (!focus.isNull()) {
+            require(focus.isObject() && focus.size() == 3 && focus.path("pattern").isTextual(), "local focus");
+            String pattern = focus.path("pattern").asText();
+            JsonNode evidence = focus.path("evidenceIds"), insight = focus.path("insight");
+            require(evidence.isArray() && evidence.size() >= 1 && evidence.size() <= 2, "local evidence count");
+            List<String> evidenceIds = new ArrayList<>();
+            for (JsonNode id : evidence) {
+                require(id.isTextual() && byId.containsKey(id.asText()) && byId.get(id.asText()).pattern().equals(pattern)
+                        && !evidenceIds.contains(id.asText()), "local evidence pattern");
+                evidenceIds.add(id.asText());
+            }
+            require(insight.isTextual(), "local text type");
+            String text = insight.asText();
+            require(!text.isBlank() && text.codePointCount(0, text.length()) <= 120
+                    && text.codePoints().noneMatch(c -> Character.isISOControl(c) || c == '<' || c == '>'
+                            || c == 0x2028 || c == 0x2029)
+                    && text.matches("(?s).*[ăâđêôơưĂÂĐÊÔƠƯàáèéìíòóùúýÀÁÈÉÌÍÒÓÙÚÝ\u1ea0-\u1ef9].*")
+                    && !text.matches("(?s).*\\p{L}[.!?]\\s+\\p{Lu}.*"), "local one Vietnamese sentence");
+            // Sparse typed evidence cannot confirm an acoustic cause or override the learner's own classification.
+            if (Set.of("WEAK_FORMS", "FINAL_SOUNDS", "VOCABULARY", "SPELLING", "PROPER_NAME", "WORD_RECOGNITION")
+                    .contains(pattern)) text = explanation(pattern);
+            weaknesses.add(new Weakness(pattern, label(pattern), text.trim(), evidenceIds));
+            preferred.addAll(0, evidenceIds.stream().filter(id -> !preferred.contains(id)).toList());
+        }
+        List<ReviewItem> review = selectReview(candidates, preferred);
+        Set<String> visible = review.stream().map(ReviewItem::id).collect(Collectors.toSet());
+        require(weaknesses.stream().flatMap(w -> w.evidenceIds().stream()).allMatch(visible::contains), "local hidden evidence");
+        return new Report("AI", true, List.copyOf(weaknesses), progress, List.of(), review);
     }
 
     public Report baseline(List<ReviewItem> candidates, Progress progress, boolean enabled, String source) {

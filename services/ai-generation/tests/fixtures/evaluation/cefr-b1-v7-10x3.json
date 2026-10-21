@@ -1,0 +1,1119 @@
+{
+  "version": "conversation-cefr-b1-v7-10x3",
+  "seeds": [
+    17,
+    43,
+    71
+  ],
+  "cases": [
+    {
+      "id": "cefr-v7-cafe-A1-t2",
+      "context": {
+        "practiceFocus": "",
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể"
+        },
+        "scenario": "Gọi món ở quán",
+        "scenarioJourney": "1 establish this need: Khách gọi đồ uống gì và món ăn gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers.",
+        "history": [
+          {
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Trà",
+                "evidenceEn": "a tea"
+              },
+              {
+                "id": "f2",
+                "textVi": "Bánh mì kẹp phô mai",
+                "evidenceEn": "a cheese sandwich"
+              }
+            ],
+            "skill": "Nắm thông tin cụ thể",
+            "utteranceEn": "Hello. I would like a tea and a cheese sandwich, please. Thank you.",
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "CAPTURED"
+                }
+              ]
+            }
+          }
+        ],
+        "levelProfile": {
+          "maxWords": 35,
+          "minWords": 8
+        },
+        "turnNumber": 2,
+        "difficulty": "A1",
+        "sessionBlueprint": {
+          "contentVersion": 1,
+          "branchId": "standard",
+          "journey": "1 establish this need: Khách gọi đồ uống gì và món ăn gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers."
+        },
+        "recentPractice": [],
+        "partnerRole": "customer",
+        "learnerRole": "server",
+        "allowedTaskTypes": [
+          "direct_detail"
+        ]
+      }
+    },
+    {
+      "id": "cefr-v7-cafe-A2-t3",
+      "context": {
+        "practiceFocus": "",
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể"
+        },
+        "scenario": "Gọi món ở quán",
+        "scenarioJourney": "1 establish this need: Khách gọi đồ uống gì và món ăn gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers.",
+        "history": [
+          {
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Trà",
+                "evidenceEn": "a tea"
+              },
+              {
+                "id": "f2",
+                "textVi": "Bánh mì kẹp phô mai",
+                "evidenceEn": "a cheese sandwich"
+              },
+              {
+                "id": "f3",
+                "textVi": "Khách chưa ăn trưa",
+                "evidenceEn": "I have not had lunch yet"
+              }
+            ],
+            "skill": "Hiểu lý do và mục đích",
+            "utteranceEn": "Hello. I would like a tea and a cheese sandwich, please. This is because I have not had lunch yet.",
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f3",
+                  "status": "CAPTURED"
+                }
+              ]
+            }
+          },
+          {
+            "utteranceEn": "Please collect your order at the back counter. Your number is sixteen.",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Quầy phía sau",
+                "evidenceEn": "the back counter"
+              },
+              {
+                "id": "f2",
+                "textVi": "Mười sáu",
+                "evidenceEn": "sixteen"
+              }
+            ],
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "CAPTURED"
+                }
+              ]
+            }
+          }
+        ],
+        "levelProfile": {
+          "maxWords": 55,
+          "minWords": 18
+        },
+        "turnNumber": 3,
+        "difficulty": "A2",
+        "sessionBlueprint": {
+          "contentVersion": 1,
+          "branchId": "standard",
+          "journey": "1 establish this need: Khách gọi đồ uống gì và món ăn gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers."
+        },
+        "recentPractice": [],
+        "partnerRole": "customer",
+        "learnerRole": "server",
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition"
+        ]
+      }
+    },
+    {
+      "id": "cefr-v7-cafe-B1-t4",
+      "context": {
+        "practiceFocus": "Test clearly expressed opinion or attitude from wording, not audio tone.",
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ"
+        },
+        "scenario": "Gọi món ở quán",
+        "scenarioJourney": "1 establish this need: Khách gọi đồ uống gì và món ăn gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers.",
+        "history": [
+          {
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Trà",
+                "evidenceEn": "a tea"
+              },
+              {
+                "id": "f2",
+                "textVi": "Bánh mì kẹp phô mai",
+                "evidenceEn": "a cheese sandwich"
+              },
+              {
+                "id": "f3",
+                "textVi": "Khách chưa ăn trưa",
+                "evidenceEn": "I have not had lunch yet"
+              }
+            ],
+            "skill": "Hiểu lý do và mục đích",
+            "utteranceEn": "Hello. I would like a tea and a cheese sandwich, please. This is because I have not had lunch yet.",
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f3",
+                  "status": "CAPTURED"
+                }
+              ]
+            }
+          },
+          {
+            "utteranceEn": "Please collect your order at the back counter. Your number is sixteen.",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Quầy phía sau",
+                "evidenceEn": "the back counter"
+              },
+              {
+                "id": "f2",
+                "textVi": "Mười sáu",
+                "evidenceEn": "sixteen"
+              }
+            ],
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "MISSED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "MISSED"
+                }
+              ]
+            }
+          },
+          {
+            "utteranceEn": "Please bring your receipt. Ask for Lily when you arrive.",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Biên nhận",
+                "evidenceEn": "your receipt"
+              },
+              {
+                "id": "f2",
+                "textVi": "Lily",
+                "evidenceEn": "Lily"
+              }
+            ],
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "MISSED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "MISSED"
+                }
+              ]
+            }
+          }
+        ],
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "turnNumber": 4,
+        "difficulty": "B1",
+        "sessionBlueprint": {
+          "contentVersion": 1,
+          "branchId": "standard",
+          "journey": "1 establish this need: Khách gọi đồ uống gì và món ăn gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers."
+        },
+        "recentPractice": [],
+        "partnerRole": "customer",
+        "learnerRole": "server",
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction"
+        ]
+      }
+    },
+    {
+      "id": "cefr-v7-hotel-A1-t3",
+      "context": {
+        "practiceFocus": "",
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể"
+        },
+        "scenario": "Nhận phòng",
+        "scenarioJourney": "1 establish this need: Phòng số mấy và ăn sáng ở đâu? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers.",
+        "history": [
+          {
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Phòng tám",
+                "evidenceEn": "number eight"
+              },
+              {
+                "id": "f2",
+                "textVi": "Ngoài vườn",
+                "evidenceEn": "in the garden"
+              }
+            ],
+            "skill": "Nắm thông tin cụ thể",
+            "utteranceEn": "Hello. Your room is number eight. Breakfast is in the garden. Thank you.",
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "CAPTURED"
+                }
+              ]
+            }
+          },
+          {
+            "utteranceEn": "Breakfast in the garden starts at seven. Please return your key before eleven.",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Bảy giờ",
+                "evidenceEn": "at seven"
+              },
+              {
+                "id": "f2",
+                "textVi": "Trước mười một giờ",
+                "evidenceEn": "before eleven"
+              }
+            ],
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "CAPTURED"
+                }
+              ]
+            }
+          }
+        ],
+        "levelProfile": {
+          "maxWords": 35,
+          "minWords": 8
+        },
+        "turnNumber": 3,
+        "difficulty": "A1",
+        "sessionBlueprint": {
+          "contentVersion": 1,
+          "branchId": "standard",
+          "journey": "1 establish this need: Phòng số mấy và ăn sáng ở đâu? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers."
+        },
+        "recentPractice": [],
+        "partnerRole": "receptionist",
+        "learnerRole": "guest",
+        "allowedTaskTypes": [
+          "direct_detail"
+        ]
+      }
+    },
+    {
+      "id": "cefr-v7-hotel-A2-t4",
+      "context": {
+        "practiceFocus": "",
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể"
+        },
+        "scenario": "Nhận phòng",
+        "scenarioJourney": "1 establish this need: Phòng số mấy và ăn sáng ở đâu? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers.",
+        "history": [
+          {
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Phòng tám",
+                "evidenceEn": "number eight"
+              },
+              {
+                "id": "f2",
+                "textVi": "Ngoài vườn",
+                "evidenceEn": "in the garden"
+              },
+              {
+                "id": "f3",
+                "textVi": "Phòng ăn hôm nay đóng cửa",
+                "evidenceEn": "the dining room is closed today"
+              }
+            ],
+            "skill": "Hiểu lý do và mục đích",
+            "utteranceEn": "Hello. Your room is number eight. Breakfast is in the garden. This is because the dining room is closed today.",
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f3",
+                  "status": "CAPTURED"
+                }
+              ]
+            }
+          },
+          {
+            "utteranceEn": "Breakfast in the garden starts at seven. Please return your key before eleven.",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Bảy giờ",
+                "evidenceEn": "at seven"
+              },
+              {
+                "id": "f2",
+                "textVi": "Trước mười một giờ",
+                "evidenceEn": "before eleven"
+              }
+            ],
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "MISSED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "MISSED"
+                }
+              ]
+            }
+          },
+          {
+            "utteranceEn": "Your welcome card has the internet password. Call housekeeping for clean towels.",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Mật khẩu mạng",
+                "evidenceEn": "the internet password"
+              },
+              {
+                "id": "f2",
+                "textVi": "Bộ phận buồng phòng",
+                "evidenceEn": "housekeeping"
+              }
+            ],
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "MISSED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "MISSED"
+                }
+              ]
+            }
+          }
+        ],
+        "levelProfile": {
+          "maxWords": 55,
+          "minWords": 18
+        },
+        "turnNumber": 4,
+        "difficulty": "A2",
+        "sessionBlueprint": {
+          "contentVersion": 1,
+          "branchId": "standard",
+          "journey": "1 establish this need: Phòng số mấy và ăn sáng ở đâu? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers."
+        },
+        "recentPractice": [],
+        "partnerRole": "receptionist",
+        "learnerRole": "guest",
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition"
+        ]
+      }
+    },
+    {
+      "id": "cefr-v7-hotel-B1-t2",
+      "context": {
+        "practiceFocus": "Test one likely next action or contextual inference with reasoningEvidence, not a directly stated instruction.",
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ"
+        },
+        "scenario": "Nhận phòng",
+        "scenarioJourney": "1 establish this need: Phòng số mấy và ăn sáng ở đâu? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers.",
+        "history": [
+          {
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Phòng tám",
+                "evidenceEn": "number eight"
+              },
+              {
+                "id": "f2",
+                "textVi": "Ngoài vườn",
+                "evidenceEn": "in the garden"
+              },
+              {
+                "id": "f3",
+                "textVi": "Phòng ăn hôm nay đóng cửa",
+                "evidenceEn": "the dining room is closed today"
+              }
+            ],
+            "skill": "Hiểu lý do và mục đích",
+            "utteranceEn": "Hello. Your room is number eight. Breakfast is in the garden. This is because the dining room is closed today.",
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f3",
+                  "status": "CAPTURED"
+                }
+              ]
+            }
+          }
+        ],
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "turnNumber": 2,
+        "difficulty": "B1",
+        "sessionBlueprint": {
+          "contentVersion": 1,
+          "branchId": "standard",
+          "journey": "1 establish this need: Phòng số mấy và ăn sáng ở đâu? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers."
+        },
+        "recentPractice": [],
+        "partnerRole": "receptionist",
+        "learnerRole": "guest",
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction"
+        ]
+      }
+    },
+    {
+      "id": "cefr-v7-directions-A1-t4",
+      "context": {
+        "practiceFocus": "",
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể"
+        },
+        "scenario": "Hỏi đường",
+        "scenarioJourney": "1 establish this need: Người nghe cần đi đâu và bằng phương tiện gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers.",
+        "history": [
+          {
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Bảo tàng",
+                "evidenceEn": "to the museum"
+              },
+              {
+                "id": "f2",
+                "textVi": "Xe buýt",
+                "evidenceEn": "the bus"
+              }
+            ],
+            "skill": "Nắm thông tin cụ thể",
+            "utteranceEn": "Hello. Please go to the museum. Take the bus from here. Thank you.",
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "CAPTURED"
+                }
+              ]
+            }
+          },
+          {
+            "utteranceEn": "Your bus leaves from stop D. Get off at River Street.",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Điểm D",
+                "evidenceEn": "stop D"
+              },
+              {
+                "id": "f2",
+                "textVi": "Phố River",
+                "evidenceEn": "River Street"
+              }
+            ],
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "MISSED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "MISSED"
+                }
+              ]
+            }
+          },
+          {
+            "utteranceEn": "Use the west entrance of the museum. Show your student card to the guard.",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Cửa phía tây",
+                "evidenceEn": "the west entrance"
+              },
+              {
+                "id": "f2",
+                "textVi": "Thẻ sinh viên",
+                "evidenceEn": "your student card"
+              }
+            ],
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "MISSED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "MISSED"
+                }
+              ]
+            }
+          }
+        ],
+        "levelProfile": {
+          "maxWords": 35,
+          "minWords": 8
+        },
+        "turnNumber": 4,
+        "difficulty": "A1",
+        "sessionBlueprint": {
+          "contentVersion": 1,
+          "branchId": "standard",
+          "journey": "1 establish this need: Người nghe cần đi đâu và bằng phương tiện gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers."
+        },
+        "recentPractice": [
+          {
+            "branchId": "standard",
+            "tasks": [
+              {
+                "questionVi": "Người nghe cần đi đâu và bằng phương tiện gì?",
+                "skill": "Nắm thông tin cụ thể",
+                "answersVi": [
+                  "Bảo tàng",
+                  "Xe buýt"
+                ]
+              }
+            ]
+          },
+          {
+            "branchId": "walking",
+            "tasks": [
+              {
+                "questionVi": "Give a pedestrian route; develop landmarks and arrival instructions.",
+                "skill": "Nắm thông tin cụ thể",
+                "answersVi": [
+                  "Trái",
+                  "Ngân hàng"
+                ]
+              }
+            ]
+          },
+          {
+            "branchId": "closure",
+            "tasks": [
+              {
+                "questionVi": "Explain a closed route; guide the visitor along a safe alternative.",
+                "skill": "Nắm thông tin cụ thể",
+                "answersVi": [
+                  "Phố King",
+                  "Qua công viên"
+                ]
+              }
+            ]
+          },
+          {
+            "branchId": "platform",
+            "tasks": [
+              {
+                "questionVi": "Guide a passenger inside a station; develop platform access and boarding.",
+                "skill": "Nắm thông tin cụ thể",
+                "answersVi": [
+                  "Oxford",
+                  "Sân ga bốn"
+                ]
+              }
+            ]
+          },
+          {
+            "branchId": "accessible",
+            "tasks": [
+              {
+                "questionVi": "Give a step-free route; explain accessible entry and indoor navigation.",
+                "skill": "Nắm thông tin cụ thể",
+                "answersVi": [
+                  "Lối vào phía sau",
+                  "Thang máy"
+                ]
+              }
+            ]
+          },
+          {
+            "branchId": "lost",
+            "tasks": [
+              {
+                "questionVi": "Orient a lost visitor; establish current position and next action.",
+                "skill": "Nắm thông tin cụ thể",
+                "answersVi": [
+                  "Gần trường học",
+                  "Về phía sông"
+                ]
+              }
+            ]
+          },
+          {
+            "branchId": "busstop",
+            "tasks": [
+              {
+                "questionVi": "Help a visitor find the correct bus stop; develop boarding and destination details.",
+                "skill": "Nắm thông tin cụ thể",
+                "answersVi": [
+                  "Xe buýt số bảy",
+                  "Đối diện siêu thị"
+                ]
+              }
+            ]
+          },
+          {
+            "branchId": "inside",
+            "tasks": [
+              {
+                "questionVi": "Navigate inside a public building; develop corridor and service-desk instructions.",
+                "skill": "Nắm thông tin cụ thể",
+                "answersVi": [
+                  "Trên lầu",
+                  "Phòng máy tính"
+                ]
+              }
+            ]
+          },
+          {
+            "branchId": "standard",
+            "tasks": [
+              {
+                "questionVi": "Người nghe cần đi đâu và bằng phương tiện gì?",
+                "skill": "Nắm thông tin cụ thể",
+                "answersVi": [
+                  "Bảo tàng",
+                  "Xe buýt"
+                ]
+              }
+            ]
+          },
+          {
+            "branchId": "walking",
+            "tasks": [
+              {
+                "questionVi": "Give a pedestrian route; develop landmarks and arrival instructions.",
+                "skill": "Nắm thông tin cụ thể",
+                "answersVi": [
+                  "Trái",
+                  "Ngân hàng"
+                ]
+              }
+            ]
+          }
+        ],
+        "partnerRole": "local guide",
+        "learnerRole": "visitor",
+        "allowedTaskTypes": [
+          "direct_detail"
+        ]
+      }
+    },
+    {
+      "id": "cefr-v7-directions-A2-t2",
+      "context": {
+        "practiceFocus": "",
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể"
+        },
+        "scenario": "Hỏi đường",
+        "scenarioJourney": "1 establish this need: Người nghe cần đi đâu và bằng phương tiện gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers.",
+        "history": [
+          {
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Bảo tàng",
+                "evidenceEn": "to the museum"
+              },
+              {
+                "id": "f2",
+                "textVi": "Xe buýt",
+                "evidenceEn": "the bus"
+              },
+              {
+                "id": "f3",
+                "textVi": "Đường quá đông để đi bộ",
+                "evidenceEn": "the road is too busy for walking"
+              }
+            ],
+            "skill": "Hiểu lý do và mục đích",
+            "utteranceEn": "Hello. Please go to the museum. Take the bus from here. This is because the road is too busy for walking.",
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f3",
+                  "status": "CAPTURED"
+                }
+              ]
+            }
+          }
+        ],
+        "levelProfile": {
+          "maxWords": 55,
+          "minWords": 18
+        },
+        "turnNumber": 2,
+        "difficulty": "A2",
+        "sessionBlueprint": {
+          "contentVersion": 1,
+          "branchId": "standard",
+          "journey": "1 establish this need: Người nghe cần đi đâu và bằng phương tiện gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers."
+        },
+        "recentPractice": [],
+        "partnerRole": "local guide",
+        "learnerRole": "visitor",
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition"
+        ]
+      }
+    },
+    {
+      "id": "cefr-v7-directions-B1-t3",
+      "context": {
+        "practiceFocus": "Test the main message or purpose, allowing a paraphrased answer.",
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể",
+          "attitude": "Hiểu thái độ và quan điểm",
+          "inference": "Suy luận và dự đoán có căn cứ"
+        },
+        "scenario": "Hỏi đường",
+        "scenarioJourney": "1 establish this need: Người nghe cần đi đâu và bằng phương tiện gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers.",
+        "history": [
+          {
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Bảo tàng",
+                "evidenceEn": "to the museum"
+              },
+              {
+                "id": "f2",
+                "textVi": "Xe buýt",
+                "evidenceEn": "the bus"
+              },
+              {
+                "id": "f3",
+                "textVi": "Đường quá đông để đi bộ",
+                "evidenceEn": "the road is too busy for walking"
+              }
+            ],
+            "skill": "Hiểu lý do và mục đích",
+            "utteranceEn": "Hello. Please go to the museum. Take the bus from here. This is because the road is too busy for walking.",
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f3",
+                  "status": "CAPTURED"
+                }
+              ]
+            }
+          },
+          {
+            "utteranceEn": "Your bus leaves from stop D. Get off at River Street.",
+            "skill": "Nắm thông tin cụ thể",
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Điểm D",
+                "evidenceEn": "stop D"
+              },
+              {
+                "id": "f2",
+                "textVi": "Phố River",
+                "evidenceEn": "River Street"
+              }
+            ],
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "CAPTURED"
+                }
+              ]
+            }
+          }
+        ],
+        "levelProfile": {
+          "maxWords": 90,
+          "minWords": 30
+        },
+        "turnNumber": 3,
+        "difficulty": "B1",
+        "sessionBlueprint": {
+          "contentVersion": 1,
+          "branchId": "standard",
+          "journey": "1 establish this need: Người nghe cần đi đâu và bằng phương tiện gì? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers."
+        },
+        "recentPractice": [],
+        "partnerRole": "local guide",
+        "learnerRole": "visitor",
+        "allowedTaskTypes": [
+          "direct_detail",
+          "gist",
+          "reason_purpose",
+          "change_revision",
+          "instruction_sequence",
+          "condition",
+          "opinion_attitude",
+          "inference_prediction"
+        ]
+      }
+    },
+    {
+      "id": "cefr-v7-plans-A1-t2",
+      "context": {
+        "practiceFocus": "",
+        "listeningSkills": {
+          "condition": "Hiểu điều kiện",
+          "change": "Theo dõi thay đổi",
+          "gist": "Nắm ý chính",
+          "reason": "Hiểu lý do và mục đích",
+          "instructions": "Theo dõi hướng dẫn",
+          "details": "Nắm thông tin cụ thể"
+        },
+        "scenario": "Đổi lịch hẹn",
+        "scenarioJourney": "1 establish this need: Hai người sẽ gặp vào ngày nào và ở đâu? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers.",
+        "history": [
+          {
+            "facts": [
+              {
+                "id": "f1",
+                "textVi": "Thứ Bảy",
+                "evidenceEn": "on Saturday"
+              },
+              {
+                "id": "f2",
+                "textVi": "Công viên",
+                "evidenceEn": "at the park"
+              }
+            ],
+            "skill": "Nắm thông tin cụ thể",
+            "utteranceEn": "Hello. Let us meet on Saturday at the park. Thank you.",
+            "evaluation": {
+              "facts": [
+                {
+                  "factId": "f1",
+                  "status": "CAPTURED"
+                },
+                {
+                  "factId": "f2",
+                  "status": "CAPTURED"
+                }
+              ]
+            }
+          }
+        ],
+        "levelProfile": {
+          "maxWords": 35,
+          "minWords": 8
+        },
+        "turnNumber": 2,
+        "difficulty": "A1",
+        "sessionBlueprint": {
+          "contentVersion": 1,
+          "branchId": "standard",
+          "journey": "1 establish this need: Hai người sẽ gặp vào ngày nào và ở đâu? 2 develop the SAME encounter with new requested meanings; 3 confirm practical instructions or conditions, preserving established facts; 4 a NEW encounter within this scenario, applying a weak skill to a different goal and new answers."
+        },
+        "recentPractice": [],
+        "partnerRole": "friend",
+        "learnerRole": "friend",
+        "allowedTaskTypes": [
+          "direct_detail"
+        ]
+      }
+    }
+  ]
+}

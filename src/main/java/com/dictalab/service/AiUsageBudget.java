@@ -21,6 +21,8 @@ public class AiUsageBudget {
     private final int globalCalls, userCalls;
     private final boolean enabled;
     private PremiumAccessService premium;
+    @Value("${dictalab.ai.platform.text-provider:gemini}")
+    private String textProvider = "gemini";
 
     @org.springframework.beans.factory.annotation.Autowired
     void configurePremium(PremiumAccessService premium) { this.premium=premium; }
@@ -45,15 +47,23 @@ public class AiUsageBudget {
     }
 
     public void reserve(Long userId, boolean tts) {
+        reserve(userId, tts, !tts && textProvider.equals("ollama"));
+    }
+
+    public void reserveLocal(Long userId) {
+        reserve(userId, false, true);
+    }
+
+    private void reserve(Long userId, boolean tts, boolean local) {
         transaction.executeWithoutResult(status -> {
             if (premium != null && userId != null) premium.takeAi(userId,tts);
             Boolean accepting=db.queryForObject("SELECT enabled FROM ai_budget_control WHERE id=1 FOR UPDATE",Boolean.class);
             if (!Boolean.TRUE.equals(accepting)) throw rejected("AI đang tạm dừng. Bài làm của bạn vẫn được lưu.");
-            if (!enabled) return; // Emergency stop remains effective when accounting is disabled.
+            if (!enabled && !local) return; // Local always retains resource call limits, even without dollar accounting.
             Date day=Date.valueOf(LocalDate.now(ZoneOffset.UTC));
-            long amount=tts?ttsReservation:llmReservation;
-            add(day,"GLOBAL",amount,globalLimit,globalCalls);
-            if (userId!=null) add(day,"USER:"+userId,amount,userLimit,userCalls);
+            long amount=local ? 0 : tts?ttsReservation:llmReservation;
+            add(day,local ? "LOCAL_GLOBAL" : "GLOBAL",amount,globalLimit,globalCalls);
+            if (userId!=null) add(day,(local ? "LOCAL_USER:" : "USER:")+userId,amount,userLimit,userCalls);
         });
     }
 

@@ -7,11 +7,11 @@ const vm = require('node:vm');
 const patch = fs.readFileSync(path.resolve(__dirname, '../../..', 'scripts/chatgpt-web-compat.patch'), 'utf8');
 
 // The remaining bridge checks cover legacy rollback tooling, not the running application.
-test('application configuration, startup and deploy use ShopAIKey without the legacy browser bridge', () => {
+test('application configuration, startup and deploy use Gemini without the legacy browser bridge', () => {
     const read = file => fs.readFileSync(path.resolve(__dirname, '../../..', file), 'utf8');
     for (const service of ['CoachService', 'ConversationService']) {
         const source = read(`src/main/java/com/dictalab/service/${service}.java`);
-        assert.ok(source.includes('ShopAiKeyClient'));
+        assert.ok(source.includes('GeminiClient'));
         assert.ok(!source.includes('ChatGptWebCoachClient'));
         assert.ok(!source.includes('closeSession('));
     }
@@ -21,7 +21,7 @@ test('application configuration, startup and deploy use ShopAIKey without the le
         assert.ok(!/chatgpt-api-web|chatgpt-web-compat|start-coach-bridge|update-coach-bridge|127\.0\.0\.1:3000/.test(source), file);
     }
     const config = read('src/main/resources/application.yml');
-    assert.ok(config.includes('SHOPAIKEY_API_KEY'));
+    assert.ok(config.includes('GEMINI_API_KEY'));
     assert.ok(!/DICTALAB_COACH_(URL|MODEL|API_KEY|TIMEOUT)/.test(config));
 });
 const submitHunk = patch.split(/^@@/m).find(hunk => hunk.includes('async function submitPrompt'));

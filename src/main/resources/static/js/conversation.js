@@ -50,7 +50,8 @@
         return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("vi-VN", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"});
     };
     const path = action => `${apiRoot}/sessions/${encodeURIComponent(session.id)}/${action}`;
-    const post = (action, body) => request(path(action), {method: "POST", body});
+    const post = (action, body) => request(path(action), {method: "POST", body,
+        ...(action === "next" ? {timeoutMs: session.generationTimeoutMs || 60000} : {})});
     const current = () => session?.turns?.at(-1);
     function stopAudio() { playbackRevision++; bridge().stopRecordedAudio(); }
 

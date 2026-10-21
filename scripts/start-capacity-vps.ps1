@@ -60,7 +60,7 @@ try {
         if($LASTEXITCODE -ne 0){throw 'Capacity database creation failed.'}
     }
 } finally {[Environment]::SetEnvironmentVariable('PGPASSWORD',$previousPGPassword,'Process')}
-$providerNames=@('SHOPAIKEY_API_KEY','SHOPAIKEY_MODEL','SHOPAIKEY_URL','CARTESIA_API_KEY','CARTESIA_VOICE','CARTESIA_MODEL','CARTESIA_VERSION')
+$providerNames=@('GEMINI_API_KEY','GEMINI_MODEL','GEMINI_URL','CARTESIA_API_KEY','CARTESIA_VOICE','CARTESIA_MODEL','CARTESIA_VERSION')
 $names=@('DB_URL','DB_USERNAME','DB_PASSWORD','CAPACITY_ACCOUNTS','CAPACITY_SESSIONS_PER_USER','CAPACITY_PASSWORD',
     'PORT','MANAGEMENT_PORT','DB_POOL_SIZE','SESSION_COOKIE_SECURE','RATE_LIMIT_ENABLED','DICTALAB_COACH_ENABLED',
     'DICTALAB_CONVERSATION_ENABLED','DICTALAB_MEDIA_ROOT','DICTALAB_PERSONAL_CONTENT_ENABLED','REDIS_URL',
@@ -86,7 +86,7 @@ $env:DICTALAB_LISTENING_QUEUE_ENABLED='false';$env:SMTP_HOST=''
 $env:DICTALAB_COACH_ENABLED='false';$env:DICTALAB_CONVERSATION_ENABLED='false'
 $env:DICTALAB_MEDIA_ROOT=Join-Path $capacityRoot 'media'
 $env:DICTALAB_PERSONAL_CONTENT_ENABLED='false'
-if($EvidenceSuite){$env:SHOPAIKEY_URL=$FakeProviderUrl;$env:SHOPAIKEY_API_KEY='fake-only-no-external-value'}
+if($EvidenceSuite){$env:GEMINI_URL=$FakeProviderUrl;$env:GEMINI_API_KEY='fake-only-no-external-value'}
     $arguments=@("-Xms256m","-Xmx${HeapMB}m",'-jar',('"'+$Artifact+'"'),'--server.address=127.0.0.1')
     $arguments+="--logging.file.name=C:\DictaLab\capacity\dictalab-$stamp.json"
     $arguments+='--server.tomcat.threads.max=100'

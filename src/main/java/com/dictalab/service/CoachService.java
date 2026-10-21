@@ -38,16 +38,22 @@ public class CoachService {
     private final ObjectMapper json;
     private final CoachAnalysis analysis;
     private final TranscriptTokenizer tokenizer;
-    private final ShopAiKeyClient client;
+    private final GeminiClient client;
     private final CoachProperties config;
+    private final CoachLocalClient local;
     private final AiUsageBudget budget;
     private final org.springframework.beans.factory.ObjectProvider<AiBackgroundJobs> jobs;
     // Legacy mode only; queue workers use the shared DB concurrency budget.
     private final Semaphore generation = new Semaphore(1);
+    private AiPlatformClient platform;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configurePlatform(AiPlatformClient platform) { this.platform = platform; }
 
     public CoachService(HistoryService history, JdbcTemplate db, ObjectMapper json, CoachAnalysis analysis,
-                        TranscriptTokenizer tokenizer, ShopAiKeyClient client, CoachProperties config,
-                        org.springframework.beans.factory.ObjectProvider<AiBackgroundJobs> jobs, AiUsageBudget budget) {
+                        TranscriptTokenizer tokenizer, GeminiClient client, CoachProperties config,
+                        org.springframework.beans.factory.ObjectProvider<AiBackgroundJobs> jobs, AiUsageBudget budget,
+                        CoachLocalClient local) {
         this.history = history;
         this.db = db;
         this.json = json;
@@ -57,16 +63,17 @@ public class CoachService {
         this.config = config;
         this.jobs = jobs;
         this.budget = budget;
+        this.local = local;
     }
 
     public CoachAnalysis.Report report(Long userId, String sessionId, boolean generate) {
         return report(userId, sessionId, generate, false);
     }
 
-    Runnable generateQueuedReport(String sessionId) {
+    Runnable generateQueuedReport(String sessionId, String attemptKey) {
         var owners = db.queryForList("SELECT user_id FROM practice_sessions WHERE id=? AND status='COMPLETED'", Long.class, sessionId);
         if (owners.isEmpty()) return () -> {}; // Deleted/ineligible sessions never send evidence to the provider.
-        var generated = report(owners.get(0), sessionId, true, true);
+        var generated = report(owners.get(0), sessionId, true, true, attemptKey);
         if (!"AI".equals(generated.source())) return null;
         String payload = json.writeValueAsString(generated);
         return () -> db.update("""
@@ -77,6 +84,10 @@ public class CoachService {
     }
 
     private CoachAnalysis.Report report(Long userId, String sessionId, boolean generate, boolean background) {
+        return report(userId, sessionId, generate, background, sessionId);
+    }
+
+    private CoachAnalysis.Report report(Long userId, String sessionId, boolean generate, boolean background, String attemptKey) {
         // Authorize even cache hits, without reconstructing attempts or assessing unrelated lessons.
         List<Map<String, Object>> authorized = db.queryForList("""
                 SELECT r.report_json FROM practice_sessions p
@@ -92,7 +103,7 @@ public class CoachService {
                 SELECT p.id FROM practice_sessions p JOIN lessons l ON l.id=p.lesson_id
                 WHERE p.user_id=? AND p.status='COMPLETED' AND p.completed_at<? AND l.level=?
                 AND p.room_id IS NULL AND p.first_exposure=TRUE
-                ORDER BY p.completed_at DESC LIMIT 5
+                ORDER BY p.completed_at DESC,p.id DESC LIMIT 5
                 """, String.class, userId, Timestamp.from(result.completedAt()), result.level().name());
         Map<String, Integer> repeats = new HashMap<>();
         List<Double> scores = new ArrayList<>();
@@ -111,14 +122,17 @@ public class CoachService {
                 if (index >= 0 && index < words.size()) repeats.merge(tokenizer.normalize(words.get(index)), 1, Integer::sum);
             }, earlier.toArray());
         }
-        boolean comparable = Boolean.TRUE.equals(db.queryForObject(
-                "SELECT (first_exposure=TRUE AND room_id IS NULL) FROM practice_sessions WHERE id=?", Boolean.class, sessionId));
-        CoachAnalysis.Progress progress = analysis.progress(result.firstAttemptAccuracy(), scores, comparable);
+        var context = db.queryForMap("SELECT first_exposure,room_id FROM practice_sessions WHERE id=?", sessionId);
+        CoachAnalysis.Progress progress = analysis.progress(result.firstAttemptAccuracy(), scores,
+                Boolean.TRUE.equals(context.get("first_exposure")), context.get("room_id") != null, result.level().name());
         List<CoachAnalysis.ReviewItem> candidates = analysis.candidates(result, names, repeats);
-        boolean enabled = config.enabled() && client.configured();
+        boolean platformRoute = platform != null && platform.enabled("coach", userId);
+        boolean enabled = config.enabled() && (platformRoute || config.local() || client.configured());
         CoachAnalysis.Report fallback = analysis.baseline(candidates, progress, enabled, "RULES");
         if (!enabled || candidates.isEmpty()) return fallback;
         var queue = jobs.getIfAvailable();
+        if (platformRoute && queue == null && !background)
+            return analysis.baseline(candidates, progress, true, "UNAVAILABLE");
         if (queue != null && !background) {
             String state = generate ? queue.coach(sessionId, true) : queue.coachStatus(sessionId);
             String source = switch (state) {
@@ -136,18 +150,44 @@ public class CoachService {
             // Check again after acquiring the API slot: another request may just have saved this report.
             List<String> cached = db.queryForList("SELECT report_json FROM dictation_coach_reports WHERE session_id=?", String.class, sessionId);
             if (!cached.isEmpty()) return json.readValue(cached.get(0), CoachAnalysis.Report.class);
-            var evidence = Map.of("level", result.level(), "firstAttemptAccuracy", result.firstAttemptAccuracy(),
-                    "progress", progress, "candidates", candidates.stream().limit(40).map(item -> Map.of(
+            var selected = candidates.stream().limit(config.local() || platformRoute ? 12 : 40).toList();
+            var evidence = new LinkedHashMap<String, Object>();
+            evidence.put("level", result.level());
+            if (!config.local()) {
+                evidence.put("firstAttemptAccuracy", result.firstAttemptAccuracy());
+                evidence.put("progress", progress);
+            }
+            evidence.put("candidates", selected.stream().map(item -> Map.of(
                             "id", item.id(), "pattern", item.pattern(), "heard", item.heard(), "expected", item.expected(),
                             "sentence", item.transcript(), "priority", item.priority(), "occurrences", item.occurrences())).toList());
             CoachAnalysis.Report interpreted;
             try {
-                budget.reserve(userId,false);
-                interpreted = analysis.interpret(client.completeJson(INSTRUCTION, json.writeValueAsString(evidence)),
-                        candidates.stream().limit(40).toList(), progress);
+                var platformInput = Map.of("kind", "coach", "level", result.level(), "candidates",
+                        selected.stream().limit(12).map(item -> Map.of("id", item.id(), "pattern", item.pattern(),
+                                "heard", item.heard(), "expected", item.expected(), "sentence", item.transcript(),
+                                "priority", item.priority(), "occurrences", item.occurrences())).toList());
+                if (background && platformRoute) {
+                    reservePlatform(userId);
+                    var generated = platform.complete("coach", userId, "coach/" + sessionId + "/" + attemptKey, platformInput);
+                    interpreted = analysis.interpretLocal(generated.path("task"), selected, progress)
+                            .withGeneration(new CoachAnalysis.Generation(generated.path("provider").asText(),
+                                    generated.path("model").asText(), generated.path("promptVersion").asText(), "FOCUS_V2"));
+                } else if (config.local()) {
+                    budget.reserveLocal(userId);
+                    interpreted = analysis.interpretLocal(local.completeJson(json.writeValueAsString(evidence)), selected, progress)
+                            .withGeneration(new CoachAnalysis.Generation("ollama", config.localModel(),
+                                    CoachLocalClient.PROMPT_VERSION, CoachLocalClient.SCHEMA_VERSION));
+                } else {
+                    budget.reserve(userId,false);
+                    interpreted = analysis.interpret(client.completeJson(INSTRUCTION, json.writeValueAsString(evidence)), selected, progress)
+                            .withGeneration(new CoachAnalysis.Generation(platform != null && platform.local() ? "ollama" : "gemini",
+                                    client.model(), "COACH_LEGACY_V1", "REPORT_V1"));
+                }
+                if (background && platform != null && !platformRoute)
+                    platform.compare("coach", userId, "coach/" + sessionId, platformInput, () -> reservePlatform(null));
             } catch (RuntimeException exception) {
                 org.slf4j.LoggerFactory.getLogger(CoachService.class).warn("Coach generation failed, reason={}, errorType={}, errorId={}",
-                        ShopAiKeyClient.reason(exception),exception.getClass().getSimpleName(),UUID.randomUUID());
+                        GeminiClient.reason(exception),exception.getClass().getSimpleName(),UUID.randomUUID());
                 if (background && exception instanceof ProviderGuard.Unavailable unavailable && unavailable.retrySafe()) throw unavailable;
                 // No raw response/transcript in logs; failures never prevent completion or review.
                 return analysis.baseline(candidates, progress, true, "UNAVAILABLE");
@@ -166,6 +206,32 @@ public class CoachService {
     }
 
     public record BankEntry(String sessionId, CoachAnalysis.ReviewItem item) {}
+
+    private void reservePlatform(Long userId) {
+        if (platform.local()) budget.reserveLocal(userId); else budget.reserve(userId, false);
+    }
+
+    @org.springframework.transaction.annotation.Transactional(timeout = 5)
+    public void recordEvent(Long userId, String sessionId, String name, String runId) {
+        if (!Set.of("coach_result_viewed", "coach_details_opened", "coach_quick_review_started",
+                "coach_quick_review_completed").contains(name)) throw new IllegalArgumentException("Unknown Coach event");
+        boolean review = name.startsWith("coach_quick_review_");
+        if (review && (runId == null || !UUID.fromString(runId).toString().equals(runId)))
+            throw new IllegalArgumentException("Invalid review run ID");
+        String key = review ? runId : "result";
+        if (db.queryForList("SELECT id FROM practice_sessions WHERE id=? AND user_id=? AND status='COMPLETED' FOR UPDATE",
+                String.class, sessionId, userId).isEmpty()) throw new ResourceNotFoundException("Không tìm thấy buổi luyện.");
+        if (db.queryForObject("SELECT COUNT(*) FROM coach_usage_events WHERE session_id=? AND event_name=? AND review_run_id=?",
+                Integer.class, sessionId, name, key) > 0) return;
+        if (name.equals("coach_quick_review_completed") && db.queryForObject("""
+                SELECT COUNT(*) FROM coach_usage_events WHERE session_id=?
+                AND event_name='coach_quick_review_started' AND review_run_id=?
+                """, Integer.class, sessionId, key) == 0) return;
+        // Client telemetry is untrusted and bounded; it never grants points or changes learning history.
+        if (db.queryForObject("SELECT COUNT(*) FROM coach_usage_events WHERE session_id=?", Integer.class, sessionId) >= 82) return;
+        db.update("INSERT INTO coach_usage_events(session_id,event_name,review_run_id,ui_version) VALUES (?,?,?,'COACH_V2')",
+                sessionId, name, key);
+    }
 
     private Set<String> properNames(Long lessonId) {
         Set<String> names = new HashSet<>();

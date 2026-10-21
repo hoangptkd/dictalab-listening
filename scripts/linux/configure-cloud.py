@@ -10,6 +10,14 @@ import tempfile
 import urllib.parse
 import uuid
 
+LEGACY_PROVIDER_KEYS = (
+    'SHOPAIKEY_API_KEY', 'SHOPAIKEY_MODEL', 'SHOPAIKEY_URL',
+    'SHOPAIKEY_ASSESSMENT_TIMEOUT_SECONDS', 'SHOPAIKEY_GENERATION_TIMEOUT_SECONDS',
+    'DICTALAB_AI_CLOUD_BASE_URL', 'DICTALAB_AI_CLOUD_API_KEY', 'DICTALAB_AI_CLOUD_MODEL',
+    'DICTALAB_AI_FALLBACK_ENABLED', 'DICTALAB_AI_FALLBACK_BASE_URL',
+    'DICTALAB_AI_FALLBACK_API_KEY', 'DICTALAB_AI_FALLBACK_MODEL',
+)
+
 
 def pool_environment(size, current):
     if type(size) is not int or size not in (5, 8, 10):
@@ -73,6 +81,9 @@ def serialize_environment(env):
     if not isinstance(env, dict):
         raise ValueError('Invalid environment configuration')
     env = env.copy()
+    # Never carry retired providers or fallback credentials into protected configuration.
+    for name in LEGACY_PROVIDER_KEYS:
+        env.pop(name, None)
     # Underscores delimit nested properties; compound Hikari names must omit hyphens.
     for suffix in ('MAXIMUM_POOL_SIZE', 'MINIMUM_IDLE', 'CONNECTION_TIMEOUT'):
         old = 'SPRING_DATASOURCE_HIKARI_' + suffix
@@ -137,6 +148,8 @@ def production_environment(source, current):
     for name in ('JWT_SIGNING_KEY', 'REDIS_URL'):
         if source.get(name) != current.get(name):
             raise ValueError('Source and target authentication configuration differ')
+    for name in LEGACY_PROVIDER_KEYS:
+        env.pop(name, None)
     env['DICTALAB_LOG_FILE'] = '/var/lib/dictalab/logs/dictalab.json'
     env['DICTALAB_AI_QUEUE_ENABLED'] = source.get('DICTALAB_AI_QUEUE_ENABLED', 'false')
     env['DICTALAB_MEDIA_S3_CLEANUP_ENABLED'] = source.get('DICTALAB_MEDIA_S3_CLEANUP_ENABLED', 'false')
@@ -200,7 +213,7 @@ def main():
         else:
             for suffix in ('MAXIMUM_POOL_SIZE', 'MINIMUM_IDLE', 'CONNECTION_TIMEOUT'):
                 env.pop('SPRING_DATASOURCE_HIKARI_' + suffix, None)
-            env.update(SHOPAIKEY_API_KEY='', CARTESIA_API_KEY='',
+            env.update(GEMINI_API_KEY='', CARTESIA_API_KEY='',
                        DICTALAB_COACH_ENABLED='false', DICTALAB_CONVERSATION_ENABLED='false',
                        DICTALAB_AI_QUEUE_ENABLED='false', DICTALAB_LISTENING_QUEUE_ENABLED='false',
                        DICTALAB_MEDIA_S3_CLEANUP_ENABLED='false',

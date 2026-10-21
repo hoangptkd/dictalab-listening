@@ -32,7 +32,7 @@ test('restore smoke disables destructive remote work even when production flags 
     const launch=script.slice(script.indexOf('$smoke=Start-Process'),script.indexOf('$null=$smoke.Handle'));
     for(const flag of ['--dictalab.media.s3.enabled=false','--dictalab.media.s3.cleanup-enabled=false',
         '--dictalab.ai.queue.enabled=false','--dictalab.listening.queue.enabled=false',
-        '--dictalab.shopaikey.api-key=','--dictalab.conversation.cartesia-api-key=',
+        '--dictalab.gemini.api-key=','--dictalab.conversation.cartesia-api-key=',
         '--dictalab.auth.previous-signing-key=','--dictalab.mail-from=']) assert.ok(launch.includes(flag),flag);
     assert.ok(script.includes('$env:JWT_SIGNING_KEY=[Convert]::ToBase64String($jwtBytes)'));
 });

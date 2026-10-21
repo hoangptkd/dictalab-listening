@@ -1,4 +1,4 @@
-param([switch]$WithCoach, [switch]$WithMessaging)
+param([switch]$WithCoach, [switch]$WithMessaging, [switch]$WithConversationLocal)
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -28,18 +28,60 @@ $env:DB_URL = "jdbc:postgresql://localhost:$env:POSTGRES_PORT/$env:POSTGRES_DB"
 $env:DB_USERNAME = $env:POSTGRES_USER
 $env:DB_PASSWORD = $env:POSTGRES_PASSWORD
 $env:PORT = $env:APP_PORT
+$env:SPRING_PROFILES_ACTIVE = 'local'
+$env:DICTALAB_AI_TEXT_PROVIDER = 'ollama'
+$env:DICTALAB_AI_PRIMARY_PROVIDER = 'ollama'
+$env:DICTALAB_AI_PRODUCTION_MODE = 'false'
+if ($env:DICTALAB_CONVERSATION_GENERATION_PROVIDER -ne 'python') {
+    $env:DICTALAB_CONVERSATION_GENERATION_PROVIDER = 'ollama'
+}
+$env:DICTALAB_COACH_PROVIDER = 'ollama'
 
 Push-Location $projectRoot
 try {
     $appPort = [int]$env:APP_PORT
     $postgresPort = [int]$env:POSTGRES_PORT
 
+    if ($WithConversationLocal -or ($env:DICTALAB_CONVERSATION_ENABLED -eq 'true' -and $env:DICTALAB_CONVERSATION_GENERATION_PROVIDER -eq 'ollama')) {
+        $env:DICTALAB_CONVERSATION_GENERATION_PROVIDER = 'ollama'
+        $conversationBase = if ($env:DICTALAB_CONVERSATION_LOCAL_BASE_URL) { $env:DICTALAB_CONVERSATION_LOCAL_BASE_URL.TrimEnd('/') } else { 'http://127.0.0.1:11434' }
+        $conversationUri = [Uri]$conversationBase
+        if ($conversationUri.Scheme -notin @('http','https') -or
+                $conversationUri.Host -notin @('localhost','127.0.0.1','[::1]') -or
+                $conversationUri.UserInfo -or $conversationUri.Query -or $conversationUri.Fragment -or
+                $conversationUri.AbsolutePath -ne '/') { throw 'Conversation Ollama URL phai la loopback, khong co credentials/path.' }
+        $conversationModel = if ($env:DICTALAB_CONVERSATION_LOCAL_MODEL) { $env:DICTALAB_CONVERSATION_LOCAL_MODEL } else { 'qwen3.5:9b' }
+        if ($conversationModel -match ':cloud|-cloud') { throw 'Chi dung model Ollama local.' }
+        $conversationTimeout = if ($env:DICTALAB_CONVERSATION_LOCAL_TIMEOUT_SECONDS) { [int]$env:DICTALAB_CONVERSATION_LOCAL_TIMEOUT_SECONDS } else { 180 }
+        if ($conversationTimeout -eq 0) { $conversationTimeout = 180 }
+        if ($conversationTimeout -lt 1 -or $conversationTimeout -gt 600) { throw 'Conversation local timeout phai tu 1 den 600 giay.' }
+        $conversationModels = Invoke-RestMethod "$conversationBase/api/tags" -TimeoutSec 5 -MaximumRedirection 0
+        if ($conversationModel -notin @($conversationModels.models.name)) { throw "Ollama chua co model $conversationModel." }
+        if ([string]::IsNullOrWhiteSpace($env:CARTESIA_API_KEY)) {
+            throw 'Can Cartesia cho audio. AI van ban va danh gia dung Ollama local.'
+        }
+        $env:DICTALAB_CONVERSATION_ENABLED = 'true'
+        # Load weights before serving; the actual generation still has its own bounded deadline.
+        $warmup = @{model=$conversationModel; stream=$false; keep_alive='5m'; options=@{num_ctx=8192}} | ConvertTo-Json -Depth 3
+        $null = Invoke-RestMethod "$conversationBase/api/generate" -Method Post -ContentType 'application/json' -Body $warmup -TimeoutSec $conversationTimeout -MaximumRedirection 0
+        Write-Host "AI van ban va danh gia: Ollama local / $conversationModel. TTS: Cartesia."
+    }
+
     if ($WithCoach) {
-        if ([string]::IsNullOrWhiteSpace($env:SHOPAIKEY_API_KEY)) {
-            throw 'Can SHOPAIKEY_API_KEY trong .env de bat Coach.'
+        $coachProvider = if ($env:DICTALAB_COACH_PROVIDER) { $env:DICTALAB_COACH_PROVIDER } else { 'gemini' }
+        if ($coachProvider -eq 'ollama') {
+            $coachBase = if ($env:DICTALAB_COACH_LOCAL_BASE_URL) { $env:DICTALAB_COACH_LOCAL_BASE_URL.TrimEnd('/') } else { 'http://127.0.0.1:11434' }
+            $coachModel = if ($env:DICTALAB_COACH_LOCAL_MODEL) { $env:DICTALAB_COACH_LOCAL_MODEL } else { 'qwen3.5:4b' }
+            $coachModels = Invoke-RestMethod "$coachBase/api/tags" -TimeoutSec 5
+            if ($coachModel -notin @($coachModels.models.name)) { throw "Ollama chua co model $coachModel. Hay tai model truoc." }
+            Write-Host "AI Coach: Ollama local / $coachModel."
+        }
+        elseif ($coachProvider -ne 'gemini') { throw 'DICTALAB_COACH_PROVIDER chi nhan gemini hoac ollama.' }
+        elseif ([string]::IsNullOrWhiteSpace($env:GEMINI_API_KEY)) {
+            throw 'Can GEMINI_API_KEY trong .env de bat Coach.'
         }
         $env:DICTALAB_COACH_ENABLED = 'true'
-        Write-Host 'AI Coach: ShopAIKey API (khong can Chrome/ChatGPT web).'
+        if ($coachProvider -eq 'gemini') { Write-Host 'AI Coach: Gemini API.' }
     }
 
     if ($WithMessaging) {
@@ -80,6 +122,9 @@ try {
         try {
             $health = Invoke-RestMethod -Uri "http://localhost:$appPort/actuator/health" -TimeoutSec 3
             if ($health.status -eq 'UP') {
+                if ($env:DICTALAB_CONVERSATION_GENERATION_PROVIDER -eq 'ollama') {
+                    Write-Warning 'App dang chay; cau hinh Conversation local chi ap dung sau khi khoi dong lai app.'
+                }
                 Write-Host "DictaLab dang chay tai http://localhost:$appPort"
                 return
             }

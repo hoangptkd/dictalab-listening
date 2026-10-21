@@ -17,7 +17,7 @@ $names=@('CAPACITY_REDIS_URL','DB_URL','DB_USERNAME','DB_PASSWORD','CAPACITY_ACC
     'PORT','MANAGEMENT_PORT','DB_POOL_SIZE','SESSION_COOKIE_SECURE','RATE_LIMIT_ENABLED','DICTALAB_COACH_ENABLED',
     'DICTALAB_CONVERSATION_ENABLED','DICTALAB_MEDIA_ROOT','DICTALAB_PERSONAL_CONTENT_ENABLED','REDIS_URL',
     'JWT_COOKIE_SECURE','JWT_SIGNING_KEY','JWT_PREVIOUS_SIGNING_KEY','JWT_ACCESS_LIFETIME','JWT_REFRESH_LIFETIME',
-    'DICTALAB_RATE_LIMIT_BACKEND','DICTALAB_LISTENING_QUEUE_ENABLED','SMTP_HOST','SHOPAIKEY_URL','SHOPAIKEY_API_KEY','CARTESIA_API_KEY',
+    'DICTALAB_RATE_LIMIT_BACKEND','DICTALAB_LISTENING_QUEUE_ENABLED','SMTP_HOST','GEMINI_URL','GEMINI_API_KEY','CARTESIA_API_KEY',
     'DICTALAB_MEDIA_S3_ENABLED','DICTALAB_MEDIA_S3_CLEANUP_ENABLED','DICTALAB_AI_QUEUE_ENABLED')
 $saved=@{};foreach($name in $names){$saved[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
 $app=$null;$fake=$null;$started=$false;$failure=$null;$databaseReady=$false
@@ -59,7 +59,7 @@ try{
     $env:DICTALAB_LISTENING_QUEUE_ENABLED='false';$env:SMTP_HOST='';$env:CARTESIA_API_KEY=''
     $env:DICTALAB_MEDIA_S3_ENABLED='false';$env:DICTALAB_MEDIA_S3_CLEANUP_ENABLED='false';$env:DICTALAB_AI_QUEUE_ENABLED='false'
     $env:DICTALAB_COACH_ENABLED='false';$env:DICTALAB_CONVERSATION_ENABLED='false';$env:DICTALAB_PERSONAL_CONTENT_ENABLED='false'
-    $env:DICTALAB_MEDIA_ROOT=Join-Path $testRoot 'media';$env:SHOPAIKEY_API_KEY='fake-only';$env:SHOPAIKEY_URL='http://127.0.0.1:18380/v1/chat/completions'
+    $env:DICTALAB_MEDIA_ROOT=Join-Path $testRoot 'media';$env:GEMINI_API_KEY='fake-only';$env:GEMINI_URL='http://127.0.0.1:18380/v1/chat/completions'
     $artifact=Join-Path $testRoot 'build\english-dictation-0.1.0-SNAPSHOT.jar'
     $app=Start-Process -FilePath (Get-Command java.exe).Source -WindowStyle Hidden -PassThru -WorkingDirectory $testRoot -ArgumentList @(
         '-Xms128m','-Xmx512m','-jar',('"'+$artifact+'"'),'--spring.profiles.active=capacity','--server.address=127.0.0.1') `

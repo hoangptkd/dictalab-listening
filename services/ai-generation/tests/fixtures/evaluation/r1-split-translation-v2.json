@@ -1,0 +1,4706 @@
+{
+  "capturedAt": "2026-10-19T18:56:43.097176+00:00",
+  "metadata": {
+    "model": "qwen3.5:9b",
+    "modelDigest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "promptVersion": "r1-split-translation-v2",
+    "promptHash": "3e9a1922146be4b100bd0c4b87d31db6006d91b64380cbf6e3459f4ee7a99267",
+    "config": {
+      "content": {
+        "temperature": 0.7,
+        "num_ctx": 8192,
+        "num_predict": 1000
+      },
+      "translationTemperature": 0.1,
+      "translationNumCtx": 4096,
+      "translationNumPredict": 800
+    },
+    "judgeVersion": "listening-refinement-v14-audit-derived-flags",
+    "labels": "AI; no human approval"
+  },
+  "records": [
+    {
+      "id": "eval-cafe-A1-t2",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "drink_type",
+            "askVi": "Loại đồ uống"
+          },
+          {
+            "kind": "food_item",
+            "askVi": "Món ăn"
+          }
+        ],
+        "utteranceEn": "I would like a coffee and a vegetable salad, please.",
+        "facts": [
+          {
+            "textVi": "một ly cà phê",
+            "evidenceEn": "a coffee"
+          },
+          {
+            "textVi": "một đĩa salad rau",
+            "evidenceEn": "a vegetable salad"
+          }
+        ],
+        "questionVi": "Bạn gọi đồ uống gì và món ăn gì?",
+        "taskVi": "Nghe danh mục thực đơn mới.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Tôi muốn một ly cà phê và một đĩa salad rau, xin vui lòng."
+      },
+      "verdict": {
+        "questionFactsAligned": false,
+        "answerable": true,
+        "atomicFacts": false,
+        "translationAccurate": true,
+        "rolesConsistent": false,
+        "continuity": false,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "continuity",
+            "evidence": "Turn 1 tested drink and food; Turn 2 tests drink and food again",
+            "explanation": "Both requested meanings (drink type, food type) were already tested in the previous turn"
+          },
+          {
+            "type": "questionFactsAligned",
+            "evidence": "Question asks what 'Bạn' (server/learner) orders, but facts describe what the customer orders",
+            "explanation": "Role mismatch causes the facts to misalign with what the question actually requests"
+          },
+          {
+            "type": "rolesConsistent",
+            "evidence": "I would like a coffee and a vegetable salad / Bạn gọi đồ uống gì và món ăn gì?",
+            "explanation": "The question asks what the server (Bạn/learner) orders, but the customer (partner) is ordering in the utterance"
+          },
+          {
+            "type": "atomicFacts",
+            "evidence": "[\"một ly\",\"một đĩa\"]",
+            "explanation": "Derived from explicit findings in the preserved evidence audit."
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "drink type ordered by customer",
+            "food type ordered by customer"
+          ],
+          "currentlyAskedMeanings": [
+            "drink type ordered by server",
+            "food type ordered by server"
+          ],
+          "repeatedMeanings": [
+            "drink type",
+            "food type"
+          ],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "wrong",
+          "englishQuote": "I would like a coffee and a vegetable salad",
+          "questionQuote": "Bạn gọi đồ uống gì và món ăn gì?",
+          "reason": "The question asks what the server (Bạn/learner) orders, but the customer (partner) is ordering in the utterance"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "drink type",
+            "food type"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 in a continuation scenario; transfer criterion does not apply"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "đồ uống gì",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": [
+              "một ly"
+            ]
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "món ăn gì",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": [
+              "một đĩa"
+            ]
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 117.9
+    },
+    {
+      "id": "eval-cafe-A2-t3",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "payment_method",
+            "askVi": "Phương thức thanh toán"
+          },
+          {
+            "kind": "special_request",
+            "askVi": "Yêu cầu đặc biệt"
+          }
+        ],
+        "utteranceEn": "I would like to pay by card and I am allergic to nuts, please.",
+        "facts": [
+          {
+            "textVi": "thanh toán bằng thẻ",
+            "evidenceEn": "pay by card"
+          },
+          {
+            "textVi": "dị ứng với hạt",
+            "evidenceEn": "allergic to nuts"
+          }
+        ],
+        "questionVi": "Bạn muốn thanh toán như thế nào và có yêu cầu gì?",
+        "taskVi": "Nghe phương thức thanh toán và lưu ý sức khỏe.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Tôi muốn thanh toán bằng thẻ và tôi dị ứng với hạt, xin vui lòng."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": false,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "rolesConsistent",
+            "evidence": "I would like to pay by card / Bạn muốn thanh toán như thế nào",
+            "explanation": "Question asks what the server (Bạn) wants for payment, but utterance states what the customer (I) wants"
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "drink order",
+            "food order",
+            "reason for ordering",
+            "collection location",
+            "order number"
+          ],
+          "currentlyAskedMeanings": [
+            "payment method",
+            "special request or allergy"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "wrong",
+          "englishQuote": "I would like to pay by card",
+          "questionQuote": "Bạn muốn thanh toán như thế nào",
+          "reason": "Question asks what the server (Bạn) wants for payment, but utterance states what the customer (I) wants"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "payment method",
+            "special request"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation; transfer evaluation is not applicable"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "thanh toán như thế nào",
+            "requestedKind": "other",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "có yêu cầu gì",
+            "requestedKind": "other",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 127.36
+    },
+    {
+      "id": "eval-cafe-B1-t4",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "dining_preference",
+            "askVi": "Thói quen ăn uống"
+          },
+          {
+            "kind": "allergy_info",
+            "askVi": "Thông tin dị ứng"
+          }
+        ],
+        "utteranceEn": "Hi, I am ready to order my lunch. As a rule, I prefer sitting at the window seat for better natural light during the afternoon. However, please note that I have a severe allergy to peanuts and must avoid them in any dish. Could you confirm if your soup of the day is safe or if it contains nuts? Also, is there any way to prepare my salad without any dressing that might hide hidden allergens?",
+        "facts": [
+          {
+            "textVi": "Tôi thích ngồi ghế bên cửa sổ",
+            "evidenceEn": "I prefer sitting at the window seat"
+          },
+          {
+            "textVi": "Tôi bị dị ứng nghiêm trọng với đậu phộng",
+            "evidenceEn": "I have a severe allergy to peanuts"
+          }
+        ],
+        "questionVi": "Bạn muốn ngồi ở đâu và có dị ứng gì không?",
+        "taskVi": "Nghe vị khách nói về thói quen và dị ứng.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Xin chào, tôi đã sẵn sàng đặt bữa trưa. Theo thói quen, tôi thích ngồi ghế bên cửa sổ để tận dụng ánh sáng tự nhiên tốt hơn vào buổi chiều. Tuy nhiên, xin lưu ý rằng tôi bị dị ứng nghiêm trọng với đậu phộng và phải tránh chúng trong mọi món ăn. Bạn có thể xác nhận xem súp của ngày hôm nay có an toàn hay có chứa hạt không? Ngoài ra, liệu có cách nào chuẩn bị salad mà không dùng sốt để tránh các chất gây dị ứng tiềm ẩn không?"
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": false,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "rolesConsistent",
+            "evidence": "I prefer sitting at the window seat / Bạn muốn ngồi ở đâu",
+            "explanation": "Question asks where the server wants to sit and what allergies the server has, but the customer stated their own seating preference and peanut allergy"
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "drink ordered",
+            "food ordered",
+            "reason for ordering",
+            "pickup location",
+            "order number",
+            "item to bring",
+            "person to ask for"
+          ],
+          "currentlyAskedMeanings": [
+            "seating preference",
+            "allergy information"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": false
+        },
+        "roleAudit": {
+          "decision": "wrong",
+          "englishQuote": "I prefer sitting at the window seat",
+          "questionQuote": "Bạn muốn ngồi ở đâu",
+          "reason": "Question asks where the server wants to sit and what allergies the server has, but the customer stated their own seating preference and peanut allergy"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "seating location preference",
+            "allergy information"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "independent",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "backreferenceKind": "none",
+          "reason": "Current utterance describes a new ordering moment with different food items (soup, salad) and no reference to previous order (tea, cheese sandwich, number sixteen, Lily, back counter)"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Bạn muốn ngồi ở đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "có dị ứng gì không",
+            "requestedKind": "condition",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 149.73
+    },
+    {
+      "id": "eval-hotel-A1-t3",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "check_out_time",
+            "askVi": "Giờ trả phòng"
+          },
+          {
+            "kind": "key_return_place",
+            "askVi": "Nơi trả chìa khóa"
+          }
+        ],
+        "utteranceEn": "You can check out at three o'clock. Please return your key to the front desk.",
+        "facts": [
+          {
+            "textVi": "lúc ba giờ",
+            "evidenceEn": "at three o'clock"
+          },
+          {
+            "textVi": "cho lễ tân",
+            "evidenceEn": "to the front desk"
+          }
+        ],
+        "questionVi": "Giờ trả phòng là mấy giờ và trả chìa khóa ở đâu?",
+        "taskVi": "Nghe thông tin về giờ trả phòng và nơi trả chìa khóa.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Bạn có thể trả phòng lúc ba giờ. Vui lòng trả chìa khóa cho lễ tân."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "room number",
+            "breakfast location",
+            "breakfast start time",
+            "key return deadline"
+          ],
+          "currentlyAskedMeanings": [
+            "check-out time",
+            "key return place"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "You can check out",
+          "questionQuote": "Giờ trả phòng là mấy giờ và trả chìa khóa ở đâu?",
+          "reason": "Receptionist tells guest 'You can check out'; question asks guest what they were told about check-out time and key return location. Roles align correctly."
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "check-out time",
+            "key return place"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation as expected; transfer criterion does not apply to turns 2-3."
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Giờ trả phòng là mấy giờ",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "trả chìa khóa ở đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 122.63
+    },
+    {
+      "id": "eval-hotel-A2-t4",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "wifi_password",
+            "askVi": "Mật khẩu wifi"
+          },
+          {
+            "kind": "room_key_location",
+            "askVi": "Nơi nhận chìa khóa phòng"
+          }
+        ],
+        "utteranceEn": "The internet password is 'Welcome2024'. You can pick up your room key at the front desk.",
+        "facts": [
+          {
+            "textVi": "'Welcome2024'",
+            "evidenceEn": "'Welcome2024'"
+          },
+          {
+            "textVi": "quầy lễ tân",
+            "evidenceEn": "at the front desk"
+          }
+        ],
+        "questionVi": "Mật khẩu wifi là gì và chỗ nào nhận chìa khóa phòng?",
+        "taskVi": "Nghe mật khẩu wifi và vị trí nhận chìa khóa.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Mật khẩu internet là 'Welcome2024'. Bạn có thể lấy chìa khóa phòng tại quầy lễ tân."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "room number",
+            "breakfast location",
+            "dining room closure reason",
+            "breakfast start time",
+            "key return deadline",
+            "internet password location",
+            "housekeeping contact for towels"
+          ],
+          "currentlyAskedMeanings": [
+            "wifi password value",
+            "room key pickup location"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": false
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "You can pick up your room key at the front desk",
+          "questionQuote": "chỗ nào nhận chìa khóa phòng",
+          "reason": "Receptionist tells guest where to pick up key; question asks guest learner where to pick up key"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "wifi password value",
+            "room key pickup location"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "independent",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "backreferenceKind": "none",
+          "reason": "New check-in encounter with different practical goal (obtaining password value and key location) versus previous encounter (room assignment, breakfast arrangements, facility instructions). No explicit backreference and no concrete distinctive links proving same stay."
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Mật khẩu wifi",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "chỗ nào nhận chìa khóa phòng",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 118.52
+    },
+    {
+      "id": "eval-hotel-B1-t2",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "check_in_time",
+            "askVi": "Giờ nhận phòng là mấy giờ?"
+          },
+          {
+            "kind": "key_collection_location",
+            "askVi": "Nơi lấy chìa khóa"
+          }
+        ],
+        "utteranceEn": "Welcome! You may check in at three o'clock. Please collect your key from the small desk inside the lobby. The elevator is now operational.",
+        "facts": [
+          {
+            "textVi": "lúc ba giờ",
+            "evidenceEn": "at three o'clock"
+          },
+          {
+            "textVi": "tại bàn nhỏ bên trong sảnh",
+            "evidenceEn": "from the small desk inside the lobby"
+          }
+        ],
+        "questionVi": "Giờ nhận phòng và nơi lấy chìa khóa là gì?",
+        "taskVi": "Nghe giờ nhận phòng mới và vị trí lấy chìa khóa.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Chào mừng! Quý khách có thể nhận phòng lúc ba giờ. Vui lòng lấy chìa khóa tại bàn nhỏ bên trong sảnh. Thang máy hiện đã hoạt động."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "room number",
+            "breakfast location",
+            "reason dining room closed"
+          ],
+          "currentlyAskedMeanings": [
+            "check-in time",
+            "key collection location"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "You may check in",
+          "questionQuote": "Giờ nhận phòng và nơi lấy chìa khóa",
+          "reason": "Receptionist tells guest when to check in and where to get key; question asks learner-guest what those details are"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "check-in time",
+            "key collection location"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 continuation as specified by journey structure"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Giờ nhận phòng",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "nơi lấy chìa khóa",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 121.18
+    },
+    {
+      "id": "eval-directions-A1-t4",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "direction_start",
+            "askVi": "Điểm bắt đầu"
+          },
+          {
+            "kind": "direction_end",
+            "askVi": "Điểm đến"
+          }
+        ],
+        "utteranceEn": "Start at the big red flag, then walk straight to the green park entrance.",
+        "facts": [
+          {
+            "textVi": "tại cờ đỏ lớn",
+            "evidenceEn": "at the big red flag"
+          },
+          {
+            "textVi": "đến cổng công viên màu xanh",
+            "evidenceEn": "to the green park entrance"
+          }
+        ],
+        "questionVi": "Hãy bắt đầu từ đâu và đi đến đâu?",
+        "taskVi": "Lắng nghe hướng dẫn đường mới.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Bắt đầu tại cờ đỏ lớn, sau đó đi thẳng đến cổng công viên màu xanh."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Start at the big red flag, then walk straight to the green park entrance.",
+          "questionQuote": "Hãy bắt đầu từ đâu và đi đến đâu?",
+          "reason": "The local guide partner gives directions to the visitor learner. The question asks the learner where to start and go, matching the information provided by the guide."
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "starting point",
+            "destination"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "independent",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "backreferenceKind": "none",
+          "reason": "Turn 4 presents a new walking route from a red flag to a green park entrance, unrelated to the previous museum visit by bus. Different destination, different transport mode, no backreference to the earlier conversation."
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "bắt đầu từ đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "đi đến đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "museum destination",
+            "bus transport",
+            "stop D location",
+            "River Street location",
+            "west entrance",
+            "student card requirement"
+          ],
+          "currentlyAskedMeanings": [
+            "starting point at red flag",
+            "destination at green park entrance"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": false
+        }
+      },
+      "transport": "ok",
+      "seconds": 112.61
+    },
+    {
+      "id": "eval-directions-A2-t2",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "walking_direction",
+            "askVi": "Hướng đi bộ"
+          },
+          {
+            "kind": "meeting_point",
+            "askVi": "Điểm gặp nhau"
+          }
+        ],
+        "utteranceEn": "Walk straight and turn left at the bank. Please meet me at the big oak tree near the entrance.",
+        "facts": [
+          {
+            "textVi": "Đi thẳng và rẽ trái tại ngân hàng",
+            "evidenceEn": "Walk straight and turn left at the bank"
+          },
+          {
+            "textVi": "tại cây sồi lớn gần lối vào",
+            "evidenceEn": "at the big oak tree near the entrance"
+          }
+        ],
+        "questionVi": "Hãy đi bộ thẳng qua ngân hàng rồi rẽ trái và gặp tôi ở điểm nào?",
+        "taskVi": "Nghe chỉ dẫn đường và địa điểm hẹn.",
+        "skill": "Theo dõi hướng dẫn",
+        "translationVi": "Đi thẳng và rẽ trái tại ngân hàng. Vui lòng gặp tôi tại cây sồi lớn gần lối vào."
+      },
+      "verdict": {
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Please meet me",
+          "questionQuote": "gặp tôi ở điểm nào",
+          "reason": "Guide instructs visitor where to meet; question asks visitor for that meeting location"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "meeting point location"
+          ],
+          "leakedAnswerQuotes": [
+            "Hãy đi bộ thẳng qua ngân hàng rồi rẽ trái"
+          ],
+          "slotMismatches": [
+            "walking_direction slot has a fact but is stated in the question as an imperative, not requested"
+          ]
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 continuation; transfer criterion is not applicable"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": null,
+            "requestedKind": "action",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": [
+              "Đi thẳng và rẽ trái tại ngân hàng"
+            ]
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "ở điểm nào",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "destination museum",
+            "transport by bus",
+            "reason road too busy for walking"
+          ],
+          "currentlyAskedMeanings": [
+            "meeting point location"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "questionFactsAligned": false,
+        "answerable": true,
+        "atomicFacts": false,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "questionFactsAligned",
+            "evidence": "Hãy đi bộ thẳng qua ngân hàng rồi rẽ trái",
+            "explanation": "Walking directions are stated as an imperative in the question rather than requested; only the meeting point is actually asked"
+          },
+          {
+            "type": "atomicFacts",
+            "evidence": "[\"Đi thẳng và rẽ trái tại ngân hàng\"]",
+            "explanation": "Derived from explicit findings in the preserved evidence audit."
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 110.31
+    },
+    {
+      "id": "eval-directions-B1-t3",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "departure_time",
+            "askVi": "Xe buýt khởi hành lúc mấy giờ?"
+          },
+          {
+            "kind": "fare_amount",
+            "askVi": "Mức giá vé là bao nhiêu?"
+          }
+        ],
+        "utteranceEn": "The bus leaves from stop D at half past two. It costs five thousand dong per ticket. Please have ready cash, because the driver does not accept mobile payments on this route.",
+        "facts": [
+          {
+            "textVi": "hai giờ rưỡi",
+            "evidenceEn": "at half past two"
+          },
+          {
+            "textVi": "năm nghìn đồng",
+            "evidenceEn": "costs five thousand dong"
+          }
+        ],
+        "questionVi": "Xe buýt khởi hành lúc mấy giờ và vé bao nhiêu tiền?",
+        "taskVi": "Nghe thời gian khởi hành và giá vé.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Xe buýt rời từ trạm D lúc hai giờ rưỡi. Vé giá năm nghìn đồng mỗi vé. Vui lòng chuẩn bị tiền mặt, vì tài xế không chấp nhận thanh toán qua điện thoại di động trên tuyến này."
+      },
+      "verdict": {
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "The bus leaves",
+          "questionQuote": "Xe buýt khởi hành",
+          "reason": "Guide provides bus information to visitor; neutral factual question matches roles"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "departure time",
+            "ticket price"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "lúc mấy giờ",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "vé bao nhiêu tiền",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 evaluation; transfer criterion does not apply to continuation turns"
+        },
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "destination",
+            "transport method",
+            "reason for transport choice",
+            "bus stop letter",
+            "get-off street"
+          ],
+          "currentlyAskedMeanings": [
+            "departure time",
+            "ticket price"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": []
+      },
+      "transport": "ok",
+      "seconds": 126.41
+    },
+    {
+      "id": "eval-plans-A1-t2",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "meeting_time",
+            "askVi": "Giờ gặp mặt"
+          },
+          {
+            "kind": "meeting_place",
+            "askVi": "Nơi gặp mặt"
+          }
+        ],
+        "utteranceEn": "We will meet at half past nine in the city park.",
+        "facts": [
+          {
+            "textVi": "chín giờ rưỡi",
+            "evidenceEn": "half past nine"
+          },
+          {
+            "textVi": "công viên thành phố",
+            "evidenceEn": "city park"
+          }
+        ],
+        "questionVi": "Chúng ta gặp vào lúc mấy giờ và ở đâu?",
+        "taskVi": "Nghe thông tin về thời gian và địa điểm mới.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Chúng ta sẽ gặp nhau lúc chín giờ rưỡi tại công viên thành phố."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": false,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "continuity",
+            "evidence": "Turn 1: 'ở đâu' (Công viên); Turn 2: 'ở đâu' (công viên thành phố)",
+            "explanation": "Meeting place location was already tested in turn 1; journey specifies new requested meanings for turn 2"
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "meeting day",
+            "meeting place location"
+          ],
+          "currentlyAskedMeanings": [
+            "meeting time",
+            "meeting place location"
+          ],
+          "repeatedMeanings": [
+            "meeting place location"
+          ],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "We will meet",
+          "questionQuote": "Chúng ta gặp",
+          "reason": "Mutual meeting between friends; 'we' in English matches 'chúng ta' in Vietnamese, correctly representing reciprocal action between two friends"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "meeting time",
+            "meeting place location"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 continuation; transfer criterion does not apply"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "vào lúc mấy giờ",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "ở đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 99.52
+    },
+    {
+      "id": "eval-plans-A2-t3",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "weather_condition",
+            "askVi": "Thời tiết thế nào"
+          },
+          {
+            "kind": "meeting_time",
+            "askVi": "Gặp lúc mấy giờ"
+          }
+        ],
+        "utteranceEn": "It is raining hard outside. Please wait for us at the park entrance at half past two because we will arrive late.",
+        "facts": [
+          {
+            "textVi": "Trời đang mưa to bên ngoài",
+            "evidenceEn": "It is raining hard outside"
+          },
+          {
+            "textVi": "hai giờ kém mười lăm",
+            "evidenceEn": "at half past two"
+          }
+        ],
+        "questionVi": "Thời tiết ra sao và chúng ta gặp lúc mấy giờ?",
+        "taskVi": "Lắng nghe điều kiện thời tiết và lịch trình đến nơi.",
+        "skill": "Hiểu điều kiện",
+        "translationVi": "Trời đang mưa to bên ngoài. Vui lòng đợi chúng tôi tại cổng công viên vào hai giờ kém mười lăm vì chúng tôi sẽ đến muộn."
+      },
+      "verdict": {
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Please wait for us",
+          "questionQuote": "chúng ta gặp",
+          "reason": "Friends coordinating a mutual meeting; 'chúng ta' appropriately refers to both parties meeting together"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "weather condition",
+            "meeting time"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Thời tiết ra sao",
+            "requestedKind": "condition",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": [
+              "bên ngoài"
+            ]
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "chúng ta gặp lúc mấy giờ",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "translationAudit": {
+          "errors": [
+            {
+              "englishQuote": "at half past two",
+              "vietnameseQuote": "hai giờ kém mười lăm",
+              "reason": "half past two is 2:30, but 'hai giờ kém mười lăm' means 1:45 (two minus fifteen); should be 'hai giờ rưỡi' or 'hai giờ ba mươi'"
+            }
+          ]
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation; transfer criterion not applicable per instructions"
+        },
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "meeting day",
+            "meeting location",
+            "reason for location choice",
+            "item to bring by learner",
+            "item to bring by partner"
+          ],
+          "currentlyAskedMeanings": [
+            "weather condition",
+            "meeting time"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": false,
+        "translationAccurate": false,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "translationAccurate",
+            "evidence": "at half past two → hai giờ kém mười lăm",
+            "explanation": "Time incorrectly translated: 'half past two' is 2:30, but 'hai giờ kém mười lăm' means 1:45"
+          },
+          {
+            "type": "atomicFacts",
+            "evidence": "[\"bên ngoài\"]",
+            "explanation": "Derived from explicit findings in the preserved evidence audit."
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 112.05
+    },
+    {
+      "id": "eval-plans-B1-t4",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "new_meeting_place",
+            "askVi": "Địa điểm hẹn mới"
+          },
+          {
+            "kind": "activity_change",
+            "askVi": "Hoạt động thay đổi"
+          }
+        ],
+        "utteranceEn": "Hey, we need to change our plans. We will meet at the city library instead of the park. The plan is to read books and study there, not just hang out. This place is much quieter for us.",
+        "facts": [
+          {
+            "textVi": "tại thư viện thành phố",
+            "evidenceEn": "at the city library"
+          },
+          {
+            "textVi": "để đọc sách và học tập ở đó",
+            "evidenceEn": "to read books and study there"
+          }
+        ],
+        "questionVi": "Chúng ta sẽ gặp nhau ở đâu và làm gì thay vì đi công viên?",
+        "taskVi": "Nghe địa điểm mới và hoạt động trong lịch hẹn.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Chào, chúng ta cần thay đổi kế hoạch. Chúng ta sẽ gặp nhau tại thư viện thành phố thay vì công viên. Kế hoạch là đọc sách và học tập ở đó, không chỉ tụ tập. Nơi này yên tĩnh hơn nhiều cho chúng ta."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": false,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "transfer",
+            "evidence": "change our plans... instead of the park",
+            "explanation": "Turn 4 continues the old park meeting by explicitly changing it to library, rather than establishing an independent new encounter"
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "meeting day (Saturday)",
+            "meeting location (park)",
+            "reason for location choice (cafe closed)",
+            "items to bring (blanket, sandwiches)",
+            "waiting location (by pond)",
+            "jacket color (orange)"
+          ],
+          "currentlyAskedMeanings": [
+            "new meeting location",
+            "activity at new location"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [
+            "park -> city library without establishing this as a new separate meeting"
+          ],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "we will meet",
+          "questionQuote": "Chúng ta sẽ gặp nhau",
+          "reason": "Both are friends making mutual plans. English 'we' matches Vietnamese 'chúng ta', indicating reciprocal meeting with no role swap."
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "meeting location",
+            "activity"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "continuation",
+          "oldLinks": [
+            {
+              "oldEvidenceEn": "at the park",
+              "newEvidenceEn": "instead of the park",
+              "meaning": "meeting location",
+              "sameMeaning": true
+            },
+            {
+              "oldEvidenceEn": "meet on Saturday at the park",
+              "newEvidenceEn": "change our plans",
+              "meaning": "the scheduled meeting itself",
+              "sameMeaning": true
+            }
+          ],
+          "explicitBackreferenceEn": "change our plans",
+          "backreferenceKind": "this_conversation",
+          "reason": "Speaker explicitly modifies the park meeting from turn 1, using 'change our plans' and 'instead of the park' to redirect the same appointment to library"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "ở đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "làm gì",
+            "requestedKind": "action",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 118.31
+    },
+    {
+      "id": "eval-delivery-A1-t3",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "delivery_time",
+            "askVi": "Giờ giao hàng"
+          },
+          {
+            "kind": "package_weight",
+            "askVi": "Trọng lượng gói"
+          }
+        ],
+        "utteranceEn": "The delivery is at one o'clock. The package weighs five kilograms.",
+        "facts": [
+          {
+            "textVi": "một giờ",
+            "evidenceEn": "at one o'clock"
+          },
+          {
+            "textVi": "năm kilôgam",
+            "evidenceEn": "five kilograms"
+          }
+        ],
+        "questionVi": "Bạn giao hàng lúc mấy giờ và bao nhiêu cân?",
+        "taskVi": "Nghe giờ giao hàng và trọng lượng.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Giao hàng lúc một giờ. Gói hàng nặng năm kilôgam."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": false,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "rolesConsistent",
+            "evidence": "The delivery is at one o'clock / Bạn giao hàng lúc mấy giờ",
+            "explanation": "Question asks when the learner (courier) delivers, but English speaker is the partner (recipient) stating delivery requirements, not the courier describing their own delivery action"
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "drop-off location",
+            "person signing for package",
+            "gate to use",
+            "access code"
+          ],
+          "currentlyAskedMeanings": [
+            "delivery time",
+            "package weight"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "wrong",
+          "englishQuote": "The delivery is at one o'clock",
+          "questionQuote": "Bạn giao hàng lúc mấy giờ",
+          "reason": "Question asks when the learner (courier) delivers, but English speaker is the partner (recipient) stating delivery requirements, not the courier describing their own delivery action"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "delivery time",
+            "package weight"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation; transfer criterion does not apply"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "lúc mấy giờ",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "bao nhiêu cân",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 121.61
+    },
+    {
+      "id": "eval-delivery-A2-t4",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "delivery_location",
+            "askVi": "Nơi giao hàng"
+          },
+          {
+            "kind": "access_method",
+            "askVi": "Cách vào"
+          }
+        ],
+        "utteranceEn": "I am at the side gate and need a key to enter. Please leave the package with the security guard before you go in.",
+        "facts": [
+          {
+            "textVi": "ở cổng bên",
+            "evidenceEn": "at the side gate"
+          },
+          {
+            "textVi": "với bảo vệ",
+            "evidenceEn": "with the security guard"
+          }
+        ],
+        "questionVi": "Bạn sẽ giao hàng ở đâu và để với ai?",
+        "taskVi": "Nghe địa điểm và cách vào mới.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Tôi đang ở cổng bên và cần chìa khóa để vào. Vui lòng để gói hàng với bảo vệ trước khi bạn đi vào."
+      },
+      "verdict": {
+        "questionFactsAligned": false,
+        "answerable": true,
+        "atomicFacts": false,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "questionFactsAligned",
+            "evidence": "f1: 'ở cổng bên' from 'at the side gate'",
+            "explanation": "Fact f1 states where the speaker currently is, not where to deliver the package. The question 'Bạn sẽ giao hàng ở đâu' asks for the delivery location, which is 'với bảo vệ' (with the security guard), not 'ở cổng bên' (at the side gate)."
+          },
+          {
+            "type": "atomicFacts",
+            "evidence": "[\"ở cổng bên\"]",
+            "explanation": "Derived from explicit findings in the preserved evidence audit."
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "delivery location (reception)",
+            "who signs (brother)",
+            "reason (at work all day)",
+            "access gate (side gate)",
+            "access code (23)",
+            "specific shelf location (wooden shelf at reception)",
+            "who to leave note with (guard)"
+          ],
+          "currentlyAskedMeanings": [
+            "delivery location",
+            "person to leave package with"
+          ],
+          "repeatedMeanings": [
+            "delivery location",
+            "person to leave with (guard mentioned in turn 3)"
+          ],
+          "silentChanges": [],
+          "continuesOldEncounter": false
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Please leave the package with the security guard",
+          "questionQuote": "Bạn sẽ giao hàng",
+          "reason": "Recipient (partner) instructs courier (learner addressed as 'bạn') where to deliver"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "delivery location (ở đâu)",
+            "person to leave package with (để với ai)"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": [
+            "f1 provides 'ở cổng bên' (speaker's current location) instead of delivery location 'với bảo vệ'"
+          ]
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "uncertain",
+          "oldLinks": [
+            {
+              "oldEvidenceEn": "the side gate",
+              "newEvidenceEn": "at the side gate",
+              "meaning": "side gate location",
+              "sameMeaning": true
+            },
+            {
+              "oldEvidenceEn": "the guard",
+              "newEvidenceEn": "the security guard",
+              "meaning": "guard person",
+              "sameMeaning": true
+            }
+          ],
+          "explicitBackreferenceEn": null,
+          "backreferenceKind": "none",
+          "reason": "Turn 4 reuses 'side gate' from turn 2 and 'security guard' similar to turn 3's 'guard', but without explicit back-reference to the previous conversation. Same facility features do not prove same delivery encounter. No distinctive old arrangement being continued."
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "ở đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": false,
+            "unaskedTextVi": [
+              "ở cổng bên"
+            ]
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "để với ai",
+            "requestedKind": "person",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 121.21
+    },
+    {
+      "id": "eval-delivery-B1-t2",
+      "seed": 17,
+      "task": {
+        "slots": [
+          {
+            "kind": "delivery_time",
+            "askVi": "Giờ giao hàng"
+          },
+          {
+            "kind": "contact_method",
+            "askVi": "Phương thức liên hệ"
+          }
+        ],
+        "utteranceEn": "I can only receive the package between 6 PM and 8 PM tonight. Please do not knock on the door before that time. If you arrive early, leave a message with my neighbor instead of waiting.",
+        "facts": [
+          {
+            "textVi": "từ 6 giờ tối đến 8 giờ tối nay",
+            "evidenceEn": "between 6 PM and 8 PM tonight"
+          },
+          {
+            "textVi": "để lại lời nhắn với hàng xóm",
+            "evidenceEn": "leave a message with my neighbor"
+          }
+        ],
+        "questionVi": "Bạn có thể nhận hàng trong khung giờ nào và cần làm gì nếu đến sớm?",
+        "taskVi": "Nghe giới hạn thời gian và hướng dẫn liên hệ.",
+        "skill": "Hiểu điều kiện",
+        "translationVi": "Tôi chỉ có thể nhận gói hàng từ 6 giờ tối đến 8 giờ tối nay. Vui lòng không gõ cửa trước thời gian đó. Nếu bạn đến sớm, hãy để lại lời nhắn với hàng xóm thay vì chờ đợi."
+      },
+      "verdict": {
+        "roleAudit": {
+          "decision": "wrong",
+          "englishQuote": "I can only receive the package",
+          "questionQuote": "Bạn có thể nhận hàng",
+          "reason": "The partner/recipient states when 'I can receive' but the question asks when 'bạn' (learner/courier) can receive. Couriers deliver packages; recipients receive them. The question incorrectly assigns the receiving action to the courier."
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "time window for receiving package",
+            "action if arriving early"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 in a continuation scenario; transfer evaluation does not apply"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "trong khung giờ nào",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "cần làm gì nếu đến sớm",
+            "requestedKind": "action",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": false,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "rolesConsistent",
+            "evidence": "I can only receive the package / Bạn có thể nhận hàng",
+            "explanation": "The partner/recipient states when 'I can receive' but the question asks when 'bạn' (learner/courier) can receive. Couriers deliver packages; recipients receive them. The question incorrectly assigns the receiving action to the courier."
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "delivery location",
+            "package signer",
+            "reason for alternative arrangement"
+          ],
+          "currentlyAskedMeanings": [
+            "delivery time window",
+            "action if arriving early"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        }
+      },
+      "transport": "ok",
+      "seconds": 118.28
+    },
+    {
+      "id": "eval-cafe-A1-t2",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "drink_type",
+            "askVi": "Loại đồ uống"
+          },
+          {
+            "kind": "food_item",
+            "askVi": "Món ăn"
+          }
+        ],
+        "utteranceEn": "I would like an orange juice and a salad, please.",
+        "facts": [
+          {
+            "textVi": "một ly nước cam",
+            "evidenceEn": "an orange juice"
+          },
+          {
+            "textVi": "một đĩa salad",
+            "evidenceEn": "a salad"
+          }
+        ],
+        "questionVi": "Bạn gọi đồ uống gì và món ăn gì?",
+        "taskVi": "Nghe khách gọi món mới.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Tôi muốn một ly nước cam và một đĩa salad, xin vui lòng."
+      },
+      "verdict": {
+        "roleAudit": {
+          "decision": "wrong",
+          "englishQuote": "I would like an orange juice and a salad, please.",
+          "questionQuote": "Bạn gọi đồ uống gì",
+          "reason": "Question asks what the server learner (bạn) ordered, but the customer partner is the one ordering in the utterance"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "drink ordered by server learner",
+            "food ordered by server learner"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": [
+            "Question asks what server ordered but facts provide what customer ordered"
+          ]
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 continuation; transfer criterion does not apply"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "đồ uống gì",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "món ăn gì",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "drink item ordered by customer",
+            "food item ordered by customer"
+          ],
+          "currentlyAskedMeanings": [
+            "drink item ordered by server",
+            "food item ordered by server"
+          ],
+          "repeatedMeanings": [
+            "drink item in ordering context",
+            "food item in ordering context"
+          ],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "questionFactsAligned": false,
+        "answerable": false,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": false,
+        "continuity": false,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "answerable",
+            "evidence": "Bạn gọi",
+            "explanation": "Question asks about server's order, but utterance only provides customer's order"
+          },
+          {
+            "type": "questionFactsAligned",
+            "evidence": "Bạn gọi đồ uống gì và món ăn gì",
+            "explanation": "Question requests what server ordered; facts provide what customer ordered"
+          },
+          {
+            "type": "continuity",
+            "evidence": "đồ uống gì và món ăn gì",
+            "explanation": "Drink and food items were already tested in turn 1; same meanings repeated in turn 2"
+          },
+          {
+            "type": "rolesConsistent",
+            "evidence": "I would like an orange juice and a salad, please. / Bạn gọi đồ uống gì",
+            "explanation": "Question asks what the server learner (bạn) ordered, but the customer partner is the one ordering in the utterance"
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 107.39
+    },
+    {
+      "id": "eval-cafe-A2-t3",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "payment_method",
+            "askVi": "Phương thức thanh toán"
+          },
+          {
+            "kind": "delivery_time",
+            "askVi": "Thời gian giao hàng"
+          }
+        ],
+        "utteranceEn": "Could you pay with a credit card? We need to deliver it before noon because the lunch rush is starting.",
+        "facts": [
+          {
+            "textVi": "thẻ tín dụng",
+            "evidenceEn": "a credit card"
+          },
+          {
+            "textVi": "trước trưa",
+            "evidenceEn": "before noon"
+          }
+        ],
+        "questionVi": "Khách muốn thanh toán bằng gì và cần giao hàng lúc nào?",
+        "taskVi": "Nghe phương thức thanh toán và thời gian giao hàng.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Anh có thể thanh toán bằng thẻ tín dụng được không? Chúng tôi cần giao hàng trước trưa vì giờ cao điểm ăn trưa sắp bắt đầu."
+      },
+      "verdict": {
+        "questionFactsAligned": false,
+        "answerable": false,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": false,
+        "continuity": false,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "roleAudit": {
+          "decision": "wrong",
+          "englishQuote": "Could you pay with a credit card?",
+          "questionQuote": "Khách muốn thanh toán bằng gì",
+          "reason": "The customer asks if the server could pay with credit card, but the question asks what the customer wants to pay with. The roles are mismatched."
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "payment method",
+            "delivery time"
+          ],
+          "leakedAnswerQuotes": [
+            "thanh toán bằng gì"
+          ],
+          "slotMismatches": [
+            "payment method slot expects a stated preference but the utterance contains a question"
+          ]
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation; transfer criterion is not applicable."
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "thanh toán bằng gì",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": false,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "lúc nào",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "drink order",
+            "food order",
+            "reason for order",
+            "collection location",
+            "order number"
+          ],
+          "currentlyAskedMeanings": [
+            "payment method",
+            "delivery time"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [
+            "collect at back counter -> delivery without announced change"
+          ],
+          "continuesOldEncounter": true
+        },
+        "issues": [
+          {
+            "type": "questionFactsAligned",
+            "evidence": "Could you pay with a credit card?",
+            "explanation": "Payment method is asked as a question in English, not stated as a fact. The Vietnamese question presupposes an answer value."
+          },
+          {
+            "type": "answerable",
+            "evidence": "Could you pay with a credit card?",
+            "explanation": "The utterance asks a question about payment method rather than stating what the customer wants to pay with."
+          },
+          {
+            "type": "continuity",
+            "evidence": "collect your order at the back counter -> We need to deliver it",
+            "explanation": "Silent change from collection to delivery without explicit announcement of the change."
+          },
+          {
+            "type": "rolesConsistent",
+            "evidence": "Could you pay with a credit card? / Khách muốn thanh toán bằng gì",
+            "explanation": "The customer asks if the server could pay with credit card, but the question asks what the customer wants to pay with. The roles are mismatched."
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 118.78
+    },
+    {
+      "id": "eval-cafe-B1-t4",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "meal_preference",
+            "askVi": "Loại món ăn khách muốn"
+          },
+          {
+            "kind": "side_request",
+            "askVi": "Yêu cầu đồ kèm theo"
+          }
+        ],
+        "utteranceEn": "Hello! Since I haven't eaten yet, I would like to order a grilled salmon for myself. Could you also bring me a fresh green salad on the side? Please avoid any lemon juice in the dressing if possible.",
+        "facts": [
+          {
+            "textVi": "cá hồi nướng",
+            "evidenceEn": "grilled salmon"
+          },
+          {
+            "textVi": "salad xanh tươi",
+            "evidenceEn": "fresh green salad"
+          }
+        ],
+        "questionVi": "Khách hàng muốn ăn món gì và cần thêm đồ kèm gì?",
+        "taskVi": "Nghe tên món chính và món phụ trong đơn mới.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Xin chào! Vì tôi chưa ăn gì, tôi muốn đặt một con cá hồi nướng cho mình. Bạn cũng có thể mang cho tôi một đĩa salad xanh tươi đi kèm được không? Nếu có thể, xin hãy tránh dùng nước cốt chanh trong sốt."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "drink ordered",
+            "food item ordered",
+            "reason for ordering",
+            "collection location",
+            "order number",
+            "item to bring",
+            "person to contact"
+          ],
+          "currentlyAskedMeanings": [
+            "main dish ordered",
+            "side item requested"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": false
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "I would like to order a grilled salmon",
+          "questionQuote": "Khách hàng muốn ăn món gì",
+          "reason": "The English speaker is the customer (partnerRole), and the question asks about 'Khách hàng' (the customer), correctly referring to the English speaker."
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "main dish",
+            "side item"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "independent",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "backreferenceKind": "generic",
+          "reason": "New order with completely different items (grilled salmon and salad vs. tea and cheese sandwich). The phrase 'haven't eaten yet' is a generic statement of hunger, not a reference to the previous conversation. No concrete links to old arrangements."
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "món gì",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "đồ kèm gì",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 120.96
+    },
+    {
+      "id": "eval-hotel-A1-t3",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "check_out_time",
+            "askVi": "Giờ trả phòng"
+          },
+          {
+            "kind": "cleaning_rule",
+            "askVi": "Quy tắc dọn dẹp"
+          }
+        ],
+        "utteranceEn": "Check out at twelve noon. Do not throw your trash in the room.",
+        "facts": [
+          {
+            "textVi": "lúc mười hai giờ trưa",
+            "evidenceEn": "at twelve noon"
+          },
+          {
+            "textVi": "không vứt rác trong phòng",
+            "evidenceEn": "do not throw your trash in the room"
+          }
+        ],
+        "questionVi": "Giờ trả phòng là mấy và quy tắc dọn dẹp là gì?",
+        "taskVi": "Nghe giờ trả phòng và quy tắc.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Trả phòng lúc mười hai giờ trưa. Không vứt rác trong phòng."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Check out at twelve noon. Do not throw your trash in the room.",
+          "questionQuote": "Giờ trả phòng là mấy và quy tắc dọn dẹp là gì?",
+          "reason": "Receptionist gives check-out instructions to guest; question asks guest about those instructions"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "check-out time",
+            "cleaning rule"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation task; transfer criterion is not applicable"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Giờ trả phòng là mấy",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "quy tắc dọn dẹp là gì",
+            "requestedKind": "condition",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "room number",
+            "breakfast location",
+            "breakfast start time",
+            "key return time"
+          ],
+          "currentlyAskedMeanings": [
+            "check-out time",
+            "cleaning rule"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        }
+      },
+      "transport": "ok",
+      "seconds": 118.43
+    },
+    {
+      "id": "eval-hotel-A2-t4",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "room_number",
+            "askVi": "Số phòng"
+          },
+          {
+            "kind": "floor_level",
+            "askVi": "Tầng lầu"
+          }
+        ],
+        "utteranceEn": "Welcome to Hotel Harmony. Your room is on the second floor, number thirty-one. We have a view of the lake from your window.",
+        "facts": [
+          {
+            "textVi": "tầng hai",
+            "evidenceEn": "on the second floor"
+          },
+          {
+            "textVi": "số ba mươi mốt",
+            "evidenceEn": "number thirty-one"
+          }
+        ],
+        "questionVi": "Phòng của tôi ở tầng nào và số phòng bao nhiêu?",
+        "taskVi": "Nghe số phòng mới.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Chào mừng đến với Khách sạn Harmony. Phòng của quý vị ở tầng hai, số ba mươi mốt. Từ cửa sổ phòng quý vị có thể ngắm cảnh hồ."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Your room is on the second floor",
+          "questionQuote": "Phòng của tôi",
+          "reason": "Receptionist tells guest about the guest's room; question asks learner (guest) about their own room"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "floor level",
+            "room number"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "independent",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "backreferenceKind": "none",
+          "reason": "New check-in encounter with different room (thirty-one vs eight), greeting 'Welcome to Hotel Harmony' typical of new arrival, no reference to previous conversation or arrangements"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "ở tầng nào",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "số phòng bao nhiêu",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "room number",
+            "breakfast location",
+            "reason for garden breakfast",
+            "breakfast start time",
+            "key return deadline",
+            "password location",
+            "towel request contact"
+          ],
+          "currentlyAskedMeanings": [
+            "floor level",
+            "room number"
+          ],
+          "repeatedMeanings": [
+            "room number"
+          ],
+          "silentChanges": [],
+          "continuesOldEncounter": false
+        }
+      },
+      "transport": "ok",
+      "seconds": 119.09
+    },
+    {
+      "id": "eval-hotel-B1-t2",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "key_card",
+            "askVi": "Thẻ chìa khóa"
+          },
+          {
+            "kind": "wifi_name",
+            "askVi": "Tên mạng Wi-Fi"
+          }
+        ],
+        "utteranceEn": "Here is your key card. Please remember to return it upon departure. For internet access, connect to our secure network called 'GuestConnect'. The password is required for this connection.",
+        "facts": [
+          {
+            "textVi": "GuestConnect",
+            "evidenceEn": "called GuestConnect"
+          },
+          {
+            "textVi": "khi rời đi",
+            "evidenceEn": "return it upon departure"
+          }
+        ],
+        "questionVi": "Mạng Wi-Fi tên gì và phải trả lại thẻ chìa khóa khi nào?",
+        "taskVi": "Nghe tên mạng Wi-Fi và thời điểm trả lại thẻ.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Đây là thẻ chìa khóa của bạn. Vui lòng nhớ trả lại khi rời đi. Để truy cập internet, hãy kết nối với mạng bảo mật có tên 'GuestConnect'. Mật khẩu được yêu cầu cho kết nối này."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Here is your key card. Please remember to return it upon departure.",
+          "questionQuote": "phải trả lại thẻ chìa khóa khi nào",
+          "reason": "Receptionist gives key card to guest and instructs guest to return it. Question asks when guest must return it. Roles are consistent."
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "Wi-Fi network name",
+            "when to return key card"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 continuation of same check-in encounter with new requested meanings"
+        },
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "room number",
+            "breakfast location",
+            "dining room closed reason"
+          ],
+          "currentlyAskedMeanings": [
+            "Wi-Fi network name",
+            "key card return time"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Mạng Wi-Fi tên gì",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "phải trả lại thẻ chìa khóa khi nào",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 128.88
+    },
+    {
+      "id": "eval-directions-A1-t4",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "direction_start",
+            "askVi": "Điểm xuất phát"
+          },
+          {
+            "kind": "direction_end",
+            "askVi": "Điểm đến"
+          }
+        ],
+        "utteranceEn": "Start at the post office and walk straight to the library. You will find a quiet study room inside.",
+        "facts": [
+          {
+            "textVi": "bưu điện",
+            "evidenceEn": "at the post office"
+          },
+          {
+            "textVi": "thư viện",
+            "evidenceEn": "to the library"
+          }
+        ],
+        "questionVi": "Bắt đầu từ đâu và đi đến đâu?",
+        "taskVi": "Nghe hướng dẫn đường đi mới.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Bắt đầu từ bưu điện và đi thẳng đến thư viện. Bạn sẽ tìm thấy một phòng học yên tĩnh bên trong."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Start at the post office and walk straight to the library",
+          "questionQuote": "Bắt đầu từ đâu và đi đến đâu?",
+          "reason": "Guide gives directions to visitor; question asks visitor about the directions received"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "starting location",
+            "destination location"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "independent",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "backreferenceKind": "none",
+          "reason": "Completely different destination (library vs museum), different transport method (walking vs bus), no shared concrete details or references linking to the previous museum visit"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Bắt đầu từ đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "đi đến đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "destination: museum",
+            "transport: bus",
+            "bus stop: D",
+            "street: River Street",
+            "entrance: west",
+            "ID document: student card"
+          ],
+          "currentlyAskedMeanings": [
+            "starting location",
+            "destination location"
+          ],
+          "repeatedMeanings": [
+            "destination location"
+          ],
+          "silentChanges": [],
+          "continuesOldEncounter": false
+        }
+      },
+      "transport": "ok",
+      "seconds": 109.34
+    },
+    {
+      "id": "eval-directions-A2-t2",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "walking_direction",
+            "askVi": "Hướng đi bộ"
+          },
+          {
+            "kind": "landmark",
+            "askVi": "Dấu mốc nhận biết"
+          }
+        ],
+        "utteranceEn": "Walk straight down this street. You will see a tall blue building on your left. That is the landmark for the library.",
+        "facts": [
+          {
+            "textVi": "đi thẳng xuống con đường này",
+            "evidenceEn": "Walk straight down this street"
+          },
+          {
+            "textVi": "một tòa nhà cao màu xanh",
+            "evidenceEn": "a tall blue building"
+          }
+        ],
+        "questionVi": "Hãy đi bộ như thế nào và tòa nhà dấu mốc trông ra sao?",
+        "taskVi": "Nghe hướng dẫn di chuyển và nhận biết điểm đặc trưng.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Đi thẳng xuống con đường này. Bạn sẽ thấy một tòa nhà cao màu xanh ở bên trái. Đó là điểm nhận dạng của thư viện."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": false,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "continuity",
+            "evidence": "museum -> library",
+            "explanation": "Turn 1 established destination as museum, turn 2 switches to library without announcement. Additionally, turn 1 stated to take bus because road too busy for walking, but turn 2 provides walking directions."
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "destination is museum",
+            "transportation method is bus",
+            "reason is road too busy for walking"
+          ],
+          "currentlyAskedMeanings": [
+            "walking direction/method",
+            "landmark building appearance"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [
+            "museum -> library without announced change",
+            "bus transportation -> walking directions contradicting stated reason"
+          ],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Walk straight down this street. You will see",
+          "questionQuote": "Hãy đi bộ như thế nào",
+          "reason": "Local guide (partner) giving directions to visitor (learner). The imperative 'Hãy' addresses the learner appropriately."
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "walking direction/method",
+            "landmark building appearance"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 of continuation; transfer criterion is not applicable."
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "đi bộ như thế nào",
+            "requestedKind": "action",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "tòa nhà dấu mốc trông ra sao",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 138.67
+    },
+    {
+      "id": "eval-directions-B1-t3",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "departure_time",
+            "askVi": "Giờ xuất phát"
+          },
+          {
+            "kind": "fare_amount",
+            "askVi": "Giá vé"
+          }
+        ],
+        "utteranceEn": "The bus departs exactly at 6:30 in the morning. Please buy a ticket for five dollars from the driver before you get on. The journey takes about forty minutes to reach the destination.",
+        "facts": [
+          {
+            "textVi": "lúc 6:30 sáng",
+            "evidenceEn": "departs exactly at 6:30"
+          },
+          {
+            "textVi": "năm đô la",
+            "evidenceEn": "for five dollars"
+          }
+        ],
+        "questionVi": "Xe buýt khởi hành lúc mấy giờ và giá vé là bao nhiêu?",
+        "taskVi": "Nghe giờ xuất phát và giá vé.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Xe buýt khởi hành đúng lúc 6:30 sáng. Vui lòng mua vé trị giá năm đô la từ tài xế trước khi lên xe. Hành trình mất khoảng bốn mươi phút để đến nơi."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "destination is museum",
+            "transport is bus",
+            "reason is road too busy for walking",
+            "departure stop is D",
+            "exit street is River Street"
+          ],
+          "currentlyAskedMeanings": [
+            "bus departure time",
+            "ticket fare amount"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "The bus departs exactly at 6:30 in the morning. Please buy a ticket for five dollars",
+          "questionQuote": "Xe buýt khởi hành lúc mấy giờ và giá vé là bao nhiêu?",
+          "reason": "The local guide is providing bus information to the visitor. The question asks about objective facts (departure time and ticket price) that the guide stated, not about what the visitor wants."
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "bus departure time",
+            "ticket fare amount"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation; transfer criterion not applicable"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "lúc mấy giờ",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "giá vé là bao nhiêu",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 118.39
+    },
+    {
+      "id": "eval-plans-A1-t2",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "meeting_time",
+            "askVi": "Giờ hẹn mới là mấy giờ?"
+          },
+          {
+            "kind": "weather_condition",
+            "askVi": "Thời tiết như thế nào?"
+          }
+        ],
+        "utteranceEn": "We must meet at three because it is sunny and warm today.",
+        "facts": [
+          {
+            "textVi": "lúc ba giờ",
+            "evidenceEn": "at three"
+          },
+          {
+            "textVi": "nắng và ấm",
+            "evidenceEn": "sunny and warm"
+          }
+        ],
+        "questionVi": "Chúng ta gặp lúc mấy giờ và thời tiết ra sao?",
+        "taskVi": "Nghe giờ hẹn mới và dự báo thời tiết.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Chúng ta phải gặp lúc ba giờ vì hôm nay trời nắng và ấm."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "day of meeting",
+            "meeting location"
+          ],
+          "currentlyAskedMeanings": [
+            "meeting time",
+            "weather condition"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "We must meet",
+          "questionQuote": "Chúng ta gặp",
+          "reason": "Mutual meeting between friends; 'we' in English matches 'chúng ta' in Vietnamese"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "meeting time",
+            "weather condition"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 continuation within the same meeting scenario; transfer evaluation is not applicable"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "lúc mấy giờ",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "thời tiết ra sao",
+            "requestedKind": "other",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 103.05
+    },
+    {
+      "id": "eval-plans-A2-t3",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "weather_condition",
+            "askVi": "Thời tiết sẽ như thế nào?"
+          },
+          {
+            "kind": "meeting_duration",
+            "askVi": "Buổi gặp kéo dài bao lâu?"
+          }
+        ],
+        "utteranceEn": "It will be sunny at the park, so we can stay outside for two hours. Please remember to drink water because it might get hot.",
+        "facts": [
+          {
+            "textVi": "có nắng ở công viên",
+            "evidenceEn": "It will be sunny"
+          },
+          {
+            "textVi": "trong hai giờ",
+            "evidenceEn": "stay outside for two hours"
+          }
+        ],
+        "questionVi": "Thời tiết sẽ ra sao và chúng ta gặp nhau bao lâu?",
+        "taskVi": "Nghe điều kiện thời tiết và thời lượng buổi gặp.",
+        "skill": "Hiểu lý do và mục đích",
+        "translationVi": "Sẽ có nắng ở công viên, vì vậy chúng ta có thể ở ngoài hai giờ. Hãy nhớ uống nước vì trời có thể trở nên nóng."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "we can stay outside for two hours",
+          "questionQuote": "chúng ta gặp nhau bao lâu",
+          "reason": "Both partner and learner are friends. The English 'we' and Vietnamese 'chúng ta' both refer to the two friends meeting together. This is reciprocal meeting between equals, not a role swap."
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "weather condition",
+            "meeting duration"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation. Transfer criterion is not applicable."
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Thời tiết sẽ ra sao",
+            "requestedKind": "condition",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "chúng ta gặp nhau bao lâu",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "meeting day",
+            "meeting location",
+            "reason for location change",
+            "item learner brings",
+            "item partner brings"
+          ],
+          "currentlyAskedMeanings": [
+            "weather condition",
+            "meeting duration"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        }
+      },
+      "transport": "ok",
+      "seconds": 116.7
+    },
+    {
+      "id": "eval-plans-B1-t4",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "cancellation_reason",
+            "askVi": "Lý do hủy buổi hẹn"
+          },
+          {
+            "kind": "suggested_time",
+            "askVi": "Giờ gợi ý mới"
+          }
+        ],
+        "utteranceEn": "Hey! I am really sorry, but I must cancel our picnic plan because my boss asked me to work overtime tonight. Instead of Saturday afternoon, how about we meet next Sunday morning at the library? It is much quieter there.",
+        "facts": [
+          {
+            "textVi": "vì sếp yêu cầu tôi làm thêm tối nay",
+            "evidenceEn": "because my boss asked me to work overtime tonight"
+          },
+          {
+            "textVi": "sáng Chủ nhật tới",
+            "evidenceEn": "next Sunday morning"
+          }
+        ],
+        "questionVi": "Tại sao bạn hủy buổi hẹn và gợi ý giờ nào?",
+        "taskVi": "Nghe lý do hủy hẹn và thời gian mới.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Chào! Xin lỗi thật sự, nhưng tôi phải hủy kế hoạch đi picnic vì sếp yêu cầu tôi làm thêm tối nay. Thay vì chiều thứ Bảy, chúng ta có thể gặp nhau vào sáng Chủ nhật tới tại thư viện không? Nơi đó yên tĩnh hơn nhiều."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": false,
+        "continuity": true,
+        "transfer": false,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "transfer",
+            "evidence": "Old: 'on Saturday' + 'at the park' | New: 'our picnic plan' + 'Instead of Saturday afternoon'",
+            "explanation": "Turn 4 must introduce a NEW encounter, but this continues and modifies the established Saturday park picnic from turn 1"
+          },
+          {
+            "type": "rolesConsistent",
+            "evidence": "I must cancel / Tại sao bạn hủy buổi hẹn",
+            "explanation": "Question asks why 'bạn' (learner) cancels the appointment, but utterance shows 'I' (partner) is the one canceling"
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "meeting day",
+            "meeting location",
+            "reason for location choice",
+            "item to bring (blanket)",
+            "item partner brings (sandwiches)",
+            "meeting spot detail (by pond)",
+            "clothing identifier color (orange)"
+          ],
+          "currentlyAskedMeanings": [
+            "cancellation reason",
+            "new suggested time"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "wrong",
+          "englishQuote": "I must cancel",
+          "questionQuote": "Tại sao bạn hủy buổi hẹn",
+          "reason": "Question asks why 'bạn' (learner) cancels the appointment, but utterance shows 'I' (partner) is the one canceling"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "cancellation reason",
+            "suggested time"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "continuation",
+          "oldLinks": [
+            {
+              "oldEvidenceEn": "on Saturday",
+              "newEvidenceEn": "Instead of Saturday afternoon",
+              "meaning": "meeting day/time",
+              "sameMeaning": true
+            },
+            {
+              "oldEvidenceEn": "at the park",
+              "newEvidenceEn": "our picnic plan",
+              "meaning": "picnic event at park",
+              "sameMeaning": true
+            }
+          ],
+          "explicitBackreferenceEn": "our picnic plan",
+          "backreferenceKind": "this_conversation",
+          "reason": "Utterance explicitly cancels 'our picnic plan' and references 'Instead of Saturday afternoon', directly continuing the Saturday park meeting established in turn 1"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Tại sao bạn hủy buổi hẹn",
+            "requestedKind": "reason",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "gợi ý giờ nào",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 123.95
+    },
+    {
+      "id": "eval-delivery-A1-t3",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "delivery_time",
+            "askVi": "Giờ giao hàng"
+          },
+          {
+            "kind": "package_condition",
+            "askVi": "Tình trạng gói hàng"
+          }
+        ],
+        "utteranceEn": "Please deliver before five o'clock. The package must arrive without any damage.",
+        "facts": [
+          {
+            "textVi": "trước năm giờ",
+            "evidenceEn": "before five o'clock"
+          },
+          {
+            "textVi": "không bị hư hỏng",
+            "evidenceEn": "without any damage"
+          }
+        ],
+        "questionVi": "Giờ giao hàng là lúc nào và gói hàng phải thế nào?",
+        "taskVi": "Nghe giờ giao và tình trạng hàng.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Vui lòng giao trước năm giờ. Gói hàng phải đến nơi không bị hư hỏng."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "delivery location",
+            "who will sign",
+            "which gate to use",
+            "access code"
+          ],
+          "currentlyAskedMeanings": [
+            "delivery time",
+            "package condition requirement"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Please deliver before five o'clock. The package must arrive without any damage.",
+          "questionQuote": "Giờ giao hàng là lúc nào và gói hàng phải thế nào?",
+          "reason": "Recipient gives delivery requirements to courier; question asks courier about those requirements"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "delivery time",
+            "package condition"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation; transfer evaluation does not apply"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Giờ giao hàng là lúc nào",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "gói hàng phải thế nào",
+            "requestedKind": "condition",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 109.98
+    },
+    {
+      "id": "eval-delivery-A2-t4",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "delivery_location",
+            "askVi": "Địa điểm nhận hàng"
+          },
+          {
+            "kind": "access_code",
+            "askVi": "Mã truy cập"
+          }
+        ],
+        "utteranceEn": "I am ready for the package today. Please leave it at the side gate using code 4567.",
+        "facts": [
+          {
+            "textVi": "tại cổng bên",
+            "evidenceEn": "at the side gate"
+          },
+          {
+            "textVi": "mã 4567",
+            "evidenceEn": "code 4567"
+          }
+        ],
+        "questionVi": "Hàng sẽ để ở đâu và mã truy cập là gì?",
+        "taskVi": "Nghe địa điểm nhận hàng và mã số.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Tôi đã sẵn sàng nhận gói hàng hôm nay. Vui lòng để nó tại cổng bên dùng mã 4567."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Please leave it at the side gate using code 4567",
+          "questionQuote": "Hàng sẽ để ở đâu và mã truy cập là gì?",
+          "reason": "The recipient partner gives drop-off instructions, and the question asks the courier learner where to leave the package and what access code to use - roles align correctly"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "delivery location",
+            "access code"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "ở đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "mã truy cập là gì",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "independent",
+          "oldLinks": [
+            {
+              "oldEvidenceEn": "the side gate",
+              "newEvidenceEn": "at the side gate",
+              "meaning": "delivery location facility",
+              "sameMeaning": true
+            }
+          ],
+          "explicitBackreferenceEn": null,
+          "backreferenceKind": "none",
+          "reason": "The side gate facility is reused, but with a different access code (23 vs 4567) and no explicit reference to the previous conversation. The phrase 'I am ready for the package today' suggests a new delivery occasion. Same facility does not establish same encounter; one shared location value is insufficient without a backreference or two concrete same-meaning links."
+        },
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "delivery location",
+            "signer identity",
+            "reason for arrangement",
+            "entry gate",
+            "access code",
+            "shelf location",
+            "delivery note recipient"
+          ],
+          "currentlyAskedMeanings": [
+            "delivery location",
+            "access code"
+          ],
+          "repeatedMeanings": [
+            "delivery location",
+            "access code"
+          ],
+          "silentChanges": [],
+          "continuesOldEncounter": false
+        }
+      },
+      "transport": "ok",
+      "seconds": 117.25
+    },
+    {
+      "id": "eval-delivery-B1-t2",
+      "seed": 43,
+      "task": {
+        "slots": [
+          {
+            "kind": "delivery_time",
+            "askVi": "Giờ nào giao hàng?"
+          },
+          {
+            "kind": "signature_method",
+            "askVi": "Phương thức ký nhận?"
+          }
+        ],
+        "utteranceEn": "Hello. I will be available for delivery at four o'clock this afternoon. Please note that I cannot sign for the package myself; I need someone to take a video of the handover instead.",
+        "facts": [
+          {
+            "textVi": "vào lúc bốn giờ chiều nay",
+            "evidenceEn": "at four o'clock this afternoon"
+          },
+          {
+            "textVi": "quay video quá trình bàn giao",
+            "evidenceEn": "take a video of the handover"
+          }
+        ],
+        "questionVi": "Bạn có mặt lúc mấy giờ và cần ai ký nhận như thế nào?",
+        "taskVi": "Nghe thời gian giao hàng và phương thức ký.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Xin chào. Tôi sẽ sẵn sàng nhận hàng vào lúc bốn giờ chiều nay. Vui lòng lưu ý rằng tôi không thể ký nhận bưu kiện; tôi cần ai đó quay video quá trình bàn giao."
+      },
+      "verdict": {
+        "roleAudit": {
+          "decision": "wrong",
+          "englishQuote": "I will be available for delivery at four o'clock this afternoon",
+          "questionQuote": "Bạn có mặt lúc mấy giờ",
+          "reason": "The recipient states their own availability time, but the question asks when the courier (bạn=learner) is available. Different actors."
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "courier availability time",
+            "signature method"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": [
+            "Question asks courier availability time but fact provides recipient availability time"
+          ]
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 evaluation; transfer criterion does not apply to continuation turns."
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "lúc mấy giờ",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "cần ai ký nhận như thế nào",
+            "requestedKind": "action",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "delivery location",
+            "who signs for parcel",
+            "reason for delivery arrangement"
+          ],
+          "currentlyAskedMeanings": [
+            "delivery time",
+            "signature method"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "questionFactsAligned": false,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": false,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "questionFactsAligned",
+            "evidence": "I will be available for delivery at four o'clock this afternoon / lúc mấy giờ",
+            "explanation": "The question asks for the courier's availability time, but the fact provides the recipient's availability time. Role mismatch in requested meaning."
+          },
+          {
+            "type": "rolesConsistent",
+            "evidence": "I will be available for delivery at four o'clock this afternoon / Bạn có mặt lúc mấy giờ",
+            "explanation": "The recipient states their own availability time, but the question asks when the courier (bạn=learner) is available. Different actors."
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 116.92
+    },
+    {
+      "id": "eval-cafe-A1-t2",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "drink_preference",
+            "askVi": "Bạn muốn thêm gì vào trà?"
+          },
+          {
+            "kind": "food_temperature",
+            "askVi": "Bánh mì kẹp phô mai nóng hay lạnh?"
+          }
+        ],
+        "utteranceEn": "Could you add honey to your tea? Also, is the cheese sandwich hot or cold today?",
+        "facts": [
+          {
+            "textVi": "mật ong",
+            "evidenceEn": "add honey"
+          },
+          {
+            "textVi": "nóng",
+            "evidenceEn": "is the cheese sandwich hot"
+          }
+        ],
+        "questionVi": "Bạn muốn thêm gì vào trà và bánh mì kẹp phô mai nóng hay lạnh?",
+        "taskVi": "Nghe yêu cầu thêm đồ uống và nhiệt độ món ăn.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Bạn có thể thêm mật ong vào trà của mình không? Ngoài ra, bánh mì kẹp phô mai hôm nay nóng hay lạnh?"
+      },
+      "verdict": {
+        "roleAudit": {
+          "decision": "wrong",
+          "englishQuote": "Could you add honey to your tea?",
+          "questionQuote": "Bạn muốn thêm gì vào trà",
+          "reason": "Customer asks server to add honey, but question asks what server wants to add - role swap"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "tea addition",
+            "food temperature"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 continuation; transfer criterion does not apply"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "thêm gì vào trà",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "nóng hay lạnh",
+            "requestedKind": "condition",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "beverage choice",
+            "food choice"
+          ],
+          "currentlyAskedMeanings": [
+            "tea addition",
+            "food temperature"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": false,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "rolesConsistent",
+            "evidence": "Could you add honey to your tea? / Bạn muốn thêm gì vào trà",
+            "explanation": "Customer asks server to add honey, but question asks what server wants to add - role swap"
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 126.94
+    },
+    {
+      "id": "eval-cafe-A2-t3",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "payment_method",
+            "askVi": "Phương thức thanh toán"
+          },
+          {
+            "kind": "allergy_info",
+            "askVi": "Thông tin dị ứng"
+          }
+        ],
+        "utteranceEn": "I would like to pay by card. Also, please note that I am allergic to nuts.",
+        "facts": [
+          {
+            "textVi": "bằng thẻ",
+            "evidenceEn": "pay by card"
+          },
+          {
+            "textVi": "dị ứng với hạt",
+            "evidenceEn": "allergic to nuts"
+          }
+        ],
+        "questionVi": "Khách thanh toán bằng gì và dị ứng với món nào?",
+        "taskVi": "Nghe phương thức thanh toán và lưu ý dị ứng.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Tôi muốn thanh toán bằng thẻ. Ngoài ra, xin lưu ý rằng tôi bị dị ứng với hạt."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "đồ uống khách gọi",
+            "món ăn khách gọi",
+            "lý do khách gọi món này",
+            "vị trí lấy đồ ăn",
+            "số thứ tự của khách"
+          ],
+          "currentlyAskedMeanings": [
+            "phương thức thanh toán",
+            "thông tin dị ứng"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "I would like to pay by card",
+          "questionQuote": "Khách thanh toán bằng gì",
+          "reason": "The question uses 'Khách' (customer) to refer to the English speaker, whose partner role is 'customer'. The learner role is 'server', correctly positioned as the recipient of the customer's payment and allergy information."
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "phương thức thanh toán",
+            "món gây dị ứng"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation; transfer criterion does not apply."
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "thanh toán bằng gì",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "dị ứng với món nào",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 114.49
+    },
+    {
+      "id": "eval-cafe-B1-t4",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "dish_preference",
+            "askVi": "Bạn muốn gọi món gì"
+          },
+          {
+            "kind": "dietary_note",
+            "askVi": "Lưu ý về chế độ ăn"
+          }
+        ],
+        "utteranceEn": "Hello, I would like to order a fresh salad and a bowl of miso soup for my lunch. Please note that I am strictly vegetarian, so no meat or fish should be added to the dishes.",
+        "facts": [
+          {
+            "textVi": "một salad tươi và một bát súp miso",
+            "evidenceEn": "I would like to order a fresh salad and a bowl of miso soup"
+          },
+          {
+            "textVi": "ăn chay nghiêm ngặt, vì vậy không được thêm thịt hoặc cá",
+            "evidenceEn": "I am strictly vegetarian, so no meat or fish should be added"
+          }
+        ],
+        "questionVi": "Khách hàng muốn gọi món gì và có lưu ý gì về chế độ ăn?",
+        "taskVi": "Nghe thông tin món ăn và lưu ý dinh dưỡng.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Xin chào, tôi muốn đặt một salad tươi và một bát súp miso cho bữa trưa. Vui lòng lưu ý rằng tôi là người ăn chay nghiêm ngặt, vì vậy không được thêm thịt hoặc cá vào các món ăn."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "đồ uống đặt (trà)",
+            "món ăn đặt (bánh mì kẹp phô mai)",
+            "lý do đặt (chưa ăn trưa)",
+            "nơi lấy món (quầy phía sau)",
+            "số thứ tự (mười sáu)",
+            "vật cần mang theo (biên nhận)",
+            "người cần hỏi (Lily)"
+          ],
+          "currentlyAskedMeanings": [
+            "món ăn khách đặt",
+            "lưu ý về chế độ ăn"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": false
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "I would like to order",
+          "questionQuote": "Khách hàng muốn gọi món gì",
+          "reason": "The English speaker is the customer (partner), and the question correctly asks the server (learner) about what the customer wants"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "món ăn khách muốn gọi",
+            "lưu ý về chế độ ăn"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "independent",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "backreferenceKind": "none",
+          "reason": "New order with different dishes (salad, miso soup vs tea, cheese sandwich) and new concern (vegetarian restriction). No reference to previous encounter values or this conversation. Generic 'for my lunch' is meal context, not a link to turn 1's 'not had lunch yet'."
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "muốn gọi món gì",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "có lưu ý gì về chế độ ăn",
+            "requestedKind": "condition",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 116.39
+    },
+    {
+      "id": "eval-hotel-A1-t3",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "check_out_time",
+            "askVi": "Giờ trả phòng là lúc nào?"
+          },
+          {
+            "kind": "breakfast_place",
+            "askVi": "Ăn sáng ở đâu?"
+          }
+        ],
+        "utteranceEn": "Please check out by noon. The breakfast buffet is served in the lobby restaurant.",
+        "facts": [
+          {
+            "textVi": "trước trưa",
+            "evidenceEn": "by noon"
+          },
+          {
+            "textVi": "tại nhà hàng sảnh",
+            "evidenceEn": "in the lobby restaurant"
+          }
+        ],
+        "questionVi": "Bạn cần trả phòng trước mấy giờ và ăn sáng ở đâu?",
+        "taskVi": "Nghe giờ trả phòng và địa điểm ăn sáng.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Vui lòng trả phòng trước trưa. Buffet sáng được phục vụ tại nhà hàng sảnh."
+      },
+      "verdict": {
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Please check out by noon",
+          "questionQuote": "Bạn cần trả phòng trước mấy giờ",
+          "reason": "Receptionist tells guest when guest needs to check out; 'Bạn' correctly refers to guest learner"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "check-out time",
+            "breakfast location"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation; transfer criterion is not applicable"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "trước mấy giờ",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "ở đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": false,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "room number",
+            "breakfast location (garden)",
+            "breakfast start time",
+            "key return time"
+          ],
+          "currentlyAskedMeanings": [
+            "check-out time",
+            "breakfast location"
+          ],
+          "repeatedMeanings": [
+            "breakfast location"
+          ],
+          "silentChanges": [
+            "Ngoài vườn -> tại nhà hàng sảnh without announced change"
+          ],
+          "continuesOldEncounter": true
+        },
+        "issues": [
+          {
+            "type": "continuity",
+            "evidence": "ăn sáng ở đâu",
+            "explanation": "Breakfast location was established in turn 1 (Ngoài vườn) but changed in turn 3 (tại nhà hàng sảnh) without explicit announcement"
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 121.72
+    },
+    {
+      "id": "eval-hotel-A2-t4",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "wifi_password",
+            "askVi": "Mật khẩu mạng"
+          },
+          {
+            "kind": "housekeeping_dept",
+            "askVi": "Bộ phận buồng phòng"
+          }
+        ],
+        "utteranceEn": "Welcome to your room. The internet password is sunny day. Please call housekeeping if you need towels or extra pillows.",
+        "facts": [
+          {
+            "textVi": "sunny day",
+            "evidenceEn": "sunny day"
+          },
+          {
+            "textVi": "housekeeping",
+            "evidenceEn": "housekeeping"
+          }
+        ],
+        "questionVi": "Mật khẩu mạng và bộ phận buồng phòng là gì?",
+        "taskVi": "Nghe mật khẩu mạng và bộ phận buồng phòng.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Chào mừng đến với phòng của bạn. Mật khẩu internet là sunny day. Vui lòng gọi bộ phận buồng phòng nếu bạn cần khăn tắm hoặc gối phụ."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "room number",
+            "breakfast location",
+            "dining room closure reason",
+            "breakfast start time",
+            "key return deadline",
+            "password location (welcome card)",
+            "department for towels"
+          ],
+          "currentlyAskedMeanings": [
+            "wifi password value",
+            "housekeeping department name"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": false
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Welcome to your room. The internet password is sunny day. Please call housekeeping",
+          "questionQuote": "Mật khẩu mạng và bộ phận buồng phòng là gì?",
+          "reason": "Receptionist tells guest information about their room. Question asks guest to recall the password and department name that were stated to them."
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "wifi password",
+            "housekeeping department"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "independent",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "backreferenceKind": "none",
+          "reason": "Turn 4 presents a new check-in encounter with different practical goal. Previous turns asked where password is located (on welcome card); current turn provides the actual password value. Generic hotel vocabulary like housekeeping and towels does not establish identity with the previous encounter. This is a fresh arrival with new requested information."
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Mật khẩu mạng",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "bộ phận buồng phòng",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 99.49
+    },
+    {
+      "id": "eval-hotel-B1-t2",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "check_in_time",
+            "askVi": "Giờ nhận phòng"
+          },
+          {
+            "kind": "key_collection",
+            "askVi": "Nơi lấy chìa khóa"
+          }
+        ],
+        "utteranceEn": "Please arrive at the front desk by 2 PM to check in. You can collect your key from the security booth located near the elevator entrance.",
+        "facts": [
+          {
+            "textVi": "trước 2 giờ chiều",
+            "evidenceEn": "by 2 PM"
+          },
+          {
+            "textVi": "trạm bảo vệ",
+            "evidenceEn": "security booth"
+          }
+        ],
+        "questionVi": "Giờ nhận phòng là mấy và nơi lấy chìa khóa ở đâu?",
+        "taskVi": "Nghe giờ nhận phòng và vị trí lấy chìa khóa.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Vui lòng đến quầy lễ tân trước 2 giờ chiều để nhận phòng. Bạn có thể lấy chìa khóa tại trạm bảo vệ nằm gần lối vào thang máy."
+      },
+      "verdict": {
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Please arrive at the front desk by 2 PM to check in. You can collect your key",
+          "questionQuote": "Giờ nhận phòng là mấy và nơi lấy chìa khóa ở đâu?",
+          "reason": "Receptionist instructs guest about check-in time and key location; question asks guest to recall those details"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "check-in time",
+            "key collection location"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Giờ nhận phòng là mấy",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "nơi lấy chìa khóa ở đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 continuation evaluates continuity only; transfer criterion does not apply"
+        },
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "room number",
+            "breakfast location",
+            "reason dining room closed"
+          ],
+          "currentlyAskedMeanings": [
+            "check-in time",
+            "key collection location"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": []
+      },
+      "transport": "ok",
+      "seconds": 110.69
+    },
+    {
+      "id": "eval-directions-A1-t4",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "direction_change",
+            "askVi": "Hướng đi tiếp theo"
+          },
+          {
+            "kind": "landmark_name",
+            "askVi": "Điểm mốc"
+          }
+        ],
+        "utteranceEn": "Go straight and turn left at the big red clock. You will see the library on your right.",
+        "facts": [
+          {
+            "textVi": "rẽ trái tại đồng hồ đỏ lớn",
+            "evidenceEn": "turn left at the big red clock"
+          },
+          {
+            "textVi": "thư viện",
+            "evidenceEn": "see the library"
+          }
+        ],
+        "questionVi": "Hãy đi thẳng và rẽ trái tại đồng hồ đỏ lớn. Bạn sẽ thấy thư viện ở bên phải.",
+        "taskVi": "Nghe hướng dẫn đường đi mới.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Đi thẳng và rẽ trái tại đồng hồ đỏ lớn. Bạn sẽ thấy thư viện ở bên phải."
+      },
+      "verdict": "invalid_verdict",
+      "transport": "ok",
+      "seconds": 112.76
+    },
+    {
+      "id": "eval-directions-A2-t2",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "walking_instruction",
+            "askVi": "Hướng dẫn đi bộ"
+          },
+          {
+            "kind": "final_direction",
+            "askVi": "Chỉ đường cuối cùng"
+          }
+        ],
+        "utteranceEn": "Walk along the sidewalk until you see the red post box. Then, turn left to go straight to the museum entrance.",
+        "facts": [
+          {
+            "textVi": "dọc vỉa hè cho đến khi thấy hộp thư đỏ",
+            "evidenceEn": "Walk along the sidewalk until you see the red post box"
+          },
+          {
+            "textVi": "rẽ trái để đi thẳng đến cổng bảo tàng",
+            "evidenceEn": "turn left to go straight to the museum entrance"
+          }
+        ],
+        "questionVi": "Hãy đi bộ đến đâu và rẽ như thế nào?",
+        "taskVi": "Nghe hướng dẫn di chuyển.",
+        "skill": "Theo dõi hướng dẫn",
+        "translationVi": "Đi dọc vỉa hè cho đến khi thấy hộp thư đỏ. Sau đó, rẽ trái để đi thẳng đến cổng bảo tàng."
+      },
+      "verdict": {
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Walk along the sidewalk",
+          "questionQuote": "Hãy đi bộ",
+          "reason": "The guide is instructing the visitor where to walk; the imperative 'Hãy đi bộ' correctly addresses the learner (visitor) receiving directions from the partner (guide)"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "destination/landmark to walk to",
+            "how to turn"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 continuation; transfer criterion does not apply"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "đến đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": [
+              "dọc vỉa hè"
+            ]
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "rẽ như thế nào",
+            "requestedKind": "action",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": [
+              "để đi thẳng đến cổng bảo tàng"
+            ]
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "destination: museum",
+            "transport method: bus",
+            "reason for bus: road too busy to walk"
+          ],
+          "currentlyAskedMeanings": [
+            "walking destination landmark",
+            "turn direction"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "questionFactsAligned": false,
+        "answerable": true,
+        "atomicFacts": false,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "questionFactsAligned",
+            "evidence": "f1: 'dọc vỉa hè'; f2: 'để đi thẳng đến cổng bảo tàng'",
+            "explanation": "Question asks only for walking destination and turn direction, but f1 includes unasked walking path method and f2 includes unasked purpose clause"
+          },
+          {
+            "type": "atomicFacts",
+            "evidence": "f1: 'dọc vỉa hè cho đến khi thấy hộp thư đỏ'; f2: 'rẽ trái để đi thẳng đến cổng bảo tàng'",
+            "explanation": "Each fact contains unasked information beyond the single requested meaning: f1 adds walking method, f2 adds purpose destination"
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 124.49
+    },
+    {
+      "id": "eval-directions-B1-t3",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "departure_time",
+            "askVi": "Xe buýt khởi hành lúc mấy giờ?"
+          },
+          {
+            "kind": "fare_amount",
+            "askVi": "Vé xe buýt giá bao nhiêu?"
+          }
+        ],
+        "utteranceEn": "The bus leaves from stop D at 8:00 a.m. The fare is two dollars per person. Please have your cash ready before you board the vehicle.",
+        "facts": [
+          {
+            "textVi": "lúc 8:00 sáng",
+            "evidenceEn": "at 8:00 a.m."
+          },
+          {
+            "textVi": "hai đô la",
+            "evidenceEn": "two dollars"
+          }
+        ],
+        "questionVi": "Xe buýt khởi hành lúc mấy giờ và vé giá bao nhiêu?",
+        "taskVi": "Nghe thông tin về giờ xe và giá vé.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Xe buýt rời từ trạm D lúc 8:00 sáng. Vé là hai đô la mỗi người. Vui lòng chuẩn bị tiền mặt trước khi lên xe."
+      },
+      "verdict": {
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "The bus leaves from stop D at 8:00 a.m. The fare is two dollars per person.",
+          "questionQuote": "Xe buýt khởi hành lúc mấy giờ và vé giá bao nhiêu?",
+          "reason": "Local guide provides bus information to visitor; question asks objective facts about bus schedule and fare, not requiring role interpretation"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "departure time",
+            "fare amount"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "lúc mấy giờ",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "vé giá bao nhiêu",
+            "requestedKind": "item",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation; transfer criterion does not apply"
+        },
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "destination museum",
+            "transportation bus",
+            "reason road too busy",
+            "departure stop D",
+            "arrival River Street"
+          ],
+          "currentlyAskedMeanings": [
+            "departure time 8:00 a.m.",
+            "fare two dollars"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": []
+      },
+      "transport": "ok",
+      "seconds": 121.13
+    },
+    {
+      "id": "eval-plans-A1-t2",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "meeting_time",
+            "askVi": "Lúc nào gặp nhau?"
+          },
+          {
+            "kind": "greeting_action",
+            "askVi": "Hành động chào hỏi"
+          }
+        ],
+        "utteranceEn": "We will meet at three o'clock. Please shake my hand when we see each other.",
+        "facts": [
+          {
+            "textVi": "lúc ba giờ",
+            "evidenceEn": "at three o'clock"
+          },
+          {
+            "textVi": "bắt tay tôi",
+            "evidenceEn": "shake my hand"
+          }
+        ],
+        "questionVi": "Gặp lúc mấy giờ và làm gì khi gặp?",
+        "taskVi": "Nghe thời gian và cách chào.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Chúng tôi sẽ gặp nhau lúc ba giờ. Xin hãy bắt tay tôi khi chúng tôi gặp nhau."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "meeting day (Saturday)",
+            "meeting location (park)"
+          ],
+          "currentlyAskedMeanings": [
+            "meeting time (three o'clock)",
+            "greeting action (shake hand)"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "We will meet",
+          "questionQuote": "Gặp lúc mấy giờ",
+          "reason": "Mutual meeting between friends is reciprocal; both parties meet each other"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "meeting time",
+            "greeting action when meeting"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 continuation; transfer criterion is not applicable"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "lúc mấy giờ",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "làm gì khi gặp",
+            "requestedKind": "action",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 116.23
+    },
+    {
+      "id": "eval-plans-A2-t3",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "weather_condition",
+            "askVi": "Thời tiết như thế nào?"
+          },
+          {
+            "kind": "backup_plan",
+            "askVi": "Dự phòng là gì?"
+          }
+        ],
+        "utteranceEn": "It might rain later, so bring an umbrella. If it does not stop raining, we will move to the community center nearby.",
+        "facts": [
+          {
+            "textVi": "có thể sẽ mưa sau này",
+            "evidenceEn": "It might rain later"
+          },
+          {
+            "textVi": "di chuyển đến trung tâm cộng đồng",
+            "evidenceEn": "we will move to the community center"
+          }
+        ],
+        "questionVi": "Thời tiết có thể thế nào và kế hoạch dự phòng là gì?",
+        "taskVi": "Nghe điều kiện thời tiết và phương án thay thế.",
+        "skill": "Hiểu điều kiện",
+        "translationVi": "Có thể sẽ mưa sau này, nên hãy mang theo ô. Nếu trời không ngừng mưa, chúng ta sẽ di chuyển đến trung tâm cộng đồng gần đây."
+      },
+      "verdict": {
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "bring an umbrella",
+          "questionQuote": "Thời tiết có thể thế nào và kế hoạch dự phòng là gì?",
+          "reason": "Friend addressing friend about shared plans and weather concerns; mutual context with no role mismatch"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "weather condition",
+            "backup plan"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Thời tiết có thể thế nào",
+            "requestedKind": "other",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "kế hoạch dự phòng là gì",
+            "requestedKind": "action",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation evaluation; transfer criterion does not apply"
+        },
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "meeting day",
+            "meeting location",
+            "reason for location choice",
+            "item to bring (blanket)",
+            "item to bring (sandwiches)"
+          ],
+          "currentlyAskedMeanings": [
+            "weather condition",
+            "backup plan"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": []
+      },
+      "transport": "ok",
+      "seconds": 130.28
+    },
+    {
+      "id": "eval-plans-B1-t4",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "meeting_time",
+            "askVi": "Giờ gặp mặt"
+          },
+          {
+            "kind": "meeting_place",
+            "askVi": "Nơi gặp mặt"
+          }
+        ],
+        "utteranceEn": "Since the park cafe is closed, we will meet at the library instead. Please arrive at three o'clock on Sunday morning to avoid the crowd.",
+        "facts": [
+          {
+            "textVi": "vào lúc ba giờ sáng Chủ nhật",
+            "evidenceEn": "at three o'clock on Sunday"
+          },
+          {
+            "textVi": "tại thư viện",
+            "evidenceEn": "at the library"
+          }
+        ],
+        "questionVi": "Khi nào và ở đâu chúng ta gặp nhau?",
+        "taskVi": "Nghe giờ và địa điểm mới.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Vì quán cà phê công viên đã đóng cửa, chúng ta sẽ gặp nhau tại thư viện thay vào đó. Vui lòng đến lúc ba giờ sáng Chủ nhật để tránh đám đông."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": false,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "transfer",
+            "evidence": "Since the park cafe is closed, we will meet at the library instead",
+            "explanation": "Turn 4 continues the old Saturday park meeting by referencing the same cafe closure reason and using 'instead' to replace the park location, rather than establishing a new independent encounter"
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "meeting day (Saturday)",
+            "meeting place (park)",
+            "reason for location (cafe closed)",
+            "item to bring (blanket)",
+            "food item (sandwiches)",
+            "waiting location (by pond)",
+            "jacket color (orange)"
+          ],
+          "currentlyAskedMeanings": [
+            "meeting time",
+            "meeting place"
+          ],
+          "repeatedMeanings": [
+            "meeting place"
+          ],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        },
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "we will meet",
+          "questionQuote": "chúng ta gặp nhau",
+          "reason": "Mutual meeting between friends; reciprocal action with no role conflict"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "meeting time",
+            "meeting place"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "continuation",
+          "oldLinks": [
+            {
+              "oldEvidenceEn": "at the park",
+              "newEvidenceEn": "at the library instead",
+              "meaning": "meeting place",
+              "sameMeaning": true
+            },
+            {
+              "oldEvidenceEn": "the cafe will be closed",
+              "newEvidenceEn": "the park cafe is closed",
+              "meaning": "reason for venue choice",
+              "sameMeaning": true
+            }
+          ],
+          "explicitBackreferenceEn": "instead",
+          "backreferenceKind": "this_conversation",
+          "reason": "The utterance references the same cafe closure from turn 1 and uses 'instead' to replace the park location, indicating modification of the existing Saturday meeting arrangement rather than a new independent encounter"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "Khi nào",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "ở đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 104.34
+    },
+    {
+      "id": "eval-delivery-A1-t3",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "delivery_time",
+            "askVi": "Giờ giao hàng là mấy giờ?"
+          },
+          {
+            "kind": "package_weight",
+            "askVi": "Gói nặng bao nhiêu?"
+          }
+        ],
+        "utteranceEn": "The package will arrive at three o'clock. Please check the weight; it is two kilograms.",
+        "facts": [
+          {
+            "textVi": "lúc ba giờ",
+            "evidenceEn": "at three o'clock"
+          },
+          {
+            "textVi": "hai kilôgam",
+            "evidenceEn": "it is two kilograms"
+          }
+        ],
+        "questionVi": "Gói sẽ đến lúc mấy giờ và nặng bao nhiêu?",
+        "taskVi": "Nghe thời gian giao hàng và trọng lượng.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Gói sẽ đến lúc ba giờ. Vui lòng kiểm tra trọng lượng; nó là hai kilôgam."
+      },
+      "verdict": {
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": true,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [],
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "The package will arrive at three o'clock. Please check the weight; it is two kilograms.",
+          "questionQuote": "Gói sẽ đến lúc mấy giờ và nặng bao nhiêu?",
+          "reason": "Recipient informs courier about package arrival time and weight; question asks learner (courier) to report what they heard"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "arrival time",
+            "package weight"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 3 continuation; transfer evaluation does not apply"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "lúc mấy giờ",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "nặng bao nhiêu",
+            "requestedKind": "other",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "drop-off location",
+            "who will sign",
+            "which gate to use",
+            "access code"
+          ],
+          "currentlyAskedMeanings": [
+            "arrival time",
+            "package weight"
+          ],
+          "repeatedMeanings": [],
+          "silentChanges": [],
+          "continuesOldEncounter": true
+        }
+      },
+      "transport": "ok",
+      "seconds": 123.25
+    },
+    {
+      "id": "eval-delivery-A2-t4",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "delivery_location",
+            "askVi": "Địa điểm giao hàng"
+          },
+          {
+            "kind": "handover_person",
+            "askVi": "Người nhận hàng"
+          }
+        ],
+        "utteranceEn": "I need to receive my package at the side gate. Please give it to my sister instead of me today.",
+        "facts": [
+          {
+            "textVi": "tại cổng bên",
+            "evidenceEn": "at the side gate"
+          },
+          {
+            "textVi": "chị tôi",
+            "evidenceEn": "my sister"
+          }
+        ],
+        "questionVi": "Bạn sẽ giao hàng ở đâu và cho ai?",
+        "taskVi": "Nghe địa điểm và người nhận thay thế.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Tôi cần nhận gói hàng của mình tại cổng bên. Vui lòng giao cho chị tôi thay vì tôi hôm nay."
+      },
+      "verdict": "invalid_verdict",
+      "transport": "ok",
+      "seconds": 127.63
+    },
+    {
+      "id": "eval-delivery-B1-t2",
+      "seed": 97,
+      "task": {
+        "slots": [
+          {
+            "kind": "delivery_address",
+            "askVi": "Địa chỉ giao hàng"
+          },
+          {
+            "kind": "access_time",
+            "askVi": "Thời điểm nhận hàng"
+          }
+        ],
+        "utteranceEn": "Hello, courier. Please deliver this parcel to my office at 42 Nguyen Hue Street. You must arrive between 14:00 and 15:00 because the receptionist is busy until lunch. Do not leave it at the front desk.",
+        "facts": [
+          {
+            "textVi": "số 42 đường Nguyễn Huệ",
+            "evidenceEn": "42 Nguyen Hue Street"
+          },
+          {
+            "textVi": "từ 14:00 đến 15:00",
+            "evidenceEn": "between 14:00 and 15:00"
+          }
+        ],
+        "questionVi": "Giao hàng đến đâu và vào khoảng thời gian nào?",
+        "taskVi": "Nghe địa chỉ và giờ giao hàng mới.",
+        "skill": "Nắm thông tin cụ thể",
+        "translationVi": "Xin chào, nhân viên giao hàng. Vui lòng giao bưu kiện này đến văn phòng của tôi tại số 42 đường Nguyễn Huệ. Bạn phải đến trong khung giờ từ 14:00 đến 15:00 vì lễ tân đang bận cho đến bữa trưa. Không được để bưu kiện ở bàn lễ tân."
+      },
+      "verdict": {
+        "roleAudit": {
+          "decision": "correct",
+          "englishQuote": "Hello, courier. Please deliver this parcel to my office",
+          "questionQuote": "Giao hàng đến đâu",
+          "reason": "Recipient gives delivery instructions to courier; question asks courier where to deliver, matching the instructional relationship"
+        },
+        "questionAudit": {
+          "requestedMeanings": [
+            "delivery location",
+            "delivery time"
+          ],
+          "leakedAnswerQuotes": [],
+          "slotMismatches": []
+        },
+        "translationAudit": {
+          "errors": []
+        },
+        "transferAudit": {
+          "decision": "not_applicable",
+          "oldLinks": [],
+          "explicitBackreferenceEn": null,
+          "reason": "Turn 2 continuation; transfer evaluation does not apply"
+        },
+        "factAudit": [
+          {
+            "factIndex": 1,
+            "requestedPhraseVi": "đến đâu",
+            "requestedKind": "location",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          },
+          {
+            "factIndex": 2,
+            "requestedPhraseVi": "vào khoảng thời gian nào",
+            "requestedKind": "time",
+            "evidenceSupportsAnswer": true,
+            "unaskedTextVi": []
+          }
+        ],
+        "historyAudit": {
+          "previouslyTestedMeanings": [
+            "delivery location (reception)",
+            "signer identity",
+            "reason for arrangement"
+          ],
+          "currentlyAskedMeanings": [
+            "delivery address with street number",
+            "delivery time window"
+          ],
+          "repeatedMeanings": [
+            "delivery location"
+          ],
+          "silentChanges": [
+            "reception -> office at 42 Nguyen Hue Street"
+          ],
+          "continuesOldEncounter": true
+        },
+        "questionFactsAligned": true,
+        "answerable": true,
+        "atomicFacts": true,
+        "translationAccurate": true,
+        "rolesConsistent": true,
+        "continuity": false,
+        "transfer": true,
+        "levelAppropriate": true,
+        "inputCoherent": true,
+        "issues": [
+          {
+            "type": "continuity",
+            "evidence": "reception -> office at 42 Nguyen Hue Street",
+            "explanation": "Delivery location changed from reception to a specific street address without explicit announcement"
+          }
+        ]
+      },
+      "transport": "ok",
+      "seconds": 138.69
+    }
+  ]
+}

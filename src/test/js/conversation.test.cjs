@@ -46,6 +46,22 @@ test('navigation ignores a late response and stops conversation audio', async ()
     const show = h.module.show('old'); h.module.leave(); resolve(state()); await show;
     assert.doesNotMatch(h.root.innerHTML, /Nghe giờ hẹn/); assert.ok(h.stopped() >= 2);
 });
+
+test('only next uses the backend generation budget, including resumed sessions and legacy fallback', async () => {
+    for (const generationTimeoutMs of [undefined, 465000, 1305000]) {
+        const calls = [];
+        const session = {...state(), generationTimeoutMs};
+        session.turns[0].done = true;
+        const h = harness(async (url, options) => { calls.push({url, options}); return session; });
+        await h.module.show('session');
+        await h.node('next').listeners.click();
+        assert.equal(calls[1].options.timeoutMs, generationTimeoutMs || 60000);
+        assert.equal(calls[1].options.method, 'POST');
+        assert.match(calls[1].url, /\/next$/);
+        await h.node('play').listeners.click();
+        assert.equal(calls[2].options.timeoutMs, undefined);
+    }
+});
 test('learner/AI strings are escaped and transcript is not displayed by default', async () => {
     const h = harness(async () => state('<img onerror=alert(1)>', {feedbackVi: '<b>fake</b>', clarificationVi: 'Giờ nào?'}));
     await h.module.show('session');

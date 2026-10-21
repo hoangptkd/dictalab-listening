@@ -1,0 +1,10 @@
+# Append this job under scrape_configs only after installing the private token file.
+# A host Prometheus can reach Compose's loopback-bound AI API directly.
+scrape_configs:
+  - job_name: dictalab-ai
+    metrics_path: /metrics
+    scrape_timeout: 5s
+    authorization:
+      credentials_file: /etc/prometheus/ai-platform-token
+    static_configs:
+      - targets: ['127.0.0.1:8091']

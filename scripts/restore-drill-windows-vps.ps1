@@ -40,7 +40,7 @@ function New-RestoreSmokeConfiguration {
             listening=@{queue=@{enabled=$false}}
             coach=@{enabled=$false}
             conversation=@{enabled=$false;'cartesia-api-key'=''}
-            shopaikey=@{'api-key'=''}
+            gemini=@{'api-key'=''}
             'mail-from'=''
             'personal-content'=@{enabled=$false}
         }
@@ -240,7 +240,7 @@ SELECT 'RESTORE_UNVALIDATED_CONSTRAINTS=' || count(*) FROM pg_constraint WHERE c
             -WindowStyle Hidden -PassThru -WorkingDirectory $BackupDirectory -ArgumentList @('-Xms128m','-Xmx256m','-jar',('"'+$testedArtifact+'"'),'--server.address=127.0.0.1',('--logging.file.name='+$smokeLabel+'.log'),
                 '--dictalab.media.s3.enabled=false','--dictalab.media.s3.cleanup-enabled=false',
                 '--dictalab.ai.queue.enabled=false','--dictalab.listening.queue.enabled=false',
-                '--dictalab.shopaikey.api-key=','--dictalab.conversation.cartesia-api-key=',
+                '--dictalab.gemini.api-key=','--dictalab.conversation.cartesia-api-key=',
                 '--dictalab.auth.previous-signing-key=','--dictalab.mail-from=') `
             -RedirectStandardOutput (Join-Path $BackupDirectory ($smokeLabel+'.stdout.log')) `
             -RedirectStandardError (Join-Path $BackupDirectory ($smokeLabel+'.stderr.log'))

@@ -376,11 +376,10 @@
         <section id="result-view" class="view" hidden aria-labelledby="result-heading">
             <div class="result-summary-layout"><header class="coach-hero">
                 <div>
-                    <p class="eyebrow">Dictation complete · AI Coach</p>
                     <h1 id="result-heading">Nghe rõ hơn. <em>Từng chút một.</em></h1>
                     <p id="coach-lesson"></p>
-                    <p id="result-message"></p>
-                    <p id="coach-status" role="status">Đang chọn điểm cần luyện…</p>
+                    <p id="result-message" hidden></p>
+                    <p id="coach-status" role="status" hidden></p>
                 </div>
                 <div class="coach-listening-score sr-only">
                     <strong id="coach-accuracy">—</strong>
@@ -388,14 +387,24 @@
                     <small>Trong bài này, có thể đã dùng nghe lại hoặc gợi ý.</small>
                 </div>
             </header>
-            <section class="result-overview" aria-label="Kết quả buổi luyện">
+            <section class="result-overview" aria-label="Tóm tắt điểm số">
                 <article class="result-metric is-priority"><span>Đúng lần nhập đầu</span><strong id="result-first">0%</strong><p>Phân biệt với kết quả sau khi sửa; bài có thể đã dùng nghe lại hoặc trợ giúp.</p></article>
-                <article class="result-metric"><span>Đúng sau khi sửa</span><strong id="result-final">0%</strong><p>Kết quả cuối cùng sau khi thử lại và sửa lỗi.</p></article>
             </section>
             </div>
             <div id="coach-panel" class="coach-panel">
-                <div id="coach-insights"></div>
-                <section id="coach-practice" class="coach-practice" aria-label="Luyện điểm yếu" hidden></section>
+                <div id="coach-insights" aria-live="polite" aria-atomic="true"></div>
+                <div id="coach-actions" class="coach-actions">
+                    <a id="coach-next-lesson" class="primary-button" href="/catalog?level=A1&page=1" data-route="catalog">Học bài tiếp</a>
+                    <button id="coach-quick-review" class="secondary-button" type="button" data-coach-quick-review aria-controls="coach-practice" hidden>Ôn nhanh</button>
+                </div>
+                <section id="coach-practice" class="coach-practice" aria-label="Ôn nhanh" hidden></section>
+            <details id="result-technical" class="result-technical">
+            <summary>Xem chi tiết</summary>
+                <article class="result-metric coach-final-score"><span>Đúng sau khi sửa</span><strong id="result-final">0%</strong></article>
+                <section class="coach-comparison-help" aria-label="Cách tính tiến bộ">
+                    <h2>Cách tính tiến bộ</h2>
+                    <p>So sánh độ đúng lần nhập đầu với trung bình tối đa 5 bài mới cùng cấp độ trước đó, cần ít nhất 2 bài. Chỉ xét bài học độc lập; độ khó từng bài có thể khác nhau. Nghe lại hoặc gợi ý có thể xảy ra trước lần nhập đầu.</p>
+                </section>
                 <section class="smart-review" aria-labelledby="smart-review-heading">
                     <div class="coach-section-heading">
                         <div><p class="section-index">Ôn đúng chỗ</p><h2 id="smart-review-heading">Ôn tập trọng tâm</h2></div>
@@ -408,9 +417,6 @@
                     <p>Lỗi được tổng hợp sau khi hoàn thành câu. Lỗi lưu thủ công vẫn được giữ. Hiển thị tối đa 100 lỗi gần nhất.</p>
                     <div id="coach-bank-items"></div>
                 </details>
-            </div>
-            <details id="result-technical" class="result-technical">
-            <summary>Phân tích chi tiết <span>Điểm số, trợ giúp và toàn bộ câu</span></summary>
             <section id="result-assessment" class="assessment-card result-assessment" aria-label="Ước lượng năng lực nghe"></section>
             <div class="result-layout">
                 <div class="result-score-card">
@@ -495,6 +501,7 @@
                 </section>
             </section>
             </details>
+            </div>
             <nav class="coach-navigation" aria-label="Sau buổi luyện">
                 <a class="text-button" href="/catalog?level=A1&page=1" data-route="catalog">Chọn bài tiếp theo →</a>
                 <a class="text-button" href="/history?level=all&page=1" data-route="history">Lịch sử luyện</a>

@@ -37,11 +37,42 @@ final class ConversationContent {
         new Scene("weekend", "Thống nhất kế hoạch", "social", "Giao tiếp xã hội", "Hai người sẽ làm gì và gặp lúc mấy giờ?", "Let us play tennis. Meet me at four.", "Chúng ta chơi quần vợt nhé. Gặp tôi lúc bốn giờ.", "play tennis", "Chơi quần vợt", "at four", "Bốn giờ", "the court is free then", "Sân trống lúc đó")
     );
     static final Map<String,String> SKILLS = Map.of("details", "Nắm thông tin cụ thể", "gist", "Nắm ý chính",
-            "reason", "Hiểu lý do và mục đích", "change", "Theo dõi thay đổi", "instructions", "Theo dõi hướng dẫn", "condition", "Hiểu điều kiện");
+            "reason", "Hiểu lý do và mục đích", "change", "Theo dõi thay đổi", "instructions", "Theo dõi hướng dẫn", "condition", "Hiểu điều kiện",
+            "attitude", "Hiểu thái độ và quan điểm", "inference", "Suy luận và dự đoán có căn cứ");
     static Map<String,String> labels() {
         var result = new LinkedHashMap<String,String>();
         SCENES.forEach(s -> result.put(s.id(), s.label()));
         return Collections.unmodifiableMap(result);
+    }
+
+    /** Authored roles, never inferred from model prose. The learner listens to this partner's speech. */
+    static Map<String,String> roles(String scenario, String branch) {
+        String pair = switch (scenario) {
+            case "cafe" -> Set.of("payment", "unavailable").contains(branch) ? "server|customer" : "customer|server";
+            case "restaurant" -> "customer|restaurant host";
+            case "wrong-order" -> "customer|server";
+            case "ingredients" -> "server|customer";
+            case "directions" -> "local guide|visitor";
+            case "tickets" -> branch.equals("collection") ? "ticket clerk|customer" : "customer|ticket clerk";
+            case "change-trip" -> branch.equals("cancelled") ? "travel agent|traveller" : "traveller|travel agent";
+            case "taxi" -> branch.equals("luggage") ? "passenger|taxi dispatcher" : "driver|passenger";
+            case "product" -> "shop assistant|customer";
+            case "clothes" -> branch.equals("fitting") ? "shop assistant|customer" : "customer|shop assistant";
+            case "returns" -> "customer|shop assistant";
+            case "delivery" -> "parcel recipient|courier";
+            case "assignment" -> "manager or teacher|assignee";
+            case "meeting", "group-project" -> "colleague|colleague";
+            case "requirements" -> "instructor|participant";
+            case "hotel" -> Set.of("quiet", "booking").contains(branch) ? "guest|receptionist" : "receptionist|guest";
+            case "appointment" -> "service receptionist|customer";
+            case "repair" -> branch.equals("visit") ? "repair coordinator|customer" : "customer|repair technician";
+            case "opening-hours" -> "service employee|visitor";
+            case "introductions" -> "new acquaintance|acquaintance";
+            case "plans", "invitation", "weekend" -> "friend|friend";
+            default -> "scenario partner|listener";
+        };
+        var parts = pair.split("\\|", 2);
+        return Map.of("partnerRole", parts[0], "learnerRole", parts[1]);
     }
     static List<Branch> branches(String scenario) {
         Scene s = SCENES.stream().filter(v -> v.id().equals(scenario)).findFirst().orElseThrow();

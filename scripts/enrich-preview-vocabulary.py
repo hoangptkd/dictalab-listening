@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Classify lesson proper names and difficult words with ShopAIKey, then update the VPS database."""
+"""Classify lesson proper names and difficult words with Gemini, then update the VPS database."""
 
 from __future__ import annotations
 
@@ -71,8 +71,8 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--ssh-host", required=True)
     parser.add_argument("--ssh-user", default="Administrator")
     parser.add_argument("--ssh-key", type=Path, required=True)
-    parser.add_argument("--model", default="claude-opus-5")
-    parser.add_argument("--api-url", default="https://api.shopaikey.com/v1/chat/completions")
+    parser.add_argument("--model", default="gemini-3.5-flash-lite")
+    parser.add_argument("--api-url", default="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
     parser.add_argument("--cache", type=Path, default=Path("data/ai-preview-cache.json"))
     parser.add_argument("--output-sql", type=Path, default=Path("data/ai-preview-update.sql"))
     parser.add_argument("--apply", action="store_true")
@@ -176,6 +176,7 @@ def call_ai(api_key: str, api_url: str, model: str, prompt: str) -> str:
         "model": model,
         "temperature": 0,
         "max_tokens": 800,
+        "response_format": {"type": "json_object"},
         "messages": [{"role": "user", "content": prompt}],
     }).encode("utf-8")
     request = urllib.request.Request(api_url, data=body, headers={
@@ -190,7 +191,7 @@ def call_ai(api_key: str, api_url: str, model: str, prompt: str) -> str:
             return payload["choices"][0]["message"]["content"]
         except (urllib.error.URLError, KeyError, json.JSONDecodeError) as error:
             if attempt == 2:
-                raise RuntimeError(f"ShopAIKey request failed after three attempts: {error}") from error
+                raise RuntimeError(f"Gemini request failed after three attempts: {error}") from error
             time.sleep(2 ** attempt)
     raise AssertionError("unreachable")
 
@@ -252,7 +253,7 @@ def main() -> int:
     if args.self_test:
         self_test()
         return 0
-    api_key = os.environ.get("SHOPAIKEY_API_KEY", "")
+    api_key = os.environ.get("GEMINI_API_KEY", "")
     lessons = json.loads(psql_via_ssh(args, REMOTE_QUERY))
     cache = load_cache(args.cache)
     results = []
@@ -261,9 +262,9 @@ def main() -> int:
         parsed = cache.get(cache_key)
         if parsed is None:
             if args.prompt_api_key and not api_key:
-                api_key = getpass.getpass("ShopAIKey API key: ")
+                api_key = getpass.getpass("Gemini API key: ")
             if not api_key:
-                raise ValueError("Set SHOPAIKEY_API_KEY or use --prompt-api-key")
+                raise ValueError("Set GEMINI_API_KEY or use --prompt-api-key")
             prompt = PROMPT.format(
                 target=TARGETS[lesson["level"]], level=lesson["level"],
                 title=lesson["title"], transcript=lesson["transcript"],

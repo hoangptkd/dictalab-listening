@@ -18,19 +18,21 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
-@SpringBootTest(properties={"dictalab.conversation.enabled=true", "dictalab.coach.enabled=false"})
+@SpringBootTest(properties={"dictalab.conversation.enabled=true", "dictalab.coach.enabled=false", "dictalab.conversation.generation.repair-enabled=true"})
 class ConversationUxIntegrationTest {
     @Autowired ConversationService service;
     @Autowired AppUserRepository users;
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
-    @MockitoBean ShopAiKeyClient ai;
+    @MockitoBean GeminiClient ai;
     @MockitoBean CartesiaClient tts;
+    @MockitoBean ConversationLocalClient local;
     @MockitoSpyBean AiUsageBudget budget;
     long owner;
     long user() { return users.saveAndFlush(new AppUser("ux-" + UUID.randomUUID() + "@test.local", "Learner", "unused", Instant.now())).getId(); }
     @BeforeEach void setup() {
         owner=user(); when(ai.configured()).thenReturn(true); when(tts.enabled()).thenReturn(true);
+        when(local.flowTimeoutSeconds()).thenReturn(450);
         when(tts.synthesize(anyString())).thenReturn(new byte[]{1,2,3});
     }
     @Test void allCuratedOpeningsAreGroundedAndNeedNoLanguageModel() {
@@ -48,11 +50,154 @@ class ConversationUxIntegrationTest {
         }
         verify(ai,never()).completeJson(anyString(),anyString(),anyString());
         verify(ai,never()).completeJson(anyString(),anyString(),anyString(),any());
+        verify(local,never()).completeTask(anyString(),anyString(),any());
+    }
+
+    @Test void localGenerationUsesLocalBudgetButReviewAndGradingStayCloud() {
+        when(local.enabled()).thenReturn(true);
+        String id=service.create(owner,"cafe","A1").path("id").asText();
+        service.next(owner,id,0);
+        verify(local,never()).completeTask(anyString(),anyString(),any());
+        service.help(owner,id,1,"review");
+        var generated=json.readTree("""
+                {"taskVi":"Nghe cách thanh toán.","questionVi":"Bạn thanh toán bằng gì và tại đâu?",
+                "skill":"Nắm thông tin cụ thể","utteranceEn":"Please pay by card at the front desk. Your order will be ready soon.",
+                "translationVi":"Xin thanh toán bằng thẻ tại quầy phía trước. Đơn hàng của bạn sẽ sớm sẵn sàng.",
+                "slots":[{"kind":"payment_method","askVi":"Thanh toán bằng gì"},
+                {"kind":"payment_location","askVi":"Thanh toán tại đâu"}],
+                "facts":[{"textVi":"Bằng thẻ","evidenceEn":"by card"},
+                {"textVi":"Quầy phía trước","evidenceEn":"at the front desk"}]}
+                """);
+        when(local.completeTask(eq("A1"),anyString(),any())).thenReturn(new ConversationLocalClient.GeneratedTask(generated));
+        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any()))
+                .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
+        var next=service.next(owner,id,1);
+        assertThat(next.path("turnNumber").asInt()).isEqualTo(2);
+        assertThat(next.toString()).doesNotContain("generationSlots", "speaker", "payment_method", "payment_location");
+        var storedTurn=state(id).path("turns").path(1);
+        assertThat(storedTurn.path("generationSlots")).isEqualTo(generated.path("slots"));
+        assertThat(storedTurn.path("speaker").asText()).isNotBlank();
+        assertThat(storedTurn.path("prompt").path("facts").path(0).path("id").asText()).isEqualTo("f1");
+        assertThat(storedTurn.path("prompt").path("facts").path(1).path("id").asText()).isEqualTo("f2");
+        verify(budget).reserveLocal(owner);
+        verify(local).completeTask(eq("A1"),anyString(),argThat(d -> d.toMillis()>60000 && d.toMillis()<=450000));
+        verify(ai,never()).completeJson(startsWith("You design"),anyString(),anyString(),any());
+        when(ai.completeJson(startsWith("Evaluate MEANING"),anyString())).thenReturn(json.readTree("""
+                {"facts":[{"factId":"f1","status":"CAPTURED","evidenceVi":"thẻ"},
+                {"factId":"f2","status":"CAPTURED","evidenceVi":"quầy phía trước"}],
+                "feedbackVi":"Bạn đã hiểu đúng.","clarificationVi":""}
+                """));
+        service.answer(owner,id,2,UUID.randomUUID(),"Trả bằng thẻ tại quầy phía trước");
+        verify(ai).completeJson(startsWith("Evaluate MEANING"),anyString());
+    }
+
+    @Test void b1InferenceEvidenceIsStoredReviewedAndGradedByMeaningWithoutLeakingIt() {
+        when(local.enabled()).thenReturn(true);
+        String id=service.create(owner,"plans","B1").path("id").asText();
+        service.next(owner,id,0); service.help(owner,id,1,"review");
+        var generated=json.readTree("""
+                {"taskVi":"Nghe và suy ra kế hoạch.","questionVi":"Người nói có thể làm gì tiếp theo và bạn cần mang gì?",
+                 "skill":"Suy luận và dự đoán có căn cứ",
+                 "slots":[{"kind":"likely_next_action","askVi":"Việc tiếp theo"},{"kind":"bring_item","askVi":"Vật cần mang"}],
+                 "utteranceEn":"My morning train has been cancelled. The next train leaves at noon, and my ticket is valid for that service too. I still need to reach the city today. Please bring your notebook for our meeting.",
+                 "translationVi":"Chuyến tàu sáng của tôi đã bị hủy. Chuyến tiếp theo đi lúc trưa và vé cũng dùng được cho chuyến đó. Tôi vẫn cần đến thành phố hôm nay. Xin mang sổ cho cuộc họp.",
+                 "facts":[{"textVi":"Có thể đi chuyến tàu trưa","evidenceEn":"My morning train has been cancelled.","taskType":"inference_prediction",
+                  "reasoningEvidence":{"segmentsEn":["My morning train has been cancelled.","The next train leaves at noon, and my ticket is valid for that service too.","I still need to reach the city today."],
+                  "rationaleEn":"The cancelled service, valid ticket and need to arrive today support taking the noon train."}},
+                  {"textVi":"Sổ ghi chép","evidenceEn":"your notebook","taskType":"direct_detail"}]}
+                """);
+        when(local.completeTask(eq("B1"),anyString(),any())).thenReturn(new ConversationLocalClient.GeneratedTask(generated));
+        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any()))
+                .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
+        var next=service.next(owner,id,1);
+        assertThat(next.toString()).doesNotContain("reasoningEvidence", "rationaleEn", "Có thể đi chuyến tàu trưa");
+        assertThat(state(id).path("turns").path(1).path("prompt").path("facts").path(0).path("reasoningEvidence"))
+                .isEqualTo(generated.path("facts").path(0).path("reasoningEvidence"));
+        verify(ai).completeJson(contains("Never require the inferred conclusion to be stated verbatim"),
+                contains("reasoningEvidence"),anyString(),any());
+        when(ai.completeJson(startsWith("Evaluate MEANING"),anyString())).thenReturn(json.readTree("""
+                {"facts":[{"factId":"f1","status":"CAPTURED","evidenceVi":"chuyến trưa"},
+                          {"factId":"f2","status":"CAPTURED","evidenceVi":"sổ ghi chép"}],
+                 "feedbackVi":"Bạn đã hiểu đúng.","clarificationVi":""}
+                """));
+        var answered=service.answer(owner,id,2,UUID.randomUUID(),"Anh ấy có thể đi chuyến trưa; tôi mang sổ ghi chép.");
+        assertThat(answered.path("turns").path(1).path("capturedFacts").asInt()).isEqualTo(2);
+        verify(ai).completeJson(contains("never require the learner to repeat"),contains("reasoningEvidence"));
+    }
+
+    @Test void localLeaseAndBrowserBudgetFollowConfiguredHardwareTimeout() {
+        when(local.enabled()).thenReturn(true);
+        when(local.flowTimeoutSeconds()).thenReturn(1290);
+        var created=service.create(owner,"cafe","A1");
+        assertThat(created.path("generationTimeoutMs").asLong()).isEqualTo(1305000);
+        String id=created.path("id").asText();
+        service.next(owner,id,0); service.help(owner,id,1,"review");
+        when(local.completeTask(anyString(),anyString(),any())).thenAnswer(call -> {
+            java.time.Duration remaining=call.getArgument(2);
+            assertThat(remaining).isGreaterThan(java.time.Duration.ofSeconds(1200))
+                    .isLessThanOrEqualTo(java.time.Duration.ofSeconds(1290));
+            var until=db.queryForObject("SELECT busy_until FROM ai_conversation_sessions WHERE id=?",java.sql.Timestamp.class,id);
+            assertThat(until.toInstant()).isAfter(Instant.now().plusSeconds(1290));
+            throw new IllegalStateException("simulated local timeout");
+        });
+        assertThatThrownBy(() -> service.next(owner,id,1)).isInstanceOf(ResponseStatusException.class);
+        assertThat(state(id).path("turns").size()).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?",String.class,id)).isNull();
+    }
+
+    @Test void localFailureNeverFallsBackToCloudAndSameSessionCanRetry() {
+        when(local.enabled()).thenReturn(true);
+        String id=service.create(owner,"cafe","A1").path("id").asText();
+        service.next(owner,id,0); service.help(owner,id,1,"review");
+        when(local.completeTask(anyString(),anyString(),any())).thenThrow(new IllegalStateException("deadline"));
+        assertThatThrownBy(() -> service.next(owner,id,1)).isInstanceOf(ResponseStatusException.class);
+        assertThat(state(id).path("turns").size()).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?",String.class,id)).isNull();
+        assertThatThrownBy(() -> service.next(owner,id,1)).isInstanceOf(ResponseStatusException.class);
+        verify(local,times(2)).completeTask(anyString(),anyString(),any());
+        verify(ai,never()).completeJson(anyString(),anyString(),anyString(),any());
+        verify(ai,never()).completeJson(anyString(),anyString(),anyString());
+    }
+
+    @Test void localInvalidTaskGetsOneRepairWithSameContextAndShrinkingDeadline() {
+        when(local.enabled()).thenReturn(true);
+        String id=service.create(owner,"cafe","A1").path("id").asText();
+        service.next(owner,id,0); service.help(owner,id,1,"review");
+        var valid=json.readTree("""
+                {"taskVi":"Nghe cách đóng gói và nơi lấy hàng.","questionVi":"Đồ ăn được đựng bằng gì và lấy ở đâu?",
+                "skill":"Nắm thông tin cụ thể","utteranceEn":"We will pack your salad in a paper box. Please collect it at the counter.",
+                "translationVi":"Chúng tôi sẽ đựng salad trong hộp giấy. Xin lấy tại quầy.",
+                "facts":[{"id":"f1","textVi":"Hộp giấy","evidenceEn":"a paper box"},
+                {"id":"f2","textVi":"Tại quầy","evidenceEn":"at the counter"}]}
+                """);
+        when(local.completeTask(anyString(),anyString(),any())).thenReturn(
+                new ConversationLocalClient.GeneratedTask(json.readTree("{}")), new ConversationLocalClient.GeneratedTask(valid));
+        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any()))
+                .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
+        assertThat(service.next(owner,id,1).path("turnNumber").asInt()).isEqualTo(2);
+        var inputs=org.mockito.ArgumentCaptor.forClass(String.class);
+        var deadlines=org.mockito.ArgumentCaptor.forClass(java.time.Duration.class);
+        verify(local,times(2)).completeTask(anyString(),inputs.capture(),deadlines.capture());
+        var first=json.readTree(inputs.getAllValues().get(0));
+        var repair=json.readTree(inputs.getAllValues().get(1));
+        assertThat(repair.path("sessionBlueprint")).isEqualTo(first.path("sessionBlueprint"));
+        assertThat(repair.path("validationError").asText()).isNotBlank();
+        assertThat(repair.has("previousInvalidPrompt")).isTrue();
+        assertThat(deadlines.getAllValues().get(1)).isLessThanOrEqualTo(deadlines.getAllValues().get(0));
+        verify(budget,times(2)).reserveLocal(owner);
     }
     @Test void catalogHasSixGroupsAndHistoryIsPrivateAndPaginated() {
+        assertThat(service.create(user(),"cafe","A1").path("generationTimeoutMs").asLong()).isEqualTo(60000);
         for(int i=0;i<13;i++) service.create(owner,"cafe","A1");
         service.create(user(),"plans","B1");
         var catalog=json.valueToTree(service.catalog(owner));
+        assertThat(catalog.path("levels")).isEqualTo(json.valueToTree(List.of("A1", "A2", "B1")));
+        assertThat(catalog.path("levelProfiles").valueStream().map(p -> p.path("id").asText()).toList())
+                .containsExactly("A1", "A2", "B1");
+        for (String level : List.of("B2", "C1", "C2"))
+            assertThatThrownBy(() -> service.create(owner, "cafe", level))
+                    .isInstanceOfSatisfying(ResponseStatusException.class,
+                            e -> assertThat(e.getStatusCode().value()).isEqualTo(400));
         assertThat(catalog.path("scenarioCatalog").size()).isEqualTo(24);
         assertThat(catalog.path("scenarioGroups").size()).isEqualTo(6);
         assertThat(catalog.path("sessions").size()).isEqualTo(12);
@@ -66,6 +211,9 @@ class ConversationUxIntegrationTest {
     tools.jackson.databind.node.ObjectNode state(String id) {
         return (tools.jackson.databind.node.ObjectNode)json.readTree(db.queryForObject(
                 "SELECT state_json FROM ai_conversation_sessions WHERE id=?",String.class,id));
+    }
+    tools.jackson.databind.JsonNode generationContext(String input) {
+        return json.readTree(input.split("\n<turn_brief>", 2)[0]);
     }
     @Test void openingsRotateBeforeRecyclingAndReloadNeverRerolls() {
         var branches=new ArrayList<String>();
@@ -130,12 +278,12 @@ class ConversationUxIntegrationTest {
         var inputs=org.mockito.ArgumentCaptor.forClass(String.class);
         var deadlines=org.mockito.ArgumentCaptor.forClass(java.time.Duration.class);
         verify(ai,times(3)).completeJson(anyString(),inputs.capture(),anyString(),deadlines.capture());
-        var context=json.readTree(inputs.getAllValues().get(0));
+        var context=generationContext(inputs.getAllValues().get(0));
         assertThat(context.path("recentPractice").size()).isEqualTo(1);
         assertThat(context.path("recentPractice").path(0).path("tasks").path(0).path("answersVi").size()).isEqualTo(2);
         assertThat(inputs.getAllValues()).allSatisfy(input -> assertThat(input).doesNotContain("PRIVATE_LEARNER_REPLY"));
         assertThat(state(id).path("recentPractice").toString()).doesNotContain("PRIVATE_LEARNER_REPLY");
-        assertThat(json.readTree(inputs.getAllValues().get(1)).path("validationError").asText()).isEqualTo("Repeated recent task");
+        assertThat(generationContext(inputs.getAllValues().get(1)).path("validationError").asText()).isEqualTo("Repeated recent task");
         assertThat(deadlines.getAllValues()).allSatisfy(d -> assertThat(d).isPositive().isLessThanOrEqualTo(java.time.Duration.ofSeconds(45)));
         for(int i=0;i<10;i++) service.create(owner,"cafe","A1");
         String latest=service.create(owner,"cafe","A1").path("id").asText();
@@ -244,9 +392,9 @@ class ConversationUxIntegrationTest {
         var inputs=org.mockito.ArgumentCaptor.forClass(String.class);
         verify(ai,times(4)).completeJson(instruction.capture(),inputs.capture(),anyString(),any());
         assertThat(instruction.getAllValues().get(0)).contains("Preserve established arrangements in history",
-                "must explicitly announce the change", "Previously established");
-        var first=json.readTree(inputs.getAllValues().get(0));
-        var retry=json.readTree(inputs.getAllValues().get(2));
+                "must explicitly announce the change", "Old arrangements can remain background");
+        var first=generationContext(inputs.getAllValues().get(0));
+        var retry=generationContext(inputs.getAllValues().get(2));
         assertThat(first.path("history").path(0).path("utteranceEn").asText()).contains("in the garden");
         assertThat(retry.path("history")).isEqualTo(first.path("history"));
         assertThat(retry.path("previousInvalidPrompt")).isEqualTo(contradictory);

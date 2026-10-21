@@ -1,0 +1,80 @@
+name: AI Platform checks
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: ['codex/**']
+    paths:
+      - 'services/ai-generation/**'
+      - 'tools/ai-eval/**'
+      - 'artifacts/prompts/**'
+      - 'artifacts/reports/ai-platform-*.json'
+      - 'src/**'
+      - 'compose.yaml'
+      - 'ops/observability/**'
+      - 'scripts/run-local.ps1'
+      - '.env*.example'
+      - '.github/workflows/ai-platform.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      rabbitmq:
+        image: rabbitmq:4.3.6-alpine
+        ports: ['5672:5672']
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Install pinned Python runtime and test tools
+        run: python -m pip install -r services/ai-generation/requirements.lock pytest==8.4.2 pytest-asyncio==0.26.0
+      - name: Python contracts, registry, readiness, regression and golden metrics
+        run: python -m pytest -q services/ai-generation/tests tools/ai-eval
+      - name: Java routing and contract tests
+        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,ListeningComprehensionIntegrationTest test
+      - name: Java to Python to fake Ollama smoke
+        run: python tools/ai-eval/smoke.py
+      - name: Java API RabbitMQ worker smoke, local/cloud routing and capacity sweep
+        env:
+          AI_TEST_RABBITMQ_URL: amqp://guest:guest@127.0.0.1:5672/%2F
+        run: python tools/ai-eval/jobs_smoke.py
+      - name: AI observability alert contracts
+        run: docker run --rm --entrypoint /bin/promtool -v "$PWD/ops/observability:/etc/prometheus:ro" prom/prometheus:v3.5.0 test rules /etc/prometheus/alerts.test.yml
+      - name: Validate Compose and image packaging
+        env:
+          POSTGRES_DB: test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test-only
+          RABBITMQ_USER: test
+          RABBITMQ_PASSWORD: test-only
+        run: |
+          docker compose --profile ai --profile ai-worker config --quiet
+          docker build -f services/ai-generation/Dockerfile -t dictalab-ai-check .
+          docker run --rm dictalab-ai-check python -c "from app.config import Settings; from app.registry import load_artifact; print(load_artifact(Settings())['version'])"
+      - name: Encoding and diff checks
+        run: |
+          python tools/ai-eval/check_encoding.py
+          git diff --check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ai-platform-evidence
+          path: |
+            artifacts/reports/ai-platform-*.json
+            target/surefire-reports/
+            target/ai-platform-jobs-load.json

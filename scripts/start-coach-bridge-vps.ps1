@@ -1,5 +1,5 @@
 param([switch]$VisibleChrome)
-# Legacy rollback tool only. The current application uses ShopAIKey and does not start this bridge.
+# Legacy rollback tool only. The current application uses Gemini and does not start this bridge.
 $ErrorActionPreference = 'Stop'
 $bridgeRoot = 'C:\DictaLab\coach-bridge'
 $env:CHROME_PATH = 'C:\Program Files\Google\Chrome\Application\chrome.exe'

@@ -194,7 +194,7 @@ test('changing a history level preserves keyboard focus before the request start
     assert.equal(requestedPage, 1);
 });
 
-test('history detail immediately shows saved sentences without starting Coach or audio metadata requests', () => {
+test('history detail shows saved sentences and loads Coach without automatic generation or audio metadata requests', () => {
     const nodes = new Map();
     const node = selector => {
         if (!nodes.has(selector)) nodes.set(selector, {textContent: '', innerHTML: '', hidden: false,
@@ -205,7 +205,8 @@ test('history detail immediately shows saved sentences without starting Coach or
     const actions = node('.coach-navigation');
     const links = [];
     actions.appendChild = link => links.push(link);
-    let coachCalls = 0, leaves = 0, reviews = 0, audioRequests = 0;
+    const coachCalls = [];
+    let reviews = 0, audioRequests = 0;
     const result = {lessonTitle: 'Saved lesson', sessionId: 'saved', level: 'B1', firstAttemptAccuracy: 75, finalAccuracy: 100};
     const source = app.match(/    function renderResult\([\s\S]*?\n    }\n/)[0];
     const render = vm.runInNewContext(`${source}\nrenderResult`, {state,
@@ -214,7 +215,7 @@ test('history detail immediately shows saved sentences without starting Coach or
         renderAssessment() {}, renderLessonReview() {reviews++;},
         loadReviewAudioMetrics() {audioRequests++; return Promise.resolve();},
         router: {toPath: (_route, params) => `/history?level=${params.level}&page=${params.page}`}, navigate() {},
-        window: {DictaLabCoach: {show() {coachCalls++;}, leave() {leaves++;}}}});
+        window: {DictaLabCoach: {show(result, options) {coachCalls.push({result, options});}}}});
     render(result, true);
     assert.equal(node('#result-heading').textContent, 'Saved lesson');
     assert.equal(node('#result-technical').open, true);
@@ -223,12 +224,14 @@ test('history detail immediately shows saved sentences without starting Coach or
     node('#result-technical').ontoggle();
     assert.equal(reviews, 1);
     assert.equal(audioRequests, 0);
-    assert.equal(coachCalls, 0);
-    assert.equal(leaves, 1);
+    assert.equal(coachCalls.length, 1);
+    assert.equal(coachCalls[0].result, result);
+    assert.equal(coachCalls[0].options.autoGenerate, false);
 
     render(result, false);
     assert.equal(node('#result-technical').open, false);
-    assert.equal(coachCalls, 1);
+    assert.equal(coachCalls.length, 2);
+    assert.equal(coachCalls[1].options.autoGenerate, true);
     node('#result-technical').open = true;
     node('#result-technical').ontoggle();
     assert.equal(reviews, 2);

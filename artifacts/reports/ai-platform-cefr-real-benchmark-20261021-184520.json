@@ -1,0 +1,615 @@
+{
+  "reportVersion": 1,
+  "kind": "cefr-real-model-benchmark",
+  "runId": "20261021-184520",
+  "status": "partial",
+  "statusNote": "Supported arm complete; shadow arm stopped on owner request after 3/60 samples. The remaining shadow samples were not run and no quality claim covers them.",
+  "plan": "docs/conversation-cefr-real-model-benchmark-handoff-2026-10-21.md",
+  "git": {
+    "head": "9de9b26d7a04a7ad7084b73afca78ceb3b7cf0eb",
+    "branch": "codex/practice-drafts-audio-20261017",
+    "note": "HEAD recorded before capture; docs commit 9de9b26 does not change generation contract"
+  },
+  "environment": {
+    "runtime": {
+      "python": "3.14.0",
+      "packages": "httpx, pydantic, pydantic_settings importable from system Python (requirements.lock versions)",
+      "ollama": "0.40.7"
+    },
+    "hardware": {
+      "cpu": "AMD Ryzen 7 PRO 6850HS (8C/16T)",
+      "ramGb": 31.3,
+      "gpu": null,
+      "note": "CPU-only inference; ollama ps showed size_vram=0 for qwen3.5:9b"
+    },
+    "model": {
+      "name": "qwen3.5:9b",
+      "digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+      "warmup": {
+        "note": "18.3s warmup generation outside the 90 samples; loaded model before capture",
+        "seconds": 18.3
+      }
+    },
+    "timeoutSeconds": 600,
+    "generationConfig": {
+      "primary_provider": "ollama",
+      "production_mode": false,
+      "fallback_enabled": false,
+      "model": "qwen3.5:9b",
+      "temperature": 0.3,
+      "translation_temperature": 0.1,
+      "num_ctx": 8192,
+      "num_predict": 1000,
+      "max_concurrency": 1
+    }
+  },
+  "observation": {
+    "tool": "tools/ai-eval/attempt_trace.py",
+    "sidecars": [
+      "supported-attempts.jsonl",
+      "shadow-attempts.jsonl"
+    ],
+    "rows": "one JSONL row per validation attempt plus failure rows; records attempt, merged synthetic task, word count, validation errors, observed model call seconds"
+  },
+  "arms": {
+    "supported": {
+      "dataset": "cefr-b1-v7-10x3.json",
+      "bundle": "conversation-cefr-b1-v7-20261021",
+      "datasetHash": "cb7e7cd336f6fcb52e445132ba65ea4ac1208e998e917c1a860a72de7ef08d41",
+      "expected": 30,
+      "captured": 30,
+      "metrics": {
+        "transport": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        },
+        "schema": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        },
+        "evidence": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        },
+        "question_fact": {
+          "passed": 20,
+          "evaluated": 30,
+          "rate": 0.6666666666666666
+        },
+        "translation": {
+          "passed": 25,
+          "evaluated": 30,
+          "rate": 0.8333333333333334
+        },
+        "role": {
+          "passed": 19,
+          "evaluated": 30,
+          "rate": 0.6333333333333333
+        },
+        "continuity": {
+          "passed": 17,
+          "evaluated": 21,
+          "rate": 0.8095238095238095
+        },
+        "turn4_independence": {
+          "passed": 8,
+          "evaluated": 9,
+          "rate": 0.8888888888888888
+        }
+      },
+      "latencySeconds": {
+        "p50": 84.72953019999841,
+        "p95": 204.79278870001144,
+        "p99": 204.82946559999255
+      },
+      "levels": {
+        "A1": {
+          "expected": 12,
+          "captured": 12,
+          "coverage": 1.0,
+          "firstAttemptMeasured": 12,
+          "firstAttemptLengthValid": 1.0,
+          "firstAttemptStructureValid": 0.8333,
+          "firstAttemptLengthValidWhenMeasured": 1.0,
+          "repairAttempted": 2,
+          "repairSucceeded": 1,
+          "repairFailed": 1,
+          "finalValid": 0.9167,
+          "finalLengthValidOnExpected": 0.9167,
+          "finalPresent": 11,
+          "finalLengthValidOnPresent": 1.0,
+          "finalTransportFailures": 1,
+          "latencySeconds": {
+            "n": 12,
+            "p50": 57.04772539999976,
+            "p95": 169.37046689999988,
+            "p99": 169.37046689999988,
+            "max": 169.37046689999988,
+            "note": "cold start included; timeout 600s offline quality run"
+          },
+          "semanticReview": "PENDING_REVIEW",
+          "taskTypeCoverage": null,
+          "semanticReviewPassed": 6,
+          "semanticReviewRate": 0.5,
+          "semanticReviewRateOnCaptured": 0.5,
+          "finalValidOnCaptured": 0.9167,
+          "complete": true
+        },
+        "A2": {
+          "expected": 9,
+          "captured": 9,
+          "coverage": 1.0,
+          "firstAttemptMeasured": 9,
+          "firstAttemptLengthValid": 0.6667,
+          "firstAttemptStructureValid": 1.0,
+          "firstAttemptLengthValidWhenMeasured": 0.6667,
+          "repairAttempted": 3,
+          "repairSucceeded": 1,
+          "repairFailed": 2,
+          "finalValid": 0.7778,
+          "finalLengthValidOnExpected": 0.7778,
+          "finalPresent": 7,
+          "finalLengthValidOnPresent": 1.0,
+          "finalTransportFailures": 2,
+          "latencySeconds": {
+            "n": 9,
+            "p50": 84.72953019999841,
+            "p95": 180.39512859999377,
+            "p99": 180.39512859999377,
+            "max": 180.39512859999377,
+            "note": "cold start included; timeout 600s offline quality run"
+          },
+          "semanticReview": "PENDING_REVIEW",
+          "taskTypeCoverage": null,
+          "semanticReviewPassed": 5,
+          "semanticReviewRate": 0.5556,
+          "semanticReviewRateOnCaptured": 0.5556,
+          "finalValidOnCaptured": 0.7778,
+          "complete": true
+        },
+        "B1": {
+          "expected": 9,
+          "captured": 9,
+          "coverage": 1.0,
+          "firstAttemptMeasured": 9,
+          "firstAttemptLengthValid": 0.6667,
+          "firstAttemptStructureValid": 0.8889,
+          "firstAttemptLengthValidWhenMeasured": 0.6667,
+          "repairAttempted": 4,
+          "repairSucceeded": 2,
+          "repairFailed": 2,
+          "finalValid": 0.7778,
+          "finalLengthValidOnExpected": 0.7778,
+          "finalPresent": 7,
+          "finalLengthValidOnPresent": 1.0,
+          "finalTransportFailures": 2,
+          "latencySeconds": {
+            "n": 9,
+            "p50": 107.96166459999222,
+            "p95": 204.82946559999255,
+            "p99": 204.82946559999255,
+            "max": 204.82946559999255,
+            "note": "cold start included; timeout 600s offline quality run"
+          },
+          "semanticReview": "PENDING_REVIEW",
+          "taskTypeCoverage": null,
+          "semanticReviewPassed": 4,
+          "semanticReviewRate": 0.4444,
+          "semanticReviewRateOnCaptured": 0.4444,
+          "finalValidOnCaptured": 0.7778,
+          "complete": true
+        }
+      }
+    },
+    "shadow": {
+      "dataset": "cefr-shadow-v1-10x3.json",
+      "bundle": "conversation-cefr-shadow-v1-20261021",
+      "datasetHash": "ff108ce35f6d088c1d763fdcf7d748cbb428d9f6e7e77c051fae1c2a44d3b6b9",
+      "expected": 60,
+      "captured": 3,
+      "missing": 57,
+      "levels": {
+        "B2": {
+          "expected": 30,
+          "captured": 3,
+          "coverage": 0.1,
+          "firstAttemptMeasured": 3,
+          "firstAttemptLengthValid": 0.1,
+          "firstAttemptStructureValid": 0.0667,
+          "firstAttemptLengthValidWhenMeasured": 1.0,
+          "repairAttempted": 1,
+          "repairSucceeded": 0,
+          "repairFailed": 1,
+          "finalValid": 0.0667,
+          "finalLengthValidOnExpected": 0.0667,
+          "finalPresent": 2,
+          "finalLengthValidOnPresent": 1.0,
+          "finalTransportFailures": 28,
+          "latencySeconds": {
+            "n": 3,
+            "p50": 168.2691507999989,
+            "p95": 286.7240365000034,
+            "p99": 286.7240365000034,
+            "max": 286.7240365000034,
+            "note": "cold start included; timeout 600s offline quality run"
+          },
+          "semanticReview": "PENDING_REVIEW",
+          "taskTypeCoverage": {
+            "argument_relation": 2,
+            "direct_detail": 0,
+            "gist": 0,
+            "inference_prediction": 0,
+            "opinion_attitude": 0
+          },
+          "semanticReviewPassed": 1,
+          "semanticReviewRate": 0.0333,
+          "semanticReviewRateOnCaptured": 0.3333,
+          "finalValidOnCaptured": 0.6667,
+          "complete": false
+        },
+        "C1": {
+          "expected": 30,
+          "captured": 0,
+          "coverage": 0.0,
+          "firstAttemptMeasured": 0,
+          "firstAttemptLengthValid": 0.0,
+          "firstAttemptStructureValid": 0.0,
+          "firstAttemptLengthValidWhenMeasured": null,
+          "repairAttempted": 0,
+          "repairSucceeded": 0,
+          "repairFailed": 0,
+          "finalValid": 0.0,
+          "finalLengthValidOnExpected": 0.0,
+          "finalPresent": 0,
+          "finalLengthValidOnPresent": null,
+          "finalTransportFailures": 30,
+          "latencySeconds": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null,
+            "note": "cold start included; timeout 600s offline quality run"
+          },
+          "semanticReview": "PENDING_REVIEW",
+          "taskTypeCoverage": {
+            "argument_relation": 0,
+            "direct_detail": 0,
+            "gist": 0,
+            "implicit_intention": 0,
+            "opinion_attitude": 0
+          },
+          "semanticReviewPassed": 0,
+          "semanticReviewRate": 0.0,
+          "semanticReviewRateOnCaptured": null,
+          "finalValidOnCaptured": null,
+          "complete": false
+        }
+      },
+      "shadowGate": {
+        "releaseAllowed": false,
+        "reason": "shadow_only_requires_separate_promotion_review"
+      },
+      "candidateGatePassed": {
+        "B2": false,
+        "C1": false
+      }
+    }
+  },
+  "review": {
+    "method": "AI semantic review of every captured sample (12 flags); not manual approval",
+    "supportedManualReview": null,
+    "shadowManualReview": null,
+    "packet": "data/cefr-benchmark/<runId>/supported-review-packet.md (gitignored evidence)"
+  },
+  "gate": {
+    "supported": {
+      "schemaAndGrounding100Percent": false,
+      "length95PercentOnExpected": false,
+      "semantic90PercentOnExpected": false,
+      "decision": "FAIL",
+      "reason": "Structure/grounding, length or AI semantic review is below the planned thresholds; manual review has not happened."
+    },
+    "shadow": {
+      "decision": "NOT EVALUATED",
+      "releaseAllowed": false,
+      "reason": "Coverage 3/60; shadow tool always returns releaseAllowed=false."
+    },
+    "releaseAllowed": false
+  },
+  "errorTable": [
+    {
+      "key": "cefr-v7-cafe-A1-t2:17",
+      "level": "A1",
+      "transport": "ok",
+      "categories": [
+        "question_misalignment",
+        "role_inconsistency"
+      ],
+      "firstAttemptErrors": [],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "Câu hỏi dùng 'Bạn muốn gọi…' trong khi người học là nhân viên và transcript là đơn của khách: lệch vai, hỏi sai chủ thể. Đáp án vẫn có trong bài.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-cafe-A1-t2:17"
+    },
+    {
+      "key": "cefr-v7-cafe-A1-t2:43",
+      "level": "A1",
+      "transport": "ok",
+      "categories": [
+        "question_misalignment",
+        "role_inconsistency"
+      ],
+      "firstAttemptErrors": [],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "Cùng lỗi lệch vai như seed 17: khách gọi món nhưng câu hỏi hỏi người học (nhân viên) muốn gọi gì.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-cafe-A1-t2:43"
+    },
+    {
+      "key": "cefr-v7-cafe-A1-t2:71",
+      "level": "A1",
+      "transport": "ok",
+      "categories": [
+        "question_misalignment",
+        "role_inconsistency"
+      ],
+      "firstAttemptErrors": [],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "Lệch vai như hai seed trước; taskVi còn ghi 'danh sách món ăn mới' trong khi transcript là một lượt gọi món.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-cafe-A1-t2:71"
+    },
+    {
+      "key": "cefr-v7-directions-A1-t4:43",
+      "level": "A1",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].textVi:leaked_in_questionVi",
+        "fact[1].textVi:leaked_in_questionVi"
+      ],
+      "repairErrors": [
+        "fact[0].textVi:leaked_in_questionVi",
+        "fact[1].textVi:leaked_in_questionVi"
+      ],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không sinh được task: attempt 1 và repair đều để textVi lộ trong questionVi, workflow reject. Không có bài để review.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-directions-A1-t4:43"
+    },
+    {
+      "key": "cefr-v7-directions-A1-t4:71",
+      "level": "A1",
+      "transport": "ok",
+      "categories": [
+        "question_misalignment",
+        "unanswerable_question"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].textVi:leaked_in_questionVi",
+        "fact[1].textVi:leaked_in_questionVi"
+      ],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "questionVi là một câu kể lặp lại nội dung bài ('Hãy đi theo con phố chính. Bưu điện…') chứ không phải câu hỏi; lộ đáp án về mặt ngữ nghĩa dù validator chuỗi con không bắt.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-directions-A1-t4:71"
+    },
+    {
+      "key": "cefr-v7-hotel-A1-t3:71",
+      "level": "A1",
+      "transport": "ok",
+      "categories": [
+        "question_misalignment",
+        "unanswerable_question"
+      ],
+      "firstAttemptErrors": [],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "Câu hỏi 'wifi ở đâu' nhưng transcript chỉ nói mật khẩu Wi-Fi nằm trên thẻ chìa khóa, không nói vị trí wifi. Câu hỏi và đáp án lệch nhau.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-hotel-A1-t3:71"
+    },
+    {
+      "key": "cefr-v7-cafe-A2-t3:17",
+      "level": "A2",
+      "transport": "ok",
+      "categories": [
+        "role_inconsistency"
+      ],
+      "firstAttemptErrors": [],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "Partner ghi là customer nhưng bài nói là lời nhân viên ('your order will be ready…'), đảo vai.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-cafe-A2-t3:17"
+    },
+    {
+      "key": "cefr-v7-cafe-A2-t3:43",
+      "level": "A2",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "utteranceEn:word_count=13,min=18,max=55"
+      ],
+      "repairErrors": [
+        "utteranceEn:word_count=13,min=18,max=55",
+        "fact[1].evidenceEn:not_substring_of_utteranceEn"
+      ],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không sinh được task: attempt 1 13 từ và evidence sai; repair vẫn 13 từ nên bị reject.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-cafe-A2-t3:43"
+    },
+    {
+      "key": "cefr-v7-cafe-A2-t3:71",
+      "level": "A2",
+      "transport": "ok",
+      "categories": [
+        "role_inconsistency"
+      ],
+      "firstAttemptErrors": [],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "Một utterance trộn hai người nói: câu điều kiện của nhân viên và câu đổi món của khách. Partner chỉ là customer nên vai không nhất quán.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-cafe-A2-t3:71"
+    },
+    {
+      "key": "cefr-v7-directions-A2-t2:17",
+      "level": "A2",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "utteranceEn:word_count=17,min=18,max=55"
+      ],
+      "repairErrors": [
+        "utteranceEn:word_count=17,min=18,max=55"
+      ],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không sinh được task: attempt 1 17 từ (min 18), repair vẫn 17 từ nên bị reject.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-directions-A2-t2:17"
+    },
+    {
+      "key": "cefr-v7-cafe-B1-t4:17",
+      "level": "B1",
+      "transport": "ok",
+      "categories": [
+        "role_inconsistency"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].evidenceEn:not_substring_of_utteranceEn"
+      ],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "Utterance trộn lời khách (ý kiến về salad) và lời nhân viên (ưu đãi tráng miệng). Partner là customer nên vai không nhất quán. Lượt 4 độc lập.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-cafe-B1-t4:17"
+    },
+    {
+      "key": "cefr-v7-directions-B1-t3:17",
+      "level": "B1",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "utteranceEn:word_count=27,min=30,max=90"
+      ],
+      "repairErrors": [
+        "utteranceEn:word_count=27,min=30,max=90"
+      ],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không sinh được task: attempt 1 và repair đều 27 từ (min 30) nên bị reject.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-directions-B1-t3:17"
+    },
+    {
+      "key": "cefr-v7-directions-B1-t3:71",
+      "level": "B1",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "utteranceEn:word_count=23,min=30,max=90"
+      ],
+      "repairErrors": [
+        "utteranceEn:word_count=23,min=30,max=90"
+      ],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không sinh được task: attempt 1 23 từ, repair không cứu được; workflow reject.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-directions-B1-t3:71"
+    },
+    {
+      "key": "cefr-v7-hotel-B1-t2:43",
+      "level": "B1",
+      "transport": "ok",
+      "categories": [
+        "unsupported_conclusion"
+      ],
+      "firstAttemptErrors": [],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "Lý do không nhất quán: đội dọn phòng 'vừa dọn xong' lại là lý do phải chờ đến 2 giờ. Câu hỏi và đáp án khớp chuỗi nhưng lập luận không đứng được.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-hotel-B1-t2:43"
+    },
+    {
+      "key": "cefr-v7-hotel-B1-t2:71",
+      "level": "B1",
+      "transport": "ok",
+      "categories": [
+        "tasktype_mismatch"
+      ],
+      "firstAttemptErrors": [
+        "utteranceEn:word_count=25,min=30,max=90"
+      ],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "Fact 2 gắn nhãn inference_prediction nhưng transcript nói thẳng 'moved all rooms to the garden area'; đây là direct_detail mặc áo suy luận. Đây là mẫu repair: attempt 1 bị chặn vì 25 từ.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-v7-hotel-B1-t2:71"
+    },
+    {
+      "key": "cefr-shadow-library-B2-t2:17",
+      "level": "B2",
+      "transport": "ok",
+      "categories": [
+        "non_atomic_answer",
+        "question_misalignment",
+        "translation_defect",
+        "unanswerable_question"
+      ],
+      "firstAttemptErrors": [],
+      "repairErrors": [],
+      "finalErrors": [],
+      "note": "Hai lỗi: (1) slot askVi hỏi 'ủng hộ việc mở rộng giờ mở cửa' nhưng người nói đề xuất 'maintaining current hours' — câu hỏi và đáp án ngược nhau; (2) textVi của fact 0 bị hỏng, chứa nguyên mảnh JSON '\"evidenceEn\":\"…' nên bản dịch đáp án không dùng được. Validator hiện chỉ kiểm tra textVi không rỗng nên bỏ lọt.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-shadow-library-B2-t2:17"
+    },
+    {
+      "key": "cefr-shadow-library-B2-t2:43",
+      "level": "B2",
+      "transport": "error",
+      "categories": [
+        "no_task_or_rejected"
+      ],
+      "firstAttemptErrors": [
+        "fact[0].reasoningEvidence:primary_evidence_missing"
+      ],
+      "repairErrors": [
+        "fact[0].reasoningEvidence:primary_evidence_missing"
+      ],
+      "finalErrors": [
+        "task:missing"
+      ],
+      "note": "Không sinh được task: attempt 1 và repair đều bị validator chặn (xem shadow-attempts.jsonl); workflow hết 287s rồi reject.",
+      "reproduce": "python tools/ai-eval/generate.py --dataset <dataset> --output <new-capture>.json --attempts <new>.jsonl  # key cefr-shadow-library-B2-t2:43"
+    }
+  ],
+  "limits": [
+    "AI review by the same agent that ran the benchmark; not independent human adjudication.",
+    "B1 supported arm has 9 samples only; A1/A2 cannot compensate for B1.",
+    "Shadow arm is partial (B2 3/30 captured, C1 0/30) and uses the compact 30-90 word format; it does not test long B2/C1 listening.",
+    "600s timeout is an offline quality setting; it does not prove the 180s default or production SLA.",
+    "CPU-only inference; cold start is included in latency.",
+    "The observer records attempts but does not change prompts, seeds, schemas, options or repair count."
+  ],
+  "nextSteps": [
+    "Resume the remaining 57 shadow samples with the same bundle, dataset, seeds and environment, writing a new raw capture plus sidecar, then merge by key with duplicate/missing checks.",
+    "Owner manual review of the 9 B1 samples and at least 6 B2 / 6 C1 once the shadow arm is complete; AI verdicts are not approval.",
+    "Fix the repair loop: 5/5 supported failures repeated the same length or leak error, wasting a second call.",
+    "Close the validator gap where fact textVi containing serialized JSON (shadow library seed 17) passes.",
+    "Tighten role handling: the role metric is 19/30; 6 samples actually invert customer/staff or mix two speakers in one utterance, 5 more have no output."
+  ]
+}

@@ -2,7 +2,7 @@
 
 Ngày cập nhật: **08/10/2026**, múi giờ Asia/Bangkok (UTC+7).
 
-**Hiện trạng chính:** DictaLab là website luyện nghe tiếng Anh với Dictation, Listening, Hội thoại AI, Coach, phòng học 1–1 và quản trị nội dung. Mã nguồn hiện dùng JWT/Redis, hỗ trợ RabbitMQ và S3. Tài liệu triển khai ngày 04/10 ghi nhận JWT/Redis và S3 đã hoạt động trên VPS. Hàng đợi nền tạo audio/Coach cùng migration V26 đã có trong workspace, mặc định tắt; chưa có bằng chứng triển khai production cho phần này trong tài liệu đã đối chiếu. AI chạy qua ShopAIKey, giọng đọc qua Cartesia; browser bridge cũ không thuộc luồng chạy hiện tại.
+**Hiện trạng chính:** DictaLab là website luyện nghe tiếng Anh với Dictation, Listening, Hội thoại AI, Coach, phòng học 1–1 và quản trị nội dung. Mã nguồn hiện dùng JWT/Redis, hỗ trợ RabbitMQ và S3. Tài liệu triển khai ngày 04/10 ghi nhận JWT/Redis và S3 đã hoạt động trên VPS. Hàng đợi nền tạo audio/Coach cùng migration V26 đã có trong workspace, mặc định tắt; chưa có bằng chứng triển khai production cho phần này trong tài liệu đã đối chiếu. AI chạy qua Gemini, giọng đọc qua Cartesia; browser bridge cũ không thuộc luồng chạy hiện tại.
 
 ## 0. Cách dùng tài liệu này
 
@@ -265,7 +265,7 @@ Không dùng machine learning, bandit hoặc information gain để chọn bài.
 Coach hoạt động trên kết quả Dictation **đã hoàn thành và thuộc người dùng**. Có hai lớp:
 
 1. `CoachAnalysis` tạo phân tích cơ sở bằng quy tắc.
-2. Nếu bật Coach và có khóa ShopAIKey, AI diễn giải/xếp chọn bằng chứng đã có. Lỗi AI không ngăn người học hoàn thành hoặc xem review.
+2. Nếu bật Coach và có khóa Gemini, AI diễn giải/xếp chọn bằng chứng đã có. Lỗi AI không ngăn người học hoàn thành hoặc xem review.
 
 ### 6.1. Xếp ưu tiên lỗi
 
@@ -318,7 +318,7 @@ First exposure dựa trên câu trả lời đã nghe trước và dấu vết a
 
 ### 7.4. Tạo và kiểm duyệt unit
 
-Admin có thể tạo draft bằng ShopAIKey hoặc nhập nội dung thủ công. Tạo AI cần lesson active, không phải personal, audio có ít nhất 5 câu có mốc, thời lượng hữu hạn 0..3600 giây và kiểm tra mốc cuối phù hợp thời lượng.
+Admin có thể tạo draft bằng Gemini hoặc nhập nội dung thủ công. Tạo AI cần lesson active, không phải personal, audio có ít nhất 5 câu có mốc, thời lượng hữu hạn 0..3600 giây và kiểm tra mốc cuối phù hợp thời lượng.
 
 Nội dung được validate:
 
@@ -374,11 +374,11 @@ Mỗi phiên có 4 nhiệm vụ: 3 nhiệm vụ chính và nhiệm vụ thứ 4 
 
 | Công việc | Nguồn đang dùng trong mã | Cấu hình mặc định |
 |---|---|---|
-| Sinh lời thoại, task, câu hỏi, dịch, facts | ShopAIKey | `gemini-2.5-flash` qua `DICTALAB_CONVERSATION_MODEL` |
-| Chấm câu trả lời, phản hồi và làm rõ | ShopAIKey API | `SHOPAIKEY_MODEL`, mặc định `claude-sonnet-4-5` |
+| Sinh lời thoại, task, câu hỏi, dịch, facts | Gemini | `gemini-3.5-flash-lite` qua `DICTALAB_CONVERSATION_MODEL` |
+| Chấm câu trả lời, phản hồi và làm rõ | Gemini API | `GEMINI_MODEL`, mặc định `gemini-3.5-flash-lite` |
 | Tạo giọng tiếng Anh | Cartesia TTS | `sonic-3.6`, WAV PCM16 24 kHz |
 
-`SHOPAIKEY_MODEL` dùng cho Listening, Coach và chấm/làm rõ hội thoại, mặc định `claude-sonnet-4-5`; không phải biến chọn model sinh hội thoại. Hội thoại cần bật `DICTALAB_CONVERSATION_ENABLED` và đủ khóa ShopAIKey/Cartesia; không phụ thuộc công tắc Coach hoặc browser bridge.
+`GEMINI_MODEL` dùng cho Listening, Coach và chấm/làm rõ hội thoại, mặc định `gemini-3.5-flash-lite`; không phải biến chọn model sinh hội thoại. Hội thoại cần bật `DICTALAB_CONVERSATION_ENABLED` và đủ khóa Gemini/Cartesia; không phụ thuộc công tắc Coach hoặc browser bridge.
 
 ### 8.3. JSON và bằng chứng
 
@@ -546,7 +546,7 @@ Caddy :18443  ->  Spring Boot 127.0.0.1:18082 (NSSM DictaLab)
                    +-> RabbitMQ (tùy bật từng nhóm công việc)
                    +-> static audio trong JAR + media ngoài JAR
                    +-> S3 private (audio quản trị tải mới khi bật)
-                   +-> ShopAIKey HTTPS (generation/Listening/Coach/grading/clarification)
+                   +-> Gemini HTTPS (generation/Listening/Coach/grading/clarification)
                    +-> Cartesia HTTPS (Conversation audio)
 
 Browser người A <-> WebRTC audio trực tiếp/TURN <-> Browser người B
@@ -678,7 +678,7 @@ Theo `docs/s3-audio.md`, S3 đã được bật/kiểm tra trên VPS ngày 04/10
 
 Corpus ELLLO được tài liệu repository ghi nhận ban đầu: 20 bài A1–B2, 79 hội thoại người thật, khoảng 910 câu. Đây là **corpus seed**, không phải số bài active hiện tại trong production sau admin chỉnh sửa.
 
-Ngày 02/10/2026 đã bổ sung ba bài Dictation B1 do ShopAIKey Gemini 2.5 Flash sinh, Cartesia Sonic 3.6 tạo hai giọng AI: Đổi kế hoạch chuyến đi, Đổi trả đơn hàng, Lên kế hoạch hoạt động nhóm. Mỗi bài có 12 câu, tổng 36 câu; lesson ID production 121–123. Audio lưu ngoài JAR theo đoạn câu; đánh dấu chưa calibrated và ghi nguồn AI. Xem `docs/ai-b1-dictation-2026-10-02.md` cho kiểm tra/provenance. Đây là batch nội dung đã xuất bản, không phải màn hình cho người học tự sinh bài Dictation.
+Ngày 02/10/2026 đã bổ sung ba bài Dictation B1 do Gemini 2.5 Flash sinh, Cartesia Sonic 3.6 tạo hai giọng AI: Đổi kế hoạch chuyến đi, Đổi trả đơn hàng, Lên kế hoạch hoạt động nhóm. Mỗi bài có 12 câu, tổng 36 câu; lesson ID production 121–123. Audio lưu ngoài JAR theo đoạn câu; đánh dấu chưa calibrated và ghi nguồn AI. Xem `docs/ai-b1-dictation-2026-10-02.md` cho kiểm tra/provenance. Đây là batch nội dung đã xuất bản, không phải màn hình cho người học tự sinh bài Dictation.
 
 Script tải, sinh manifest và migration; `split-elllo-sentences.py` xử lý:
 
@@ -700,23 +700,23 @@ Nội dung này chỉ cho mục đích cá nhân của admin; không biến vi�
 
 ### 15.5. Chuẩn bị từ preview
 
-`scripts/enrich-preview-vocabulary.py` là công cụ offline gọi ShopAIKey để phân loại tên riêng và chọn từ hiếm/chuyên biệt/thành ngữ/vượt level. Parser đối chiếu lại cụm với transcript thật, chuẩn hóa, loại trùng và không gộp tên riêng vào difficult words. Có cache kết quả và self-test. Script có khả năng cập nhật dữ liệu VPS; không phải một worker tự chạy mỗi lần người học mở catalog, và không được chạy tùy tiện trên production để thử.
+`scripts/enrich-preview-vocabulary.py` là công cụ offline gọi Gemini để phân loại tên riêng và chọn từ hiếm/chuyên biệt/thành ngữ/vượt level. Parser đối chiếu lại cụm với transcript thật, chuẩn hóa, loại trùng và không gộp tên riêng vào difficult words. Có cache kết quả và self-test. Script có khả năng cập nhật dữ liệu VPS; không phải một worker tự chạy mỗi lần người học mở catalog, và không được chạy tùy tiện trên production để thử.
 
 ## 16. AI clients và giới hạn tích hợp
 
-### 16.1. ShopAIKey
+### 16.1. Gemini
 
-Endpoint cấu hình được, mặc định `https://api.shopaikey.com/v1/chat/completions`. HttpClient connect timeout 10 giây; tác vụ chung timeout 60 giây, bước sinh Conversation theo override có timeout 30 giây. Payload temperature=0, max_tokens=2200, không stream.
+Endpoint cấu hình được, mặc định `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`. HttpClient connect timeout 10 giây; tác vụ chung timeout 60 giây, bước sinh Conversation theo override có timeout 30 giây. Payload temperature=0, max_tokens=2200, không stream.
 
 Body mạng bị chặn ở 100.000 byte bằng `BoundedProviderBody`, nội dung model tối đa 12.000 ký tự; có bỏ markdown fence/đoạn bao ngoài để lấy JSON object và kiểm tra trailing tokens. `sendAsync` được chặn thời hạn gồm đọc body và cancel trong finally để response chậm không giữ permit vô hạn.
 
-ProviderGuard mặc định giới hạn ShopAIKey 8 request đồng thời mỗi JVM; circuit mở sau 5 lỗi provider và chờ 30 giây, một probe phục hồi. HTTP 429 đọc Retry-After với ngân sách tối đa 300 giây cho giá trị hợp lệ; retry do từng nghiệp vụ quyết định, client không tự gọi lại mù. Cartesia có guard riêng. Các giới hạn này không phải quota tiền/token cho toàn hệ thống.
+ProviderGuard mặc định giới hạn Gemini 8 request đồng thời mỗi JVM; circuit mở sau 5 lỗi provider và chờ 30 giây, một probe phục hồi. HTTP 429 đọc Retry-After với ngân sách tối đa 300 giây cho giá trị hợp lệ; retry do từng nghiệp vụ quyết định, client không tự gọi lại mù. Cartesia có guard riêng. Các giới hạn này không phải quota tiền/token cho toàn hệ thống.
 
 API key chỉ ở server. Tên model gateway trả lại không chứng minh độc lập model thực sự ở upstream. Chưa có bảng giá/chi phí/token accounting được xác minh cho tài khoản trong tài liệu này.
 
-### 16.2. Coach và chấm/làm rõ qua ShopAIKey
+### 16.2. Coach và chấm/làm rõ qua Gemini
 
-Các luồng này dùng cùng `ShopAiKeyClient` với Listening, chung khóa/URL/model cấu hình. Coach chỉ gửi bằng chứng đã tính bởi backend, kiểm tra pattern/evidence/progress và lưu report một lần. Khi queue tắt, Coach giữ semaphore một yêu cầu generation đồng thời; khi queue bật, dùng ngân sách worker DB (mục 13.3). BUSY/UNAVAILABLE hoặc job chưa hoàn tất vẫn có baseline, Smart Review và Error Bank.
+Các luồng này dùng cùng `GeminiClient` với Listening, chung khóa/URL/model cấu hình. Coach chỉ gửi bằng chứng đã tính bởi backend, kiểm tra pattern/evidence/progress và lưu report một lần. Khi queue tắt, Coach giữ semaphore một yêu cầu generation đồng thời; khi queue bật, dùng ngân sách worker DB (mục 13.3). BUSY/UNAVAILABLE hoặc job chưa hoàn tất vẫn có baseline, Smart Review và Error Bank.
 
 Hội thoại gửi JSON của prompt, attempts và context khi chấm; khi làm rõ chỉ gửi prompt. Ngữ cảnh lấy từ phiên thuộc người dùng đã kiểm tra ownership, không dựa vào lịch sử tab bên nhà cung cấp. Pending answer, requestId, lease/version và kiểm tra evidence vẫn giữ nguyên; không có HTTP gọi `/v1/sessions/.../close` hoặc fallback sang ChatGPT web.
 
@@ -724,7 +724,7 @@ Hội thoại gửi JSON của prompt, attempts và context khi chấm; khi làm
 
 ### 16.3. Các phép đo AI đã có
 
-Ngày 02/10 có benchmark sinh hội thoại đúng prompt của chương trình: Gemini 2.5 Flash trung vị 1,747 giây qua 3 đầu vào A1/A2/B1; ChatGPT Web 21,472 giây; ShopAIKey Sonnet 28,987 giây. Đó là thời gian HTTP tới toàn bộ nội dung, **không gồm TTS, database hoặc thời gian tải giao diện**, không đủ để kết luận p95/SLA.
+Ngày 02/10 có benchmark sinh hội thoại đúng prompt của chương trình: Gemini 2.5 Flash trung vị 1,747 giây qua 3 đầu vào A1/A2/B1; ChatGPT Web 21,472 giây; một mô hình cloud khác (Sonnet) 28,987 giây. Đó là thời gian HTTP tới toàn bộ nội dung, **không gồm TTS, database hoặc thời gian tải giao diện**, không đủ để kết luận p95/SLA.
 
 Đo sinh bộ MCQ Listening là tác vụ khác: Web có 3/3 output qua schema, Sonnet có phản hồi rỗng và sai ngôn ngữ trong mẫu. Không dùng tốc độ hội thoại ngắn để hứa tốc độ MCQ dài. Các tài liệu benchmark là lịch sử trước tích hợp; phần mô tả “Conversation còn dùng Web để generation” trong benchmark cũ đã được thay bằng luồng hiện tại ở mục 8.
 
@@ -927,8 +927,8 @@ App public có GET `/actuator/health` qua controller trả tình trạng lõi. A
 | S3 | `DICTALAB_MEDIA_S3_ENABLED`, `DICTALAB_MEDIA_S3_BUCKET`, `DICTALAB_MEDIA_S3_REGION`, `DICTALAB_MEDIA_S3_PREFIX`, `DICTALAB_MEDIA_S3_SIGNED_URL_DURATION`; credential qua AWS credential chain |
 | Capacity/quan sát | `DB_POOL_SIZE`, `DB_POOL_WAIT_MS`, `HTTP_THREADS`, `MANAGEMENT_PORT`, `TRACE_EXPORT_ENABLED`, `TRACE_ENDPOINT`, `TRACE_SAMPLE_RATE`, `DICTALAB_LOG_FILE` |
 | SMTP | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_AUTH`, `SMTP_STARTTLS`, `DICTALAB_MAIL_FROM` |
-| ShopAIKey | `SHOPAIKEY_API_KEY`, `SHOPAIKEY_MODEL`, `SHOPAIKEY_URL` |
-| Coach qua ShopAIKey | `DICTALAB_COACH_ENABLED`; dùng chung `SHOPAIKEY_API_KEY`, `SHOPAIKEY_MODEL`, `SHOPAIKEY_URL` |
+| Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_URL` |
+| Coach qua Gemini | `DICTALAB_COACH_ENABLED`; dùng chung `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_URL` |
 | Conversation | `DICTALAB_CONVERSATION_ENABLED`, `DICTALAB_CONVERSATION_MODEL` |
 | Cartesia | `CARTESIA_API_KEY`, `CARTESIA_VOICE`, `CARTESIA_MODEL`, `CARTESIA_VERSION` |
 | TURN | `DICTALAB_TURN_URL`, `DICTALAB_TURN_SECRET`, `DICTALAB_TURN_TTL_SECONDS` |
@@ -955,7 +955,7 @@ node --test src/test/js/*.cjs
 
 Backend chạy Windows service NSSM `DictaLab`; PostgreSQL service riêng. Caddy reverse proxy loopback 18082, public HTTPS 18443, HTTP18081 redirect308. Caddy cấu hình ACME Let's Encrypt shortlived; không khẳng định certificate đang còn hạn nếu chưa kiểm tra runtime.
 
-Mốc 02/10 khoảng 23:10 (UTC+7) chuyển Coach và chấm/làm rõ Conversation sang ShopAIKey; sinh câu và Listening đã dùng ShopAIKey, giọng vẫn Cartesia. Khóa/config provider đã được ghi nhận hoạt động; bridge HTTP3000/Chrome CDP9223 cũ chỉ có ý nghĩa lịch sử cho bản JAR cũ. Không suy ra task/profile cũ còn tồn tại hoặc đang chạy vào ngày 08/10.
+Mốc 02/10 khoảng 23:10 (UTC+7) chuyển Coach và chấm/làm rõ Conversation sang Gemini; sinh câu và Listening đã dùng Gemini, giọng vẫn Cartesia. Khóa/config provider đã được ghi nhận hoạt động; bridge HTTP3000/Chrome CDP9223 cũ chỉ có ý nghĩa lịch sử cho bản JAR cũ. Không suy ra task/profile cũ còn tồn tại hoặc đang chạy vào ngày 08/10.
 
 Mốc triển khai S3 ngày 04/10 trong `docs/s3-audio.md` ghi nhận JWT/Redis hoạt động, upload S3 thật, protection ADMIN/CSRF, Range/CORS và giải mã audio trong Chrome đạt. Health UP, dữ liệu thử được dọn. SHA-256 JAR production được ghi trong báo cáo này:
 
@@ -1052,7 +1052,7 @@ Tracing sampling mặc định 10%, export tắt; cấu hình OTLP queue/batch/t
 | Dictation | `service/PracticeService.java`, `domain/PracticeSession.java`, `domain/WordAttempt.java` |
 | Thuật toán | `TranscriptTokenizer`, `ScoringService`, `ListeningErrorClassifier`, `ListeningAssessmentService`, `RecommendationService` trong service |
 | Catalog/review/dashboard | `CatalogService`, `PreviewVocabularyService`, `HistoryService`, `DashboardService`, repositories |
-| Coach | `CoachService`, `CoachAnalysis`, `ShopAiKeyClient`, `static/js/coach.js` |
+| Coach | `CoachService`, `CoachAnalysis`, `GeminiClient`, `static/js/coach.js` |
 | Listening | `ListeningComprehensionService`, `ListeningComprehensionController`, `ListeningContentController`, `static/js/listening.js` |
 | Conversation | `ConversationService`, `ConversationController`, `ConversationProperties`, `CartesiaClient`, `static/js/conversation.js` |
 | Queue | `service/ListeningGradingQueue.java`, `service/AiBackgroundJobs.java`, `config/ListeningGradingRabbitConfig.java`, `config/AiRabbitConfig.java`, `config/AiQueueProperties.java` |
@@ -1077,7 +1077,7 @@ Tên file Java viết ngắn trong bảng nằm dưới `src/main/java/com/dicta
 
 ### 22.1. Công cụ phụ trong repository
 
-`tools/lesson-player/` là công cụ Python/Tkinter/PyAutoGUI cho phiên Windows tương tác đang mở website học bên ngoài DictaLab. Gửi ảnh màn hình tới model vision qua ShopAIKey để nhận diện nút phát/phát lại; có chế độ chỉ nhận diện, phím F8, FAILSAFE và kiểm tra cửa sổ/chuột trước click. Không bấm next hoặc tự thay tiến độ. Khóa không lấy tự động từ `.env` DictaLab; ảnh màn hình có thể chứa thông tin ngoài bài học. Có test không gọi provider/không click; README ghi chưa kiểm chứng website/API thật. Đây là tiện ích độc lập, không phải tính năng của người học trên web DictaLab và không là phụ thuộc production.
+`tools/lesson-player/` là công cụ Python/Tkinter/PyAutoGUI cho phiên Windows tương tác đang mở website học bên ngoài DictaLab. Gửi ảnh màn hình tới model vision qua Gemini để nhận diện nút phát/phát lại; có chế độ chỉ nhận diện, phím F8, FAILSAFE và kiểm tra cửa sổ/chuột trước click. Không bấm next hoặc tự thay tiến độ. Khóa không lấy tự động từ `.env` DictaLab; ảnh màn hình có thể chứa thông tin ngoài bài học. Có test không gọi provider/không click; README ghi chưa kiểm chứng website/API thật. Đây là tiện ích độc lập, không phải tính năng của người học trên web DictaLab và không là phụ thuộc production.
 
 ## 23. Prompt đề xuất khi tải file này lên ChatGPT
 

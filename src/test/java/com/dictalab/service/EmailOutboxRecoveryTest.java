@@ -29,7 +29,7 @@ import static org.mockito.Mockito.*;
 class EmailOutboxRecoveryTest {
     @Autowired JdbcTemplate db;
     @MockitoBean JavaMailSender mail;
-    @MockitoBean ShopAiKeyClient ai;
+    @MockitoBean GeminiClient ai;
     private String token;
     private String id;
 
