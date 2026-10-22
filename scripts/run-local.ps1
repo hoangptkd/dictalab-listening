@@ -13,7 +13,12 @@ Get-Content -LiteralPath $envPath | ForEach-Object {
     if ($line -and -not $line.StartsWith('#')) {
         $parts = $line.Split('=', 2)
         if ($parts.Count -eq 2) {
-            Set-Item -Path "Env:$($parts[0].Trim())" -Value $parts[1].Trim()
+            $value = $parts[1].Trim()
+            if ($value.Length -ge 2 -and (($value.StartsWith("'") -and $value.EndsWith("'")) -or
+                    ($value.StartsWith('"') -and $value.EndsWith('"')))) {
+                $value = $value.Substring(1, $value.Length - 2)
+            }
+            Set-Item -Path "Env:$($parts[0].Trim())" -Value $value
         }
     }
 }

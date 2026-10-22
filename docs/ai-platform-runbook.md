@@ -173,3 +173,119 @@ Do not multiply Ollama containers without measuring model memory. Kubernetes is 
 
 T13 (DSPy/LangGraph/LangChain/fine-tuning) remains future work as specified by the plan. Current workflows
 need neither framework orchestration nor an online optimizer. No production training or automatic prompt promotion runs.
+
+## Shared Gemini project quotas and offline batch
+
+### Configuration and capacity
+
+The opt-in pool serves Java `GeminiClient`, Python API/worker, `tools/ai-eval/gemini_batch.py` and the
+teacher collector. Keep `GEMINI_QUOTA_ENABLED=false` for the legacy single-key path; enabling the pool
+never falls back to that key. Supply one common `GEMINI_PROVIDERS_JSON` (camelCase array) to every process.
+Start from `docs/gemini-providers.example.json`, which contains disabled placeholders, not usable keys.
+Include all fields explicitly for identical Java/Python behavior. A/B/C variables remain Java-only legacy
+configuration; do not mix them with a different Python pool. JSON takes precedence in Java.
+
+Each enabled entry has a unique ID and a unique project/model pair. Use the same canonical project
+identifier everywhere (a project number is accepted); a renamed source/key must not create a new quota.
+Record the real model's RPM/TPM/RPD in AI Studio. `operatingRpm=13` for a 15-RPM project starts three
+sources at 39 RPM; four at 52 require raising `GEMINI_GLOBAL_RPM_LIMIT` explicitly. `operatingRpm=0`
+means the configured RPM, not disabled. `tpmLimit=0`, `rpdLimit=0` and global limit 0 mean no local cap
+for that dimension; do not leave unknown free-tier TPM/RPD at zero when activating real accounts.
+
+With three independent 500-RPD projects, theoretical daily capacity is 1,500 requests, before other
+traffic, failures and safety margins. It is not 45 requests/minute for an entire day. AI Studio's
+28-day **Peak requests per day** is observed historical usage, not a quota setting or today's remainder.
+Limits/capacity can change: verify [official rate-limit guidance](https://ai.google.dev/gemini-api/docs/rate-limits)
+and the selected project/model, not the consumer Gemini Pro subscription. This runner uses normal
+chat completions, not Google's separate Batch API with its own quotas and billing.
+
+### Runtime secrets and Redis
+
+Keep actual keys/JSON in protected runtime configuration, never tracked examples, CLI arguments, logs,
+reports or metric labels. The existing ignored `.env` is suitable on this workstation with owner-only
+permissions. Compose reads it; host Python does not automatically import it. In PowerShell, import its
+values into the current process without displaying them:
+
+```powershell
+Get-Content -LiteralPath .env | ForEach-Object {
+  if ($_ -match '^([A-Z][A-Z0-9_]*)=(.*)$') {
+    $runtimeName = $matches[1]
+    $runtimeValue = $matches[2].Trim().Trim([char]34).Trim([char]39)
+    [Environment]::SetEnvironmentVariable($runtimeName, $runtimeValue, 'Process')
+  }
+}
+$env:GEMINI_QUOTA_REDIS_URL = 'redis://127.0.0.1:16379/0'
+```
+
+Store the JSON on one line in `.env` (single quotes around the complete JSON are supported by Compose).
+The import above is for simple single-line KEY=VALUE files only, not a general shell/dotenv parser.
+Do not print `docker compose config`, environment dumps or settings representations containing secrets;
+use `docker compose --profile ai --profile ai-worker config --quiet` to validate.
+
+Java uses the established `REDIS_URL` or `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`; Python uses
+`GEMINI_QUOTA_REDIS_URL`. They must reach **the same Redis database**. Compose defaults Python to
+`redis://redis:6379/0`; a host-side tool normally uses `redis://127.0.0.1:16379/0`. Do not place the host
+loopback URL in container settings. Protect remote Redis with private networking, ACLs and TLS (`rediss`)
+as appropriate. Redis stays loopback-bound in Compose, uses persistent AOF and `noeviction`.
+
+Quota v2 keys start with `{dictalab-gemini-quota}:v2:`. Java packages the exact Lua file shipped by Python;
+do not deploy mixed protocol versions. A single atomic reservation checks rolling 60-second RPM/TPM,
+Pacific-day RPD and global RPM/RPD. Token reservation is deliberately conservative (UTF-8 input/schema
+bytes plus output budget/overhead), not an invoice or exact tokenizer result; no token refund is applied.
+Traffic outside this coordinator is invisible. On first activation, reconcile prior usage or wait until
+the next Pacific reset. Use remaining-day budgets conservatively; never treat a fresh Redis DB as proof
+of unused provider quota. Back up/preserve counters and do not flush them on deployment/restart.
+
+Redis failure blocks admission; it never silently switches to memory. Memory mode is for single-process
+local tests only, and production Python rejects it. A 429 sets shared project/model cooldown (Retry-After
+or 60 seconds); five transport/5xx failures open a 30-second circuit. Other projects remain usable.
+An older success cannot clear a concurrent 429 cooldown. Requests are routed round-robin among matching,
+available sources. No adaptive weighting, automatic tier escalation or cross-model substitution runs.
+
+### Running and recovery
+
+Install the AI runtime and offline preparation dependencies, then use the bounded JSONL runner:
+
+```powershell
+python -m pip install -r services/ai-generation/requirements.lock -r training/requirements-prepare.lock
+python tools/ai-eval/gemini_batch.py --input data/batch/input.jsonl --ledger data/batch/checkpoints.sqlite3 --concurrency 3 --max-calls 100 --max-seconds 3600
+```
+
+See `tools/ai-eval/README.md` for the input schema, ledger and result format. Each job is one provider
+call, not one generated data item. A 24-item response still consumes one request; a conversation workflow
+generating then translating consumes two. Concurrent runs must reuse the same SQLite ledger on the same
+host to deduplicate IDs. SQLite on a network share is not supported; distributed batches need a shared
+transactional job store before scaling workers across hosts. Existing RabbitMQ application jobs retain
+their separate outbox, deadlines and bounded safe-retry policy.
+
+The offline runner retries admission only, within its deadline. DONE/FAILED/UNKNOWN are never replayed.
+After an ambiguous timeout/cancellation, inspect the provider and ledger; do not reset UNKNOWN to PENDING.
+Only an explicit, reconciled new attempt gets a new ID. Validate schema locally and review domain/semantic
+quality before importing results. The ledger/input may hold private content: restrict access, back up
+while preserving WAL consistency and define retention; this offline ledger has no automatic purge.
+
+The teacher collector preserves its frozen approved model, 19-call cap, no retry/repair and human-review
+gates. A Flash-Lite-only pool cannot serve a frozen Flash Preview teacher call. Changing source code/model
+requires a fresh reviewed collection plan; do not overwrite old evidence.
+
+### Monitoring, rollout and rollback
+
+Scrape one Python API `/metrics` with the existing service token. Its `dictalab_gemini_*` gauges/counters
+read shared Redis, including Java reservations/outcomes. `quota_available=0` means quota telemetry/admission
+is unavailable, not that Google has banned a key. RPD remaining is relative to configured caps, not live
+Google usage. Prometheus rules cover quota outage, less than 20% RPD and sustained 429 over 1% (at least
+20 admissions). Grafana adds RPM/TPM, RPD, cooldown and outcome panels. Existing application-job UNKNOWN
+alerts remain; standalone batch status is in its ledger/CLI summary, not the API job metrics.
+
+Deploy code with the flag off, then verify Redis and non-generating model readiness. Enable one source,
+then two at 26 RPM, then three at 39 RPM; observe real 429, latency and content quality for 24-72 hours.
+Only try 42/45 after evidence, never above the verified project quotas; use bounded synthetic input and
+an explicit run call cap. The included 10/20/39/45/60 load tests simulate admission, not live Google capacity.
+To add source N, append its complete JSON/secret entry, adjust global budgets, drain existing jobs and
+restart all consumers consistently. Keep approved model IDs and artifact gates unchanged.
+
+Rollback by lowering global/source limits or disabling only the new source; drain active work before
+changing job fingerprints. Stop admission if Redis state is uncertain. Preserve all counters and ledgers.
+Setting the pool flag off restores the legacy path, which bypasses the pool; stop batch writers first
+and do not leave pooled/legacy calls concurrently unaccounted. These instructions do not themselves
+deploy production or authorize live data generation.

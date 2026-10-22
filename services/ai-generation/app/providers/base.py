@@ -50,3 +50,10 @@ class ModelProvider(abc.ABC):
 
 class ProviderError(RuntimeError):
     """Raised by a provider for unrecoverable errors (non-timeout failures)."""
+
+
+class ProviderHttpError(ProviderError):
+    def __init__(self, status, retry_after=None):
+        super().__init__(f"gemini:http_error:{status}")
+        self.status = status
+        self.retry_after = retry_after

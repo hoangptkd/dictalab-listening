@@ -118,7 +118,7 @@ def main():
                     "DICTALAB_AI_RABBITMQ_URL": broker, "DICTALAB_AI_CONVERSATION_ENABLED": "false",
                     "DICTALAB_AI_PRODUCTION_MODE": str(production).lower(), "DICTALAB_AI_SERVICE_TOKEN": "smoke-only-token",
                     "DICTALAB_AI_GEMINI_API_KEY": "test-only-cloud", "DICTALAB_AI_GEMINI_MODEL": "test-cloud",
-                    "DICTALAB_AI_GEMINI_BASE_URL": f"http://127.0.0.1:{fake.server_port}",
+                    "DICTALAB_AI_GEMINI_BASE_URL": f"http://127.0.0.1:{fake.server_port}/v1",
                     "DICTALAB_AI_OLLAMA_URL": f"http://127.0.0.1:{fake.server_port}",
                     "DICTALAB_AI_CARTESIA_API_KEY": "test-only-tts", "DICTALAB_AI_CARTESIA_URL": f"http://127.0.0.1:{fake.server_port}/tts/bytes"})
                 with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as log:

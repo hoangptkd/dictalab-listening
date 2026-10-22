@@ -201,9 +201,9 @@ class GeminiClientTest {
     @Test
     void enabledProviderPoolRotatesBeforeSendingAndUsesProviderModelAndKey() {
         var properties = new GeminiProviderProperties(List.of(
-                new GeminiProviderProperties.Provider("a", "project-a", "key-a", "model-a",
+                new GeminiProviderProperties.Provider("a", "project-a", "key-a", "legacy-model",
                         "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions", 2, 0, 0, 2, true, 0),
-                new GeminiProviderProperties.Provider("b", "project-b", "key-b", "model-b",
+                new GeminiProviderProperties.Provider("b", "project-b", "key-b", "legacy-model",
                         "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions", 2, 0, 0, 2, true, 1)),
                 4, 0, true, "memory");
         var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
@@ -214,10 +214,10 @@ class GeminiClientTest {
                     io.micrometer.observation.ObservationRegistry.NOOP, 5, 30, properties, quota);
 
             pooled.completeJson("Instruction", "Context");
-            assertThat(received.get().path("model").asText()).isEqualTo("model-a");
+            assertThat(received.get().path("model").asText()).isEqualTo("legacy-model");
             assertThat(authorization.get()).isEqualTo("Bearer key-a");
             pooled.completeJson("Instruction", "Context");
-            assertThat(received.get().path("model").asText()).isEqualTo("model-b");
+            assertThat(received.get().path("model").asText()).isEqualTo("legacy-model");
             assertThat(authorization.get()).isEqualTo("Bearer key-b");
         }
     }
@@ -225,7 +225,7 @@ class GeminiClientTest {
     @Test
     void exhaustedProviderPoolRejectsBeforeSending() {
         var properties = new GeminiProviderProperties(List.of(
-                new GeminiProviderProperties.Provider("a", "project-a", "key-a", "model-a",
+                new GeminiProviderProperties.Provider("a", "project-a", "key-a", "legacy-model",
                         "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions", 1, 0, 0, 1, true, 0)),
                 1, 0, true, "memory");
         var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();

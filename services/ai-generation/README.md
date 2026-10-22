@@ -56,3 +56,21 @@ automatic shadow mechanism rejects a cloud primary. No automatic cloud fallback 
 Run `python tools/ai-eval/jobs_smoke.py` for Java/API/RabbitMQ/worker tests in both local and production modes,
 using fake Ollama/Gemini/Cartesia. It creates/removes a disposable Docker broker unless
 `AI_TEST_RABBITMQ_URL` identifies a disposable test broker. No paid model calls occur.
+
+## Shared Gemini project pool
+
+Enable `GEMINI_QUOTA_ENABLED=true` and supply `GEMINI_PROVIDERS_JSON` to use 1-N project/model
+sources. Java, Python API/worker and offline batch must point to the same Redis database and use the
+same limits. `memory` is test/local single-process only; production Python refuses it. Pool admission
+fails closed on Redis failure. No fallback to the legacy key occurs while the pool is enabled.
+
+The common JSON overrides Java's older A/B/C-only variables. All fields, including quota limits, are
+shown in `docs/gemini-providers.example.json`; entries are deliberately disabled and contain no real keys.
+The requested model is preserved: another source may serve it, but no model downgrade/escalation runs.
+Each source has rolling RPM/TPM, Pacific-day RPD, 429 cooldown and a five-failure/30-second circuit.
+An HTTP request is never replayed inside the gateway. Reporting failure after HTTP does not discard a
+successful result or label an already-sent call retry-safe.
+
+`/metrics` adds shared `dictalab_gemini_*` quota/status/outcome metrics. They include Java calls when
+the same project/model/Redis DB is used. Scrape one API instance to avoid double-counting shared counters.
+Read `docs/ai-platform-runbook.md` (Gemini pool section) before enabling this on real accounts.

@@ -21,6 +21,7 @@ from .prompt_versions import provider_calls, selected_artifact
 from .redaction import RedactingFilter, is_safe_log_value, redact
 from .workflow import run_workflow
 from .schemas import ConversationContext, ConversationTaskRequest, ConversationTaskResponse
+from .gemini_pool import quota_store, quota_metrics
 
 settings = Settings()
 
@@ -111,7 +112,8 @@ async def metrics(x_service_token: str | None = Header(default=None), authorizat
     if settings.jobs_enabled:
         from .jobs import JobStore
         job_metrics = JobStore(settings.jobs_database, settings.job_retention_seconds).metrics()
-    return PlainTextResponse(telemetry.render() + job_metrics, media_type="text/plain; version=0.0.4")
+    quota = await asyncio.to_thread(quota_metrics, settings)
+    return PlainTextResponse(telemetry.render() + job_metrics + quota, media_type="text/plain; version=0.0.4")
 
 
 def _authorized(token: str | None) -> bool:
@@ -152,12 +154,23 @@ async def ready() -> dict[str, str]:
         provider = settings.selected_provider
         async with httpx.AsyncClient(timeout=timeout) as client:
             if provider in CLOUD_PROVIDERS:
-                if not settings.active_cloud_api_key:
-                    raise ValueError("cloud key is missing")
-                response = await client.get(
-                    settings.active_cloud_models_url,
-                    headers={"Authorization": "Bearer " + settings.active_cloud_api_key},
-                )
+                if settings.gemini_quota_enabled:
+                    store = quota_store(settings)
+                    for source in settings.enabled_gemini_sources:
+                        await asyncio.to_thread(store.execute, source, 1, "status")
+                        url = source.url.removesuffix("/chat/completions") + "/models"
+                        check = await client.get(url, headers={"Authorization": "Bearer " + source.api_key})
+                        check.raise_for_status()
+                        if not any(cloud_model_id_matches(source.model, m.get("id") or "") for m in check.json().get("data", [])):
+                            raise ValueError("pool model missing")
+                    if not any(cloud_model_id_matches(settings.active_cloud_model, p.model) for p in settings.enabled_gemini_sources):
+                        raise ValueError("requested cloud model missing from pool")
+                    response = check
+                else:
+                    if not settings.active_cloud_api_key:
+                        raise ValueError("cloud key is missing")
+                    response = await client.get(settings.active_cloud_models_url,
+                        headers={"Authorization": "Bearer " + settings.active_cloud_api_key})
             else:
                 response = await client.get(settings.ollama_url.rstrip("/") + "/api/tags",
                     headers={"X-Service-Token": settings.ollama_service_token} if settings.ollama_service_token else {})
@@ -169,7 +182,7 @@ async def ready() -> dict[str, str]:
                     m.get("digest", "").removeprefix("sha256:") == settings.model_digest.removeprefix("sha256:"))
                     for m in response.json().get("models", [])):
                 raise ValueError("local model missing or digest drift")
-        elif not any(cloud_model_id_matches(settings.active_cloud_model, m.get("id") or "")
+        elif not settings.gemini_quota_enabled and not any(cloud_model_id_matches(settings.active_cloud_model, m.get("id") or "")
                      for m in response.json().get("data", [])):
             raise ValueError("cloud model missing")
         if settings.jobs_enabled:

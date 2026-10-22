@@ -1,7 +1,44 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
+from pydantic import BaseModel, ConfigDict, Field, AliasChoices, model_validator
+from pydantic.alias_generators import to_camel
+import re
+from urllib.parse import urlsplit
 
 CLOUD_PROVIDERS = ("gemini",)
+
+
+class GeminiSource(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid", hide_input_in_errors=True)
+    id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
+    project_id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,100}$")
+    api_key: str = Field(repr=False, min_length=1, max_length=512)
+    model: str = "gemini-3.5-flash-lite"
+    url: str = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    rpm_limit: int = Field(default=15, gt=0)
+    tpm_limit: int = Field(default=0, ge=0)
+    rpd_limit: int = Field(default=0, ge=0)
+    operating_rpm: int = Field(default=13, ge=0)
+    enabled: bool = False
+    priority: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def valid_source(self):
+        self.model = self.model.removeprefix("models/")
+        uri = urlsplit(self.url)
+        if (not re.fullmatch(r"[a-zA-Z0-9_.-]{1,100}", self.model) or
+                any(ord(c) < 33 or ord(c) > 126 for c in self.api_key)):
+            raise ValueError("invalid Gemini model or key")
+        if (not uri.hostname or uri.username or uri.password or uri.query or uri.fragment or
+                not (uri.scheme == "https" or uri.scheme == "http" and uri.hostname in ("localhost", "127.0.0.1", "::1"))):
+            raise ValueError("Gemini provider URL requires TLS except loopback")
+        if self.operating_rpm > self.rpm_limit:
+            raise ValueError("operating RPM exceeds provider RPM")
+        return self
+
+    @property
+    def effective_rpm(self):
+        return self.operating_rpm or self.rpm_limit
 
 
 def cloud_model_id_matches(configured: str, reported: str) -> bool:
@@ -10,7 +47,7 @@ def cloud_model_id_matches(configured: str, reported: str) -> bool:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="DICTALAB_AI_")
+    model_config = SettingsConfigDict(env_prefix="DICTALAB_AI_", populate_by_name=True, hide_input_in_errors=True)
 
     model: str = "qwen3.5:9b"
     ollama_url: str = "http://127.0.0.1:11434"
@@ -31,8 +68,20 @@ class Settings(BaseSettings):
     primary_provider: str = "auto"
     conversation_enabled: bool = True
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
-    gemini_api_key: str = ""
+    gemini_api_key: str = Field(default="", repr=False)
     gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_providers: list[GeminiSource] = Field(default_factory=list, repr=False,
+        validation_alias=AliasChoices("GEMINI_PROVIDERS_JSON", "DICTALAB_AI_GEMINI_PROVIDERS"))
+    gemini_quota_enabled: bool = Field(default=False,
+        validation_alias=AliasChoices("GEMINI_QUOTA_ENABLED", "DICTALAB_AI_GEMINI_QUOTA_ENABLED"))
+    gemini_quota_backend: str = Field(default="redis",
+        validation_alias=AliasChoices("GEMINI_QUOTA_BACKEND", "DICTALAB_AI_GEMINI_QUOTA_BACKEND"))
+    gemini_global_rpm_limit: int = Field(default=39, ge=0,
+        validation_alias=AliasChoices("GEMINI_GLOBAL_RPM_LIMIT", "DICTALAB_AI_GEMINI_GLOBAL_RPM_LIMIT"))
+    gemini_global_rpd_limit: int = Field(default=0, ge=0,
+        validation_alias=AliasChoices("GEMINI_GLOBAL_RPD_LIMIT", "DICTALAB_AI_GEMINI_GLOBAL_RPD_LIMIT"))
+    gemini_quota_redis_url: str = Field(default="redis://127.0.0.1:16379/0", repr=False,
+        validation_alias=AliasChoices("GEMINI_QUOTA_REDIS_URL", "DICTALAB_AI_GEMINI_QUOTA_REDIS_URL"))
     jobs_enabled: bool = False
     jobs_database: str = "data/ai-jobs.sqlite3"
     rabbitmq_url: str = "amqp://guest:guest@127.0.0.1:5672/%2F"
@@ -53,13 +102,31 @@ class Settings(BaseSettings):
 
     def __init__(self, **values):
         super().__init__(**values)
+        if self.gemini_quota_backend not in ("redis", "memory"):
+            raise ValueError("invalid Gemini quota backend")
+        quota_uri = urlsplit(self.gemini_quota_redis_url)
+        if quota_uri.scheme not in ("redis", "rediss") or not quota_uri.hostname or quota_uri.fragment:
+            raise ValueError("invalid Gemini quota Redis URL")
+        ids, quotas = set(), set()
+        for source in self.gemini_providers:
+            if source.id in ids:
+                raise ValueError("duplicate Gemini provider ID")
+            ids.add(source.id)
+            key = (source.project_id, source.model)
+            if source.enabled and key in quotas:
+                raise ValueError("duplicate Gemini project/model quota")
+            if source.enabled:
+                quotas.add(key)
+        if self.gemini_quota_enabled and not self.enabled_gemini_sources:
+            raise ValueError("Gemini quota requires an enabled provider")
+        if self.production_mode and self.gemini_quota_enabled and self.gemini_quota_backend != "redis":
+            raise ValueError("production Gemini quota requires Redis")
         if self.primary_provider not in ("auto", "ollama", *CLOUD_PROVIDERS):
             raise ValueError("unsupported primary_provider")
         if not 60 <= self.job_retention_seconds <= 86400:
             raise ValueError("job retention must be between 60 and 86400 seconds")
         if not 1 <= self.http_max_connections <= 100:
             raise ValueError("invalid HTTP pool limit")
-        from urllib.parse import urlsplit
         for value, active in ((self.gemini_base_url, self.selected_provider == "gemini"),
                 (self.ollama_url, self.selected_provider == "ollama"),
                 (self.cartesia_url, bool(self.cartesia_api_key))):
@@ -91,6 +158,10 @@ class Settings(BaseSettings):
             )
         if self.cache_ttl_seconds <= 0 or self.cache_ttl_seconds > 86400:
             raise ValueError("cache_ttl_seconds must be between 1 and 86400")
+
+    @property
+    def enabled_gemini_sources(self):
+        return sorted((p for p in self.gemini_providers if p.enabled), key=lambda p: (p.priority, p.id))
 
     @property
     def selected_provider(self) -> str:

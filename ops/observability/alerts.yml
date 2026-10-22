@@ -52,6 +52,27 @@ groups:
           action: Check backup task, free disk and checksum manifest; run isolated restore drill before declaring recovery ready.
   - name: dictalab-ai-platform
     rules:
+      - alert: DictaLabGeminiQuotaUnavailable
+        expr: dictalab_gemini_quota_available{job="dictalab-ai"} == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: Shared Gemini quota admission is unavailable
+          action: Pause new admission and check Redis; preserve counters and pending jobs, never switch to memory in production.
+      - alert: DictaLabGeminiRpdLow
+        expr: dictalab_gemini_rpd_remaining_ratio{job="dictalab-ai"} < 0.2
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Gemini project has less than 20 percent daily quota remaining
+          action: Reduce batch rate or wait for Pacific midnight; verify the configured RPD against AI Studio.
+      - alert: DictaLabGeminiRateLimited
+        expr: (sum by (provider,model) (increase(dictalab_gemini_events_total{outcome="429"}[15m])) / clamp_min(sum by (provider,model) (increase(dictalab_gemini_events_total{outcome="allowed"}[15m])),1) > 0.01) and on (provider,model) (sum by (provider,model) (increase(dictalab_gemini_events_total{outcome="allowed"}[15m])) >= 20)
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Gemini 429 rate exceeds 1 percent
+          action: Lower operating RPM and inspect TPM and RPD; do not retry sent jobs or erase quota counters.
       - alert: DictaLabAiWorkerDown
         expr: dictalab_ai_worker_up{job="dictalab-ai"} == 0
         for: 30s

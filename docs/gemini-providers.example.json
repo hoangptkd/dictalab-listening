@@ -1,0 +1,5 @@
+[
+  {"id":"a","projectId":"replace-project-a","apiKey":"REPLACE_AT_RUNTIME","model":"gemini-3.5-flash-lite","url":"https://generativelanguage.googleapis.com/v1beta/openai/chat/completions","rpmLimit":15,"operatingRpm":13,"tpmLimit":0,"rpdLimit":0,"enabled":false,"priority":0},
+  {"id":"b","projectId":"replace-project-b","apiKey":"REPLACE_AT_RUNTIME","model":"gemini-3.5-flash-lite","url":"https://generativelanguage.googleapis.com/v1beta/openai/chat/completions","rpmLimit":15,"operatingRpm":13,"tpmLimit":0,"rpdLimit":0,"enabled":false,"priority":1},
+  {"id":"c","projectId":"replace-project-c","apiKey":"REPLACE_AT_RUNTIME","model":"gemini-3.5-flash-lite","url":"https://generativelanguage.googleapis.com/v1beta/openai/chat/completions","rpmLimit":15,"operatingRpm":13,"tpmLimit":0,"rpdLimit":0,"enabled":false,"priority":2}
+]

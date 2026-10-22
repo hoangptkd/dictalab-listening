@@ -1,5 +1,38 @@
 # AI evaluation gate
 
+## Bounded Gemini JSONL batch
+
+`gemini_batch.py` is a separate opt-in cloud generator, not the local benchmark runner below.
+Install `services/ai-generation/requirements.lock` plus `training/requirements-prepare.lock`, then
+configure the shared pool described in `docs/ai-platform-runbook.md`. The input has one object per line:
+
+```json
+{"id":"example-001","messages":[{"role":"user","content":"Return an object with ok=true."}],"schema":{"type":"object","required":["ok"],"properties":{"ok":{"type":"boolean"}},"additionalProperties":false}}
+```
+
+```powershell
+python tools/ai-eval/gemini_batch.py --input data/batch/input.jsonl --ledger data/batch/checkpoints.sqlite3 --concurrency 3 --max-calls 100 --max-seconds 3600
+```
+
+This command makes real calls only when run by the operator. It uses `DICTALAB_AI_GEMINI_MODEL`
+(default Flash-Lite), output budget and temperature from Python settings. `--max-calls` is a per-invocation
+HTTP-attempt cap, separate from shared RPM/RPD; `--max-seconds` stops new admission/waiting and bounds
+HTTP deadlines. Jobs are claimed transactionally in a private SQLite WAL ledger. At most five calls run
+concurrently. Use the same ledger/input to resume: DONE, FAILED and UNKNOWN are never sent again.
+Input/model/output-budget/temperature drift for an existing ID is rejected.
+
+Quota rejection before HTTP leaves PENDING and waits within the run deadline. Sent 429/5xx or invalid
+JSON/schema are FAILED, not retried; timeouts/transport ambiguity and abandoned RUNNING jobs older than
+605 seconds become UNKNOWN. Inline JSON Schema (Draft 2020-12) validates results locally; schema references
+are rejected. Domain/semantic/human review is still required before importing generated data.
+
+Results remain in `batch_jobs.result` as JSON (`task`, `model`, `provider`, `sourceId`). The command prints
+only status counts. Keep input/ledger under ignored `data/` with restricted access and a deliberate retention
+period; the offline ledger does not auto-delete results. Reconcile UNKNOWN against provider evidence before
+authorizing a new ID/ledger. Never mass-reset states or delete checkpoints to force a retry.
+
+## Existing local evaluation
+
 `run.py` replays redacted synthetic outputs against 15 inputs x seeds 17/43/97. It scores transport,
 schema, exact evidence substring, question/fact alignment (including answerability/atomicity), translation,
 role, continuity on turns 2-3 and turn-4 independence separately. Invalid/missing/timeout judge labels

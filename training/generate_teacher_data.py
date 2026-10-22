@@ -177,7 +177,20 @@ class Gemini:
                     key, value = line.split("=", 1)
                     settings[key.strip()] = value.strip().strip("\"'")
         self.key = os.environ.get("GEMINI_API_KEY") or settings.get("GEMINI_API_KEY")
-        if not self.key:
+        self.pool = None
+        env_value = lambda name, default=None: os.environ.get(name, settings.get(name, default))
+        if str(env_value("GEMINI_QUOTA_ENABLED", "false")).lower() == "true":
+            sys.path.insert(0, str(ROOT / "services" / "ai-generation"))
+            from app.config import Settings
+            from app.gemini_pool import quota_store
+            pool_settings = Settings(primary_provider="gemini", gemini_quota_enabled=True,
+                gemini_providers=json.loads(env_value("GEMINI_PROVIDERS_JSON", "[]")),
+                gemini_quota_backend=env_value("GEMINI_QUOTA_BACKEND", "redis"),
+                gemini_quota_redis_url=env_value("GEMINI_QUOTA_REDIS_URL", "redis://127.0.0.1:16379/0"),
+                gemini_global_rpm_limit=int(env_value("GEMINI_GLOBAL_RPM_LIMIT", "39")),
+                gemini_global_rpd_limit=int(env_value("GEMINI_GLOBAL_RPD_LIMIT", "0")))
+            self.pool = quota_store(pool_settings)
+        if not self.key and self.pool is None:
             raise DatasetError("GEMINI_API_KEY unavailable")
         self.opener = urllib.request.build_opener(NoRedirect)
 
@@ -198,7 +211,7 @@ class Gemini:
         used = [r for r in reservations if r["model"] == model]
         if model not in (TEACHER, JUDGE) or len(used) >= REQUEST_CAP:
             raise DatasetError("run request cap reached; quota/billing changes require a separate decision")
-        if used:
+        if used and not getattr(self, "pool", None):
             time.sleep(max(0, 13 - (time.time() - used[-1]["time"])))
         body = {"model": model, "stream": False, "reasoning_effort": "medium",
             "max_tokens": 32768 if name.startswith("teacher-") else 10000,
@@ -207,19 +220,28 @@ class Gemini:
                          {"role": "user", "content": json.dumps(data, ensure_ascii=False)}]}
         if _contains_secret(data):
             raise DatasetError("possible sensitive data in teacher/judge input")
+        source = None
+        request_key, request_url = self.key, "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        if getattr(self, "pool", None):
+            from app.gemini_pool import estimate_tokens, QuotaUnavailable
+            try:
+                source = self.pool.select(model, estimate_tokens(body["messages"], body["max_tokens"]))
+            except QuotaUnavailable as exc:
+                raise DatasetError(f"Gemini pool admission rejected; retry after {exc.retry_after}s; no request sent") from None
+            request_key, request_url = source.api_key, source.url
         write_json(request_path, body)
         append(self.output / "api-reservations.jsonl", {"model": model, "name": name,
-            "requestHash": digest(body), "time": time.time()})
-        request = urllib.request.Request("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            "requestHash": digest(body), "time": time.time(), "sourceId": source.id if source else "legacy"})
+        request = urllib.request.Request(request_url,
             data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-            headers={"Authorization": "Bearer " + self.key, "Content-Type": "application/json"})
+            headers={"Authorization": "Bearer " + request_key, "Content-Type": "application/json"})
         started = time.monotonic()
         try:
             with self.opener.open(request, timeout=240) as response:
                 raw = response.read(1_000_001)
             if len(raw) > 1_000_000:
                 raise DatasetError("response too large")
-            envelope = json.loads(raw.decode("utf-8").replace(self.key, "[redacted]"))
+            envelope = json.loads(raw.decode("utf-8").replace(request_key, "[redacted]"))
             write_json(self.output / f"{name}.envelope.json", envelope)
             choice = envelope["choices"][0]
             if choice["finish_reason"] != "stop":
@@ -237,9 +259,15 @@ class Gemini:
                 raise DatasetError("expected one strict JSON object")
             write_json(response_path, {"result": result, "responseHash": digest(result),
                 "requestHash": digest(body), "returnedModel": envelope.get("model"),
+                "sourceId": source.id if source else "legacy",
                 "usage": envelope.get("usage"), "seconds": round(time.monotonic()-started, 2)})
+            if source:
+                self.pool.report(source, "success")
             return result
         except urllib.error.HTTPError as exc:
+            if source:
+                from app.gemini_pool import retry_seconds
+                self.pool.report(source, "429" if exc.code == 429 else "failure", retry_seconds(exc.headers.get("Retry-After")))
             append(self.output / "api-errors.jsonl", {"name": name, "model": model, "httpStatus": exc.code})
             raise DatasetError(f"{model}: HTTP {exc.code}; stopped without retry or fallback") from None
 

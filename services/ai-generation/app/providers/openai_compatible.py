@@ -15,7 +15,7 @@ from typing import Any
 
 import httpx
 
-from ..providers.base import ModelProvider, ProviderError
+from ..providers.base import ModelProvider, ProviderError, ProviderHttpError
 
 logger = logging.getLogger("dictalab.ai_generation.providers.openai_compatible")
 
@@ -97,6 +97,8 @@ class OpenAiCompatibleProvider(ModelProvider):
             response = await self._client.post(
                 self._url, json=body, headers=headers, timeout=timeout
             )
+            if response.status_code == 429 or response.status_code >= 500:
+                raise ProviderHttpError(response.status_code, response.headers.get("Retry-After"))
             if response.status_code in (400, 401, 403, 422):
                 raise ProviderError(
                     f"{self._provider_name}:{purpose}:client_error:{response.status_code}"

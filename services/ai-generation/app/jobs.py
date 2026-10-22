@@ -70,6 +70,8 @@ def capability_metadata(payload, settings):
 
 def execution_fingerprint(payload, settings):
     return digest({"payload": payload.model_dump(), "metadata": capability_metadata(payload, settings),
+        "pool": [{k: v for k, v in p.model_dump().items() if k != "api_key"}
+                 for p in settings.enabled_gemini_sources] if settings.gemini_quota_enabled else [],
         "config": {name: getattr(settings, name) for name in ("num_ctx", "num_predict", "ollama_url", "gemini_base_url",
                     "gemini_model", "cartesia_url", "cartesia_voice", "cartesia_version")}})
 

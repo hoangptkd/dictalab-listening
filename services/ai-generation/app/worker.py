@@ -30,21 +30,24 @@ async def execute(event, settings):
             task = await asyncio.wait_for(tts.synthesize(event.payload, settings, client, deadline), remaining)
         else:
             module, output = (coach, coach.CoachOutput) if event.payload.kind == "coach" else (review, review.ReviewOutput)
-            raw, provider = await asyncio.wait_for(ModelGateway(settings, client).complete(
+            gateway = ModelGateway(settings, client)
+            raw, provider = await asyncio.wait_for(gateway.complete(
                 [{"role": "system", "content": module.INSTRUCTION},
                  {"role": "user", "content": event.payload.model_dump_json()}],
                 output.model_json_schema(), deadline, event.payload.kind, temperature=0), remaining)
             task = module.validate_output(raw, event.payload)
             metadata["provider"] = provider
+            metadata["model"] = gateway.last_model
     return {**metadata, "generationId": str(uuid.uuid4()), "requestId": str(event.requestId), "task": task}
 
 
 def retry_safe(error):
+    from .gemini_pool import QuotaUnavailable
     # Only connection establishment/pool admission failures prove that no request was sent.
     seen = set()
     while error and id(error) not in seen:
         seen.add(id(error))
-        if isinstance(error, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)):
+        if isinstance(error, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout, QuotaUnavailable)):
             return True
         error = error.__cause__
     return False

@@ -263,6 +263,7 @@ dictalab:
     model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
     url: ${GEMINI_URL:https://generativelanguage.googleapis.com/v1beta/openai/chat/completions}
     quota-enabled: ${GEMINI_QUOTA_ENABLED:false}
+    providers-json: ${GEMINI_PROVIDERS_JSON:}
     quota-backend: ${GEMINI_QUOTA_BACKEND:redis}
     global-rpm-limit: ${GEMINI_GLOBAL_RPM_LIMIT:39}
     global-rpd-limit: ${GEMINI_GLOBAL_RPD_LIMIT:0}

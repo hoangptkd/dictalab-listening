@@ -143,6 +143,40 @@ def test_teacher_and_judge_share_quota_but_use_separate_output_budgets(tmp_path,
         assert not (tmp_path / f"{name}.request.json").exists()
 
 
+def test_pool_keeps_approved_model_and_records_source_without_legacy_key(tmp_path):
+    client = object.__new__(Gemini)
+    client.output, client.key = tmp_path, None
+    calls, reports = [], []
+    source = SimpleNamespace(id="source-b", api_key="test-pool-key", url="https://example.test/chat")
+    def select(model, tokens):
+        assert model == TEACHER and tokens > 0
+        return source
+    client.pool = SimpleNamespace(select=select, report=lambda *args: reports.append(args))
+    def send(request, **kwargs):
+        calls.append(request)
+        assert request.get_header("Authorization") == "Bearer test-pool-key"
+        return BytesIO(json.dumps({"choices":[{"finish_reason":"stop", "message":{"content":'{"items":[]}'}}]}).encode())
+    client.opener = SimpleNamespace(open=send)
+    client.call(TEACHER, "author", {}, "teacher-pool")
+    assert len(calls) == 1 and reports == [(source, "success")]
+    assert json.loads(calls[0].data)["model"] == TEACHER
+    saved = json.loads((tmp_path / "teacher-pool.response.json").read_text())
+    assert saved["sourceId"] == "source-b"
+    assert "test-pool-key" not in "".join(p.read_text() for p in tmp_path.iterdir())
+
+
+def test_pool_admission_failure_writes_no_request_checkpoint(tmp_path):
+    from app.gemini_pool import QuotaUnavailable
+    client = object.__new__(Gemini)
+    client.output, client.key = tmp_path, None
+    def reject(*args):
+        raise QuotaUnavailable(60)
+    client.pool = SimpleNamespace(select=reject)
+    with pytest.raises(DatasetError, match="no request sent"):
+        client.call(TEACHER, "author", {}, "teacher-pool")
+    assert not list(tmp_path.iterdir())
+
+
 def test_malformed_unicode_target_is_preserved_and_never_repaired_or_retried(tmp_path):
     client = object.__new__(Gemini)
     client.output, client.key = tmp_path, "test-only"

@@ -1,308 +1,210 @@
-# Kế hoạch mở rộng Gemini API cho batch generation
+# Gemini multi-project batch: kế hoạch và bàn giao triển khai
 
-## 1. Bối cảnh đã xác nhận
+## 1. Phạm vi
 
-- Có 3 tài khoản Google khác nhau.
-- Mỗi tài khoản gắn với một Google Cloud project khác nhau.
-- API hiện dùng Gemini API free tier.
-- Tải chính là batch sinh dữ liệu.
-- Mục tiêu ban đầu là khai thác quota gần 45 requests/phút từ 3 project.
-- Thiết kế phải mở rộng được lên N project mà không đổi thuật toán routing.
+Ba tài khoản Google, mỗi tài khoản một project, dùng Gemini API free tier để sinh dữ liệu batch.
+Mở rộng lên N project bằng cấu hình, không sửa thuật toán. Mục tiêu danh nghĩa nếu mỗi project
+có 15 RPM là 45 RPM; khởi đầu an toàn ở 13 RPM/project, tổng 39 RPM.
 
-Google áp quota theo project, không theo API key. Ba project riêng có thể có quota độc lập; ba key trong cùng project không cộng quota. RPM, TPM và RPD phải được theo dõi riêng; RPD reset lúc 00:00 Pacific. Xem [Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits).
+Quota theo project/model, không theo số API key. RPM, input TPM và RPD là các giới hạn độc lập;
+RPD reset lúc 00:00 Pacific. Hạn mức thực tế phải xem trong AI Studio và có thể thay đổi.
+Nguồn: [Google rate limits](https://ai.google.dev/gemini-api/docs/rate-limits).
+Model ID hiện được Google công bố là
+[`gemini-3.5-flash-lite`](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite).
 
-## 2. Mục tiêu
+“Peak requests per day” trên biểu đồ là đỉnh sử dụng lịch sử, không phải cấu hình để tăng quota.
+Tổng RPD khả dụng phụ thuộc quota riêng từng project, traffic ngoài hệ thống và số request lỗi.
+Ví dụ ba project 500 RPD cho trần danh nghĩa 1.500 request/ngày, không phải 45 RPM suốt 24 giờ.
+Gemini Pro cho người dùng và API free tier không được coi là cùng một gói hạn mức.
 
-1. Gửi batch qua một quota coordinator dùng chung.
-2. Phân bổ request theo project còn quota.
-3. Không vượt RPM, TPM hoặc RPD của từng project.
-4. Giữ safety margin để tránh burst và counter lệch.
-5. Dùng model thấp cho phần lớn code và tác vụ đơn giản.
-6. Chỉ dùng model mạnh khi task thất bại hoặc cần reasoning dài.
-7. Không mất job khi worker restart hoặc provider trả lỗi không rõ.
-8. Thêm project mới chỉ bằng configuration và secret.
+Đã đối chiếu trực tiếp trong Chrome/AI Studio ngày 2026-10-22: cả ba project người dùng cung cấp
+đều là free tier, Flash-Lite có 15 RPM, 250K TPM và 500 RPD. Cấu hình runtime riêng trên máy chọn
+13 RPM/nguồn và global 39 RPM, 1.350 RPD để có margin. Khóa và mã tài khoản không lưu trong tài liệu
+Git. Việc cấu hình không phải bằng chứng batch thật đạt throughput đó hoặc đã deploy production.
 
-## 3. Capacity mục tiêu
+## 2. Thiết kế đã triển khai
 
-Giả sử mỗi project hiển thị 15 RPM:
+    JSONL batch / Java / Python API-worker / teacher collector
+                              |
+                              v
+           Redis quota v2: reserve atomic trước HTTP
+                              |
+                              v
+            round-robin các project còn quota, đúng model
+                  |           |           |
+                  A           B           C ... N
+                              |
+                              v
+             validate -> checkpoint -> kết quả / lỗi
 
-| Nguồn | Quota danh nghĩa | Giới hạn vận hành ban đầu |
-|---|---:|---:|
-| Project A | 15 RPM | 13–14 RPM |
-| Project B | 15 RPM | 13–14 RPM |
-| Project C | 15 RPM | 13–14 RPM |
-| Tổng | 45 RPM | 39–42 RPM |
+Không tự đổi model. Không chuyển sang key cũ khi pool đang bật. Không tự gửi lại request đã gửi
+nhưng không biết kết quả. Không thêm SDK hay orchestration framework không cần thiết.
 
-Không đặt hệ thống cố định ở đúng 45 RPM. Safety margin 10–15% giúp tránh burst, retry và quota counter cập nhật trễ. Chỉ tăng dần sau khi có số liệu thật.
+### Thành phần
 
-Công thức mở rộng:
+| Thành phần | Tệp chính | Trách nhiệm |
+|---|---|---|
+| Cấu hình Java | `GeminiProviderProperties.java`, `application.yml` | JSON 1-N nguồn, validation, che khóa |
+| Java client | `GeminiClient.java` | Giữ model yêu cầu, chọn nguồn trước HTTP |
+| Java quota | `GeminiQuotaCoordinator.java` | Redis / memory test, global admission atomic |
+| Lua dùng chung | `services/ai-generation/app/gemini_quota.lua` | Chính xác một protocol cho Java và Python |
+| Python gateway | `app/gemini_pool.py`, `app/model_gateway.py` | Quota, cooldown, lựa chọn nguồn |
+| Batch runner | `tools/ai-eval/gemini_batch.py` | JSONL, SQLite WAL, giới hạn lần gọi/thời gian |
+| Teacher | `training/generate_teacher_data.py` | Pool tùy chọn, giữ model/cap/kiểm duyệt cũ |
+| Vận hành | `compose.yaml`, `ops/observability/` | Redis bền vững, metrics, alert, Grafana |
 
-    global_operating_rpm = sum(provider.operating_rpm for enabled healthy providers)
+## 3. Cấu hình mở rộng
 
-## 4. Kiến trúc
+Nguồn chuẩn chung là `GEMINI_PROVIDERS_JSON`, một mảng camelCase. Mẫu không có khóa thật:
+[`gemini-providers.example.json`](gemini-providers.example.json).
+Khai báo đầy đủ các trường để Java/Python đọc giống nhau:
 
-    Batch producer
-        |
-        v
-    Job queue / database outbox
-        |
-        v
-    Quota coordinator (Redis)
-        |
-        v
-    Provider router
-        |------ Project A / API key A
-        |------ Project B / API key B
-        |------ Project C / API key C
-        |------ Project N / API key N
-        |
-        v
-    Gemini API
+- `id`: nhãn vận hành duy nhất.
+- `projectId`: mã project chuẩn dùng nhất quán; chấp nhận project number.
+- `apiKey`: runtime secret, không Git/log/metric/CLI argument.
+- `model`, `url`: model và endpoint HTTPS; HTTP chỉ được phép trên loopback khi test.
+- `rpmLimit`, `tpmLimit`, `rpdLimit`: hạn mức đã xác nhận trong AI Studio.
+- `operatingRpm`: mức vận hành, không cao hơn RPM; 0 nghĩa là dùng rpmLimit.
+- `enabled`, `priority`: bật nguồn và thứ tự ổn định trước round-robin.
 
-Spring Boot và Python AI service phải dùng cùng quota coordinator. Không đếm RPM riêng trong RAM ở từng process.
+Một project/model không được khai báo hai nguồn bật dù khác key. Không dùng hai cách viết khác
+nhau cho cùng project để tránh đếm hai lần. Các biến A/B/C cũ chỉ phục vụ Java; JSON ghi đè chúng
+và là cách dùng chung được khuyến nghị.
 
-## 5. Cấu hình provider
+Biến chung: `GEMINI_QUOTA_ENABLED`, `GEMINI_QUOTA_BACKEND`,
+`GEMINI_GLOBAL_RPM_LIMIT`, `GEMINI_GLOBAL_RPD_LIMIT`.
+Python dùng `GEMINI_QUOTA_REDIS_URL`; Java dùng cấu hình Redis hiện có.
+Cả hai phải trỏ cùng database. Flag mặc định tắt, không cần khóa để chạy test.
 
-Mỗi provider cần:
+Thêm project thứ tư: thêm một entry và secret, xác nhận model/quota, tăng global budget nếu muốn,
+drain job rồi khởi động lại tất cả consumer nhất quán. Không sửa router.
+TPM/RPD/global = 0 nghĩa là không chặn dimension đó, không phải “quota bằng 0”; điền quota thật
+trước khi bật free tier.
 
-    providerId
-    projectId
-    apiKey                 # chỉ runtime secret
-    model
-    rpmLimit
-    tpmLimit
-    rpdLimit
-    operatingRpm
-    enabled
-    priority
+## 4. Quy tắc quota
 
-Đặt trong environment hoặc Secret Manager. Không lưu API key trong PostgreSQL, file tracked, log, exception message hoặc metric label.
+1. Ước lượng bảo thủ: UTF-8 input/schema bytes + output budget + overhead.
+2. Reserve RPM/TPM/RPD project và RPM/RPD global trong một Lua operation.
+3. Chỉ gửi HTTP khi admission thành công.
+4. Request bị từ chối trước HTTP không tiêu request quota.
+5. Request đã gửi không được hoàn counter chỉ vì timeout, 429 hay 5xx.
 
-Tên biến gợi ý:
+RPM/TPM dùng cửa sổ trượt 60 giây. RPD dùng ngày Pacific, xử lý cả DST.
+Redis TIME làm đồng hồ chung. Keys có prefix `{dictalab-gemini-quota}:v2:`, identity theo project/model.
+Nếu Redis lỗi: dừng admission, giữ job chờ; không tự chuyển sang RAM.
+Memory backend chỉ dành cho local/test một process; không dùng để cộng quota nhiều worker.
 
-    GEMINI_PROVIDER_A_PROJECT_ID
-    GEMINI_PROVIDER_A_API_KEY
-    GEMINI_PROVIDER_A_MODEL
-    GEMINI_PROVIDER_A_RPM_LIMIT
-    GEMINI_PROVIDER_A_TPM_LIMIT
-    GEMINI_PROVIDER_A_RPD_LIMIT
+Hệ thống chỉ biết các call đi qua coordinator. Counter mới không phản ánh traffic trước khi bật
+pool hoặc call từ AI Studio/công cụ khác. Đối soát usage khi kích hoạt lần đầu, không xóa counter
+để “lấy lại” quota. Redis AOF/noeviction và backup vẫn cần được vận hành đúng.
 
-Provider mới chỉ cần thêm một nhóm biến tương tự.
+## 5. Routing và lỗi
 
-## 6. Quota coordinator bằng Redis
+Duyệt round-robin nguồn enabled, đúng model; bỏ qua quota cạn/cooldown/circuit-open.
+Priority chỉ sắp thứ tự ban đầu, không phải trọng số thích nghi.
 
-Redis đã có trong repository, nên tái sử dụng.
-
-Counter cần có:
-
-    gemini:{provider}:rpm:{model}
-    gemini:{provider}:tpm:{model}
-    gemini:{provider}:rpd:{model}
-    gemini:global:rpm
-    gemini:global:rpd
-
-Mỗi request:
-
-1. Ước lượng input tokens và output token budget.
-2. Atomically reserve RPM, TPM, RPD của provider.
-3. Reserve global RPM/RPD.
-4. Chỉ gửi HTTP sau khi reservation thành công.
-5. Ghi usage thực tế sau response để đo sai lệch.
-
-Request đã gửi không được hoàn quota chỉ vì response lỗi. Timeout sau khi đã gửi được đánh dấu UNKNOWN và không tự replay.
-
-Window:
-
-- RPM: sliding window hoặc token bucket 60 giây.
-- TPM: token bucket theo model.
-- RPD: counter theo ngày Pacific, không theo timezone máy chủ.
-- Global budget: thấp hơn tổng provider quota.
-
-Redis script phải cập nhật các counter atomically. Nếu Redis không sẵn sàng, batch phải dừng admission; không quay về counter cục bộ.
-
-## 7. Routing policy
-
-1. Bỏ qua provider disabled, circuit-open, cooldown hoặc hết RPD.
-2. Bỏ qua provider không đủ TPM cho request.
-3. Chọn provider có tỷ lệ quota đã dùng thấp nhất.
-4. Nếu bằng nhau, dùng round-robin.
-5. Giảm weight provider có latency hoặc 429 cao.
-6. Khi hồi phục, chạy recovery probe nhỏ trước khi mở lại đầy đủ.
-
-Không chuyển provider sau timeout không rõ kết quả nếu chưa có idempotency ở tầng batch. Chuyển provider chỉ dành cho request chưa được gửi hoặc lỗi admission trước HTTP.
-
-## 8. Retry và lỗi
-
-| Tình huống | Hành động |
+| Sự kiện | Xử lý |
 |---|---|
-| 429 có Retry-After | Cooldown provider, không retry ngay |
-| 429 không có Retry-After | Backoff 30–60 giây, giảm weight |
-| 5xx trước khi nhận body | Retry hữu hạn |
-| Timeout trước khi gửi | Chọn lại provider |
-| Timeout sau khi gửi | UNKNOWN, kiểm tra hoặc retry thủ công |
-| JSON/schema lỗi | Đóng attempt, không replay vô hạn |
-| RPD cạn | Hoãn batch hoặc dùng provider còn quota |
-| Redis lỗi | Dừng admission, giữ job pending |
+| Cạn RPM/TPM | Chờ capacity; thử nguồn khác chỉ trước HTTP |
+| Cạn RPD | Chờ reset Pacific hoặc nguồn khác còn quota |
+| 429 | Cooldown project/model theo Retry-After, mặc định 60 giây |
+| 5 lỗi transport/5xx | Circuit project/model 30 giây |
+| Success đến sau 429 | Không xóa cooldown của call 429 khác |
+| Redis lỗi trước HTTP | Admission unavailable, không fallback |
+| Redis lỗi sau HTTP | Giữ kết quả gốc; không biến thành lỗi retry-safe |
+| Timeout/transport không rõ | Checkpoint UNKNOWN, không replay tự động |
+| JSON/schema lỗi hoặc HTTP 429/5xx đã gửi | FAILED trong offline batch, không tự retry |
 
-Giữ circuit breaker trong src/main/java/com/dictalab/service/ProviderGuard.java, nhưng chuyển state từ Gemini chung sang từng provider.
+Không có tự đổi L1 sang L2/L3, adaptive latency weighting hay recovery probe riêng.
+Chỉ bổ sung các cơ chế đó khi có số liệu chứng minh cần; hiện cooldown/circuit hết hạn sẽ cho
+admission trở lại trong quota được cấu hình. Global concurrency guard hiện có vẫn được giữ.
 
-## 9. Phân tầng model cho code và batch
+## 6. Batch bền vững
 
-### L0 — Ollama local
+Input JSONL: `id`, `messages`, tùy chọn `schema`; schema inline Draft 2020-12, không ref bên ngoài.
+Model/output budget/temperature lấy từ runtime settings, không nhận khóa trong job.
 
-Dùng qwen3.5:9b hiện có cho autocomplete, giải thích code, refactor nhỏ, unit test đơn giản, fixture và tài liệu. L0 không tiêu Gemini quota.
+SQLite WAL lưu ID, hash input/config, trạng thái, owner, timestamp, kết quả và lý do lỗi.
+Claim bằng transaction để hai lượt chạy cùng ledger không cùng gọi một ID.
 
-### L1 — Gemini Flash-Lite
+- DONE: có JSON hợp lệ theo schema, kèm actual model/provider/sourceId.
+- PENDING: chưa gửi; có thể chờ admission trong deadline.
+- RUNNING: đã claim; nếu cũ hơn 605 giây khi resume thì chuyển UNKNOWN.
+- FAILED: lỗi đã đóng attempt, không tự gửi lại.
+- UNKNOWN: cần đối soát, tuyệt đối không tự reset để replay.
 
-Dùng gemini-3.5-flash-lite cho phần lớn batch:
+`--max-calls` giới hạn HTTP attempts mỗi lần chạy, không thay thế quota ngày.
+`--max-seconds` chặn admission/chờ mới và giới hạn deadline HTTP.
+Concurrency 1-5; tạo task theo chunk hữu hạn.
+Giữ input và ledger trong `data/` bị Git bỏ qua, giới hạn quyền và retention chủ động.
+Chỉ hỗ trợ ledger trên một host, không dùng SQLite trên network share.
 
-- JSON theo schema;
-- CRUD code;
-- test case thông thường;
-- mapping DTO;
-- migration nháp cần review;
-- dịch và chuẩn hóa dữ liệu;
-- tạo nội dung hàng loạt.
+Đây là batch ứng dụng trên chat-completions, không phải Google Batch API.
+Một request có thể sinh nhiều item, nhưng một workflow generation + translation có hai request.
+Validation schema không chứng minh nội dung đúng: giữ review ngữ nghĩa/human gate trước khi import.
 
-Giới hạn context và output token. Không gửi toàn bộ repository nếu chỉ cần vài file.
+Teacher collector dùng pool tùy chọn nhưng không thay model đã phê duyệt, không tăng cap 19 calls,
+không retry/repair, không bỏ calibration/human review. Plan cũ đã khóa hash mã nguồn phải được
+giữ nguyên; tạo plan mới nếu đổi mã hoặc model.
 
-### L2 — Flash mạnh hơn
+## 7. Model thấp để thực hiện code
 
-Chỉ dùng cho bug liên module, trace dài, query khó, integration test hoặc task L1 thất bại sau validation.
+Đây là hướng dẫn bàn giao cho coding agent, không phải tự động đổi model trong app:
 
-### L3 — Pro
+1. Giao mỗi lần một thay đổi nhỏ với file sở hữu, input/output và lệnh test rõ ràng.
+2. Cho model thấp đọc AGENTS.md, luồng liên quan và test hiện có trước khi sửa.
+3. Dùng Ollama local đang có cho giải thích, fixture, tài liệu và chỉnh sửa đơn giản nếu môi trường có.
+4. Dùng Flash-Lite cho phần việc giới hạn: cấu hình, mapping, test, JSON và batch nhỏ.
+5. Khi test không qua, trả lỗi thực tế cùng diff nhỏ cho agent sửa; không gửi toàn repository.
+6. Đưa concurrency, security, transaction hoặc release lên người review/model mạnh khi cần quyết định.
+7. Không để agent đổi quota, model teacher, billing hay trạng thái approval để làm test “xanh”.
 
-Chỉ dùng cho kiến trúc, migration nguy hiểm, review bảo mật, concurrency/transaction và quyết định release.
+Mẫu prompt bàn giao:
 
-Model ID phải được xác minh trong AI Studio trước khi cấu hình production.
+    Mục tiêu: <một thay đổi cụ thể>.
+    Chỉ sửa: <file/module>. Đọc callers và test liên quan trước.
+    Giữ API contract, validation, secrets, no-replay và artifact gates.
+    Tái sử dụng dependency có sẵn. Không đổi model hoặc chạy API thật.
+    Acceptance: <hành vi đúng + các ca lỗi>.
+    Chạy: <lệnh test>. Báo file thay đổi, kết quả, phần chưa kiểm tra.
 
-## 10. Batch pipeline
+Không cần triển khai tầng L0/L1/L2/L3 tự động chỉ để hỗ trợ quy trình code này.
 
-Batch producer không gọi Gemini trực tiếp. Mỗi job có:
+## 8. Kiểm thử và vận hành
 
-    jobId
-    idempotencyKey
-    payloadHash
-    taskType
-    requestedModelTier
-    estimatedInputTokens
-    maxOutputTokens
-    deadline
-    attempt
+Không dùng API thật trong test. Kiểm tra bao gồm admission đồng thời, quota global, RPD qua phút/
+midnight Pacific/DST, cooldown 429, circuit, Redis fail-closed, duplicate/checkpoint, schema,
+timeout không replay, source thứ tư và Java/Python cùng Redis protocol.
 
-Flow:
-
-1. Tạo job và ghi outbox.
-2. Worker claim job bằng lease.
-3. Quota coordinator reserve capacity.
-4. Router chọn provider.
-5. Gọi Gemini.
-6. Validate JSON, schema và content.
-7. Lưu result idempotently.
-8. Xóa payload nhạy cảm sau retention period.
-9. Ghi metadata provider/model/usage/latency.
-
-Batch nên chạy đều, không dồn 45 request vào đầu mỗi phút. Bắt đầu khoảng 39 request/phút rồi tăng dần.
-
-## 11. Vị trí tích hợp
-
-### Java
-
-- src/main/java/com/dictalab/service/GeminiClient.java: nhận provider pool thay vì một key/model/url.
-- src/main/java/com/dictalab/service/ProviderGuard.java: admission, circuit breaker và cooldown theo provider.
-- src/main/resources/application.yml: pool, global limit và feature flag.
-- AiBackgroundJobs và worker hiện có: nối job idempotency với quota reservation.
-
-### Python
-
-- services/ai-generation/app/model_gateway.py: routing provider.
-- services/ai-generation/app/providers/gemini.py: credential/model theo provider entry.
-- services/ai-generation/app/config.py: validate pool 1–N provider.
-- services/ai-generation/tests/: fake provider, routing và quota tests.
-
-### Hạ tầng
-
-- compose.yaml: Redis, provider config và runtime secret.
-- docs/ai-platform-runbook.md: quota, cooldown và rollback.
-- ops/observability/: dashboard/alert RPM, TPM, RPD, 429 và UNKNOWN.
-
-## 12. Metrics và cảnh báo
-
-Theo dõi theo provider/model:
-
-- requests theo outcome;
-- input/output tokens;
-- quota reserved và quota còn lại;
-- 429, 5xx, timeout;
-- circuit state;
-- p50/p95/p99 latency;
-- job pending, running, unknown, dead-letter;
-- chi phí ước tính nếu chuyển paid tier.
-
-Cảnh báo khi provider còn dưới 20% RPD, 429 vượt 1% trong 15 phút, có UNKNOWN mới, Redis không healthy, queue tăng liên tục hoặc p95 vượt SLA.
-
-## 13. Kiểm thử
-
-Không gọi API thật trong unit test.
-
-    python -m pytest -q services/ai-generation/tests
-    mvn -q "-Dtest=GeminiClientTest" test
-    python C:\Users\HP\.codex\skills\vietnamese-encoding-guard\scripts\check_encoding.py docs/gemini-multi-project-batch-plan.md
+    python -m pytest -q services/ai-generation/tests tools/ai-eval training/tests/test_generate_teacher_data.py
+    mvn -q "-Dtest=GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest" test
     git diff --check
 
-Bắt buộc kiểm thử:
+Redis integration dùng `TEST_GEMINI_REDIS_URL` trỏ Redis disposable loopback DB 15.
+Test xóa DB 15 đã chỉ định; tuyệt đối không trỏ vào Redis dữ liệu thật.
+CI cung cấp Redis service riêng và chạy thêm `GeminiQuotaRedisIntegrationTest`.
 
-1. Ba provider reserve quota đồng thời.
-2. Hai worker tranh cùng token bucket.
-3. Reset RPD theo Pacific time.
-4. Provider trả 429 và bị cooldown.
-5. Redis restart làm batch dừng admission.
-6. Duplicate job không tạo hai kết quả.
-7. Timeout sau HTTP request không tự replay.
-8. Synthetic load 10, 20, 39, 45 và 60 request/phút.
-9. Thêm provider thứ tư chỉ bằng config.
-10. L0/L1/L2/L3 chọn đúng theo task policy.
+Synthetic admission 10/20/39/45/60 attempts xác nhận 39 được nhận ở cấu hình 3 x 13.
+Đó không phải bằng chứng API Google thật ổn định ở 39 hay 45 RPM.
 
-## 14. Rollout
+Metrics shared quota xuất qua Python /metrics có token. Grafana: RPM/TPM, RPD, cooldown/outcomes.
+Alert: Redis quota unavailable, dưới 20% RPD, 429 trên 1%; UNKNOWN của application jobs giữ alert cũ.
+UNKNOWN của offline batch xem ở SQLite/CLI summary, không giả là metric của application job.
+Counter token là reservation bảo thủ, chưa có invoice reconciliation hay chi phí paid-tier tự động.
 
-### Phase 0 — Quan sát
+## 9. Rollout và Definition of Done
 
-Giữ một provider, chạy quota coordinator ở shadow mode, đo quota và token estimate.
+Phần triển khai: cấu hình 1-N nguồn; Java/Python/Lua chung; batch checkpoint; teacher adapter;
+Compose/secrets mẫu; test tự động; metrics/alert/dashboard; runbook và rollback.
 
-### Phase 1 — Hai provider
+Phần vận hành cần kiểm chứng riêng: hạn mức/account thực tế, key hoạt động, traffic ngoài pool,
+model readiness, canary 1 -> 2 -> 3 nguồn, rồi quan sát 24-72 giờ trước khi nâng từ 39 lên 42/45 RPM.
+Không coi test mô phỏng hoặc push branch là đã triển khai production.
 
-Bật A và B, giới hạn 26–28 RPM, chạy batch nội bộ, kiểm tra duplicate/retry.
+Rollback: hạ limit/tắt nguồn mới, drain calls đang chạy, giữ counters/ledger/UNKNOWN.
+Muốn tắt pool về legacy: dừng batch trước; không để traffic legacy ngoài coordinator chạy song song
+mà vẫn coi số đếm pool là tổng usage.
 
-### Phase 2 — Ba provider
-
-Bật A, B, C, giới hạn 39–42 RPM, theo dõi ít nhất 24–72 giờ.
-
-### Phase 3 — Tăng tải
-
-Tăng từng bước 3–5 RPM. Dừng nếu 429, timeout, queue wait hoặc quality vượt ngưỡng. Không cố 45 RPM nếu AI Studio không cấp đủ quota thực tế.
-
-### Phase 4 — N provider
-
-Thêm provider entry và secret, chạy health probe, bật weight nhỏ, rồi tăng weight sau khi ổn định.
-
-## 15. Rollback
-
-1. Tắt provider mới bằng feature flag.
-2. Hạ global RPM về mức provider cũ.
-3. Dừng admission job mới nếu Redis quota không tin cậy.
-4. Giữ job pending và UNKNOWN để kiểm tra.
-5. Không xóa counters, job ledger hoặc result.
-6. Không replay UNKNOWN tự động.
-
-## 16. Definition of Done
-
-- Ba project được khai báo bằng runtime secret, không có key trong Git.
-- Java và Python dùng cùng Redis quota coordinator.
-- RPM, TPM, RPD và global budget được reserve atomic.
-- Routing có cooldown, circuit breaker và idempotency.
-- Batch chạy ổn định ở 39–42 RPM trước khi thử 45 RPM.
-- Model thấp được dùng mặc định cho code và batch đơn giản.
-- Có test concurrency, timezone reset, 429, timeout và duplicate job.
-- Có dashboard/alert và runbook rollback.
-- Thêm provider thứ tư không cần sửa thuật toán routing.
+Hướng dẫn chạy từng lệnh, secret runtime, URL Redis host/container và recovery:
+[`ai-platform-runbook.md`](ai-platform-runbook.md), mục “Shared Gemini project quotas and offline batch”.
 

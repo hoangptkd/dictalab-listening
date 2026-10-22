@@ -148,13 +148,16 @@ public class GeminiClient {
                 // HttpRequest.timeout alone must not leave a slow response body occupying a permit.
                 response = pending.get(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
             } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException exception) {
-                permit.failure();
+                if (routingEnabled()) recordOutcome(selection, "failure", 0); else permit.failure();
                 throw new Failure(exception instanceof java.util.concurrent.TimeoutException
                         || exception.getCause() instanceof java.net.http.HttpTimeoutException ? "TIMEOUT" : "TRANSPORT",
                         "Không thể đọc phản hồi Gemini trong thời hạn.");
             } finally { pending.cancel(true); }
             if (response.statusCode() != 200) {
-                if(response.statusCode()==429 || response.statusCode()>=500)permit.failure();
+                if (routingEnabled() && (response.statusCode()==429 || response.statusCode()>=500)) {
+                    int delay = cooldownSeconds(response.headers().firstValue("Retry-After").orElse(null));
+                    recordOutcome(selection, response.statusCode()==429 ? "429" : "failure", delay);
+                } else if(response.statusCode()==429 || response.statusCode()>=500) permit.failure();
                 if(response.statusCode()==429){
                     int delay=ProviderGuard.retryAfterSeconds(response.headers().firstValue("Retry-After").orElse(null),java.time.Instant.now());
                     if(delay>0) throw new ProviderGuard.Unavailable("Gemini trả HTTP 429",delay);
@@ -188,6 +191,7 @@ public class GeminiClient {
             JsonNode result = json.reader().with(tools.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                     .readTree(content);
             if (!result.isObject()) throw new IllegalStateException("Gemini JSON object missing");
+            if (routingEnabled()) recordOutcome(selection, "success", 0);
             permit.success();
             return result;
         } catch (InterruptedException exception) {
@@ -200,23 +204,48 @@ public class GeminiClient {
     }
 
     private boolean routingEnabled() {
-        return providerProperties != null && providerProperties.quotaEnabled()
+        return !local && providerProperties != null && providerProperties.quotaEnabled()
                 && !providerProperties.enabledProviders().isEmpty() && quota != null;
     }
 
     private ProviderSelection selectProvider(String instruction, String input, String requestModel) {
-        if (!routingEnabled()) return new ProviderSelection(requestModel, url, key);
+        if (!routingEnabled()) return new ProviderSelection(null, requestModel, url, key);
         var providers = providerProperties.enabledProviders();
         int start = Math.floorMod(nextProvider.getAndIncrement(), providers.size());
-        int estimatedTokens = Math.max(1, (instruction.length() + input.length() + 3) / 4 + 2200);
+        // Byte-based upper bound is deliberately conservative for Vietnamese input.
+        int estimatedTokens = Math.addExact(Math.addExact(instruction.getBytes(java.nio.charset.StandardCharsets.UTF_8).length,
+                input.getBytes(java.nio.charset.StandardCharsets.UTF_8).length), 2300);
+        long retryMs = Long.MAX_VALUE;
         for (int offset = 0; offset < providers.size(); offset++) {
             var provider = providers.get((start + offset) % providers.size());
-            String selectedModel = requestModel.equals(model) ? provider.model() : requestModel;
-            if (quota.tryReserve(provider.id(), selectedModel, estimatedTokens))
-                return new ProviderSelection(selectedModel, provider.url(), provider.apiKey());
+            String selectedModel = requestModel.replaceFirst("^models/", "");
+            if (!provider.model().equals(selectedModel)) continue;
+            var admission = quota.reserve(provider.id(), selectedModel, estimatedTokens);
+            if (admission.allowed()) return new ProviderSelection(provider.id(), selectedModel, provider.url(), provider.apiKey());
+            retryMs = Math.min(retryMs, admission.retryAfterMs());
         }
-        throw new ProviderGuard.Unavailable("Gemini đã hết quota tạm thời.", 30, true);
+        int retry = retryMs == Long.MAX_VALUE ? 60 : (int)Math.min(86400, Math.max(1, (retryMs + 999) / 1000));
+        throw new ProviderGuard.Unavailable("Gemini đã hết quota tạm thời.", retry, true);
     }
 
-    private record ProviderSelection(String model, String url, String apiKey) {}
+    private void recordOutcome(ProviderSelection selection, String outcome, int delay) {
+        try { quota.outcome(selection.id(), selection.model(), outcome, delay); }
+        catch (RuntimeException unavailable) {
+            // Preserve the original result: a Redis outage after send is never retry-safe.
+            org.slf4j.LoggerFactory.getLogger(GeminiClient.class).warn("Gemini quota outcome persistence unavailable");
+        }
+    }
+
+    private static int cooldownSeconds(String header) {
+        try {
+            if (header != null && header.matches("[0-9]+")) return (int)Math.min(86400, Math.max(1, Long.parseLong(header)));
+            if (header != null) return (int)Math.min(86400, Math.max(1, Duration.between(java.time.Instant.now(),
+                    java.time.ZonedDateTime.parse(header, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant()).getSeconds()));
+        } catch (RuntimeException invalid) { /* Use bounded fallback. */ }
+        return 60;
+    }
+
+    private record ProviderSelection(String id, String model, String url, String apiKey) {
+        @Override public String toString() { return "ProviderSelection[id=" + id + ", model=" + model + "]"; }
+    }
 }

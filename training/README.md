@@ -345,6 +345,22 @@ generator source, model and batching. Quota and live capacity must be
 rechecked for a later collection run; do not relabel a health probe or failed
 provider request as a successful teacher candidate.
 
+### Optional shared project quota
+
+`generate_teacher_data.py` can use the same `GEMINI_QUOTA_ENABLED`, `GEMINI_PROVIDERS_JSON`,
+`GEMINI_QUOTA_BACKEND`, `GEMINI_QUOTA_REDIS_URL` and global limits as Java/Python. Install the AI service
+requirements as well as the existing preparation requirements in the collection environment. Configure
+sources for the **approved teacher/judge model**, not just the production Flash-Lite model. A missing
+matching model fails before HTTP; no silent substitution occurs. Use the common JSON, not Java-only A/B/C
+variables. See `docs/ai-platform-runbook.md` for runtime secrets and shared Redis setup.
+
+Pool mode replaces the legacy fixed 13-second spacing with shared admission. The frozen **19-call run cap**,
+cached-request integrity checks, no retry/repair rule and human-review gates remain unchanged. More accounts
+do not authorize more teacher calls or a model change. Quota rejection stops this collection script safely;
+rerun the same untouched run only after capacity returns. A request already written without a complete
+response is never automatically replayed. Existing run plans bind the generator source hash: do not edit or
+resume an old frozen plan after changing code; create/review a fresh plan using its established workflow.
+
 The first approved 3 Flash Preview collection passed judge calibration, then its
 24-task A1 teacher batch returned `finish_reason=stop` with malformed Unicode
 escapes in the target JSON. The batch was rejected with zero accepted targets;
