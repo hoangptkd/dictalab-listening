@@ -94,3 +94,19 @@ Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các b�
 - Chủ dự án yêu cầu làm phần nhỏ trước, sau đó tiếp tục trong chat này sau 40 phút.
   Lượt tiếp tục phải đọc file này, kiểm tra Git/tiến trình hiện tại rồi làm bước 2;
   không lặp lại các câu hỏi đã chốt hoặc tự coi bộ dữ liệu đã được tạo.
+
+## Tắt máy sau công việc hoặc khi không thể tiếp tục
+
+- Chủ dự án đã yêu cầu **buộc tắt máy, không hỏi lại** sau khi hoàn thành mục tiêu
+  thu thập/train/đánh giá, hoặc gặp lỗi khiến công việc dừng và không còn chạy tiếp.
+  Hết quota mà không thể tiếp tục cũng phải lưu checkpoint trước khi tắt.
+- Khoảng nghỉ 40 phút được yêu cầu, kết thúc lượt cập nhật cấu hình này, hoặc một
+  lỗi C1/C2 có thể bỏ qua không phải tín hiệu tắt máy. Giữ máy bật cho lượt tiếp tục.
+- Trước khi tắt: ghi checkpoint, kết quả/lỗi thật và báo cáo ngắn; flush các file
+  đang ghi. Lưu thay đổi code đúng phạm vi; lỗi mạng/Git không được làm mất kết quả local.
+- Khi đủ điều kiện, gọi `shutdown.exe /s /f /t 60` để Windows tự thực hiện buộc tắt,
+  có 60 giây ghi thông báo cuối. Không cần xin xác nhận thêm. Không tắt ở bước kiểm thử.
+- Khi triển khai runner dài, gắn xử lý kết thúc/lỗi và giám sát ngoài worker cho trường hợp
+  worker thoát bất thường; kiểm tra bằng mock thay vì thực sự shutdown trong test.
+  Chỉ cập nhật prompt không bảo đảm tắt máy nếu chính Codex hoặc Windows bị treo;
+  phải báo đúng mức đã triển khai cơ chế giám sát, không hứa watchdog đã có khi chưa tạo.
