@@ -65,8 +65,12 @@ Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các b�
    trước khi đưa lịch sử của bài vào lượt phụ thuộc. Mẫu pending không vào SFT.
 7. Đủ số lượng thì audit coverage, exact/near duplicate và holdout, xuất dataset
    cùng manifest/decisions có hash; không tự đánh dấu audit đạt khi chưa kiểm tra.
-8. Kiểm tra tokenizer/loss mask/độ dài token, môi trường, checkpoint, RAM và một
-   optimizer step thật. Sau đó train LoRA, chọn checkpoint chỉ bằng validation.
+8. Sau khi dataset đã được duyệt và đóng các ứng dụng nền, thử train LoRA thật.
+   Chủ dự án yêu cầu không dùng preflight tài nguyên làm điều kiện chặn, kể cả
+   RAM thấp hơn mức ước lượng. Cho phép lần thử có ủy quyền rõ ràng bỏ chặn RAM
+   ước lượng, giữ kiểm tra tính toàn vẹn dữ liệu/loss mask và ghi lỗi runtime/OOM
+   thực tế. Không tuyên bố train thành công nếu không có optimizer step/checkpoint.
+   Chọn checkpoint chỉ bằng validation.
 9. Đánh giá base và adapter trên test đã khóa; báo cáo hard pass, ngữ nghĩa, CEFR,
    nhóm lỗi và giới hạn. Không dùng test để sửa prompt/chọn checkpoint.
 10. Thử C1/C2 riêng nếu bộ chính đã hoàn tất; báo rõ phần không chạy được.
@@ -74,16 +78,19 @@ Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các b�
 ## Phần cứng và mốc tạm dừng
 
 - Máy hiện có khoảng 32 GB RAM, Radeon tích hợp, không có CUDA.
-- CPU LoRA float32 Qwen3.5-4B cần tối thiểu khoảng 23,7 GiB RAM trống theo admission
-  check hiện có; đây chỉ là ước lượng, vẫn phải đo smoke thật và không bỏ kiểm tra RAM.
+- CPU LoRA float32 Qwen3.5-4B có admission estimate khoảng 23,7 GiB RAM trống
+  trong runner hiện có. Cập nhật mới nhất: chủ dự án yêu cầu thử train thật dù
+  không đạt ước lượng; triển khai lựa chọn rõ ràng cho lần thử này, không tự coi
+  thiếu RAM ước lượng là lý do dừng trước khi nạp model. Có thể gặp OOM/runtime
+  failure; phải ghi kết quả thật, không bảo đảm thành công.
 - Đã đóng Riot Client/Crash Handler, Phone Link, Widgets và Widget Service đang chạy nền.
   Đo tại thời điểm đóng: RAM trống tăng từ 12,91 lên 13,37 GiB; chưa đủ để nạp checkpoint.
 - Cập nhật ủy quyền: đến bước train, chủ dự án xác nhận máy không có công việc quan trọng
   và cho phép buộc đóng mọi ứng dụng không phục vụ train, kể cả trình duyệt/bridge,
   Docker Desktop và các workload WSL. Lưu checkpoint và bằng chứng thu thập trước;
   giữ Docker/registry/quota khi vẫn đang sinh dữ liệu. Giữ Codex, tiến trình train
-  và các dịch vụ hệ thống cần thiết. Đo lại RAM và giữ nguyên admission check trước
-  khi nạp checkpoint; không coi việc đóng ứng dụng là bằng chứng train chắc chắn đủ RAM.
+  và các dịch vụ hệ thống cần thiết. Thử train dù không đạt admission estimate
+  theo ủy quyền mới nhất; không coi việc đóng ứng dụng là bằng chứng đủ RAM.
 - Chủ dự án yêu cầu làm phần nhỏ trước, sau đó tiếp tục trong chat này sau 40 phút.
   Lượt tiếp tục phải đọc file này, kiểm tra Git/tiến trình hiện tại rồi làm bước 2;
   không lặp lại các câu hỏi đã chốt hoặc tự coi bộ dữ liệu đã được tạo.
