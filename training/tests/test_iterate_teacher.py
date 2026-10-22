@@ -6,9 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 import httpx
+from jsonschema import ValidationError
 
 from training import iterate_teacher as run
-from training.semantic_rubric import CHECKS, VERSION_V3
+from training.semantic_rubric import CHECKS, VERSION_V3, judge_generalization_cases, rules_for
 
 
 def _items(per_level=(10, 10, 10)):
@@ -139,7 +140,8 @@ def test_gold_distribution_and_two_independent_calibration_runs(monkeypatch):
             "requestHash": run.gen.digest(["first", row["id"]]),
             "responseHash": run.gen.digest(["response", row["id"]]),
             "issues": [{"check": key, "sourceQuote": "fixture", "explanation": "violates rule",
-                        "severity": "critical" if key == "rolesCorrect" else "major"}
+                        "severity": "uncertain" if value is None else
+                            "critical" if key == "rolesCorrect" else "major"}
                        for key, value in checks.items() if value is not True]}
     first = {"runId": "first", "order": list(verdicts), "reviews": verdicts}
     second_reviews = copy.deepcopy(verdicts)
@@ -205,8 +207,63 @@ def test_judge_payload_never_contains_gold_labels_or_candidate_identity():
     assert "secret-case" not in str(payload["items"])
 
 
+def test_generalization_probes_are_separate_and_labels_never_reach_judge():
+    cases = judge_generalization_cases()
+    assert len(cases) == len({r["id"] for r in cases}) == 17
+    assert len({r["family"] for r in cases}) == 8
+    assert all(r["semanticProbeOnly"] for r in cases)
+    assert {r["expected"] for r in cases} == {"PASS", "FAIL", "REVIEW_REQUIRED"}
+    for row in cases:
+        assert not run._validation.validate_task(row["task"], level=row["context"]["difficulty"])
+        payload = run.judge_payload(row, "item-001", {"rubricVersion": VERSION_V3})
+        assert payload["items"] == [{"id": "item-001", "context": row["context"], "task": row["task"]}]
+        assert "expected" not in json.dumps(payload)
+        assert row["expected"] == "PASS" or row["expectedCheck"] in CHECKS
+    with pytest.raises(ValueError, match="36 unique"):
+        run.audit_gold(cases)
+
+
+@pytest.mark.parametrize("text,quote,valid", [
+    ('She said "wait here".\nUse C:\\Room.', '"wait here".\nUse C:\\Room', True),
+    ("Bạn hãy đợi ở đây nhé.", "đợi ở đây", True),
+    ("Only source values count.", "utteranceEn", False),
+    ("Only source values count.", '"}, {"', False),
+    ("Only source values count.", "an invented quotation", False),
+])
+def test_judge_citations_match_decoded_source_values(text, quote, valid):
+    manifest = {"judge": {"model": "chatgpt-web"}, "rubricVersion": VERSION_V3,
+                "rubricHash": "frozen"}
+    row = {"hardPass": True, "context": {}, "task": {"utteranceEn": text}}
+    review = {"reviewer": "AI:chatgpt-web", "rubricVersion": VERSION_V3,
+        "rubricHash": "frozen", "taskHash": run.gen.digest(row["task"]),
+        "contextHash": run.gen.digest(row["context"]),
+        "requestHash": run.gen.digest("request"), "responseHash": run.gen.digest("response"),
+        "checks": {**dict.fromkeys(CHECKS, True), "translationFaithful": None},
+        "issues": [{"check": "translationFaithful", "sourceQuote": quote,
+                    "explanation": "Two material readings remain unresolved.", "severity": "uncertain"}]}
+    assert run._review_integrity(row, review, manifest) is valid
+
+
+@pytest.mark.parametrize("value,severity,valid", [
+    (None, "uncertain", True), (None, "minor", False), (None, "critical", False),
+    (False, "uncertain", False), (False, "minor", True), (False, "major", True),
+])
+def test_judge_uncertainty_and_severity_cannot_contradict(value, severity, valid):
+    manifest = {"judge": {"model": "chatgpt-web"}, "rubricVersion": VERSION_V3,
+                "rubricHash": "frozen"}
+    row = {"hardPass": True, "context": {}, "task": {"utteranceEn": "source text"}}
+    review = {"reviewer": "AI:chatgpt-web", "rubricVersion": VERSION_V3,
+        "rubricHash": "frozen", "taskHash": run.gen.digest(row["task"]),
+        "contextHash": run.gen.digest(row["context"]),
+        "requestHash": run.gen.digest("request"), "responseHash": run.gen.digest("response"),
+        "checks": {**dict.fromkeys(CHECKS, True), "translationFaithful": value},
+        "issues": [{"check": "translationFaithful", "sourceQuote": "source text",
+                    "explanation": "Evidence and consequence.", "severity": severity}]}
+    assert run._review_integrity(row, review, manifest) is valid
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fault", [None, "invalid-json", "schema", "quote", "timeout", "http-error", "unfinished"])
+@pytest.mark.parametrize("fault", [None, "invalid-json", "schema", "quote", "timeout", "http-error", "unfinished", "bad-envelope"])
 async def test_web_judge_uses_bridge_alias_and_rejects_bad_verdicts(tmp_path, monkeypatch, fault):
     folder = tmp_path / "calibration"
     folder.mkdir()
@@ -229,6 +286,10 @@ async def test_web_judge_uses_bridge_alias_and_rejects_bad_verdicts(tmp_path, mo
         calls.append(body)
         assert len(body["messages"]) == 1 and body["messages"][0]["role"] == "user"
         assert "OUTPUT_SCHEMA" in body["messages"][0]["content"]
+        assert body["messages"][0]["content"].startswith(run.JUDGE_SYSTEM)
+        audit = json.loads(body["messages"][0]["content"].split("\nAUDIT_INPUT:\n", 1)[1])
+        assert audit["rubric"] == rules_for(VERSION_V3)
+        assert rules_for(VERSION_V3).strip() not in run.JUDGE_SYSTEM
         assert '"expected"' not in body["messages"][0]["content"]
         assert body["model"] == "chatgpt-web" and body["stream"] is False
         assert "temperature" not in body and "max_tokens" not in body
@@ -236,6 +297,8 @@ async def test_web_judge_uses_bridge_alias_and_rejects_bad_verdicts(tmp_path, mo
             raise httpx.ReadTimeout("response lost", request=request)
         if fault == "http-error":
             return httpx.Response(503, json={"error": "unavailable"})
+        if fault == "bad-envelope":
+            return httpx.Response(200, text="<html>Unavailable</html>")
         content = "```json\n{}\n```" if fault == "invalid-json" else json.dumps({"items": [verdict]})
         return httpx.Response(200, json={"model": "some-web-alias", "choices": [
             {"finish_reason": "length" if fault == "unfinished" else "stop", "message": {"content": content}}]})
@@ -244,7 +307,9 @@ async def test_web_judge_uses_bridge_alias_and_rejects_bad_verdicts(tmp_path, mo
     monkeypatch.setattr(run.httpx, "AsyncClient", lambda **kwargs:
         original(transport=httpx.MockTransport(respond), **kwargs))
     if fault:
-        with pytest.raises(Exception):
+        error = {"timeout": httpx.ReadTimeout, "http-error": httpx.HTTPStatusError,
+                 "bad-envelope": json.JSONDecodeError}.get(fault, run.gen.DatasetError)
+        with pytest.raises(error):
             await run._judge_one(tmp_path, manifest, case, "item-001", "first-001", None)
         assert not (folder / "first-001.result.json").exists()
     else:
@@ -465,7 +530,8 @@ async def test_calibration_uses_72_distinct_first_pass_calls_and_caches(tmp_path
             "requestHash": request_hash,
             "responseHash": run.gen.digest([stem, "response"]), "checks": checks,
             "issues": [{"check": key, "sourceQuote": "fixture", "explanation": "violates rule",
-                        "severity": "critical" if key == "rolesCorrect" else "major"}
+                        "severity": "uncertain" if value is None else
+                            "critical" if key == "rolesCorrect" else "major"}
                        for key, value in checks.items() if value is not True]}
         run.gen.write_json(path / "calibration" / f"{stem}.result.json", review)
         return review
@@ -499,6 +565,33 @@ async def test_calibration_sent_request_without_result_never_replays(tmp_path, m
     result = await run.calibrate(campaign, settings)
     assert result["status"] == "INFRA_BLOCKED" and "no replay" in result["reason"]
     assert len(list((campaign / "calibration").glob("*.request.json"))) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [json.JSONDecodeError("invalid JSON", "x", 0),
+                                  ValidationError("invalid verdict schema")])
+async def test_calibration_invalid_verdict_is_judge_failure_not_transport_failure(tmp_path, monkeypatch, error):
+    monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(run._validation, "validate_task", lambda *a, **k: [])
+    gold_path = tmp_path / "gold.json"
+    run.gen.write_json(gold_path, _gold())
+    campaign = tmp_path / "campaign"
+    campaign.mkdir()
+    run.gen.write_json(campaign / "state.json", {"status": "JUDGE_BLOCKED"})
+    manifest = {"goldPath": str(gold_path), "rubricVersion": VERSION_V3,
+                "rubricHash": "frozen", "judge": {"model": "gemini-test"}}
+    monkeypatch.setattr(run, "load", lambda path: (manifest, run.gen.read_json(path / "state.json")))
+    monkeypatch.setattr(run, "quota_snapshot", lambda settings: {"gemini": {"availableCalls": 72}})
+    settings = SimpleNamespace(registry_pools={"gemini": {"default_model": "gemini-test"}})
+
+    async def invalid(path, contract, case, wire_id, stem, _settings):
+        run.gen.write_json(path / "calibration" / f"{stem}.envelope.json", {"response": "received"})
+        raise error
+
+    monkeypatch.setattr(run, "_judge_one", invalid)
+    result = await run.calibrate(campaign, settings)
+    assert result["status"] == "JUDGE_BLOCKED"
+    assert run.gen.read_json(campaign / "state.json")["calibrationFailed"] is True
 
 
 @pytest.mark.asyncio

@@ -163,6 +163,106 @@ def calibration_cases() -> list[dict]:
     return cases
 
 
+def judge_generalization_cases() -> list[dict]:
+    """Development contrasts for the audit method; never a replacement for frozen gold."""
+    cases = []
+
+    def task(name, text, translation, question, answer, answer_vi):
+        return {"id": name, "family": name, "semanticProbeOnly": True,
+            "expected": "PASS", "expectedSeverity": "none", "expectedCheck": None,
+            "context": {"difficulty": "B1", "turnNumber": 2, "partnerRole": "colleague",
+                        "learnerRole": "colleague", "history": [], "practiceFocus": ""},
+            "task": {"utteranceEn": text, "translationVi": translation, "questionVi": question,
+                "taskVi": "Nghe và trả lời câu hỏi.", "skill": "Nắm thông tin cụ thể",
+                "slots": [{"kind": name, "askVi": question}],
+                "facts": [{"textEn": answer, "textVi": answer_vi,
+                           "evidenceEn": text, "taskType": "direct_detail"}]}}
+
+    def pair(good, check, mutate, *, severity="major"):
+        bad = copy.deepcopy(good)
+        good["id"] += "-valid"
+        bad.update(id=bad["id"] + "-invalid", expected="FAIL",
+                   expectedCheck=check, expectedSeverity=severity)
+        mutate(bad)
+        cases.extend([good, bad])
+
+    pair(task("request", "Please wait for me outside the library. I will bring the files.",
+        "Hãy đợi tôi bên ngoài thư viện. Tôi sẽ mang hồ sơ.",
+        "Hai người gặp nhau ở đâu?", "outside the library", "bên ngoài thư viện"),
+        "informationStatusCorrect", lambda r: (
+            r["task"].update(questionVi="Hai bên đã cùng xác nhận gặp nhau ở đâu?"),
+            r["task"]["slots"][0].update(askVi="Địa điểm hai bên đã cùng xác nhận")), severity="critical")
+    pair(task("offer", "I can reserve an aisle seat for you. Would that help?",
+        "Tôi có thể đặt trước một ghế cạnh lối đi cho bạn. Như thế có giúp được không?",
+        "Người nói có thể đặt loại ghế nào?", "an aisle seat", "một ghế cạnh lối đi"),
+        "informationStatusCorrect", lambda r: (
+            r["task"].update(questionVi="Người nói đã đặt xong loại ghế nào?"),
+            r["task"]["slots"][0].update(askVi="Loại ghế đã đặt xong")), severity="critical")
+    policy = task("policy", "Do I need to wear safety boots? I have a pair in my car.",
+        "Tôi có cần đi giày bảo hộ không? Tôi có một đôi trong xe.",
+        "Người nói hỏi có cần đi loại giày nào?", "safety boots", "giày bảo hộ")
+    pair(policy, "informationStatusCorrect", lambda r: (
+        r["task"].update(questionVi="Nội quy bắt buộc đi loại giày nào?"),
+        r["task"]["slots"][0].update(askVi="Giày bắt buộc theo nội quy")), severity="critical")
+    pair(task("supporting_detail", "Put the badge in the drawer near the printer. Mai will collect it.",
+        "Đặt thẻ vào ngăn kéo gần máy in. Mai sẽ đến lấy thẻ.",
+        "Cần đặt thẻ ở đâu?", "the drawer near the printer", "ngăn kéo gần máy in"),
+        "questionFactsAligned", lambda r: r["task"]["facts"][0].update(
+            textEn="the drawer near the printer; Mai will collect it",
+            textVi="ngăn kéo gần máy in; Mai sẽ đến lấy thẻ"))
+    ambiguous = task("lexical_sense", "I saw a bat yesterday. I wrote the word in my notebook.",
+        "Hôm qua tôi thấy một con dơi. Tôi đã viết từ đó vào sổ.",
+        "Người nói đã thấy gì?", "a bat", "một con dơi")
+    ambiguous.update(id="lexical_sense-unresolved", expected="REVIEW_REQUIRED",
+                     expectedCheck="translationFaithful")
+    resolved = copy.deepcopy(ambiguous)
+    resolved.update(id="lexical_sense-resolved", expected="PASS", expectedCheck=None)
+    resolved["task"].update(utteranceEn="I saw a bat hanging upside down in the cave.",
+                           translationVi="Tôi thấy một con dơi treo mình ngược trong hang.")
+    resolved["task"]["facts"][0]["evidenceEn"] = resolved["task"]["utteranceEn"]
+    wrong = copy.deepcopy(resolved)
+    wrong.update(id="lexical_sense-wrong", expected="FAIL", expectedCheck="translationFaithful",
+                 expectedSeverity="major")
+    wrong["task"].update(translationVi="Tôi thấy một cây gậy bóng chày treo ngược trong hang.")
+    wrong["task"]["facts"][0]["textVi"] = "một cây gậy bóng chày"
+    cases.extend([ambiguous, resolved, wrong])
+    pair(task("reference", "There are buses at nine and ten. Choose the one you prefer.",
+        "Có chuyến xe buýt lúc chín giờ và mười giờ. Hãy chọn chuyến bạn thích hơn.",
+        "Có những chuyến xe lúc mấy giờ?", "nine and ten", "chín giờ và mười giờ"),
+        "translationFaithful", lambda r: r["task"].update(
+            translationVi="Có chuyến xe buýt lúc chín giờ và mười giờ. Hãy chọn món ăn bạn thích hơn."))
+    reset = task("encounter_scope", "For the museum visit, I will arrive at eight.",
+        "Với chuyến tham quan bảo tàng, tôi sẽ đến lúc tám giờ.",
+        "Người nói sẽ đến lúc mấy giờ?", "eight", "tám giờ")
+    reset["context"].update(turnNumber=4,
+        encounterState={"encounterRule": "new"},
+        history=[{"utteranceEn": "For dinner, I will arrive at seven.",
+                  "facts": [{"textVi": "Bảy giờ", "evidenceEn": "at seven"}]}])
+    pair(reset, "newMeanings", lambda r: (
+        r["context"].update(turnNumber=2, encounterState={"encounterRule": "same"}),
+        r["task"].update(utteranceEn="For dinner, I will arrive at seven.",
+                         translationVi="Với bữa tối, tôi sẽ đến lúc bảy giờ."),
+        r["task"]["facts"][0].update(textEn="seven", textVi="bảy giờ", evidenceEn="at seven")))
+    pair(task("equivalent_wording", "The parcel is beside the counter.",
+        "Kiện hàng ở bên quầy.", "Kiện hàng ở đâu?", "beside the counter", "bên quầy"),
+        "translationFaithful", lambda r: (
+            r["task"].update(translationVi="Kiện hàng ở bên trong quầy."),
+            r["task"]["facts"][0].update(textVi="bên trong quầy")))
+    # Shared neutral detail supplies the second slot and B1 length for the real judge adapter.
+    # These remain development probes, even though they meet the hard task contract.
+    for row in cases:
+        value = row["task"]
+        value["utteranceEn"] += (" Please call me on Monday afternoon for any further details. "
+                                 "I will be at my desk then and have all the necessary information ready.")
+        value["translationVi"] += (" Hãy gọi cho tôi vào chiều thứ Hai nếu cần thêm chi tiết. "
+                                   "Khi đó tôi sẽ ở bàn làm việc và đã chuẩn bị sẵn mọi thông tin cần thiết.")
+        value["questionVi"] += " Bạn có thể gọi lại khi nào?"
+        value["slots"].append({"kind": "callback_time", "askVi": "Thời điểm có thể gọi lại"})
+        value["facts"].append({"textEn": "Monday afternoon", "textVi": "chiều thứ Hai",
+                              "evidenceEn": "on Monday afternoon", "taskType": "direct_detail"})
+    return cases
+
+
 def boundary_cases_v3() -> list[dict]:
     """Six paired semantic boundaries, separate from the unchanged v2 calibration."""
     cases = []

@@ -167,11 +167,73 @@ chế độ headless gặp trang kiểm tra truy cập. Đã bật Think trong p
 Tổng cộng 20 phản hồi kiểm định thật; các cấu hình dùng cùng gold, không gửi nhãn
 expected cho judge. Các lượt dừng sớm nên không phải điểm trên đủ 36 hoặc 72 mẫu,
 và các tỷ lệ trên không phải phép so sánh chất lượng đầy đủ giữa cấu hình.
-Hướng dẫn v5 bị loại; giữ hướng dẫn v4 và bằng chứng riêng tại
+Ở lần thử này, hướng dẫn v5 bị loại; hướng dẫn v4 và bằng chứng riêng được giữ tại
 `data/fine-tuning/teacher-auto-web-20261023-v4` (ngoài Git).
 Trạng thái là **JUDGE_BLOCKED**: chưa có lượt nào qua kiểm định, chưa chạy 30 bài
 DeepSeek và chưa có kết luận đạt 28/30. Cần cải thiện hoặc thay cấu hình judge rồi
 kiểm định lại trên campaign mới; không bỏ gate chỉ để chạy benchmark.
+
+### Nguyên tắc chấm chung sau lần kiểm tra bridge
+
+Thay chuỗi vá theo từng câu bằng một quy trình dùng chung cho Web và Gemini:
+**xác định phạm vi → hiểu nguồn → xác định điều đang được hỏi → đối chiếu bằng chứng → kết luận**.
+Rubric v3, nhãn gold và ngưỡng nghiệm thu không đổi; rubric chỉ gửi một lần trong input.
+
+1. Xác định đúng người nói/nghe, sự kiện và encounter trước khi xét lỗi. Lịch sử của sự kiện cũ
+   không tạo ràng buộc cho sự kiện mới đã reset. Trong cùng encounter, đổi tên/số đơn thuần
+   vẫn không làm ý đã kiểm tra thành ý mới.
+2. Đọc câu hỏi như một câu hỏi nghe hiểu thông thường, có thể dùng lược ý và tham chiếu đã rõ.
+   Hỏi nội dung một lời đề nghị không tự khẳng định hai bên đã xác nhận. Chỉ bắt lỗi trạng thái
+   thông tin khi câu hỏi/đáp án/bản dịch thực sự nâng nội dung thành điều đã làm, bắt buộc,
+   chắc chắn hoặc đã được hai bên chốt mà nguồn không hỗ trợ. Thiếu lời đồng ý không tự tạo lỗi.
+3. Đối chiếu câu hỏi/slot với **đáp án bắt buộc**. Chi tiết phụ trong transcript không bắt buộc
+   có câu hỏi riêng. Bản dịch giữ nguyên nghĩa được chấp nhận dù có cách diễn đạt trôi chảy hơn.
+   Tôn trọng vai trò từng trường: `slots[*].kind` là tên định danh slot, còn `facts[*].taskType`
+   mới là phân loại nhiệm vụ. Không áp một hệ phân loại vào trường chỉ chứa định danh.
+4. Mọi lỗi cần chỉ rõ điều bị khẳng định, bằng chứng nguồn, quy tắc áp dụng và hậu quả cụ thể.
+   Judge phải cân nhắc cách hiểu được ngữ cảnh hỗ trợ trước khi báo lỗi; không thêm giả định
+   để cứu một lỗi thật hoặc dựng ra yêu cầu mới để làm bài đúng thành sai.
+5. `true`: đã kiểm tra và không còn vi phạm áp dụng được. `false`: có bằng chứng xác định
+   vi phạm, bao gồm khẳng định bắt buộc thiếu căn cứ. `null`: có thiếu hụt thông tin thực sự
+   hoặc các cách hiểu khác nhau về nghĩa quan trọng mà ngữ cảnh không phân giải được.
+   Với `null`, giải thích các cách hiểu và dữ kiện còn thiếu. Một nghĩa có trong từ điển
+   không đủ tạo mơ hồ khi ngữ cảnh đã rõ; bản dịch trôi chảy cũng không xóa mơ hồ thật.
+   Nếu một khẳng định có thể đúng theo một cách hiểu thực sự phù hợp nguồn, nhưng sai theo
+   cách hiểu khác mà ngữ cảnh chưa phân giải, chọn `null`. Chọn `false` khi không có cách hiểu
+   được ngữ cảnh hỗ trợ nào biện minh được cho khẳng định theo rubric; không tự thêm sự kiện.
+6. Kiểm tra từng tiêu chí độc lập. Không lấy một lỗi thay cho việc kiểm tra những phần còn lại.
+   Trích nguyên văn giá trị văn bản nguồn, nêu trường liên quan trong giải thích, đối chiếu
+   lại check/issue trước khi trả JSON. Lời khuyên viết hay hơn không phải bằng chứng vi phạm.
+
+Sửa mã chung đi kèm: trích dẫn được so với giá trị chuỗi đã decode (hỗ trợ dấu nháy,
+xuống dòng và backslash), không so với JSON đã escape hoặc chấp nhận tên field làm trích dẫn.
+Check `null` chỉ đi cùng severity `uncertain`; check `false` không được mang severity này.
+JSON/schema kết quả sai sau khi đã nhận envelope được ghi là lỗi đầu ra judge, phân biệt với
+lỗi mạng chưa biết kết quả. Không sửa đáp án hoặc gửi lại yêu cầu để che lỗi.
+
+`judge_generalization_cases()` cung cấp 17 bài development thuộc 8 nhóm đối chiếu mới:
+lời đề nghị, lời chào mời, hỏi chính sách, chi tiết phụ, nghĩa từ, tham chiếu,
+phạm vi encounter và diễn đạt tương đương. Chúng đạt hard contract nhưng được đánh dấu
+`semanticProbeOnly`, không thay thế gold 36 và không dùng cho benchmark/SFT.
+Nhãn kỳ vọng chỉ nằm trong fixture/báo cáo, không gửi cho judge.
+
+Lượt development đầu của quy trình mới (`teacher-auto-web-20261023-method-v1`) có
+17/17 phản hồi JSON/schema/trích dẫn hợp lệ; đúng nhãn quyết định 15/17, đúng cả check
+dự kiến 14/17. Hai quyết định sai là nhầm định danh slot với taskType và đổi mơ hồ thật
+thành FAIL. Chúng dẫn tới hai nguyên tắc phân biệt ở mục 3 và 5 ở trên, không thêm ngoại lệ
+theo từ vựng hoặc câu cụ thể. Mẫu lặp ý ban đầu đồng thời chứa một thay đổi tường minh,
+khiến có thêm lỗi taskType; fixture được sửa thành lặp nguyên thông tin để cô lập lỗi.
+Không đổi nhãn gold. Điểm development này thuộc bản hướng dẫn trước hai bổ sung cuối,
+không phải điểm kiểm định hay kết luận chất lượng của bản cuối.
+
+Kiểm định gold của bản cuối (`teacher-auto-web-20261023-method-v2`, manifest
+`67c3981c93b1c7040dbfcd7af17d9a61df1b72174b9884f3c543f61b2a87155c`) dừng
+ở mẫu 6: đúng 5/6 quyết định đã chấm. Mẫu 6 không còn bị báo lỗi xác nhận thỏa thuận,
+nhưng judge trả PASS trong khi nhãn là REVIEW_REQUIRED vì nguồn còn đa nghĩa.
+Do đó trạng thái vẫn JUDGE_BLOCKED; chưa hoàn thành hai lượt gold 36 bài và chưa chạy
+30 bài DeepSeek. Đây là giới hạn quan sát được của judge Web hiện tại sau khi đổi phương pháp,
+không phải bằng chứng rằng prompt đã đạt gate. Giữ nguyên bằng chứng và ngưỡng kiểm định;
+cần cải thiện năng lực xử lý bất định của judge trước khi dùng kết quả của nó để nghiệm thu.
 
 - Agent viết code/đổi candidate theo feedback giữa các thao tác. Không xây thêm hệ thống
   để Python tự viết và thực thi source code do model API trả về.

@@ -434,3 +434,14 @@ there is no additional 12-task pilot requirement. Acceptance still requires
 28/30 overall, at least 9/10 per level, all hard checks, no critical failure, and
 five complete chains. No retry, repair or automatic SFT export is enabled.
 See `docs/conversation-teacher-auto-iteration-plan.md` for checkpoints and limits.
+
+The shared Web/Gemini judge uses an evidence-based audit method: establish the
+encounter and roles, interpret the source, identify the tested claim, then apply
+the rubric. Equivalent wording and untested supporting detail are allowed;
+unsupported commitments and actual answer mismatches still fail. Material
+ambiguity is distinguished from a demonstrated error. Slot identifiers are not
+task-type classifications. The rubric is sent once, and issue quotations must
+match decoded source string values; `null` checks require uncertain severity.
+`semantic_rubric.judge_generalization_cases()` supplies 17 development contrasts
+in eight families, excluded from calibration gold, benchmark acceptance and SFT.
+Local tests verify the transport/contract; live judge calibration is still required.
