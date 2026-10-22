@@ -8,8 +8,14 @@
 - Gold riêng mới là `data/fine-tuning/teacher-gold-v3c.json` (36 bài, 18 nguồn).
   Bản v3b cũ được giữ để kiểm toán; một nhãn PASS sai đã được thay trước khi tạo v3c.
 - Registry hiện vẫn chọn `gemini-3.5-flash-lite`; model này không qua kiểm định v3b.
-  Chủ dự án đang cấu hình Gemini mạnh hơn. Chỉ tạo campaign mới và gọi model sau khi
-  registry thật sự có model đó. Không dùng campaign v1/v2/v3 đã gửi request để replay.
+  Có thể kiểm định Gemini mạnh hơn hoặc ChatGPT Web, nhưng mỗi lựa chọn phải có
+  provenance model và vượt cùng gold gate trước khi tạo campaign mới. Không dùng
+  campaign v1/v2/v3 đã gửi request để replay.
+- Kiểm tra trực tiếp VPS Windows `160.191.244.27` ngày 23/10: không còn
+  `C:\DictaLab\coach-bridge\index.js`, tác vụ `DictaLabCoachBridge` hay listener
+  loopback cổng 3000. Máy local cũng không chạy bridge. Báo cáo 02/10 chỉ chứng minh
+  bridge lịch sử đã sinh được bài; `chatgpt-web` là alias do bridge trả lại, không
+  xác nhận model thực tế. ChatGPT Web hiện **chưa đủ điều kiện làm judge**.
 - Trong một campaign hiện tại, runner thử các artifact prompt khác nhau với cùng schema,
   level profile và code sinh đã khóa. Thay code dựng context/luồng sinh cần mở campaign
   mới để giữ khả năng so sánh. Bản candidate không hiệu quả bị xóa khỏi `current/`;
@@ -25,7 +31,7 @@ Việc viết tài liệu này chưa khởi chạy thí nghiệm, xóa dữ li�
 | Luồng được nghiệm thu | **Teacher: một lời gọi sinh cả content và translation** |
 | Phạm vi CEFR | Conversation A1/A2/B1; chưa mở B2/C1/C2, chưa xử lý audio |
 | Model sinh | DeepSeek đã tích hợp, đọc cấu hình từ provider registry |
-| Model chấm | Gemini khác model sinh; chỉ dùng model gọi được trong registry và vượt kiểm định chấm |
+| Model chấm | Gemini hoặc ChatGPT Web khác model sinh; chỉ dùng nguồn đang hoạt động, xác minh được model thực tế và vượt cùng kiểm định chấm |
 | Mức đạt | **Ít nhất 28/30 bài mới**, mỗi mức ít nhất **9/10** |
 | Điều kiện bổ sung | Hard validation 100%, không critical, ít nhất 5/6 chuỗi đạt đầy đủ |
 | Quyền sửa | Prompt, few-shot, dựng context và luồng sinh/dịch khi có bằng chứng lỗi |
@@ -181,6 +187,17 @@ không bỏ lọt bất kỳ critical nào, cả bốn ca chưa chắc phải RE
 Không được bỏ/sửa ca khó, đổi nhãn, hoặc gọi đi gọi lại cho đến khi tình cờ vượt gate.
 Chỉ thử kiểm định lại sau thay đổi có căn cứ ở cấu hình/instructions judge, với phiên bản và log mới.
 Thay judge/rubric/gold sau khi tối ưu bắt đầu làm mất hiệu lực so sánh cũ và phải tái kiểm định.
+
+**Nếu thử ChatGPT Web:** trước hết khôi phục bridge trong môi trường thử nghiệm tách
+khỏi production, xác nhận `/health` và một phản hồi JSON bằng dữ liệu tổng hợp.
+Ghi model được chọn trên giao diện cùng metadata đáng tin cậy cho từng phản hồi;
+trường `model: chatgpt-web` của bridge chỉ là alias và không đáp ứng yêu cầu này.
+Nếu giao diện hoặc bridge tự đổi model mà không phát hiện được, dừng ở `JUDGE_BLOCKED`.
+Chỉ sau đó mới thêm adapter riêng cho campaign mới, giữ nguyên schema, hash,
+sent-index, chống replay, bảo vệ dữ liệu và hai lượt gold 36 bài. Không sửa manifest
+campaign đã gửi request, không gắn alias thành `AI:<model>` và không chạy bộ 30 bài
+khi bridge/provenance/gold gate chưa đạt. Runner hiện chỉ hỗ trợ Gemini judge;
+đoạn này là điều kiện triển khai, không phải tuyên bố Web đã được tích hợp.
 
 **Hợp đồng kết quả chấm:**
 
