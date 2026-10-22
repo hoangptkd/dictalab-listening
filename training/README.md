@@ -414,6 +414,17 @@ normally does not prove its JSON or training targets are valid.
 
 ## ChatGPT Web judge for teacher benchmarks
 
+For the new **reviewed training dataset collection**, follow
+[`conversation-reviewed-dataset-500-plan.md`](../docs/conversation-reviewed-dataset-500-plan.md).
+The owner authorized 500 fresh approved training tasks (A1/A2/B1/B2), plus
+100 validation and 100 test tasks, with per-item Web review and independent
+delegated Codex approval. That collection does not require the teacher 28/30
+benchmark or the judge gold gate. Its collection/B2 pipeline is pending;
+the benchmark commands below retain their historical acceptance rules.
+The shipped bridge patch now reuses one ChatGPT tab with a fresh conversation
+per independent review. Run `node scripts/test-chatgpt-web-tabs.cjs` for the
+offline tab lifecycle check; live review/restart verification is still pending.
+
 The iteration runner also accepts the existing local ChatGPT Web bridge. DeepSeek
 still generates the task; the bridge sends it to a fresh Web conversation; the
 runner validates and aggregates the verdict. This experiment accepts the

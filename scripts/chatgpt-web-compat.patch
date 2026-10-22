@@ -1,5 +1,5 @@
 diff --git a/index.js b/index.js
-index cbf7652..cba54ea 100644
+index cbf7652..b5ef7a6 100644
 --- a/index.js
 +++ b/index.js
 @@ -75,6 +75,16 @@ const CHROME_PATH =
@@ -19,12 +19,12 @@ index cbf7652..cba54ea 100644
  /* =========================================================
     INITIALISATION
  ========================================================= */
-@@ -117,6 +127,38 @@ let chromeProcess = null;
+@@ -117,6 +127,68 @@ let chromeProcess = null;
  let shuttingDown = false;
  
  const conversationPages = new Map();
 +const pageLastUsed = new Map();
-+const MAX_CONVERSATION_TABS = 4;
++const MAX_CONVERSATION_TABS = 1;
 +const TAB_IDLE_MS = 10 * 60 * 1000;
 +
 +async function closeConversationPage(id) {
@@ -46,6 +46,36 @@ index cbf7652..cba54ea 100644
 +  }
 +}
 +
++async function claimConversationPage(context, conversation) {
++  const target = conversation.url || CHATGPT_URL;
++  const pages = context.pages().filter(page => !page.isClosed());
++  // This is the bridge's dedicated Chrome profile. Recover orphaned ChatGPT tabs too.
++  const managed = pages.filter(page => {
++    if (page.url() === "about:blank" || [...conversationPages.values()].includes(page)) return true;
++    try { return new URL(page.url()).origin === new URL(CHATGPT_URL).origin; }
++    catch { return false; }
++  });
++  const cached = conversationPages.get(conversation.id);
++  let page = cached;
++  if (!page || page.isClosed()) {
++    page = managed.find(candidate => candidate.url() === target) || managed[0];
++  }
++  // Prompts are serialized by withQueue; never close a tab while its response is active.
++  for (const oldPage of managed) {
++    if (oldPage !== page) await oldPage.close();
++  }
++  conversationPages.clear();
++  pageLastUsed.clear();
++  if (!page) page = await context.newPage();
++  page.setDefaultTimeout(15000);
++  if (page.url() !== target || (!conversation.url && page !== cached)) {
++    await page.goto(target, { waitUntil: "domcontentloaded", timeout: 30000 });
++  }
++  conversationPages.set(conversation.id, page);
++  pageLastUsed.set(conversation.id, Date.now());
++  return page;
++}
++
 +// Run cleanup in the same queue as prompts, so an active response is never closed.
 +let tabCleanupPending = false;
 +const tabCleanupTimer = setInterval(() => {
@@ -58,7 +88,7 @@ index cbf7652..cba54ea 100644
  
  let queue = Promise.resolve();
  
-@@ -240,7 +282,7 @@ async function startChrome() {
+@@ -240,7 +312,7 @@ async function startChrome() {
    if (
      await isChromeRunning()
    ) {
@@ -67,7 +97,7 @@ index cbf7652..cba54ea 100644
  
      return;
    }
-@@ -259,17 +301,20 @@ async function startChrome() {
+@@ -259,17 +331,20 @@ async function startChrome() {
      );
    }
  
@@ -96,7 +126,7 @@ index cbf7652..cba54ea 100644
        {
          detached: false,
          stdio: [
-@@ -300,7 +345,7 @@ async function startChrome() {
+@@ -300,7 +375,7 @@ async function startChrome() {
    }
  
    console.log(
@@ -105,7 +135,7 @@ index cbf7652..cba54ea 100644
    );
  
    console.log(
-@@ -311,7 +356,7 @@ async function startChrome() {
+@@ -311,7 +386,7 @@ async function startChrome() {
  async function connectToChrome() {
    await startChrome();
  
@@ -114,7 +144,7 @@ index cbf7652..cba54ea 100644
      try {
        const contexts =
          browser.contexts();
-@@ -346,6 +391,16 @@ async function connectToChrome() {
+@@ -346,6 +421,16 @@ async function connectToChrome() {
      );
    }
  
@@ -131,24 +161,112 @@ index cbf7652..cba54ea 100644
    return contexts[0];
  }
  
-@@ -738,6 +793,8 @@ async function getConversationPage(
-   const context =
-     await connectToChrome();
+@@ -735,102 +820,8 @@ async function getConversationPage(
+     `[PAGE] ChatGPT ID: ${conversation.chatgpt_id || "null"}`
+   );
  
-+  await trimConversationPages(MAX_CONVERSATION_TABS, conversation.id);
-+  pageLastUsed.set(conversation.id, Date.now());
-   let page =
-     conversationPages.get(
-       conversation.id
-@@ -803,6 +860,7 @@ async function getConversationPage(
-     !page
-   ) {
+-  const context =
+-    await connectToChrome();
+-
+-  let page =
+-    conversationPages.get(
+-      conversation.id
+-    );
+-
+-  if (
+-    page &&
+-    !page.isClosed()
+-  ) {
+-
+-    return page;
+-  }
+-
+-  const pages =
+-    context.pages();
+-
+-  /*
+-   * Recherche par URL exacte.
+-   */
+-  if (
+-    conversation.url
+-  ) {
+-    page =
+-      pages.find(
+-        candidate =>
+-          candidate.url() ===
+-          conversation.url
+-      );
+-
+-    if (
+-      page
+-    ) {
+-    }
+-  }
+-
+-  /*
+-   * Recherche par ChatGPT ID.
+-   */
+-  if (
+-    !page &&
+-    conversation.chatgpt_id
+-  ) {
+-    page =
+-      pages.find(
+-        candidate =>
+-          candidate
+-            .url()
+-            .includes(
+-              `/c/${conversation.chatgpt_id}`
+-            )
+-      );
+-
+-    if (
+-      page
+-    ) {
+-    }
+-  }
+-
+-  /*
+-   * Dernier recours : ouvrir la conversation.
+-   */
+-  if (
+-    !page
+-  ) {
+-
+-    page =
+-      await context.newPage();
+-
+-    page.setDefaultTimeout(
+-      15000
+-    );
+-
+-    const targetUrl =
+-      conversation.url ||
+-      CHATGPT_URL;
+-
+-    await page.goto(
+-      targetUrl,
+-      {
+-        waitUntil:
+-          "domcontentloaded",
+-
+-        timeout:
+-          30000
+-      }
+-    );
+-
+-  }
+-
+-  conversationPages.set(
+-    conversation.id,
+-    page
+-  );
++  const context = await connectToChrome();
++  const page = await claimConversationPage(context, conversation);
  
-+    await trimConversationPages(MAX_CONVERSATION_TABS - 1, conversation.id);
-     page =
-       await context.newPage();
- 
-@@ -866,10 +924,7 @@ async function getPromptInput(
+   const currentUrl =
+     page.url();
+@@ -866,10 +857,7 @@ async function getPromptInput(
  ) {
  
    const selectors = [
@@ -160,7 +278,7 @@ index cbf7652..cba54ea 100644
    ];
  
    const deadline =
-@@ -891,7 +946,7 @@ async function getPromptInput(
+@@ -891,7 +879,7 @@ async function getPromptInput(
  
          if (
            await locator.count() >
@@ -169,7 +287,7 @@ index cbf7652..cba54ea 100644
          ) {
  
            return locator;
-@@ -914,10 +969,13 @@ async function getPromptInput(
+@@ -914,10 +902,13 @@ async function getPromptInput(
  async function getAssistantMessages(
    page
  ) {
@@ -184,7 +302,7 @@ index cbf7652..cba54ea 100644
  
    const count =
      await locator.count();
-@@ -1037,21 +1095,30 @@ async function submitPrompt(
+@@ -1037,21 +1028,30 @@ async function submitPrompt(
      );
    } catch {}
  
@@ -229,7 +347,7 @@ index cbf7652..cba54ea 100644
  
  }
  
-@@ -1131,7 +1198,7 @@ async function waitForResponse(
+@@ -1131,7 +1131,7 @@ async function waitForResponse(
            stableSince =
              Date.now();
  
@@ -238,7 +356,7 @@ index cbf7652..cba54ea 100644
              `[WAIT] Response: ${text.length} caractères`
            );
          }
-@@ -1218,7 +1285,7 @@ async function streamResponse(
+@@ -1218,7 +1218,7 @@ async function streamResponse(
          page
        );
  
@@ -247,7 +365,7 @@ index cbf7652..cba54ea 100644
        `[STREAM DEBUG] assistant=${snapshot.count} before=${snapshotBefore.count} last=${snapshot.last?.text?.length || 0}`
      );
  
-@@ -1277,7 +1344,7 @@ async function streamResponse(
+@@ -1277,7 +1277,7 @@ async function streamResponse(
            lastChangeAt =
              Date.now();
  
@@ -256,7 +374,7 @@ index cbf7652..cba54ea 100644
              `[STREAM] delta ${delta.length} caractères`
            );
  
-@@ -1299,7 +1366,7 @@ async function streamResponse(
+@@ -1299,7 +1299,7 @@ async function streamResponse(
          lastChangeAt =
            Date.now();
  
@@ -265,7 +383,7 @@ index cbf7652..cba54ea 100644
            `[STREAM] premier morceau ${current.length} caractères`
          );
  
-@@ -1312,7 +1379,7 @@ async function streamResponse(
+@@ -1312,7 +1312,7 @@ async function streamResponse(
         * Réécriture du DOM.
         */
        else {
@@ -274,7 +392,7 @@ index cbf7652..cba54ea 100644
            `[STREAM DEBUG] texte non-prefixe : ${accumulated.length} -> ${current.length}`
          );
  
-@@ -1357,7 +1424,7 @@ async function streamResponse(
+@@ -1357,7 +1357,7 @@ async function streamResponse(
            if (
              delta
            ) {
@@ -283,7 +401,7 @@ index cbf7652..cba54ea 100644
                `[STREAM] delta complémentaire ${delta.length} caractères`
              );
  
-@@ -1380,7 +1447,7 @@ async function streamResponse(
+@@ -1380,7 +1380,7 @@ async function streamResponse(
          page
        );
  
@@ -292,7 +410,7 @@ index cbf7652..cba54ea 100644
        `[STREAM DEBUG] generating=${generating}`
      );
  
-@@ -1681,8 +1748,24 @@ function buildPrompt(
+@@ -1681,8 +1681,24 @@ function buildPrompt(
  
  function resolveConversation(
    conversationId,
@@ -318,7 +436,7 @@ index cbf7652..cba54ea 100644
    if (
      conversationId
    ) {
-@@ -2024,6 +2107,18 @@ app.get(
+@@ -2024,6 +2040,18 @@ app.get(
     CHAT COMPLETIONS
  ========================================================= */
  
@@ -337,7 +455,7 @@ index cbf7652..cba54ea 100644
  app.post(
    "/v1/chat/completions",
    async (
-@@ -2047,6 +2142,8 @@ app.post(
+@@ -2047,6 +2075,8 @@ app.post(
  
        chatgpt_id,
  
@@ -346,7 +464,7 @@ index cbf7652..cba54ea 100644
        stream_options
      } =
        req.body || {};
-@@ -2088,7 +2185,8 @@ app.post(
+@@ -2088,7 +2118,8 @@ app.post(
        conversation =
          resolveConversation(
            conversation_id,
@@ -356,7 +474,7 @@ index cbf7652..cba54ea 100644
          );
  
        const {
-@@ -2530,7 +2628,7 @@ app.post(
+@@ -2530,7 +2561,7 @@ app.post(
  
            if (
              conversation.message_count ===
@@ -365,7 +483,7 @@ index cbf7652..cba54ea 100644
            ) {
              deleteConversationRecord(
                conversation.id
-@@ -2615,7 +2713,7 @@ app.post(
+@@ -2615,7 +2646,7 @@ app.post(
        if (
          conversation &&
          conversation.message_count ===
@@ -374,7 +492,7 @@ index cbf7652..cba54ea 100644
        ) {
          deleteConversationRecord(
            conversation.id
-@@ -3072,6 +3170,7 @@ async function shutdown(
+@@ -3072,6 +3103,7 @@ async function shutdown(
  
    shuttingDown =
      true;

@@ -1,5 +1,10 @@
 # Kế hoạch bàn giao: agent tự thử–sửa chất lượng teacher
 
+> Cập nhật yêu cầu 23/10/2026: chiến dịch **thu thập dữ liệu train mới** chuyển sang
+> [kế hoạch 500 bài đã duyệt](conversation-reviewed-dataset-500-plan.md), không còn yêu cầu
+> teacher đạt 28/30 hoặc chờ judge vượt gold gate. Kế hoạch và kết quả benchmark
+> dưới đây được giữ làm lịch sử; không dùng gate của chúng để chặn chiến dịch mới.
+
 ## Trạng thái triển khai ngày 23/10/2026
 
 - `training/iterate_teacher.py` đã có CLI `prepare`, `calibrate`, `evaluate`, `decide`,
