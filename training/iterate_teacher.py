@@ -25,7 +25,7 @@ from jsonschema import Draft202012Validator, ValidationError
 
 from training import generate_teacher_data as gen
 from training.benchmark_teacher import settings_from_registry
-from training.prepare_dataset import _validation, validator_hash
+from training.prepare_dataset import COLLECTION_POLICY, _validation, validate_training_task, validator_hash
 from training.semantic_rubric import CHECKS, VERSION_V3, decision, rules_for, severity as rubric_severity
 from app.config import cloud_model_id_matches
 from app.gemini_pool import QuotaUnavailable, quota_store
@@ -473,7 +473,7 @@ def judge_payload(case: dict, wire_id: str, manifest: dict) -> dict:
         "items": [{"id": wire_id, "context": case["context"], "task": case["task"]}]}
 
 
-def judge_schema(wire_id: str) -> dict:
+def judge_schema(wire_id: str, *, fact_count: int | None = None) -> dict:
     issue = {"type": "object", "properties": {
         "check": {"type": "string", "enum": list(CHECKS)},
         "sourceQuote": {"type": "string", "minLength": 4},
@@ -484,6 +484,15 @@ def judge_schema(wire_id: str) -> dict:
     properties = {"id": {"type": "string", "enum": [wire_id]},
         **{key: {"type": ["boolean", "null"]} for key in CHECKS},
         "issues": {"type": "array", "items": issue}}
+    if fact_count is not None:
+        audit = {"index": {"type": "integer", "minimum": 0, "maximum": fact_count - 1},
+                 "sourceQuote": {"type": "string", "minLength": 4},
+                 "claimSupported": {"type": ["boolean", "null"]},
+                 "translationSupported": {"type": ["boolean", "null"]},
+                 "basis": {"type": "string", "minLength": 1}}
+        properties["factAudit"] = {"type": "array", "minItems": fact_count, "maxItems": fact_count,
+            "items": {"type": "object", "properties": audit, "required": list(audit),
+                      "additionalProperties": False}}
     item = {"type": "object", "properties": properties, "required": list(properties),
             "additionalProperties": False}
     return {"type": "object", "properties": {"items": {"type": "array", "items": item,
@@ -532,10 +541,16 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
     if any(p.exists() for p in (request_path, envelope_path, result_path)) or \
             _sent_before(path, kind, folder.name, stem):
         raise gen.DatasetError(f"{stem}: sent/partial result exists; refusing replay")
-    schema = judge_schema(wire_id)
+    fact_count = len(case["task"]["facts"]) if manifest.get("requireFactAudit") else None
+    schema = judge_schema(wire_id, fact_count=fact_count)
     payload = judge_payload(case, wire_id, manifest)
     body = {"model": "chatgpt-web", "stream": False, "messages": [{"role": "user",
-        "content": JUDGE_SYSTEM + "\nOUTPUT_SCHEMA:\n" + json.dumps(schema, ensure_ascii=False) +
+        "content": JUDGE_SYSTEM + ("\nFor each factAudit entry give brief observable evidence, not hidden reasoning. "
+                   "Read source meaning before its translation. Distinguish a translation compatible with one "
+                   "reading from a reading established by context. Only consider context-plausible alternatives "
+                   "that change a tested answer or translation. Quote the English transcript exactly. "
+                   "Align claimSupported and translationSupported with the check verdicts.\n"
+                   if fact_count is not None else "") + "\nOUTPUT_SCHEMA:\n" + json.dumps(schema, ensure_ascii=False) +
                    "\nAUDIT_INPUT:\n" + json.dumps(payload, ensure_ascii=False)}]}
     if gen._contains_secret(body):
         raise gen.DatasetError("possible sensitive data in judge input")
@@ -564,6 +579,16 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
         "usage": envelope.get("usage")}
     if not _review_integrity(case, review, manifest):
         raise gen.DatasetError("judge verdict missing valid checks, issues or exact citations")
+    if fact_count is not None:
+        audit = verdict["factAudit"]
+        if ({item["index"] for item in audit} != set(range(fact_count)) or
+            any(item["sourceQuote"] not in case["task"]["utteranceEn"] for item in audit) or
+            review["checks"]["translationFaithful"] is True and
+                any(item["translationSupported"] is not True for item in audit) or
+            review["checks"]["reasoningGrounded"] is True and
+                any(item["claimSupported"] is not True for item in audit)):
+            raise gen.DatasetError("judge fact audit is incomplete, ungrounded or inconsistent")
+        review["factAudit"] = audit
     gen.write_json(result_path, review)
     return review
 
@@ -696,7 +721,8 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
         gen.write_json(envelope_path, envelope)
         captured["envelope"] = envelope
 
-    row = {**entry, "hardPass": False, "attempt": 1, "developmentOnly": True,
+    collection = manifest.get("policy") == artifact.get("collectionPolicy") == COLLECTION_POLICY
+    row = {**entry, "hardPass": False, "attempt": 1, "developmentOnly": not collection,
            "trainingReady": False, "decision": "FAIL"}
     try:
         async with httpx.AsyncClient(follow_redirects=False,
@@ -723,13 +749,12 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
         task, records = gen.build_records(item, context, group, artifact,
             f"{ident}.judge-result.json", teacher=manifest["teacher"]["model"],
             judge=manifest["judge"]["model"], request_reference=request_path.name)
-        errors = _validation.validate_task(task, level=entry["level"],
-                                           level_profile=context["levelProfile"])
+        errors = validate_training_task(task, entry["level"], artifact, context["levelProfile"])
         if errors:
             raise gen.DatasetError("production hard validation failed: " + ", ".join(map(str, errors))[:1000])
         for record in records:
             record["reviewVersion"] = manifest["rubricVersion"]
-            record["developmentOnly"] = True
+            record["developmentOnly"] = not collection
             record["teacherProvenance"].update(requestHash=gen.digest(captured["body"]),
                 batchResponseHash=gen.digest(strict), envelopeHash=gen.digest(envelope))
         row.update(hardPass=True, task=task, records=records, usage=envelope.get("usage"),

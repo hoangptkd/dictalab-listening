@@ -30,6 +30,7 @@ _spec.loader.exec_module(_validation)
 APPROVED = {"approved", "approve", "accepted", "accept", "pass"}
 REJECTED = {"rejected", "reject", "failed", "fail"}
 PENDING = {"", "pending", "needs_adjudication", "needs-adjudication", "uncertain", "review_required"}
+COLLECTION_POLICY = "reviewed-conversation-500-v1"
 PURPOSES = {"content", "translation"}
 SECRET_RE = re.compile(
     r"(?:bearer\s+\S+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|"
@@ -186,13 +187,28 @@ def _review(row: dict[str, Any], decisions: dict[str, dict[str, str]]) -> str:
     return decision
 
 
+def training_levels(artifact: dict[str, Any]) -> tuple[str, ...]:
+    levels = artifact.get("offlineTrainingLevels", ["A1", "A2", "B1"])
+    if levels != ["A1", "A2", "B1"] and not (
+            levels == ["A1", "A2", "B1", "B2"] and artifact.get("collectionPolicy") == COLLECTION_POLICY):
+        raise DatasetError("unsupported offline training level policy")
+    return tuple(levels)
+
+
+def validate_training_task(task: dict, level: str, artifact: dict, profile: dict | None) -> list[str]:
+    if level not in training_levels(artifact):
+        raise DatasetError("level is outside the offline training policy")
+    shadow = artifact["levelProfiles"][level] if level == "B2" else None
+    return _validation.validate_task(task, level=level, level_profile=profile, shadow_profile=shadow)
+
+
 def _contract(row: dict[str, Any], artifact: dict[str, Any]) -> None:
     if row.get("developmentOnly") is True:
         raise DatasetError("development calibration/benchmark records cannot enter SFT")
     purpose, _, target = _target(row)
     level = row.get("level")
-    if level not in ("A1", "A2", "B1") or type(row.get("turnNumber")) is not int or row["turnNumber"] not in (2, 3, 4):
-        raise DatasetError("P0 requires A1/A2/B1 and turn 2/3/4")
+    if level not in training_levels(artifact) or type(row.get("turnNumber")) is not int or row["turnNumber"] not in (2, 3, 4):
+        raise DatasetError("P0 requires supported training levels and turn 2/3/4")
     for field in ("scenario", "branchId", "source", "semanticReviewReference", "reviewVersion"):
         if not isinstance(row.get(field), str) or not row[field].strip():
             raise DatasetError(f"{field} is required")
@@ -248,7 +264,7 @@ def _contract(row: dict[str, Any], artifact: dict[str, Any]) -> None:
         raise DatasetError("context levelProfile differs from validation profile")
     if profile is not None and not isinstance(profile, dict):
         raise DatasetError("levelProfile must be an object")
-    errors = _validation.validate_task(merged, level=level, level_profile=profile)
+    errors = validate_training_task(merged, level, artifact, profile)
     if errors:
         raise DatasetError("production validator: " + ", ".join(errors))
 
@@ -400,6 +416,7 @@ def prepare(source_paths: list[Path], decisions_path: Path, output_dir: Path, *,
         "splitPolicy": {"seed": seed, "validationPercent": validation_percent,
                         "testPercent": test_percent, "by": "groupId", "forcedTestGroups": sorted(forced)},
         "contract": {"artifactVersion": artifact["version"], "artifactHash": artifact["sha256"],
+                     "trainingLevels": list(training_levels(artifact)),
                      "validatorHash": validator_hash(),
                      "promptHashes": sorted({r["promptHash"] for r in unique}),
                      "schemaHashes": sorted({r["schemaHash"] for r in unique})},

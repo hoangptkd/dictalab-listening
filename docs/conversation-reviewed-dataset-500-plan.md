@@ -49,7 +49,7 @@ Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các b�
 
 1. **Đã làm:** kiểm tra nguồn code, phần cứng, các điểm chặn B2 và vòng đời tab.
    Sửa bản vá bridge và checkout local để dùng một tab, thêm kiểm tra mock.
-2. **Tiếp theo:** tạo chiến dịch thu thập riêng, khóa model/prompt/rubric/schema,
+2. **Đã triển khai runner, chờ kết quả live:** tạo chiến dịch thu thập riêng, khóa model/prompt/rubric/schema,
    ngân sách và các ô số lượng; giữ nguyên chiến dịch benchmark lịch sử.
 3. Mở hỗ trợ B2 trong artifact thu thập, chuẩn bị dataset và trainer. Tận dụng
    profile/schema shadow hiện có nhưng giữ phạm vi offline, không bật B2 production.
@@ -74,6 +74,22 @@ Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các b�
 9. Đánh giá base và adapter trên test đã khóa; báo cáo hard pass, ngữ nghĩa, CEFR,
    nhóm lỗi và giới hạn. Không dùng test để sửa prompt/chọn checkpoint.
 10. Thử C1/C2 riêng nếu bộ chính đã hoàn tất; báo rõ phần không chạy được.
+
+### Cập nhật triển khai 23/10/2026
+
+- Runner `training.collect_reviewed` hỗ trợ prepare/collect/status/adjudicate/export;
+  không tự duyệt mẫu. Mỗi quyết định Codex gắn hash bài, ngữ cảnh và kết quả Web,
+  có bằng chứng từng đáp án và lý do riêng cho lỗi Web bị bác.
+- Artifact thu thập riêng mở B2 offline; giữ validator production hiện tại. Nhóm nguồn
+  cùng scenario/branch dùng chung tập trên mọi mức; loại nhóm gold/benchmark cũ.
+- Web cần trích dẫn và xác nhận từng fact, kể cả khi kết luận tất cả kiểm tra đạt.
+- Trainer có `--attempt-below-memory-estimate` cho lần thử CPU được ủy quyền;
+  vẫn giữ kiểm tra dữ liệu và loss mask, không thay model.
+- Watchdog ngoài worker được bật rõ bằng `--shutdown-on-worker-failure`, giám sát
+  vòng collect; không giám sát Codex hoặc Windows bị treo. Lệnh shutdown kiểm thử
+  bằng mock. Khi chờ Codex duyệt, watchdog kết thúc bình thường.
+- Kiểm tra hiện tại: 114 passed, 1 skipped. Chưa có bằng chứng sinh/duyệt mới hoặc
+  optimizer step ở thời điểm ghi cập nhật này; kết quả live lưu trong campaign riêng.
 
 ## Phần cứng và mốc tạm dừng
 

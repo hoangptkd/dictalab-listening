@@ -86,8 +86,11 @@ def validate_review(review: dict, manifest: dict, manifest_path: Path, splits: d
         raise DatasetError("P0 requires at least 200 approved target records")
     for split in ("train", "validation"):
         rows = splits[split]
-        if {r.get("level") for r in rows} != {"A1", "A2", "B1"} or {r.get("purpose") for r in rows} != {"content", "translation"}:
-            raise DatasetError(f"{split}: A1/A2/B1 and both purposes are required")
+        required = manifest.get("contract", {}).get("trainingLevels", ["A1", "A2", "B1"])
+        if required not in (["A1", "A2", "B1"], ["A1", "A2", "B1", "B2"]):
+            raise DatasetError("unsupported training level coverage")
+        if {r.get("level") for r in rows} != set(required) or {r.get("purpose") for r in rows} != {"content", "translation"}:
+            raise DatasetError(f"{split}: {'/'.join(required)} and both purposes are required")
     if {r.get("turnNumber") for r in splits["train"]} != {2, 3, 4}:
         raise DatasetError("train: turns 2/3/4 are required")
 
@@ -278,19 +281,21 @@ def write_report(output: Path, report: dict) -> None:
         handle.write(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
 
 
-def check_cpu_memory(inspection: dict, available_bytes: int) -> dict:
+def check_cpu_memory(inspection: dict, available_bytes: int, *, authorized_attempt: bool = False) -> dict:
     count = inspection.get("parameterCountFromConfig")
     if type(count) is not int or count <= 0:
         raise DatasetError("CPU memory preflight requires an inspected parameter count")
     # Admission estimate only: float32 base plus workspace; peak usage needs a real smoke.
     required = count * 4 + 8 * 1024**3
-    if available_bytes < required:
+    if available_bytes < required and not authorized_attempt:
         raise DatasetError(f"CPU RAM preflight: {available_bytes / 1024**3:.1f} GiB available, "
                            f"at least {required / 1024**3:.1f} GiB estimated; checkpoint was not loaded")
-    return {"availableBytesBeforeLoad": available_bytes, "estimatedRequiredBytes": required}
+    return {"availableBytesBeforeLoad": available_bytes, "estimatedRequiredBytes": required,
+            **({"authorizedAttemptBelowEstimate": True} if authorized_attempt else {})}
 
 
-def run(config_path: Path, *, check_only: bool = False, smoke: bool = False) -> dict:
+def run(config_path: Path, *, check_only: bool = False, smoke: bool = False,
+        attempt_below_memory_estimate: bool = False) -> dict:
     config, manifest, splits, inspection = checked_inputs(config_path)
     versions = verify_environment(ROOT / config["environment_lock"])
     input_hashes = {"configHash": file_hash(config_path),
@@ -317,7 +322,8 @@ def run(config_path: Path, *, check_only: bool = False, smoke: bool = False) -> 
         torch.cuda.reset_peak_memory_stats()
     else:
         import psutil
-        memory = check_cpu_memory(inspection, psutil.virtual_memory().available)
+        available = psutil.virtual_memory().available
+        memory = check_cpu_memory(inspection, available, authorized_attempt=attempt_below_memory_estimate)
     set_seed(config["seed"])
     tokenizer = AutoTokenizer.from_pretrained(config["base_model"], revision=config["base_revision"], trust_remote_code=False)
     if hashlib.sha256(str(tokenizer.chat_template).encode()).hexdigest() != inspection.get("chatTemplateHash"):
@@ -355,8 +361,9 @@ def run(config_path: Path, *, check_only: bool = False, smoke: bool = False) -> 
         task_type="CAUSAL_LM", target_modules=targets))
     if config["training"]["gradient_checkpointing"]:
         model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
-    preflight = adapter_preflight(model, max(tokenized["train"], key=lambda row: len(row["input_ids"])),
-                                  tokenizer, output / "preflight-adapter")
+    preflight = ({"separateResourceSmokeSkippedByOwner": True} if attempt_below_memory_estimate else
+                 adapter_preflight(model, max(tokenized["train"], key=lambda row: len(row["input_ids"])),
+                                   tokenizer, output / "preflight-adapter"))
     set_seed(config["seed"])
     trainer = make_trainer(model, tokenizer, tokenized["train"], tokenized["validation"], config, output / "checkpoints", smoke=smoke)
     result = trainer.train()
@@ -393,9 +400,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--check", action="store_true", help="offline integrity/review/environment checks only")
     parser.add_argument("--smoke", action="store_true", help="one optimizer step, never a release candidate")
+    parser.add_argument("--attempt-below-memory-estimate", action="store_true",
+                        help="explicit owner-authorized attempt; skip RAM admission and separate adapter smoke")
     args = parser.parse_args(argv)
     try:
-        report = run(args.config, check_only=args.check, smoke=args.smoke)
+        report = run(args.config, check_only=args.check, smoke=args.smoke,
+                     attempt_below_memory_estimate=args.attempt_below_memory_estimate)
     except (OSError, ValueError, KeyError, ImportError) as exc:
         print(f"train_sft_lora: {exc}", file=sys.stderr)
         return 2

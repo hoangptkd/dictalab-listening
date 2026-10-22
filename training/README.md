@@ -419,11 +419,38 @@ For the new **reviewed training dataset collection**, follow
 The owner authorized 500 fresh approved training tasks (A1/A2/B1/B2), plus
 100 validation and 100 test tasks, with per-item Web review and independent
 delegated Codex approval. That collection does not require the teacher 28/30
-benchmark or the judge gold gate. Its collection/B2 pipeline is pending;
+benchmark or the judge gold gate. Its collection/B2 pipeline is available offline;
 the benchmark commands below retain their historical acceptance rules.
 The shipped bridge patch now reuses one ChatGPT tab with a fresh conversation
 per independent review. Run `node scripts/test-chatgpt-web-tabs.cjs` for the
 offline tab lifecycle check; live review/restart verification is still pending.
+
+```powershell
+python -m training.collect_reviewed prepare --campaign data/fine-tuning/reviewed-500-20261023
+python -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-20261023 --limit 4 --shutdown-on-worker-failure
+python -m training.collect_reviewed status --campaign data/fine-tuning/reviewed-500-20261023
+python -m training.collect_reviewed adjudicate --campaign data/fine-tuning/reviewed-500-20261023 --decision-file <private-decision.json>
+python -m training.collect_reviewed export --campaign data/fine-tuning/reviewed-500-20261023
+```
+
+Each approval binds the exact task, context and Web verdict hashes and needs independent
+`AI:Codex` findings for every fact and all rubric checks. The CLI never auto-approves.
+Uncertain items are rejected; any overridden Web finding needs its own recorded basis.
+Source families are split before generation, across all four levels. Export requires all
+700 approved tasks; the existing integrity, coverage, loss-mask and holdout audits still apply.
+Generated artifacts, decisions and API evidence stay in the ignored private campaign folder.
+
+The shutdown flag explicitly arms a separate process while the collection worker runs.
+It saves shutdown evidence before calling Windows on terminal failure, quota stop or an
+unexpected worker exit. It exits normally when Codex must review a batch. It does not
+monitor Codex itself or protect against a frozen Windows session. Test the command only
+through the mocked `training/tests/test_collect_reviewed.py` checks.
+
+For the owner's explicitly authorized CPU attempt, the trainer accepts
+`--attempt-below-memory-estimate`. This skips RAM admission and a separate adapter smoke
+run, while preserving dataset integrity and target loss-mask checks. It still attempts the
+real pinned Qwen3.5-4B model; runtime/OOM errors must be reported as failures. This flag
+does not turn incomplete or unreviewed data into a training-ready dataset.
 
 The iteration runner also accepts the existing local ChatGPT Web bridge. DeepSeek
 still generates the task; the bridge sends it to a fresh Web conversation; the
