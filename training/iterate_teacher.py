@@ -17,6 +17,7 @@ from training import generate_teacher_data as gen
 from training.benchmark_teacher import settings_from_registry
 from training.prepare_dataset import _validation, validator_hash
 from training.semantic_rubric import CHECKS, VERSION_V3, decision, rules_for
+from app.gemini_pool import quota_store
 
 
 POLICY = "teacher-first-pass-28of30-v1"
@@ -264,6 +265,31 @@ def acceptance_gate(items: list[dict], chains: list[list[dict]], *, calibrated: 
             "trainingReady": False}
 
 
+def quota_snapshot(settings=None) -> dict:
+    settings = settings or settings_from_registry()
+    snapshot = {}
+    for platform in ("deepseek", "gemini"):
+        pool = quota_store(settings, platform=platform)
+        sources = settings.sources_for(platform)
+        account = []
+        global_used = 0
+        for source in sources:
+            counters = pool.execute(source, op="status")
+            global_used = int(counters[4])
+            account.append({"sourceId": source.id, "usedRpd": int(counters[2]),
+                "rpdLimit": source.rpd_limit,
+                "remainingRpd": max(0, source.rpd_limit - int(counters[2])) if source.rpd_limit else None})
+        global_limit = settings.registry_pools[platform]["global_rpd_limit"]
+        global_remaining = max(0, global_limit - global_used) if global_limit else None
+        account_remaining = sum(row["remainingRpd"] for row in account) if all(
+            row["remainingRpd"] is not None for row in account) else None
+        available = min(x for x in (global_remaining, account_remaining) if x is not None) \
+            if global_remaining is not None or account_remaining is not None else None
+        snapshot[platform] = {"accounts": account, "globalUsedRpd": global_used,
+            "globalRpdLimit": global_limit, "availableCalls": available}
+    return snapshot
+
+
 def status(path: Path) -> dict:
     manifest, state = load(path)
     gold = Path(manifest["goldPath"])
@@ -271,9 +297,13 @@ def status(path: Path) -> dict:
         gold_status = audit_gold(gen.read_json(gold)) if gold.exists() else {"status": "missing"}
     except (ValueError, KeyError) as error:
         gold_status = {"status": "JUDGE_BLOCKED", "reason": str(error)}
+    try:
+        quota = quota_snapshot()
+    except Exception as error:
+        quota = {"status": "unavailable", "errorType": type(error).__name__}
     return {"campaign": str(_private_path(path)), "policy": manifest["policy"],
             "state": state, "gold": gold_status, "teacherModel": manifest["teacher"]["model"],
-            "judgeModel": manifest["judge"]["model"], "trainingReady": False}
+            "judgeModel": manifest["judge"]["model"], "quota": quota, "trainingReady": False}
 
 
 def main() -> None:

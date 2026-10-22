@@ -164,3 +164,22 @@ def test_development_selection_excludes_old_sources_and_hides_final(tmp_path, mo
     assert selection["unseenCapacityByLevel"] == {"A1": 12, "A2": 13, "B1": 12}
     assert len(selection["development"]) == 12
     assert not {"A1-0", "B1-0"}.intersection(row["groupId"] for row in selection["development"])
+
+
+def test_quota_reads_each_provider_store_without_mixing_counters(monkeypatch):
+    sources = {"deepseek": [SimpleNamespace(id="d", rpd_limit=100)],
+               "gemini": [SimpleNamespace(id="g1", rpd_limit=500),
+                          SimpleNamespace(id="g2", rpd_limit=500)]}
+    settings = SimpleNamespace(sources_for=lambda name: sources[name], registry_pools={
+        "deepseek": {"global_rpd_limit": 100}, "gemini": {"global_rpd_limit": 1350}})
+    requested = []
+    def store(_, platform):
+        requested.append(platform)
+        used = {"d": (96, 96), "g1": (23, 106), "g2": (23, 106)}
+        return SimpleNamespace(execute=lambda source, op: [0, 0, *used[source.id][:1], 0,
+                                                           used[source.id][1], 0])
+    monkeypatch.setattr(run, "quota_store", store)
+    snapshot = run.quota_snapshot(settings)
+    assert requested == ["deepseek", "gemini"]
+    assert snapshot["deepseek"]["availableCalls"] == 4
+    assert snapshot["gemini"]["availableCalls"] == 954
