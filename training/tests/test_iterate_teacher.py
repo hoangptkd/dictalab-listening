@@ -1,4 +1,6 @@
+import asyncio
 import copy
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -57,6 +59,64 @@ def test_acceptance_is_strict_about_total_levels_critical_and_chain():
     chains = _chains()
     chains[-1][0]["unresolvedCriticalRisk"] = True
     assert not gate(_items(), chains)
+    chains = _chains()
+    chains[-1][0]["hardPass"] = False
+    assert not gate(_items(), chains)
+
+
+def test_pilot_gate_requires_full_first_pass_coverage():
+    rows = [{**item, "id": f"dev-{i}"} for i, item in enumerate(_items()[:4] +
+        _items()[10:14] + _items()[20:24])]
+    assert run.pilot_summary(rows)["pilotPassed"]
+    rows[-1]["decision"] = "FAIL"
+    assert run.pilot_summary(rows)["pilotPassed"]
+    rows[-2]["decision"] = "FAIL"
+    assert not run.pilot_summary(rows)["pilotPassed"]
+    rows[-2]["decision"] = "PASS"
+    rows[0]["hardPass"] = False
+    assert not run.pilot_summary(rows)["pilotPassed"]
+
+
+def test_pilot_comparison_rejects_level_regression_and_ties():
+    best = {"hardPass": 12, "semanticPass": 9, "critical": 0,
+            "unresolvedCriticalRisk": False, "byLevel": {"A1": 3, "A2": 3, "B1": 3}}
+    assert not run.compare_pilots(best, best)
+    assert run.compare_pilots(best, {**best, "semanticPass": 10,
+        "byLevel": {"A1": 4, "A2": 3, "B1": 3}})
+    assert not run.compare_pilots(best, {**best, "semanticPass": 10,
+        "byLevel": {"A1": 4, "A2": 4, "B1": 2}})
+    assert not run.compare_pilots(best, {**best, "critical": 1, "semanticPass": 10})
+
+
+def test_decide_promotes_best_and_removes_losing_attempt_data(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())
+    campaign = tmp_path / "campaign"
+    for name in ("best", "current"):
+        (campaign / name).mkdir(parents=True)
+    artifacts = {}
+    for name in ("best", "current"):
+        artifact = {"approvalStatus": "development", "version": name}
+        artifact["sha256"] = run.gen.digest(artifact)
+        artifacts[name] = artifact
+        run.gen.write_json(campaign / name / "artifact.json", artifact)
+    base = {"hardPass": 12, "critical": 0, "unresolvedCriticalRisk": False,
+            "pilotPassed": False, "rubricHash": "frozen", "judgeModel": "gemini-test"}
+    best = {**base, "artifactHash": artifacts["best"]["sha256"], "semanticPass": 9,
+            "byLevel": {"A1": 3, "A2": 3, "B1": 3}}
+    current = {**base, "artifactHash": artifacts["current"]["sha256"], "semanticPass": 10,
+               "byLevel": {"A1": 4, "A2": 3, "B1": 3}}
+    run.gen.write_json(campaign / "best" / "summary.json", best)
+    run.gen.write_json(campaign / "current" / "summary.json", current)
+    state = {"status": "PILOT_READY", "sessionId": 1, "totalRounds": 1,
+             "bestSummaryHash": run.gen.digest(best), "currentSummaryHash": run.gen.digest(current)}
+    run.gen.write_json(campaign / "state.json", state)
+    manifest = {"rubricHash": "frozen", "judge": {"model": "gemini-test"}}
+    monkeypatch.setattr(run, "load", lambda path: (manifest, run.gen.read_json(path / "state.json")))
+    result = run.decide(campaign)
+    assert result["kept"] is True and result["bestHash"] == artifacts["current"]["sha256"]
+    assert not (campaign / "current").exists() and not (campaign / "best-old").exists()
+    assert run.gen.read_json(campaign / "best" / "artifact.json") == artifacts["current"]
+    assert len((campaign / "ledger.jsonl").read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_gold_distribution_and_two_independent_calibration_runs(monkeypatch):
@@ -144,9 +204,24 @@ def test_judge_payload_never_contains_gold_labels_or_candidate_identity():
     assert "secret-case" not in str(payload["items"])
 
 
+def test_calibration_provenance_rejects_changed_gold(tmp_path):
+    gold_path = tmp_path / "gold.json"
+    run.gen.write_json(gold_path, [{"id": "fixture"}])
+    summary = {"status": "CALIBRATED", "goldHash": run.gen.digest([{"id": "fixture"}]),
+               "judgeModel": "gemini-test", "rubricHash": "frozen"}
+    run.gen.write_json(tmp_path / "calibration-summary.json", summary)
+    manifest = {"goldPath": str(gold_path), "judge": {"model": "gemini-test"},
+                "rubricHash": "frozen"}
+    state = {"goldHash": summary["goldHash"], "calibrationHash": run.gen.digest(summary)}
+    assert run._calibration_valid(tmp_path, manifest, state)
+    gold_path.write_text('[{"id":"changed"}]', encoding="utf-8")
+    assert not run._calibration_valid(tmp_path, manifest, state)
+
+
 def test_prepare_freezes_private_campaign_without_credentials(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())
     monkeypatch.setattr(run, "_plan_groups", lambda: {"development": [], "unseenCapacityByLevel": {}})
+    monkeypatch.setattr(run, "development_cases", lambda groups, artifact: [])
     source_plans = (tmp_path / "old-one.json", tmp_path / "old-two.json")
     for source in source_plans:
         run.gen.write_json(source, {"entries": [], "chains": []})
@@ -194,10 +269,39 @@ def test_development_selection_excludes_old_sources_and_hides_final(tmp_path, mo
 def test_real_development_b1_covers_gist_opinion_and_inference():
     artifact = run._checked_artifact(run.DEFAULT_ARTIFACT)
     groups = [row for row in run._plan_groups()["development"] if row["level"] == "B1"]
+    cases = run.development_cases(run._plan_groups()["development"], artifact)
+    assert len(cases) == 12
+    assert [row["turn"] for row in cases if row["level"] == "B1"] == [2, 2, 2, 4]
     focuses = {kind for group in groups for turn in (2, 4) for kind in (
         "gist", "opinion_attitude", "inference_prediction") if
         f"genuine {kind} target" in run.gen.make_context(group, turn, [], artifact, 0)["practiceFocus"]}
     assert focuses == {"gist", "opinion_attitude", "inference_prediction"}
+    assert {kind for row in cases if row["level"] == "B1" for kind in focuses
+            if f"genuine {kind} target" in row["context"]["practiceFocus"]} == focuses
+
+
+def test_final_allocation_has_frozen_focus_coverage_and_no_group_reuse():
+    artifact = run._checked_artifact(run.DEFAULT_ARTIFACT)
+    manifest = {"groups": run._plan_groups()}
+    allocation = run.final_allocation(manifest, artifact)
+    assert len(allocation["entries"]) == 30 and len(allocation["chains"]) == 6
+    assert len(set(allocation["groupIds"])) == 36
+    assert not set(allocation["groupIds"]).intersection(
+        group["groupId"] for group in manifest["groups"]["development"])
+    for level in run.LEVELS:
+        assert sorted(row["focus"] for row in allocation["entries"] if row["level"] == level) == \
+            sorted(run.FINAL_FOCUSES[level])
+    retired = [row["groupId"] for row in allocation["entries"] if row["level"] == "B1"]
+    with pytest.raises(ValueError, match="DATA_COVERAGE_BLOCKED"):
+        run.final_allocation(manifest, artifact, set(retired[:2]))
+
+
+def test_retired_final_groups_apply_across_campaigns(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())
+    old = tmp_path / "teacher-auto-old"
+    old.mkdir()
+    run.gen.append(old / "retired-final-index.jsonl", {"groupIds": ["one", "two"]})
+    assert run._retired_groups() == {"one", "two"}
 
 
 def test_quota_reads_each_provider_store_without_mixing_counters(monkeypatch):
@@ -287,6 +391,22 @@ async def test_calibration_sent_request_without_result_never_replays(tmp_path, m
 
 
 @pytest.mark.asyncio
+async def test_sent_index_blocks_replay_even_if_request_file_is_lost(tmp_path):
+    folder = tmp_path / "calibration"
+    folder.mkdir()
+    run.gen.append(tmp_path / "sent-index.jsonl", {"kind": "judge-calibration",
+        "phase": "calibration", "stem": "first-001", "requestHash": run.gen.digest("sent")})
+    with pytest.raises(ValueError, match="refusing replay"):
+        await run._judge_one(tmp_path, {}, {}, "wire", "first-001", None)
+    run.gen.append(tmp_path / "sent-index.jsonl", {"kind": "teacher", "phase": "current",
+        "id": "dev-A1-1", "requestHash": run.gen.digest("sent")})
+    current = tmp_path / "current"
+    current.mkdir()
+    with pytest.raises(ValueError, match="refusing replay"):
+        await run._teacher_one(tmp_path, {}, {"id": "dev-A1-1"}, {}, {}, current, None)
+
+
+@pytest.mark.asyncio
 async def test_calibration_stops_after_first_fatal_miss(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())
     monkeypatch.setattr(run._validation, "validate_task", lambda *a, **k: [])
@@ -320,3 +440,197 @@ async def test_calibration_stops_after_first_fatal_miss(tmp_path, monkeypatch):
     assert result["evaluated"] < 36
     assert run.gen.read_json(campaign / "state.json")["calibrationFailed"] is True
     assert len(calls) == result["evaluated"]
+
+
+@pytest.mark.asyncio
+async def test_development_provider_cache_and_review_integrity(tmp_path, monkeypatch):
+    folder = tmp_path / "current"
+    folder.mkdir()
+    entries = [{"id": f"dev-{level}-{i}", "level": level, "groupId": f"{level}-{i}",
+                "context": {"difficulty": level}} for level in run.LEVELS for i in range(4)]
+    manifest = {"groups": {"development": [{"groupId": entry["groupId"]} for entry in entries]},
+                "judge": {"model": "gemini-test"}, "rubricVersion": VERSION_V3,
+                "rubricHash": "frozen"}
+    calls = []
+
+    async def teacher(path, contract, entry, group, artifact, target, settings):
+        calls.append(("teacher", entry["id"]))
+        row = {**entry, "task": {"utteranceEn": "fixture"}, "hardPass": True,
+               "attempt": 1, "developmentOnly": True}
+        run.gen.write_json(target / f"{entry['id']}.teacher-result.json", row)
+        return row
+
+    async def judge(path, contract, row, wire_id, stem, settings, *, folder):
+        calls.append(("judge", stem))
+        review = {"reviewer": "AI:gemini-test", "rubricVersion": VERSION_V3,
+            "rubricHash": "frozen", "taskHash": run.gen.digest(row["task"]),
+            "contextHash": run.gen.digest(row["context"]),
+            "requestHash": run.gen.digest([stem, "request"]),
+            "responseHash": run.gen.digest([stem, "response"]),
+            "checks": dict.fromkeys(CHECKS, True), "issues": []}
+        run.gen.write_json(folder / f"{stem}.result.json", review)
+        return review
+
+    monkeypatch.setattr(run, "_teacher_one", teacher)
+    monkeypatch.setattr(run, "_judge_one", judge)
+    rows = await run._run_entries(tmp_path, manifest, entries, {}, folder, None)
+    assert run.pilot_summary(rows)["pilotPassed"]
+    assert len(calls) == 24
+    assert await run._run_entries(tmp_path, manifest, entries, {}, folder, None) == rows
+    assert len(calls) == 24
+    reviewed = folder / "dev-A1-0.reviewed.json"
+    changed = run.gen.read_json(reviewed)
+    changed["decision"] = "FAIL"
+    reviewed.write_text(json.dumps(changed), encoding="utf-8")
+    with pytest.raises(ValueError, match="reviewed result hash mismatch"):
+        await run._run_entries(tmp_path, manifest, entries, {}, folder, None)
+
+
+@pytest.mark.asyncio
+async def test_evaluate_freezes_baseline_and_candidate_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(run, "_calibration_valid", lambda *args: True)
+    campaign = tmp_path / "campaign"
+    campaign.mkdir()
+    artifacts = {}
+    for name in ("baseline", "candidate"):
+        artifact = {"approvalStatus": "development", "version": name,
+                    "levelProfiles": {}, "contentSchemas": {}, "translationSchema": {}}
+        artifact["sha256"] = run.gen.digest(artifact)
+        artifacts[name] = artifact
+        run.gen.write_json(tmp_path / f"{name}.json", artifact)
+    entries = [{"id": f"dev-{level}-{index}", "level": level}
+               for level in run.LEVELS for index in range(4)]
+    manifest = {"artifactPath": str(tmp_path / "baseline.json"),
+                "artifactHash": artifacts["baseline"]["sha256"],
+                "development": entries, "groups": {"development": []},
+                "teacher": {"model": "deepseek-test", "sourceIds": ["d"]},
+                "judge": {"model": "gemini-test", "sourceIds": ["g"]},
+                "rubricHash": "frozen"}
+    state = {"status": "CALIBRATED", "sessionId": 1, "roundInSession": 0,
+             "totalRounds": 0, "maxRounds": 10}
+    run.gen.write_json(campaign / "state.json", state)
+    run.gen.write_json(campaign / "calibration-summary.json", {"status": "CALIBRATED"})
+    monkeypatch.setattr(run, "load", lambda path: (manifest, run.gen.read_json(path / "state.json")))
+    monkeypatch.setattr(run, "quota_snapshot", lambda settings: {
+        "deepseek": {"availableCalls": 100}, "gemini": {"availableCalls": 100}})
+    settings = SimpleNamespace(registry_pools={
+        "deepseek": {"default_model": "deepseek-test"},
+        "gemini": {"default_model": "gemini-test"}},
+        sources_for=lambda provider: [SimpleNamespace(id={"deepseek": "d", "gemini": "g"}[provider])])
+    called = []
+
+    async def fake_entries(path, contract, entries, artifact, folder, settings):
+        called.append(folder.name)
+        return [{**entry, "hardPass": True, "decision": "PASS", "severity": "none",
+                 "unresolvedCriticalRisk": False, "attempt": 1, "developmentOnly": True}
+                for entry in entries]
+
+    monkeypatch.setattr(run, "_run_entries", fake_entries)
+    result = await run.evaluate(campaign, tmp_path / "candidate.json", settings)
+    assert result["status"] == "PILOT_READY" and called == ["best", "current"]
+    assert result["baseline"]["pilotPassed"] and result["candidate"]["pilotPassed"]
+    assert run.gen.read_json(campaign / "state.json")["roundInSession"] == 1
+    again = await run.evaluate(campaign, tmp_path / "candidate.json", settings)
+    assert again["status"] == "PILOT_READY" and called == ["best", "current"]
+
+
+@pytest.mark.asyncio
+async def test_final_runs_new_30_and_six_dependent_chains_with_fake_providers(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(run, "_calibration_valid", lambda *args: True)
+    campaign = tmp_path / "campaign"
+    (campaign / "best").mkdir(parents=True)
+    artifact = run._checked_artifact(run.DEFAULT_ARTIFACT)
+    run.gen.write_json(campaign / "best" / "artifact.json", artifact)
+    summary = {"pilotPassed": True, "artifactHash": artifact["sha256"]}
+    run.gen.write_json(campaign / "best" / "summary.json", summary)
+    state = {"status": "CALIBRATED", "phase": "development", "bestSummaryHash": run.gen.digest(summary)}
+    run.gen.write_json(campaign / "state.json", state)
+    run.gen.write_json(campaign / "calibration-summary.json", {"status": "CALIBRATED"})
+    manifest = {"groups": run._plan_groups(), "rubricHash": "frozen",
+                "teacher": {"model": "deepseek-test", "sourceIds": ["d"]},
+                "judge": {"model": "gemini-test", "sourceIds": ["g"]}}
+    monkeypatch.setattr(run, "load", lambda path: (manifest, run.gen.read_json(path / "state.json")))
+    monkeypatch.setattr(run, "quota_snapshot", lambda settings: {
+        "deepseek": {"availableCalls": 100}, "gemini": {"availableCalls": 100}})
+    settings = SimpleNamespace(registry_pools={
+        "deepseek": {"default_model": "deepseek-test"},
+        "gemini": {"default_model": "gemini-test"}},
+        sources_for=lambda provider: [SimpleNamespace(id={"deepseek": "d", "gemini": "g"}[provider])])
+    calls = []
+
+    async def fake_entries(path, contract, entries, artifact, folder, settings):
+        calls.extend(entry["id"] for entry in entries)
+        for entry in entries:
+            if entry["id"].startswith("chain-"):
+                task = {"facts": [], "slots": [], "utteranceEn": "A new detail is available.",
+                        "questionVi": "Chi tiết mới là gì?", "skill": "Nắm thông tin cụ thể"}
+                run.gen.write_json(folder / f"{entry['id']}.teacher-result.json",
+                    {**entry, "task": task, "context": entry["context"]})
+        return [{"id": entry["id"], "level": entry["level"], "hardPass": True,
+                 "decision": "PASS", "severity": "none", "unresolvedCriticalRisk": False,
+                 "attempt": 1, "developmentOnly": True} for entry in entries]
+
+    monkeypatch.setattr(run, "_run_entries", fake_entries)
+    report = await run.final(campaign, settings)
+    assert report["status"] == "ACCEPTED" and report["semanticPass"] == 30
+    assert report["completeChains"] == 6 and len(calls) == 48
+    assert run.gen.read_json(campaign / "state.json")["status"] == "ACCEPTED"
+    assert (campaign / "final-accepted" / "report.json").exists()
+    assert len((campaign / "retired-final-index.jsonl").read_text(encoding="utf-8").splitlines()) == 1
+
+
+@pytest.mark.asyncio
+async def test_final_promotion_resume_never_starts_a_second_final(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())
+    campaign = tmp_path / "campaign"
+    (campaign / "final-accepted").mkdir(parents=True)
+    (campaign / "best").mkdir()
+    artifact = {"approvalStatus": "development", "version": "best"}
+    artifact["sha256"] = run.gen.digest(artifact)
+    run.gen.write_json(campaign / "best" / "artifact.json", artifact)
+    report = {"status": "ACCEPTED", "accepted": True, "semanticPass": 28,
+              "rubricHash": "frozen", "judgeModel": "gemini-test",
+              "candidateHash": artifact["sha256"]}
+    run.gen.write_json(campaign / "final-accepted" / "report.json", report)
+    run.gen.write_json(campaign / "state.json", {"status": "FINAL_RUNNING"})
+    monkeypatch.setattr(run, "load", lambda path: ({"rubricHash": "frozen",
+        "judge": {"model": "gemini-test"}}, run.gen.read_json(path / "state.json")))
+    assert await run.final(campaign) == report
+    assert run.gen.read_json(campaign / "state.json")["status"] == "ACCEPTED"
+    assert not (campaign / "final-running").exists()
+
+
+@pytest.mark.asyncio
+async def test_failed_final_retains_only_compact_ledger_and_retired_index(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(run, "_calibration_valid", lambda *args: True)
+    monkeypatch.setattr(run, "final_allocation", lambda *args: {
+        "entries": [], "chains": [], "groupIds": ["fresh-group"]})
+    campaign = tmp_path / "campaign"
+    (campaign / "best").mkdir(parents=True)
+    artifact = run._checked_artifact(run.DEFAULT_ARTIFACT)
+    run.gen.write_json(campaign / "best" / "artifact.json", artifact)
+    summary = {"pilotPassed": True, "artifactHash": artifact["sha256"]}
+    run.gen.write_json(campaign / "best" / "summary.json", summary)
+    run.gen.write_json(campaign / "calibration-summary.json", {"status": "CALIBRATED"})
+    run.gen.write_json(campaign / "state.json", {"status": "CALIBRATED",
+        "phase": "development", "bestSummaryHash": run.gen.digest(summary)})
+    manifest = {"groups": {"development": []}, "rubricHash": "frozen",
+                "teacher": {"model": "deepseek-test", "sourceIds": ["d"]},
+                "judge": {"model": "gemini-test", "sourceIds": ["g"]}}
+    monkeypatch.setattr(run, "load", lambda path: (manifest, run.gen.read_json(path / "state.json")))
+    monkeypatch.setattr(run, "quota_snapshot", lambda settings: {
+        "deepseek": {"availableCalls": 100}, "gemini": {"availableCalls": 100}})
+    monkeypatch.setattr(run, "_run_entries", lambda *args: asyncio.sleep(0, result=[]))
+    settings = SimpleNamespace(registry_pools={
+        "deepseek": {"default_model": "deepseek-test"},
+        "gemini": {"default_model": "gemini-test"}},
+        sources_for=lambda provider: [SimpleNamespace(id={"deepseek": "d", "gemini": "g"}[provider])])
+    report = await run.final(campaign, settings)
+    assert report["status"] == "FINAL_FAILED" and not report["accepted"]
+    assert not (campaign / "final-running").exists()
+    assert (campaign / "best" / "summary.json").exists()
+    assert len((campaign / "ledger.jsonl").read_text(encoding="utf-8").splitlines()) == 1
+    assert len((campaign / "retired-final-index.jsonl").read_text(encoding="utf-8").splitlines()) == 1

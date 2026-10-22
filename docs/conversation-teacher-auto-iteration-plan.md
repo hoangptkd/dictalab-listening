@@ -1,5 +1,20 @@
 # Kế hoạch bàn giao: agent tự thử–sửa chất lượng teacher
 
+## Trạng thái triển khai ngày 23/10/2026
+
+- `training/iterate_teacher.py` đã có CLI `prepare`, `calibrate`, `evaluate`, `decide`,
+  `final`, `resume`, `status`; các luồng được kiểm thử bằng fake provider. Chưa có lượt
+  final thật nào được chạy hoặc được nghiệm thu.
+- Gold riêng mới là `data/fine-tuning/teacher-gold-v3c.json` (36 bài, 18 nguồn).
+  Bản v3b cũ được giữ để kiểm toán; một nhãn PASS sai đã được thay trước khi tạo v3c.
+- Registry hiện vẫn chọn `gemini-3.5-flash-lite`; model này không qua kiểm định v3b.
+  Chủ dự án đang cấu hình Gemini mạnh hơn. Chỉ tạo campaign mới và gọi model sau khi
+  registry thật sự có model đó. Không dùng campaign v1/v2/v3 đã gửi request để replay.
+- Trong một campaign hiện tại, runner thử các artifact prompt khác nhau với cùng schema,
+  level profile và code sinh đã khóa. Thay code dựng context/luồng sinh cần mở campaign
+  mới để giữ khả năng so sánh. Bản candidate không hiệu quả bị xóa khỏi `current/`;
+  agent vận hành chịu trách nhiệm dọn file nguồn/patch candidate do mình tạo bên ngoài campaign.
+
 Ngày chốt: 22/10/2026. Đây là đặc tả để agent khác triển khai và vận hành vòng thử.
 Việc viết tài liệu này chưa khởi chạy thí nghiệm, xóa dữ liệu hay huấn luyện.
 
