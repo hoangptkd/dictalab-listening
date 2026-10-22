@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import httpx
 
 from training import iterate_teacher as run
 from training.semantic_rubric import CHECKS, VERSION_V3
@@ -204,6 +205,109 @@ def test_judge_payload_never_contains_gold_labels_or_candidate_identity():
     assert "secret-case" not in str(payload["items"])
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", [None, "invalid-json", "schema", "quote", "timeout", "http-error", "unfinished"])
+async def test_web_judge_uses_bridge_alias_and_rejects_bad_verdicts(tmp_path, monkeypatch, fault):
+    folder = tmp_path / "calibration"
+    folder.mkdir()
+    manifest = {"judge": {"provider": "chatgpt-web", "model": "chatgpt-web",
+                         "url": "http://127.0.0.1:3000/v1/chat/completions"},
+                "rubricVersion": VERSION_V3, "rubricHash": "frozen"}
+    case = {"hardPass": True, "context": {"difficulty": "A1"},
+            "task": {"utteranceEn": "The shop opens at ten."}, "expected": "FAIL"}
+    verdict = {"id": "item-001", **dict.fromkeys(CHECKS, True), "issues": []}
+    if fault == "schema":
+        verdict.pop("rolesCorrect")
+    if fault == "quote":
+        verdict["rolesCorrect"] = False
+        verdict["issues"] = [{"check": "rolesCorrect", "severity": "critical",
+                              "sourceQuote": "an invented quotation", "explanation": "wrong role"}]
+    calls = []
+
+    def respond(request):
+        body = json.loads(request.content)
+        calls.append(body)
+        assert len(body["messages"]) == 1 and body["messages"][0]["role"] == "user"
+        assert "OUTPUT_SCHEMA" in body["messages"][0]["content"]
+        assert '"expected"' not in body["messages"][0]["content"]
+        assert body["model"] == "chatgpt-web" and body["stream"] is False
+        assert "temperature" not in body and "max_tokens" not in body
+        if fault == "timeout":
+            raise httpx.ReadTimeout("response lost", request=request)
+        if fault == "http-error":
+            return httpx.Response(503, json={"error": "unavailable"})
+        content = "```json\n{}\n```" if fault == "invalid-json" else json.dumps({"items": [verdict]})
+        return httpx.Response(200, json={"model": "some-web-alias", "choices": [
+            {"finish_reason": "length" if fault == "unfinished" else "stop", "message": {"content": content}}]})
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(run.httpx, "AsyncClient", lambda **kwargs:
+        original(transport=httpx.MockTransport(respond), **kwargs))
+    if fault:
+        with pytest.raises(Exception):
+            await run._judge_one(tmp_path, manifest, case, "item-001", "first-001", None)
+        assert not (folder / "first-001.result.json").exists()
+    else:
+        review = await run._judge_one(tmp_path, manifest, case, "item-001", "first-001", None)
+        assert review["reviewer"] == "AI:chatgpt-web"
+        assert review["modelIdentity"] == "unverified-web-alias"
+        assert review["returnedModel"] == "some-web-alias"
+        assert run.checked_review(case, review, manifest, calibrated=True) == "PASS"
+    (folder / "first-001.request.json").unlink()
+    with pytest.raises(ValueError, match="refusing replay"):
+        await run._judge_one(tmp_path, manifest, case, "item-001", "first-001", None)
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("url", ["https://example.com/v1/chat/completions",
+    "http://127.0.0.1:3000/v1/chat/completions?key=secret",
+    "http://user:secret@localhost/v1/chat/completions", "http://localhost/other"])
+def test_web_judge_rejects_nonlocal_or_credential_urls(url):
+    with pytest.raises(ValueError, match="loopback"):
+        run._bridge_url(url)
+
+
+def test_web_campaign_does_not_depend_on_gemini_accounts_or_quota(monkeypatch):
+    manifest = {"teacher": {"model": "deepseek-test", "sourceIds": ["d"]},
+                "judge": {"provider": "chatgpt-web", "model": "chatgpt-web",
+                          "url": "http://127.0.0.1:3000/v1/chat/completions"}}
+    settings = SimpleNamespace(registry_pools={"deepseek": {"default_model": "deepseek-test"}},
+        sources_for=lambda provider: [SimpleNamespace(id="d")] if provider == "deepseek" else
+            pytest.fail("Web must not require Gemini accounts"))
+    run._check_sources(manifest, settings)
+
+    def quota(settings, *, platforms):
+        assert platforms == ("deepseek",)
+        return {"deepseek": {"availableCalls": 50}}
+
+    monkeypatch.setattr(run, "quota_snapshot", quota)
+    assert run._campaign_quota(settings, manifest) == {"deepseek": {"availableCalls": 50},
+        "chatgpt-web": {"availableCalls": None, "quotaVisibility": "web-account-managed"}}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("passed", [False, True])
+async def test_benchmark_only_runs_30_after_calibration(tmp_path, monkeypatch, passed):
+    monkeypatch.setattr(run, "load", lambda path: ({}, {}))
+    monkeypatch.setattr(run, "_calibration_valid", lambda *args: False)
+    calls = []
+
+    async def calibrate(*args):
+        calls.append("calibrate")
+        return {"status": "CALIBRATED" if passed else "JUDGE_BLOCKED"}
+
+    async def final(*args, direct):
+        assert direct is True
+        calls.append("final")
+        return {"status": "FINAL_FAILED", "semanticPass": 26}
+
+    monkeypatch.setattr(run, "calibrate", calibrate)
+    monkeypatch.setattr(run, "final", final)
+    result = await run.benchmark(tmp_path)
+    assert calls == (["calibrate", "final"] if passed else ["calibrate"])
+    assert result["status"] == ("FINAL_FAILED" if passed else "JUDGE_BLOCKED")
+
+
 def test_calibration_provenance_rejects_changed_gold(tmp_path):
     gold_path = tmp_path / "gold.json"
     run.gen.write_json(gold_path, [{"id": "fixture"}])
@@ -218,7 +322,8 @@ def test_calibration_provenance_rejects_changed_gold(tmp_path):
     assert not run._calibration_valid(tmp_path, manifest, state)
 
 
-def test_prepare_freezes_private_campaign_without_credentials(tmp_path, monkeypatch):
+@pytest.mark.parametrize("judge_provider", ["gemini", "chatgpt-web"])
+def test_prepare_freezes_private_campaign_without_credentials(tmp_path, monkeypatch, judge_provider):
     monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())
     monkeypatch.setattr(run, "_plan_groups", lambda: {"development": [], "unseenCapacityByLevel": {}})
     monkeypatch.setattr(run, "development_cases", lambda groups, artifact: [])
@@ -232,12 +337,14 @@ def test_prepare_freezes_private_campaign_without_credentials(tmp_path, monkeypa
     run.gen.write_json(artifact_path, artifact)
     sources = {name: [SimpleNamespace(id=name + "-a", model=model, api_key="private-key")]
                for name, model in (("deepseek", "deepseek-test"), ("gemini", "gemini-test"))}
-    settings = SimpleNamespace(sources_for=lambda name: sources[name], registry_pools={
+    settings = SimpleNamespace(sources_for=lambda name: sources[name] if
+        name != "gemini" or judge_provider == "gemini" else pytest.fail("Web must not read Gemini accounts"), registry_pools={
         "deepseek": {"default_model": "deepseek-test"},
         "gemini": {"default_model": "gemini-test"}})
     campaign = tmp_path / "campaign"
-    manifest = run.prepare(campaign, artifact_path=artifact_path, settings=settings)
+    manifest = run.prepare(campaign, artifact_path=artifact_path, settings=settings, judge_provider=judge_provider)
     assert manifest["policy"] == run.POLICY
+    assert manifest["judge"]["provider"] == judge_provider
     assert run.load(campaign)[1]["status"] == "JUDGE_BLOCKED"
     assert "private-key" not in (campaign / "campaign.json").read_text(encoding="utf-8")
     with pytest.raises(ValueError, match="overwrite"):
@@ -339,8 +446,12 @@ async def test_calibration_uses_72_distinct_first_pass_calls_and_caches(tmp_path
     monkeypatch.setattr(run, "quota_snapshot", lambda settings: {"gemini": {"availableCalls": 72}})
     settings = SimpleNamespace(registry_pools={"gemini": {"default_model": "gemini-test"}})
     called = []
+    request_hashes = set()
     async def fake_judge(path, contract, case, wire_id, stem, _settings):
         payload = run.judge_payload(case, wire_id, contract)
+        request_hash = run.gen.digest(payload)
+        assert request_hash not in request_hashes
+        request_hashes.add(request_hash)
         assert set(payload["items"][0]) == {"id", "context", "task"}
         called.append(stem)
         checks = dict.fromkeys(CHECKS, True)
@@ -351,7 +462,7 @@ async def test_calibration_uses_72_distinct_first_pass_calls_and_caches(tmp_path
         review = {"reviewer": "AI:gemini-test", "rubricVersion": VERSION_V3,
             "rubricHash": "frozen", "taskHash": run.gen.digest(case["task"]),
             "contextHash": run.gen.digest(case["context"]),
-            "requestHash": run.gen.digest([stem, "request"]),
+            "requestHash": request_hash,
             "responseHash": run.gen.digest([stem, "response"]), "checks": checks,
             "issues": [{"check": key, "sourceQuote": "fixture", "explanation": "violates rule",
                         "severity": "critical" if key == "rolesCorrect" else "major"}
@@ -536,7 +647,8 @@ async def test_evaluate_freezes_baseline_and_candidate_once(tmp_path, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_final_runs_new_30_and_six_dependent_chains_with_fake_providers(tmp_path, monkeypatch):
+@pytest.mark.parametrize("direct", [False, True])
+async def test_final_runs_new_30_and_six_dependent_chains_with_fake_providers(tmp_path, monkeypatch, direct):
     monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())
     monkeypatch.setattr(run, "_calibration_valid", lambda *args: True)
     campaign = tmp_path / "campaign"
@@ -544,11 +656,13 @@ async def test_final_runs_new_30_and_six_dependent_chains_with_fake_providers(tm
     artifact = run._checked_artifact(run.DEFAULT_ARTIFACT)
     run.gen.write_json(campaign / "best" / "artifact.json", artifact)
     summary = {"pilotPassed": True, "artifactHash": artifact["sha256"]}
-    run.gen.write_json(campaign / "best" / "summary.json", summary)
+    if not direct:
+        run.gen.write_json(campaign / "best" / "summary.json", summary)
     state = {"status": "CALIBRATED", "phase": "development", "bestSummaryHash": run.gen.digest(summary)}
     run.gen.write_json(campaign / "state.json", state)
     run.gen.write_json(campaign / "calibration-summary.json", {"status": "CALIBRATED"})
     manifest = {"groups": run._plan_groups(), "rubricHash": "frozen",
+                "artifactPath": str(run.DEFAULT_ARTIFACT), "artifactHash": artifact["sha256"],
                 "teacher": {"model": "deepseek-test", "sourceIds": ["d"]},
                 "judge": {"model": "gemini-test", "sourceIds": ["g"]}}
     monkeypatch.setattr(run, "load", lambda path: (manifest, run.gen.read_json(path / "state.json")))
@@ -573,12 +687,14 @@ async def test_final_runs_new_30_and_six_dependent_chains_with_fake_providers(tm
                  "attempt": 1, "developmentOnly": True} for entry in entries]
 
     monkeypatch.setattr(run, "_run_entries", fake_entries)
-    report = await run.final(campaign, settings)
+    report = await run.final(campaign, settings, direct=direct)
     assert report["status"] == "ACCEPTED" and report["semanticPass"] == 30
     assert report["completeChains"] == 6 and len(calls) == 48
     assert run.gen.read_json(campaign / "state.json")["status"] == "ACCEPTED"
     assert (campaign / "final-accepted" / "report.json").exists()
     assert len((campaign / "retired-final-index.jsonl").read_text(encoding="utf-8").splitlines()) == 1
+    if direct:
+        assert "pilotPassed" not in run.gen.read_json(campaign / "best" / "summary.json")
 
 
 @pytest.mark.asyncio

@@ -3,13 +3,13 @@
 ## Trạng thái triển khai ngày 23/10/2026
 
 - `training/iterate_teacher.py` đã có CLI `prepare`, `calibrate`, `evaluate`, `decide`,
-  `final`, `resume`, `status`; các luồng được kiểm thử bằng fake provider. Chưa có lượt
+  `final`, `resume`, `status`, `benchmark`; các luồng được kiểm thử bằng fake provider. Chưa có lượt
   final thật nào được chạy hoặc được nghiệm thu.
 - Gold riêng mới là `data/fine-tuning/teacher-gold-v3c.json` (36 bài, 18 nguồn).
   Bản v3b cũ được giữ để kiểm toán; một nhãn PASS sai đã được thay trước khi tạo v3c.
 - Registry hiện vẫn chọn `gemini-3.5-flash-lite`; model này không qua kiểm định v3b.
-  Có thể kiểm định Gemini mạnh hơn hoặc ChatGPT Web, nhưng mỗi lựa chọn phải có
-  provenance model và vượt cùng gold gate trước khi tạo campaign mới. Không dùng
+  Có thể kiểm định Gemini mạnh hơn hoặc ChatGPT Web; mỗi lựa chọn phải vượt cùng
+  gold gate trước khi chạy 30 bài. Không dùng
   campaign v1/v2/v3 đã gửi request để replay.
 - Kiểm tra trực tiếp VPS Windows `160.191.244.27` ngày 23/10: không còn
   `C:\DictaLab\coach-bridge\index.js`, tác vụ `DictaLabCoachBridge` hay listener
@@ -20,8 +20,9 @@
   Thử đọc metadata của cùng phiên qua đường conversation thông dụng cũng chỉ
   nhận HTTP 404; đây không phải nguồn provenance có thể dựa vào. Registry hiện
   vẫn chọn `gemini-3.5-flash-lite` trên ba tài khoản, chưa có Gemini mạnh hơn.
-  Vì vậy alias `chatgpt-web` chưa xác nhận model thực tế và ChatGPT Web hiện
-  **chưa đủ điều kiện làm judge**. Bài thử đã được xóa trên giao diện và trong
+  Chủ dự án đã cho phép dùng alias `chatgpt-web` để kiểm định judge mà không chặn
+  vì thiếu tên model thực tế. Runner ghi `AI:chatgpt-web` và
+  `modelIdentity=unverified-web-alias`; không ghi tên model suy đoán. Bài thử đã được xóa trên giao diện và trong
   danh mục conversation local của bridge; không đưa vào gold/campaign.
 - Trong một campaign hiện tại, runner thử các artifact prompt khác nhau với cùng schema,
   level profile và code sinh đã khóa. Thay code dựng context/luồng sinh cần mở campaign
@@ -38,7 +39,7 @@ Việc viết tài liệu này chưa khởi chạy thí nghiệm, xóa dữ li�
 | Luồng được nghiệm thu | **Teacher: một lời gọi sinh cả content và translation** |
 | Phạm vi CEFR | Conversation A1/A2/B1; chưa mở B2/C1/C2, chưa xử lý audio |
 | Model sinh | DeepSeek đã tích hợp, đọc cấu hình từ provider registry |
-| Model chấm | Gemini hoặc ChatGPT Web khác model sinh; chỉ dùng nguồn đang hoạt động, xác minh được model thực tế và vượt cùng kiểm định chấm |
+| Model chấm | Gemini hoặc ChatGPT Web khác model sinh; nguồn đang hoạt động và vượt cùng kiểm định chấm; Web được dùng alias có ghi rõ giới hạn định danh |
 | Mức đạt | **Ít nhất 28/30 bài mới**, mỗi mức ít nhất **9/10** |
 | Điều kiện bổ sung | Hard validation 100%, không critical, ít nhất 5/6 chuỗi đạt đầy đủ |
 | Quyền sửa | Prompt, few-shot, dựng context và luồng sinh/dịch khi có bằng chứng lỗi |
@@ -132,6 +133,23 @@ python -m training.iterate_teacher resume --campaign <directory> --new-session -
 python -m training.iterate_teacher status --campaign <directory>
 ```
 
+Luồng Web do chủ dự án yêu cầu: bridge local đang chạy với Chrome đã đăng nhập,
+sau đó dùng hai lệnh dưới đây. `benchmark` tự kiểm định judge trước; đạt thì đo
+ngay artifact gốc đã khóa trên 30 bài mới và sáu chuỗi, không yêu cầu pilot 12 bài.
+Kết quả benchmark trực tiếp không được ghi thành kết quả pilot đã qua.
+
+```text
+python -m training.iterate_teacher prepare --campaign data/fine-tuning/<new-web-campaign> --judge chatgpt-web
+python -m training.iterate_teacher benchmark --campaign data/fine-tuning/<new-web-campaign>
+```
+
+Bridge nhận một user message gồm rubric, schema kết quả và bài cần chấm. Runner
+parse JSON/schema và trích dẫn theo cùng hợp đồng với Gemini, ghi checkpoint mỗi
+lượt; không repair/retry. Mỗi bài dùng hội thoại Web mới. Không dùng quota Gemini
+cho Web; giới hạn thực tế phụ thuộc tài khoản ChatGPT. Không gửi thông tin đăng
+nhập, cookie hay API key trong prompt. URL bridge chỉ dùng loopback trên máy chạy
+runner. `--bridge-url` chọn cổng local khác khi cần.
+
 - Agent viết code/đổi candidate theo feedback giữa các thao tác. Không xây thêm hệ thống
   để Python tự viết và thực thi source code do model API trả về.
 - `evaluate` chạy pilot của candidate đang mở; `decide` chọn giữ/loại và dọn dữ liệu.
@@ -195,16 +213,13 @@ Không được bỏ/sửa ca khó, đổi nhãn, hoặc gọi đi gọi lại c
 Chỉ thử kiểm định lại sau thay đổi có căn cứ ở cấu hình/instructions judge, với phiên bản và log mới.
 Thay judge/rubric/gold sau khi tối ưu bắt đầu làm mất hiệu lực so sánh cũ và phải tái kiểm định.
 
-**Nếu thử ChatGPT Web:** trước hết khôi phục bridge trong môi trường thử nghiệm tách
-khỏi production, xác nhận `/health` và một phản hồi JSON bằng dữ liệu tổng hợp.
-Ghi model được chọn trên giao diện cùng metadata đáng tin cậy cho từng phản hồi;
-trường `model: chatgpt-web` của bridge chỉ là alias và không đáp ứng yêu cầu này.
-Nếu giao diện hoặc bridge tự đổi model mà không phát hiện được, dừng ở `JUDGE_BLOCKED`.
-Chỉ sau đó mới thêm adapter riêng cho campaign mới, giữ nguyên schema, hash,
-sent-index, chống replay, bảo vệ dữ liệu và hai lượt gold 36 bài. Không sửa manifest
-campaign đã gửi request, không gắn alias thành `AI:<model>` và không chạy bộ 30 bài
-khi bridge/provenance/gold gate chưa đạt. Runner hiện chỉ hỗ trợ Gemini judge;
-đoạn này là điều kiện triển khai, không phải tuyên bố Web đã được tích hợp.
+**ChatGPT Web:** adapter đã có trong runner. Theo thay đổi phạm vi của chủ dự án,
+không yêu cầu tên model thực tế để mở kiểm định. Giữ nguyên schema, hash,
+sent-index, chống replay, bảo vệ dữ liệu và hai lượt gold 36 bài. Alias được ghi
+đúng là `AI:chatgpt-web`, kèm giới hạn định danh trong manifest và từng verdict.
+Không sửa manifest campaign đã gửi request. Nếu Web tự đổi model mà bridge không
+hiển thị, kết quả chỉ mô tả phiên Web đã kiểm tra; không bảo đảm tái lập cùng model.
+Không chạy 30 bài khi judge chưa qua gold gate.
 
 **Hợp đồng kết quả chấm:**
 
@@ -216,7 +231,7 @@ khi bridge/provenance/gold gate chưa đạt. Runner hiện chỉ hỗ trợ Gem
   liên quan đáp án bắt buộc tạo `unresolvedCriticalRisk`, không cho nghiệm thu đến khi được giải quyết.
 - Input chấm chỉ gồm context, task và rubric; ẩn tên candidate, điểm cũ, giả thuyết sửa,
   nhãn kỳ vọng và lời đề nghị “hãy cho đạt”. Rationale do teacher viết chỉ là tuyên bố cần kiểm tra.
-- Lưu reviewer `AI:<model Gemini thực tế>` và hash rubric/context/task/request/response;
+- Lưu reviewer `AI:<model Gemini>` hoặc `AI:chatgpt-web` và hash rubric/context/task/request/response;
   không ghi thành `AI:Codex`, không đặt `humanApproved=true`.
 - Không dùng nguyên `benchmark_teacher.reviewed()` rồi giả danh AI:Codex để mở khóa chain.
   Thêm đường xác minh automated judge với provenance riêng; giữ legacy verifier hoạt động như cũ.

@@ -411,3 +411,26 @@ escapes in the target JSON. The batch was rejected with zero accepted targets;
 no repair or retry was performed. Invalid JSON responses retain the exact raw
 envelope and a credential-free `.invalid-json.json` diagnostic. A response ending
 normally does not prove its JSON or training targets are valid.
+
+## ChatGPT Web judge for teacher benchmarks
+
+The iteration runner also accepts the existing local ChatGPT Web bridge. DeepSeek
+still generates the task; the bridge sends it to a fresh Web conversation; the
+runner validates and aggregates the verdict. This experiment accepts the
+`chatgpt-web` alias without requiring the underlying model name. Reports label
+that identity as unverified, and Web account limits are not Gemini API quotas.
+
+With the bridge running and its Chrome profile signed in, use a new private
+campaign directory:
+
+```powershell
+python -m training.iterate_teacher prepare --campaign data/fine-tuning/my-web-benchmark --judge chatgpt-web
+python -m training.iterate_teacher benchmark --campaign data/fine-tuning/my-web-benchmark
+```
+
+`benchmark` first runs the existing gold gate (two shuffled passes of 36 tasks).
+If it passes, the frozen baseline goes directly to 30 fresh tasks and six chains;
+there is no additional 12-task pilot requirement. Acceptance still requires
+28/30 overall, at least 9/10 per level, all hard checks, no critical failure, and
+five complete chains. No retry, repair or automatic SFT export is enabled.
+See `docs/conversation-teacher-auto-iteration-plan.md` for checkpoints and limits.
