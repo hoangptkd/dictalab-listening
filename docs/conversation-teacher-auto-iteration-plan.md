@@ -17,6 +17,9 @@
   `/health` thành công và một lời gọi thử trả JSON Unicode đúng khi Chrome hiện cửa sổ.
   Chrome ẩn gặp trang xác minh Cloudflare. Mã bridge chép `model` từ request vào
   phản hồi; giao diện bài thử không hiển thị định danh model đã xử lý phản hồi.
+  Thử đọc metadata của cùng phiên qua đường conversation thông dụng cũng chỉ
+  nhận HTTP 404; đây không phải nguồn provenance có thể dựa vào. Registry hiện
+  vẫn chọn `gemini-3.5-flash-lite` trên ba tài khoản, chưa có Gemini mạnh hơn.
   Vì vậy alias `chatgpt-web` chưa xác nhận model thực tế và ChatGPT Web hiện
   **chưa đủ điều kiện làm judge**. Bài thử đã được xóa trên giao diện và trong
   danh mục conversation local của bridge; không đưa vào gold/campaign.
