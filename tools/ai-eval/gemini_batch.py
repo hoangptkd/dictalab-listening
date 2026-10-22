@@ -1,4 +1,4 @@
-"""Run bounded JSONL Gemini jobs with durable checkpoints and shared project quotas.
+"""Run bounded JSONL cloud jobs with durable checkpoints and shared account quotas.
 
 Input: id, messages, optional schema. Model/output budget come from server settings.
 No credentials belong in input, results or command-line arguments.
@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / "services" / "ai-generation"))
 
 import httpx
 from jsonschema import Draft202012Validator, SchemaError
-from app.config import Settings
+from app.config import Settings, CLOUD_PROVIDERS
 from app.gemini_pool import QuotaUnavailable
 from app.model_gateway import ModelGateway
 from app.providers.base import ProviderHttpError
@@ -75,8 +75,12 @@ class BatchLedger:
         # Schema/model/context changes must never reuse a previous result.
         with self.db:
             for row in rows:
-                fingerprint = hashlib.sha256(canonical({"row": row, "model": settings.active_cloud_model,
-                    "maxOutput": settings.num_predict, "temperature": settings.temperature}).encode()).hexdigest()
+                config = {"row":row,"model":settings.active_cloud_model,"maxOutput":settings.num_predict,
+                          "temperature":settings.temperature}
+                # Preserve existing Gemini ledgers across the env-to-database migration.
+                if settings.selected_provider != "gemini":
+                    config["platform"] = settings.selected_provider
+                fingerprint = hashlib.sha256(canonical(config).encode()).hexdigest()
                 old = self.db.execute("SELECT fingerprint FROM batch_jobs WHERE id=?", (row["id"],)).fetchone()
                 if old and old[0] != fingerprint:
                     raise ValueError("batch ID reused with different input/config")
@@ -112,7 +116,7 @@ class BatchLedger:
 
 async def run_batch(rows, settings, ledger, *, concurrency=3, max_calls=100, max_seconds=3600, client=None):
     import uuid
-    if not settings.gemini_quota_enabled or settings.selected_provider != "gemini":
+    if not settings.gemini_quota_enabled or settings.selected_provider not in CLOUD_PROVIDERS:
         raise ValueError("batch runner requires an enabled Gemini pool")
     if not 1 <= concurrency <= 5 or max_calls < 1 or max_seconds < 1:
         raise ValueError("invalid batch execution bounds")
@@ -167,16 +171,19 @@ async def run_batch(rows, settings, ledger, *, concurrency=3, max_calls=100, max
 
 
 def main():
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / ".env", override=False)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--ledger", type=Path, required=True)
     parser.add_argument("--concurrency", type=int, default=3)
     parser.add_argument("--max-calls", type=int, default=100)
     parser.add_argument("--max-seconds", type=int, default=3600)
+    parser.add_argument("--provider", choices=CLOUD_PROVIDERS, default="gemini")
     args = parser.parse_args()
     ledger = None
     try:
-        settings = Settings(primary_provider="gemini")
+        settings = Settings(primary_provider=args.provider)
         rows = load_jobs(args.input)
         ledger = BatchLedger(args.ledger)
         print(canonical(asyncio.run(run_batch(rows, settings, ledger, concurrency=args.concurrency,

@@ -1,5 +1,10 @@
 # AI Platform runbook
 
+Cloud accounts now support the shared encrypted PostgreSQL registry. See
+[provider database operations](ai-provider-database.md) for local import, DeepSeek,
+explicit platform selection, protected master keys and fail-closed behavior. Legacy
+environment examples below remain for compatibility, not the migrated local account source.
+
 The Python sidecar remains optional. Global routing uses
 `DICTALAB_CONVERSATION_GENERATION_PROVIDER=python`. Keep the existing provider during shadow/canary.
 Production requires the service token in both Java/Python and a pinned, approved prompt/model bundle.

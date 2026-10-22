@@ -53,7 +53,7 @@ class ProviderError(RuntimeError):
 
 
 class ProviderHttpError(ProviderError):
-    def __init__(self, status, retry_after=None):
-        super().__init__(f"gemini:http_error:{status}")
+    def __init__(self, status, retry_after=None, provider_name="gemini"):
+        super().__init__(f"{provider_name}:http_error:{status}")
         self.status = status
         self.retry_after = retry_after

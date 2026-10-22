@@ -156,14 +156,14 @@ async def ready() -> dict[str, str]:
             if provider in CLOUD_PROVIDERS:
                 if settings.gemini_quota_enabled:
                     store = quota_store(settings)
-                    for source in settings.enabled_gemini_sources:
+                    for source in settings.sources_for(provider):
                         await asyncio.to_thread(store.execute, source, 1, "status")
                         url = source.url.removesuffix("/chat/completions") + "/models"
                         check = await client.get(url, headers={"Authorization": "Bearer " + source.api_key})
                         check.raise_for_status()
                         if not any(cloud_model_id_matches(source.model, m.get("id") or "") for m in check.json().get("data", [])):
                             raise ValueError("pool model missing")
-                    if not any(cloud_model_id_matches(settings.active_cloud_model, p.model) for p in settings.enabled_gemini_sources):
+                    if not any(cloud_model_id_matches(settings.active_cloud_model, p.model) for p in settings.sources_for(provider)):
                         raise ValueError("requested cloud model missing from pool")
                     response = check
                 else:

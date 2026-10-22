@@ -54,7 +54,8 @@ class QuotaStore:
         except redis.RedisError:
             raise QuotaUnavailable() from None
         day, start, end = pacific_day(seconds + microseconds / 1_000_000)
-        root = "{dictalab-gemini-quota}:v2:"
+        platform = getattr(self.settings, "quota_platform", "gemini")
+        root = "{dictalab-gemini-quota}:v2:" if platform == "gemini" else "{dictalab-ai-quota}:v2:" + platform + ":"
         prefix = root + source.project_id + ":" + source.model
         keys = [prefix + ":requests", prefix + ":tokens", prefix + ":day:" + day,
             root + "global:requests", root + "global:day:" + day, prefix + ":state", prefix + ":metrics"]
@@ -176,11 +177,16 @@ def _cached_store(config):
     return QuotaStore(SimpleNamespace(**values))
 
 
-def quota_store(settings):
+def quota_store(settings, platform=None):
     # Request deadlines/temperatures must not create independent admission budgets.
     values = {name: getattr(settings, name) for name in ("gemini_quota_backend", "gemini_quota_redis_url",
         "gemini_global_rpm_limit", "gemini_global_rpd_limit")}
-    values["enabled_gemini_sources"] = [p.model_dump() for p in settings.enabled_gemini_sources]
+    platform = platform or (settings.selected_provider if settings.selected_provider != "ollama" else "gemini")
+    values["quota_platform"] = platform
+    if platform in settings.registry_pools:
+        policy = settings.registry_pools[platform]
+        values["gemini_global_rpm_limit"], values["gemini_global_rpd_limit"] = policy["global_rpm_limit"], policy["global_rpd_limit"]
+    values["enabled_gemini_sources"] = [p.model_dump() for p in settings.sources_for(platform)]
     return _cached_store(json.dumps(values, sort_keys=True))
 
 
@@ -188,7 +194,8 @@ def quota_metrics(settings):
     if not settings.gemini_quota_enabled:
         return ""
     try:
-        return "dictalab_gemini_quota_available 1\n" + quota_store(settings).metrics()
+        return "dictalab_gemini_quota_available 1\n" + "".join(quota_store(settings, platform).metrics()
+            for platform in sorted({p.platform for p in settings.enabled_cloud_sources}))
     except (QuotaUnavailable, redis.RedisError):
         return "dictalab_gemini_quota_available 0\n"
 

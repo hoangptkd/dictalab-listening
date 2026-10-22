@@ -289,7 +289,9 @@ TRL source for pre-tokenized labels and preparation bypass:
 `generate_teacher_data.py` reuses the current artifact, JSON Schemas and strict
 preparation contract. It reads the existing synthetic catalogue from
 `data/conversation-distillation/production-contract.json` and the existing
-`GEMINI_API_KEY` environment variable or local `.env`. It never logs the key,
+provider registry when `AI_PROVIDER_CONFIG_SOURCE=database` is configured in environment
+or local `.env` (legacy mode still accepts `GEMINI_API_KEY`). See
+[provider database operations](../docs/ai-provider-database.md). It never logs the key,
 changes billing, calls production jobs, or starts training.
 
 ```powershell

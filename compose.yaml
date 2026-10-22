@@ -66,6 +66,9 @@ services:
       DICTALAB_AI_OLLAMA_SERVICE_TOKEN: ${DICTALAB_AI_OLLAMA_SERVICE_TOKEN:-}
       DICTALAB_AI_PRIMARY_PROVIDER: ${DICTALAB_AI_PRIMARY_PROVIDER:-auto}
       DICTALAB_AI_CONVERSATION_ENABLED: ${DICTALAB_AI_CONVERSATION_ENABLED:-true}
+      AI_PROVIDER_CONFIG_SOURCE: ${AI_PROVIDER_CONFIG_SOURCE:-env}
+      AI_PROVIDER_ENCRYPTION_KEY: ${AI_PROVIDER_ENCRYPTION_KEY:-}
+      AI_PROVIDER_DATABASE_URL: ${AI_PROVIDER_CONTAINER_DATABASE_URL:-}
       DICTALAB_AI_GEMINI_BASE_URL: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai}
       DICTALAB_AI_GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       DICTALAB_AI_GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
@@ -104,6 +107,8 @@ services:
     volumes:
       - dictalab_ai_jobs:/app/data
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -125,6 +130,8 @@ services:
     volumes:
       - dictalab_ai_jobs:/app/data
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:

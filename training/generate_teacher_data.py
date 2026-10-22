@@ -268,17 +268,23 @@ class Gemini:
         self.key = os.environ.get("GEMINI_API_KEY") or settings.get("GEMINI_API_KEY")
         self.pool = None
         env_value = lambda name, default=None: os.environ.get(name, settings.get(name, default))
-        if str(env_value("GEMINI_QUOTA_ENABLED", "false")).lower() == "true":
+        database = env_value("AI_PROVIDER_CONFIG_SOURCE", "env") == "database"
+        if database or str(env_value("GEMINI_QUOTA_ENABLED", "false")).lower() == "true":
             sys.path.insert(0, str(ROOT / "services" / "ai-generation"))
             from app.config import Settings
             from app.gemini_pool import quota_store
             pool_settings = Settings(primary_provider="gemini", gemini_quota_enabled=True,
+                ai_provider_config_source=env_value("AI_PROVIDER_CONFIG_SOURCE","env"),
+                ai_provider_database_url=env_value("AI_PROVIDER_DATABASE_URL",""),
+                ai_provider_encryption_key=env_value("AI_PROVIDER_ENCRYPTION_KEY",""),
                 gemini_providers=json.loads(env_value("GEMINI_PROVIDERS_JSON", "[]")),
                 gemini_quota_backend=env_value("GEMINI_QUOTA_BACKEND", "redis"),
                 gemini_quota_redis_url=env_value("GEMINI_QUOTA_REDIS_URL", "redis://127.0.0.1:16379/0"),
                 gemini_global_rpm_limit=int(env_value("GEMINI_GLOBAL_RPM_LIMIT", "39")),
                 gemini_global_rpd_limit=int(env_value("GEMINI_GLOBAL_RPD_LIMIT", "0")))
             self.pool = quota_store(pool_settings)
+            if database:
+                self.key = None
         if not self.key and self.pool is None:
             raise DatasetError("GEMINI_API_KEY unavailable")
         self.opener = urllib.request.build_opener(NoRedirect)

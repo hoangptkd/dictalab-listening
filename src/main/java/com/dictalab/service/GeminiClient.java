@@ -30,6 +30,14 @@ public class GeminiClient {
     private Duration assessmentTimeout=Duration.ofSeconds(60);
     private Duration generationTimeout=Duration.ofSeconds(30);
     private boolean local;
+    private String cloudPlatform = "gemini";
+    private AiProviderRegistry registry;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureRegistry(AiProviderRegistry registry) { this.registry = registry; }
+
+    private boolean databaseEnabled() { return registry != null && registry.databaseEnabled(); }
+    private GeminiProviderProperties properties() { return databaseEnabled() ? registry.properties(cloudPlatform) : providerProperties; }
     private String localBaseUrl = "http://127.0.0.1:11434", localModel = "qwen3.5:9b";
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -37,7 +45,8 @@ public class GeminiClient {
                         @Value("${dictalab.conversation.generation.local-base-url:http://127.0.0.1:11434}") String baseUrl,
                         @Value("${dictalab.conversation.generation.local-model:qwen3.5:9b}") String model) {
         var validated = new com.dictalab.config.ConversationGenerationProperties("ollama", baseUrl, model, 60);
-        if (!java.util.Set.of("ollama", "gemini").contains(provider)) throw new IllegalArgumentException("Invalid AI provider");
+        if (!java.util.Set.of("ollama", "gemini", "deepseek", "openai_compatible").contains(provider)) throw new IllegalArgumentException("Invalid AI provider");
+        cloudPlatform = provider;
         local = provider.equals("ollama"); localBaseUrl = validated.localBaseUrl(); localModel = validated.localModel();
     }
 
@@ -99,13 +108,13 @@ public class GeminiClient {
     }
 
     public boolean configured() {
-        return local || !key.isBlank() || routingEnabled();
+        return local || (databaseEnabled() || !cloudPlatform.equals("gemini") ? routingEnabled() : !key.isBlank() || routingEnabled());
     }
 
-    public String model() { return local ? localModel : model; }
+    public String model() { return local ? localModel : databaseEnabled() ? registry.model(cloudPlatform) : model; }
 
     public JsonNode completeJson(String instruction, String input) {
-        return requestJson(instruction, input, model, assessmentTimeout);
+        return requestJson(instruction, input, model(), assessmentTimeout);
     }
 
     public JsonNode completeJson(String instruction, String input, String requestModel) {
@@ -129,13 +138,15 @@ public class GeminiClient {
             String targetModel = local ? localModel : selection.model();
             String targetUrl = local ? localBaseUrl + "/api/chat" : selection.url();
             String targetKey = local ? "" : selection.apiKey();
-            String body = json.writeValueAsString(local ? Map.of("model", localModel, "stream", false, "think", false,
+            var payload = new java.util.HashMap<String,Object>(local ? Map.of("model", localModel, "stream", false, "think", false,
                     "format", "json", "options", Map.of("temperature", 0, "num_ctx", 8192, "num_predict", 2200),
                     "messages", List.of(Map.of("role", "system", "content", instruction), Map.of("role", "user", "content", input))) : Map.of(
                     "model", targetModel, "temperature", 0, "max_tokens", 2200,
                     "response_format", Map.of("type", "json_object"),
-                    "messages", List.of(Map.of("role", "system", "content", instruction),
+                    "messages", List.of(Map.of("role", "system", "content", cloudPlatform.equals("gemini") ? instruction : "Return one JSON object. " + instruction),
                             Map.of("role", "user", "content", input))));
+            if (!local && cloudPlatform.equals("deepseek")) payload.put("thinking", Map.of("type","disabled"));
+            String body = json.writeValueAsString(payload);
             var builder = HttpRequest.newBuilder(URI.create(targetUrl))
                     .timeout(timeout)
                     .header("Content-Type", "application/json")
@@ -204,13 +215,16 @@ public class GeminiClient {
     }
 
     private boolean routingEnabled() {
-        return !local && providerProperties != null && providerProperties.quotaEnabled()
-                && !providerProperties.enabledProviders().isEmpty() && quota != null;
+        return !local && properties() != null && properties().quotaEnabled()
+                && !properties().enabledProviders().isEmpty() && quota != null;
     }
 
     private ProviderSelection selectProvider(String instruction, String input, String requestModel) {
-        if (!routingEnabled()) return new ProviderSelection(null, requestModel, url, key);
-        var providers = providerProperties.enabledProviders();
+        if (!routingEnabled()) {
+            if (databaseEnabled() || !cloudPlatform.equals("gemini")) throw new IllegalStateException("Cloud account unavailable; no fallback");
+            return new ProviderSelection(null, requestModel, url, key);
+        }
+        var providers = properties().enabledProviders();
         int start = Math.floorMod(nextProvider.getAndIncrement(), providers.size());
         // Byte-based upper bound is deliberately conservative for Vietnamese input.
         int estimatedTokens = Math.addExact(Math.addExact(instruction.getBytes(java.nio.charset.StandardCharsets.UTF_8).length,
@@ -220,7 +234,7 @@ public class GeminiClient {
             var provider = providers.get((start + offset) % providers.size());
             String selectedModel = requestModel.replaceFirst("^models/", "");
             if (!provider.model().equals(selectedModel)) continue;
-            var admission = quota.reserve(provider.id(), selectedModel, estimatedTokens);
+            var admission = quota.reserve(cloudPlatform, provider.id(), selectedModel, estimatedTokens);
             if (admission.allowed()) return new ProviderSelection(provider.id(), selectedModel, provider.url(), provider.apiKey());
             retryMs = Math.min(retryMs, admission.retryAfterMs());
         }
@@ -229,7 +243,7 @@ public class GeminiClient {
     }
 
     private void recordOutcome(ProviderSelection selection, String outcome, int delay) {
-        try { quota.outcome(selection.id(), selection.model(), outcome, delay); }
+        try { quota.outcome(cloudPlatform, selection.id(), selection.model(), outcome, delay); }
         catch (RuntimeException unavailable) {
             // Preserve the original result: a Redis outage after send is never retry-safe.
             org.slf4j.LoggerFactory.getLogger(GeminiClient.class).warn("Gemini quota outcome persistence unavailable");

@@ -55,6 +55,10 @@ nhưng không biết kết quả. Không thêm SDK hay orchestration framework k
 
 ## 3. Cấu hình mở rộng
 
+Cập nhật: cấu hình local đã chuyển sang PostgreSQL mã hóa, hỗ trợ thêm DeepSeek và
+OpenAI-compatible. Xem [hướng dẫn database](ai-provider-database.md). JSON/env bên dưới
+là định dạng legacy/import; database mode không fallback sang các key env này.
+
 Nguồn chuẩn chung là `GEMINI_PROVIDERS_JSON`, một mảng camelCase. Mẫu không có khóa thật:
 [`gemini-providers.example.json`](gemini-providers.example.json).
 Khai báo đầy đủ các trường để Java/Python đọc giống nhau:

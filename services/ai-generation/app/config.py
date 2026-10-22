@@ -5,12 +5,13 @@ from pydantic.alias_generators import to_camel
 import re
 from urllib.parse import urlsplit
 
-CLOUD_PROVIDERS = ("gemini",)
+CLOUD_PROVIDERS = ("gemini", "deepseek", "openai_compatible")
 
 
 class GeminiSource(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid", hide_input_in_errors=True)
     id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
+    platform: str = "gemini"
     project_id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,100}$")
     api_key: str = Field(repr=False, min_length=1, max_length=512)
     model: str = "gemini-3.5-flash-lite"
@@ -24,6 +25,8 @@ class GeminiSource(BaseModel):
 
     @model_validator(mode="after")
     def valid_source(self):
+        if self.platform not in CLOUD_PROVIDERS:
+            raise ValueError("unsupported cloud platform")
         self.model = self.model.removeprefix("models/")
         uri = urlsplit(self.url)
         if (not re.fullmatch(r"[a-zA-Z0-9_.-]{1,100}", self.model) or
@@ -70,6 +73,12 @@ class Settings(BaseSettings):
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     gemini_api_key: str = Field(default="", repr=False)
     gemini_model: str = "gemini-3.5-flash-lite"
+    deepseek_model: str = "deepseek-flash"
+    ai_provider_config_source: str = Field(default="env", validation_alias="AI_PROVIDER_CONFIG_SOURCE")
+    ai_provider_database_url: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_DATABASE_URL")
+    ai_provider_encryption_key: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_ENCRYPTION_KEY")
+    cloud_providers: list[GeminiSource] = Field(default_factory=list, repr=False)
+    registry_pools: dict = Field(default_factory=dict, repr=False, exclude=True)
     gemini_providers: list[GeminiSource] = Field(default_factory=list, repr=False,
         validation_alias=AliasChoices("GEMINI_PROVIDERS_JSON", "DICTALAB_AI_GEMINI_PROVIDERS"))
     gemini_quota_enabled: bool = Field(default=False,
@@ -102,27 +111,46 @@ class Settings(BaseSettings):
 
     def __init__(self, **values):
         super().__init__(**values)
+        if self.ai_provider_config_source not in ("env", "database"):
+            raise ValueError("invalid provider configuration source")
+        if self.ai_provider_config_source == "database":
+            from .provider_registry import load_registry
+            self.registry_pools, self.cloud_providers = load_registry(self.ai_provider_database_url, self.ai_provider_encryption_key)
+            self.gemini_providers = [p for p in self.cloud_providers if p.platform == "gemini"]
+            if "gemini" in self.registry_pools:
+                policy = self.registry_pools["gemini"]
+                self.gemini_model = policy["default_model"]
+                self.gemini_global_rpm_limit, self.gemini_global_rpd_limit = policy["global_rpm_limit"], policy["global_rpd_limit"]
+            if "deepseek" in self.registry_pools:
+                self.deepseek_model = self.registry_pools["deepseek"]["default_model"]
+            self.gemini_quota_enabled = True
         if self.gemini_quota_backend not in ("redis", "memory"):
             raise ValueError("invalid Gemini quota backend")
         quota_uri = urlsplit(self.gemini_quota_redis_url)
         if quota_uri.scheme not in ("redis", "rediss") or not quota_uri.hostname or quota_uri.fragment:
             raise ValueError("invalid Gemini quota Redis URL")
         ids, quotas = set(), set()
-        for source in self.gemini_providers:
+        for source in (self.cloud_providers if self.ai_provider_config_source == "database" else self.gemini_providers):
+            if self.ai_provider_config_source == "env" and source.platform != "gemini":
+                raise ValueError("non-Gemini accounts require database configuration")
             if source.id in ids:
                 raise ValueError("duplicate Gemini provider ID")
             ids.add(source.id)
-            key = (source.project_id, source.model)
+            key = (source.platform, source.project_id, source.model)
             if source.enabled and key in quotas:
                 raise ValueError("duplicate Gemini project/model quota")
             if source.enabled:
                 quotas.add(key)
-        if self.gemini_quota_enabled and not self.enabled_gemini_sources:
+        if self.gemini_quota_enabled and not self.enabled_cloud_sources:
             raise ValueError("Gemini quota requires an enabled provider")
         if self.production_mode and self.gemini_quota_enabled and self.gemini_quota_backend != "redis":
             raise ValueError("production Gemini quota requires Redis")
         if self.primary_provider not in ("auto", "ollama", *CLOUD_PROVIDERS):
             raise ValueError("unsupported primary_provider")
+        if self.selected_provider in CLOUD_PROVIDERS and self.ai_provider_config_source == "database" and not self.sources_for(self.selected_provider):
+            raise ValueError("selected platform has no enabled database account")
+        if self.selected_provider != "gemini" and self.selected_provider in CLOUD_PROVIDERS and self.ai_provider_config_source != "database":
+            raise ValueError("non-Gemini cloud providers require database configuration")
         if not 60 <= self.job_retention_seconds <= 86400:
             raise ValueError("job retention must be between 60 and 86400 seconds")
         if not 1 <= self.http_max_connections <= 100:
@@ -164,6 +192,14 @@ class Settings(BaseSettings):
         return sorted((p for p in self.gemini_providers if p.enabled), key=lambda p: (p.priority, p.id))
 
     @property
+    def enabled_cloud_sources(self):
+        return sorted((p for p in (self.cloud_providers if self.ai_provider_config_source == "database" else self.gemini_providers)
+                       if p.enabled), key=lambda p: (p.priority, p.id))
+
+    def sources_for(self, platform):
+        return [p for p in self.enabled_cloud_sources if p.platform == platform]
+
+    @property
     def selected_provider(self) -> str:
         if self.primary_provider != "auto":
             return self.primary_provider
@@ -171,14 +207,20 @@ class Settings(BaseSettings):
 
     @property
     def active_cloud_base_url(self) -> str:
+        if self.selected_provider != "gemini" and self.sources_for(self.selected_provider):
+            return self.sources_for(self.selected_provider)[0].url.removesuffix("/chat/completions")
         return self.gemini_base_url
 
     @property
     def active_cloud_api_key(self) -> str:
+        if self.ai_provider_config_source == "database":
+            return ""  # Account keys are selected only after admission, never a legacy fallback.
         return self.gemini_api_key
 
     @property
     def active_cloud_model(self) -> str:
+        if self.selected_provider in self.registry_pools:
+            return self.registry_pools[self.selected_provider]["default_model"]
         return self.gemini_model
 
     @property

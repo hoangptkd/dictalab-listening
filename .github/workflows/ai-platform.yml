@@ -62,7 +62,7 @@ jobs:
       - name: Java routing and contract tests
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
-        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,ListeningComprehensionIntegrationTest test
+        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,AiProviderRegistryTest,ListeningComprehensionIntegrationTest test
       - name: Java to Python to fake Ollama smoke
         run: python tools/ai-eval/smoke.py
       - name: Java API RabbitMQ worker smoke, local/cloud routing and capacity sweep

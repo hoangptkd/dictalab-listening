@@ -27,6 +27,32 @@ public final class GeminiQuotaCoordinator {
     private final Map<String, Window> windows = new HashMap<>();
     private final Map<String, State> states = new HashMap<>();
     private final Window global = new Window();
+    private String platform = "gemini";
+    private AiProviderRegistry registry;
+    private final Map<String, GeminiQuotaCoordinator> platformCoordinators = new HashMap<>();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureRegistry(AiProviderRegistry registry) { this.registry = registry; }
+
+    private synchronized GeminiQuotaCoordinator forPlatform(String selected) {
+        if (registry == null || !registry.databaseEnabled()) {
+            if (!selected.equals("gemini")) throw new IllegalStateException("Cloud platform requires database configuration");
+            return this;
+        }
+        return platformCoordinators.computeIfAbsent(selected, name -> {
+            var coordinator = new GeminiQuotaCoordinator(registry.properties(name), metrics, redis, clock);
+            coordinator.platform = name;
+            return coordinator;
+        });
+    }
+
+    public Admission reserve(String platform, String providerId, String model, int tokens) {
+        return forPlatform(platform).reserve(providerId,model,tokens);
+    }
+
+    public void outcome(String platform, String providerId, String model, String outcome, int seconds) {
+        forPlatform(platform).outcome(providerId,model,outcome,seconds);
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     public GeminiQuotaCoordinator(GeminiProviderProperties properties, MeterRegistry metrics,
@@ -83,7 +109,7 @@ public final class GeminiQuotaCoordinator {
             var day = java.time.Instant.ofEpochMilli(now).atZone(PACIFIC).toLocalDate();
             long start = day.atStartOfDay(PACIFIC).toInstant().toEpochMilli();
             long end = day.plusDays(1).atStartOfDay(PACIFIC).toInstant().toEpochMilli();
-            String root = "{dictalab-gemini-quota}:v2:";
+            String root = platform.equals("gemini") ? "{dictalab-gemini-quota}:v2:" : "{dictalab-ai-quota}:v2:" + platform + ":";
             String prefix = root + provider.projectId() + ":" + model;
             List<?> result = redis.execute(SCRIPT, List.of(prefix + ":requests", prefix + ":tokens", prefix + ":day:" + day,
                             root + "global:requests", root + "global:day:" + day, prefix + ":state", prefix + ":metrics"),

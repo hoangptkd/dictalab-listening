@@ -82,7 +82,7 @@ try {
             Write-Host "AI Coach: Ollama local / $coachModel."
         }
         elseif ($coachProvider -ne 'gemini') { throw 'DICTALAB_COACH_PROVIDER chi nhan gemini hoac ollama.' }
-        elseif ([string]::IsNullOrWhiteSpace($env:GEMINI_API_KEY)) {
+        elseif ($env:AI_PROVIDER_CONFIG_SOURCE -ne 'database' -and [string]::IsNullOrWhiteSpace($env:GEMINI_API_KEY)) {
             throw 'Can GEMINI_API_KEY trong .env de bat Coach.'
         }
         $env:DICTALAB_COACH_ENABLED = 'true'

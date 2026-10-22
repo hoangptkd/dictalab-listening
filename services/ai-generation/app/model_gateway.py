@@ -20,6 +20,7 @@ from .config import CLOUD_PROVIDERS, Settings
 from .providers.base import ModelProvider
 from .providers.ollama import OllamaProvider
 from .providers.gemini import GeminiProvider
+from .providers.openai_compatible import OpenAiCompatibleProvider
 from .providers.base import ProviderHttpError
 from .gemini_pool import QuotaUnavailable, quota_store, estimate_tokens, retry_seconds
 
@@ -79,9 +80,10 @@ class ModelGateway:
                 store = quota_store(self._settings)
                 source = await asyncio.to_thread(store.select, self._settings.active_cloud_model,
                     estimate_tokens(messages, self._settings.num_predict, schema))
-                selected = GeminiProvider(base_url=source.url, api_key=source.api_key, model=source.model,
-                    temperature=self._settings.temperature, client=self._client,
-                    max_tokens=self._settings.num_predict)
+                common = dict(base_url=source.url, api_key=source.api_key, model=source.model,
+                    temperature=self._settings.temperature, client=self._client, max_tokens=self._settings.num_predict)
+                selected = GeminiProvider(**common) if source.platform == "gemini" else OpenAiCompatibleProvider(**common,
+                    provider_name=source.platform, extra_body={"thinking": {"type": "disabled"}} if source.platform == "deepseek" else {})
                 self.last_model, self.last_source_id = source.model, source.id
             try:
                 result = await selected.complete(messages, schema, deadline, purpose, temperature=temperature)

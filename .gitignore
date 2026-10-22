@@ -6,6 +6,7 @@ data/
 *.log
 .env
 .env.local
+.env.registry-*
 qa-output/
 downloads/
 __pycache__/
