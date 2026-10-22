@@ -29,11 +29,17 @@ def _item():
     return item, context
 
 
-def test_plan_covers_all_scenarios_levels_and_reserves_benchmark_groups():
+def _catalogue():
     source = (ROOT / "src/main/java/com/dictalab/service/ConversationContent.java").read_text(encoding="utf-8")
     scenes = re.findall(r'new Scene\("([^"]+)"', source)
-    catalogue = [{"scenarioId": scene, "level": level, "branchId": branch, "input": {}}
-                 for scene in scenes for level in ("A1", "A2", "B1") for branch in ("standard", "alternative")]
+    return [{"scenarioId":scene,"level":level,"branchId":branch,"input":{}}
+            for scene in scenes for level in ("A1","A2","B1")
+            for branch in (("standard","alternative") if scene in ("plans","delivery") else
+                           ("standard","alternative","another"))]
+
+
+def test_plan_covers_all_scenarios_levels_and_reserves_benchmark_groups():
+    catalogue = _catalogue()
     groups = plan_groups(catalogue)
     assert len(groups) == len({g["groupId"] for g in groups}) == 72
     assert all(len({g["scenarioId"] for g in groups if g["level"] == level}) == 24 for level in ("A1", "A2", "B1"))
@@ -48,7 +54,7 @@ def test_roles_match_authored_branch_overrides():
 
 
 def test_exclusions_choose_unattempted_branches_and_never_reuse_exhausted_groups():
-    catalogue = json.loads((ROOT / "data/conversation-distillation/production-contract.json").read_text(encoding="utf-8"))["catalogue"]
+    catalogue = _catalogue()
     original = plan_groups(catalogue)
     excluded = {group["groupId"] for group in original}
     remaining = plan_groups(catalogue, excluded)
@@ -72,7 +78,10 @@ def test_teacher_drafting_targets_stay_inside_authoritative_bounds(level, expect
     assert authoring_rules(context)["draftMinWords"] == authoring_rules(context)["draftMaxWords"] == 30
 
 
-def test_targeted_plan_filters_levels_before_any_api_call(tmp_path):
+def test_targeted_plan_filters_levels_before_any_api_call(tmp_path, monkeypatch):
+    catalogue = tmp_path / "catalogue.json"
+    catalogue.write_text(json.dumps({"catalogue":_catalogue()}),encoding="utf-8")
+    monkeypatch.setattr("training.generate_teacher_data.CATALOGUE",catalogue)
     summary = run(tmp_path / "targeted", prepare_only=True, levels=("B1", "A2"))
     assert summary["plannedTasks"] == 144 and not summary["trainingReady"]
     plan = json.loads((tmp_path / "targeted/generation-plan.json").read_text(encoding="utf-8"))
