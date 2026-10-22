@@ -10,6 +10,7 @@ from .registry import load_artifact
 from .redaction import redact
 from .validation import LEVEL_BOUNDS
 from .schemas import ShadowConversationTaskRequest
+from .conversation_context import encounter_state
 
 # Per-request metadata; no prompt/task bodies in logs or response metadata.
 provider_calls: ContextVar[list | None] = ContextVar("provider_calls", default=None)
@@ -75,6 +76,7 @@ async def generate_content(request, settings, client, *, deadline=None):
         data.pop("sessionBlueprint", None)
         data["previouslyTestedDetails"] = [{"textVi": f.get("textVi", "")}
             for f in data.get("previouslyTestedDetails", [])]
+    data["encounterState"] = encounter_state(data)
     return await _complete(request, settings, client, CONTENT_SCHEMA, "content", data,
                            settings.temperature, deadline)
 

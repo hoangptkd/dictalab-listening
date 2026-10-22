@@ -8,7 +8,13 @@ on:
     paths:
       - 'services/ai-generation/**'
       - 'training/generate_teacher_data.py'
+      - 'training/benchmark_teacher.py'
+      - 'training/semantic_rubric.py'
+      - 'training/freeze_candidate.py'
+      - 'training/prepare_dataset.py'
       - 'training/tests/test_generate_teacher_data.py'
+      - 'training/tests/test_benchmark_teacher.py'
+      - 'training/tests/test_prepare_dataset.py'
       - 'training/requirements-prepare.lock'
       - 'tools/ai-eval/**'
       - 'artifacts/prompts/**'
@@ -58,7 +64,7 @@ jobs:
       - name: Python contracts, registry, readiness, regression and golden metrics
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
-        run: python -m pytest -q services/ai-generation/tests tools/ai-eval training/tests/test_generate_teacher_data.py
+        run: python -m pytest -q services/ai-generation/tests tools/ai-eval training/tests/test_generate_teacher_data.py training/tests/test_benchmark_teacher.py training/tests/test_prepare_dataset.py
       - name: Java routing and contract tests
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15

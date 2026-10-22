@@ -28,6 +28,7 @@ class ConversationPythonClientTest {
             var request = json.readTree(exchange.getRequestBody().readAllBytes());
             assertTrue(request.path("instruction").asText().contains("Generate only the NEXT task"));
             assertEquals("A1", request.path("level").asText());
+            assertEquals("V1", request.path("promptVersion").asText());
             assertEquals(exchange.getRequestHeaders().getFirst("X-Request-Id"), request.path("requestId").asText());
             assertEquals("5000", exchange.getRequestHeaders().getFirst("X-AI-Timeout-Ms"));
             var response = json.writeValueAsString(Map.of("task", json.readTree(ConversationGenerationPrompt.example("A1")),

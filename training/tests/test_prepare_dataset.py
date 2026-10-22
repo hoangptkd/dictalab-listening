@@ -99,7 +99,20 @@ def test_multitask_split_is_deterministic_and_keeps_group_together(tmp_path):
         _prepare(source, review, tmp_path / "out")
 
 
+def test_delegated_ai_is_explicit_and_never_reported_as_human(tmp_path):
+    rows = [_row(i, purpose=p) for i in range(30) for p in ("content", "translation")]
+    source, review = _write(tmp_path, rows)
+    review.write_text(review.read_text(encoding="utf-8").replace("fixture-reviewer", "AI:Codex"), encoding="utf-8")
+    with pytest.raises(DatasetError, match="delegated-ai"):
+        _prepare(source, review, tmp_path / "out")
+    manifest = _prepare(source, review, tmp_path / "out", review_policy="delegated-ai")
+    assert manifest["reviewAuthority"] == "delegated-ai" and manifest["humanApproved"] is False
+    saved = json.loads((tmp_path / "out/train.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert saved["reviewerType"] == "ai"
+
+
 @pytest.mark.parametrize("field,value,match", [
+    ("developmentOnly", True, "cannot enter SFT"),
     ("schemaHash", "wrong", "schemaHash mismatch"),
     ("inputHash", "wrong", "inputHash mismatch"),
     ("artifactVersion", "old-v2", "artifact/system"),

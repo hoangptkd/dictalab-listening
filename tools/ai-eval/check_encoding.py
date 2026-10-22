@@ -3,7 +3,7 @@ import py_compile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-ROOTS = ("services/ai-generation", "tools/ai-eval", "artifacts/prompts", "artifacts/reports",
+ROOTS = ("services/ai-generation", "tools/ai-eval", "training", "artifacts/prompts", "artifacts/reports",
          "src/main/java", "src/main/resources/application.yml", "src/test/java/com/dictalab/service/ConversationRolloutTest.java",
          ".github/workflows", "docs/ai-platform-runbook.md", "docs/ai-platform-baseline.md", ".env.example", "compose.yaml",
          ".env.ai-production.example", ".env.ai-local.example", "ops/observability", "src/main/resources/application-local.yml",

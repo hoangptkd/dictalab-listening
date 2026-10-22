@@ -1,7 +1,7 @@
-"""Prepare a human-approved SFT dataset without changing any target output.
+"""Prepare an explicitly reviewed SFT dataset without changing any target output.
 
 This tool uses the existing production validator and JSON Schema. It accepts exported JSONL records,
-requires an explicit human decision for every record, validates the message
+requires an explicit reviewer decision for every record, validates the message
 contract, removes rejected/duplicate records, and splits by conversation group.
 It does not repair, rewrite, or call a model.
 """
@@ -29,7 +29,7 @@ _spec.loader.exec_module(_validation)
 
 APPROVED = {"approved", "approve", "accepted", "accept", "pass"}
 REJECTED = {"rejected", "reject", "failed", "fail"}
-PENDING = {"", "pending", "needs_adjudication", "needs-adjudication", "uncertain"}
+PENDING = {"", "pending", "needs_adjudication", "needs-adjudication", "uncertain", "review_required"}
 PURPOSES = {"content", "translation"}
 SECRET_RE = re.compile(
     r"(?:bearer\s+\S+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|"
@@ -187,6 +187,8 @@ def _review(row: dict[str, Any], decisions: dict[str, dict[str, str]]) -> str:
 
 
 def _contract(row: dict[str, Any], artifact: dict[str, Any]) -> None:
+    if row.get("developmentOnly") is True:
+        raise DatasetError("development calibration/benchmark records cannot enter SFT")
     purpose, _, target = _target(row)
     level = row.get("level")
     if level not in ("A1", "A2", "B1") or type(row.get("turnNumber")) is not int or row["turnNumber"] not in (2, 3, 4):
@@ -274,7 +276,9 @@ def _split(group: str, seed: int, validation_percent: int, test_percent: int,
 
 def prepare(source_paths: list[Path], decisions_path: Path, output_dir: Path, *, artifact_path: Path, seed: int = 17,
             validation_percent: int = 15, test_percent: int = 15,
-            forced_test_groups: set[str] | None = None) -> dict[str, Any]:
+            forced_test_groups: set[str] | None = None, review_policy: str = "human") -> dict[str, Any]:
+    if review_policy not in ("human", "delegated-ai"):
+        raise DatasetError("unsupported review policy")
     if validation_percent <= 0 or test_percent < 0 or validation_percent + test_percent >= 100:
         raise DatasetError("invalid validation/test percentages")
     artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
@@ -298,6 +302,8 @@ def prepare(source_paths: list[Path], decisions_path: Path, output_dir: Path, *,
                 raise DatasetError("duplicate or missing id")
             seen_ids.add(key)
             decision = _review(row, decisions)
+            if decision in APPROVED and decisions[key]["reviewer"].startswith("AI:") and review_policy != "delegated-ai":
+                raise DatasetError("AI approval requires explicit delegated-ai review policy")
             if decision in REJECTED:
                 rejected_ids.append(key)
                 rejected_groups.add(_group(row))
@@ -357,6 +363,7 @@ def prepare(source_paths: list[Path], decisions_path: Path, output_dir: Path, *,
             "schemaHash": row["schemaHash"],
             "reviewStatus": "approved",
             "reviewerReference": decisions[row["id"]]["reviewer"],
+            "reviewerType": "ai" if decisions[row["id"]]["reviewer"].startswith("AI:") else "human",
             "reviewVersion": row["reviewVersion"],
             "semanticReviewReference": row["semanticReviewReference"],
             "targetMessageIndex": target_index,
@@ -388,6 +395,8 @@ def prepare(source_paths: list[Path], decisions_path: Path, output_dir: Path, *,
         "pendingGates": ["P0 coverage and sample count approval", "near-duplicate and holdout audit",
                          "GPU dependency lock and checkpoint preflight", "last-assistant loss mask check"],
         "reviewPolicy": "every retained row approved with reviewer reference",
+        "reviewAuthority": review_policy,
+        "humanApproved": all(row["reviewerType"] == "human" for row in unique),
         "splitPolicy": {"seed": seed, "validationPercent": validation_percent,
                         "testPercent": test_percent, "by": "groupId", "forcedTestGroups": sorted(forced)},
         "contract": {"artifactVersion": artifact["version"], "artifactHash": artifact["sha256"],
@@ -418,7 +427,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source", type=Path, action="append", required=True,
                         help="approved-export source JSONL; may be supplied more than once")
     parser.add_argument("--decisions", type=Path, required=True,
-                        help="human-review decisions CSV")
+                        help="explicit review decisions CSV")
+    parser.add_argument("--review-policy", choices=("human", "delegated-ai"), default="human")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--artifact", type=Path, required=True, help="frozen production prompt artifact")
     parser.add_argument("--seed", type=int, default=17)
@@ -436,7 +446,7 @@ def main(argv: list[str] | None = None) -> int:
             raise DatasetError("holdout group file must list the canonical benchmark and adversarial groups")
         manifest = prepare(args.source, args.decisions, args.output, artifact_path=args.artifact, seed=args.seed,
                            validation_percent=args.validation_percent, test_percent=args.test_percent,
-                           forced_test_groups=forced)
+                           forced_test_groups=forced, review_policy=args.review_policy)
     except (OSError, ValueError) as exc:
         print(f"prepare_dataset: {exc}", file=sys.stderr)
         return 2

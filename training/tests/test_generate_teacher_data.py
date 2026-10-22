@@ -14,6 +14,7 @@ from training.generate_teacher_data import (CHECKS, TEACHER, JUDGE, REQUEST_CAP,
 from jsonschema import Draft202012Validator
 from training.prepare_dataset import DatasetError, ROOT, digest
 from training.tests.test_prepare_dataset import ARTIFACT, _row
+from training.semantic_rubric import calibration_cases, decision, severity
 
 
 def _group():
@@ -51,6 +52,60 @@ def test_roles_match_authored_branch_overrides():
     assert roles("hotel", "quiet") == {"partnerRole": "guest", "learnerRole": "receptionist"}
     assert roles("cafe", "payment")["partnerRole"] == "server"
     assert roles("tickets", "collection")["partnerRole"] == "ticket clerk"
+
+
+def test_v8_examples_have_valid_types_counts_and_frozen_baseline():
+    from training.generate_teacher_data import ARTIFACT as candidate_path, read_json
+    candidate = read_json(candidate_path)
+    for example in candidate["fewShotExamples"]:
+        level = example["input"]["difficulty"]
+        Draft202012Validator(candidate["contentSchemas"][level]).validate(example["output"])
+        assert len(example["output"]["slots"]) == (2 if level == "A1" else 3)
+        assert all(fact["taskType"] in candidate["levelProfiles"][level]["taskTypes"]
+                   for fact in example["output"]["facts"])
+    assert candidate["baselineArtifactHash"] == ARTIFACT["sha256"]
+    assert candidate["approvalStatus"] == "development"
+    assert candidate["metricReport"]["gate"]["releaseAllowed"] is False
+
+
+def test_semantic_calibration_is_balanced_and_uncertainty_never_passes():
+    cases = calibration_cases()
+    assert len(cases) == len({case["id"] for case in cases}) == 24
+    assert len({case["family"] for case in cases}) == 8
+    for family in {case["family"] for case in cases}:
+        assert {case["expected"] for case in cases if case["family"] == family} == {"PASS", "FAIL"}
+    verdict = {"id": "test", "issues": [], **dict.fromkeys(CHECKS, True)}
+    assert decision(verdict) == "PASS" and severity(verdict) == "none"
+    verdict["informationStatusCorrect"] = None
+    assert decision(verdict) == "REVIEW_REQUIRED" and not judge_pass(verdict)
+    verdict.pop("rolesCorrect")
+    assert decision(verdict) == "REVIEW_REQUIRED"
+    verdict["informationStatusCorrect"] = False
+    assert decision(verdict) == "FAIL" and severity(verdict) == "critical"
+    verdict = {**dict.fromkeys(CHECKS, True), "questionFactsAligned": False, "severity": "minor"}
+    assert severity(verdict) == "major"
+
+
+def test_context_selection_is_stable_and_unreviewed_history_cannot_enter_sft():
+    group = {**_group(), "scenarioId": "meeting", "input": {"history": []}}
+    first = make_context(group, 2, [], ARTIFACT, 0)
+    assert first == make_context(group, 2, [], ARTIFACT, 999)
+    item, context = _item()
+    task, _ = build_records(item, context, _group(), ARTIFACT, "review")
+    prior = [{"task": task, "context": context, "eligible": False}]
+    with pytest.raises(DatasetError, match="semantic approved"):
+        make_context(group, 3, prior, ARTIFACT, 0)
+    diagnostic = make_context(group, 3, prior, ARTIFACT, 0, diagnostic=True)
+    with pytest.raises(DatasetError, match="diagnostic history"):
+        build_records(item, diagnostic, group, ARTIFACT, "review")
+    prior[0]["eligible"] = True
+    continued = make_context(group, 3, prior, ARTIFACT, 0)
+    fact = continued["history"][-1]["facts"][0]
+    assert fact["taskType"] == "direct_detail" and fact["slotKind"] == "room"
+    assert continued["encounterState"]["currentObject"] is None
+    assert continued["encounterState"]["sourceTurns"][0]["speaker"] == "organizer"
+    transferred = make_context(group, 4, prior, ARTIFACT, 0)
+    assert transferred["encounterState"]["sourceTurns"] == []
 
 
 def test_exclusions_choose_unattempted_branches_and_never_reuse_exhausted_groups():
@@ -270,8 +325,9 @@ def test_failed_batch_does_not_replay_or_discard_other_unattempted_groups(tmp_pa
         def call(self, model, system, data, name, **kwargs):
             calls.append(name)
             if name == "judge-calibration":
-                return {"items": [{"id": item["id"], "issues": [] if index == 0 else ["seeded"],
-                    **{key: index == 0 for key in CHECKS}} for index, item in enumerate(data["items"])]}
+                    expected = {case["id"]: case["expected"] == "PASS" for case in calibration_cases()}
+                    return {"items": [{"id": item["id"], "issues": [] if expected[item["id"]] else ["seeded"],
+                        **{key: expected[item["id"]] for key in CHECKS}} for item in data["items"]]}
             raise DatasetError("HTTP 503; no retry")
     monkeypatch.setattr(module, "Gemini", FailingCloud)
     summary = run(tmp_path / "result")

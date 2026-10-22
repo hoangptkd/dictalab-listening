@@ -35,7 +35,7 @@ public final class ConversationPythonClient implements ConversationAiClient {
             "scenario", "difficulty", "turnNumber", "partnerRole", "learnerRole",
             "levelProfile", "listeningSkills", "allowedTaskTypes", "scenarioJourney", "history",
             "recentPractice", "practiceFocus", "sessionBlueprint", "variationSeed",
-            "previouslyTestedDetails", "weakSkills", "validationError", "previousInvalidPrompt"
+            "previouslyTestedDetails", "weakSkills", "encounterState", "validationError", "previousInvalidPrompt"
     );
     private final HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(Duration.ofSeconds(3)).build();
@@ -133,7 +133,8 @@ public final class ConversationPythonClient implements ConversationAiClient {
             body.put("idempotencyKey", requestId);
             body.put("level", level);
             body.put("turnNumber", context.path("turnNumber").asInt());
-            body.put("promptVersion", ConversationGenerationPrompt.VERSION);
+            // The server selects the frozen artifact; a development Java prompt must not promote it.
+            body.put("promptVersion", "V1");
             body.put("instruction", ConversationGenerationPrompt.instruction(level, context.path("turnNumber").asInt())
                     + ConversationGenerationPrompt.turnBrief(context));
             body.put("context", filterContext(context));
