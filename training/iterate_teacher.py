@@ -747,7 +747,7 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
         if len(item["content"]["slots"]) != gen.authoring_rules(context)["slotCount"]:
             raise gen.DatasetError("teacher slot count differs from authoringRules")
         task, records = gen.build_records(item, context, group, artifact,
-            f"{ident}.judge-result.json", teacher=manifest["teacher"]["model"],
+            f"{ident}.result.json" if collection else f"{ident}.judge-result.json", teacher=manifest["teacher"]["model"],
             judge=manifest["judge"]["model"], request_reference=request_path.name)
         errors = validate_training_task(task, entry["level"], artifact, context["levelProfile"])
         if errors:

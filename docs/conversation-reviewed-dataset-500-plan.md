@@ -43,7 +43,8 @@ Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các b�
 - Bản vá lưu trong `scripts/chatgpt-web-compat.patch`; checkout chạy local ở
   `data/chatgpt-api-web` được Git bỏ qua. Không đưa cookie/profile/log riêng vào Git.
 - Kiểm tra có thể chạy không cần Chrome: `node scripts/test-chatgpt-web-tabs.cjs`.
-- Vẫn cần kiểm tra live số tab qua nhiều lượt chấm và sau khi restart bridge.
+- Kiểm tra live ngày 23/10: một tab sau restart và trong ba lượt chấm độc lập;
+  cùng tab được tái sử dụng, mỗi bài có hội thoại ChatGPT mới.
 
 ## Trạng thái và các bước tiếp theo
 
@@ -88,8 +89,17 @@ Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các b�
 - Watchdog ngoài worker được bật rõ bằng `--shutdown-on-worker-failure`, giám sát
   vòng collect; không giám sát Codex hoặc Windows bị treo. Lệnh shutdown kiểm thử
   bằng mock. Khi chờ Codex duyệt, watchdog kết thúc bình thường.
-- Kiểm tra hiện tại: 114 passed, 1 skipped. Chưa có bằng chứng sinh/duyệt mới hoặc
-  optimizer step ở thời điểm ghi cập nhật này; kết quả live lưu trong campaign riêng.
+- Kiểm tra hiện tại: 114 passed, 1 skipped; UTF-8 đạt.
+- Lô thật đầu tiên tại `data/fine-tuning/reviewed-500-20261023`: gửi bốn ứng viên
+  DeepSeek A1/A2/B1/B2. Ba bài qua hard checks và được Web chấm; Codex duyệt A1,
+  loại A2 vì slot/nguồn chưa khớp chắc chắn và B2 vì lệch slot/câu hỏi cùng sai taskType.
+  B1 gặp ProviderError; log gọn lô đầu chưa giữ mã lỗi chi tiết nên không kết luận sâu hơn.
+- Tổng giữ: 1 bài train A1, 0 validation, 0 test; còn thiếu 499/100/100 bài.
+  Nội dung chi tiết ba bài loại đã xóa, giữ hash/nhóm lỗi/lý do/usage/trạng thái gửi.
+  Code đã bổ sung giữ mã provider kiểm soát cho các lần sau, không giữ exception dump.
+- Quota thực đo đã dùng 100/100, còn 0. Checkpoint dừng để tiếp tục khi có quota;
+  không gửi lại bốn request cũ, không lấy dữ liệu cũ thay thế. Chưa export hoặc train,
+  chưa có optimizer step. Mốc tắt máy áp dụng do hết quota theo ủy quyền của chủ dự án.
 
 ## Phần cứng và mốc tạm dừng
 

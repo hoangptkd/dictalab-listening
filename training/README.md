@@ -423,7 +423,8 @@ benchmark or the judge gold gate. Its collection/B2 pipeline is available offlin
 the benchmark commands below retain their historical acceptance rules.
 The shipped bridge patch now reuses one ChatGPT tab with a fresh conversation
 per independent review. Run `node scripts/test-chatgpt-web-tabs.cjs` for the
-offline tab lifecycle check; live review/restart verification is still pending.
+offline tab lifecycle check. The first live collection on 2026-10-23 confirmed one
+tab after restart and across three independent Web reviews, with a fresh chat each time.
 
 ```powershell
 python -m training.collect_reviewed prepare --campaign data/fine-tuning/reviewed-500-20261023

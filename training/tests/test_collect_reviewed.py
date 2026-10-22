@@ -77,7 +77,8 @@ async def test_unresolved_worker_state_is_not_replayed(campaign):
 def test_rejection_compacts_evidence_and_preserves_other_candidates(campaign):
     path, _ = campaign
     row = {"id": "candidate-0001", "groupId": "fresh/a/b", "level": "A1", "split": "train",
-           "context": {"private": "context"}, "task": {"utteranceEn": "source body"}, "sent": True}
+           "context": {"private": "context"}, "task": {"utteranceEn": "source body"}, "sent": True,
+           "error": "deepseek:teacher_batch:schema_mismatch source body", "errorType": "ProviderError"}
     gen.write_json(path / "candidates/candidate-0001.teacher-result.json", row)
     gen.write_json(path / "candidates/candidate-0001.teacher-request.json", {"body": "details"})
     gen.write_json(path / "candidates/candidate-0002.teacher-request.json", {"body": "keep"})
@@ -85,6 +86,7 @@ def test_rejection_compacts_evidence_and_preserves_other_candidates(campaign):
     compact = gen.read_json(path / "decisions/candidate-0001.json")
     assert compact["taskHash"] == gen.digest(row["task"])
     assert compact["teacher-requestHash"]
+    assert compact["errorCodes"] == ["deepseek:teacher_batch:schema_mismatch"]
     assert "source body" not in json.dumps(compact) and "context" not in compact
     assert not list((path / "candidates").glob("candidate-0001.*"))
     assert (path / "candidates/candidate-0002.teacher-request.json").exists()

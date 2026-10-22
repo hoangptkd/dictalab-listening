@@ -179,6 +179,12 @@ def reject(path: Path, row: dict, reason: str, *, reviewer: str = "automatic-har
         taskHash=gen.digest(row.get("task")), contextHash=gen.digest(row["context"]),
         recordHashes=[record["outputHash"] for record in row.get("records", [])],
         usage=row.get("usage"), sent=bool(row.get("sent")), time=run._now())
+    # Retain controlled provider codes, never exception dumps containing rejected text.
+    compact["errorType"] = row.get("errorType")
+    compact["errorCodes"] = re.findall(
+        r"\bdeepseek:teacher_batch:(?:schema_mismatch|invalid_json|response_not_object|"
+        r"output_truncated|http_or_parse_error|timeout|client_error:(?:400|401|403|422))\b",
+        row.get("error", ""))
     for kind in ("teacher-request", "teacher-envelope", "request", "envelope", "result"):
         file = folder / f"{ident}.{kind}.json"
         if file.exists():
@@ -186,7 +192,7 @@ def reject(path: Path, row: dict, reason: str, *, reviewer: str = "automatic-har
             compact[kind + "Hash"] = gen.digest(value)
             if isinstance(value, dict) and value.get("usage"):
                 compact.setdefault("allUsage", {})[kind] = value["usage"]
-    gen.write_json(path / "decisions" / f"{ident}.json", compact)
+    run._atomic_json(path / "decisions" / f"{ident}.json", compact)
     # Persist compact evidence first; only remove this campaign's candidate-specific files.
     for file in folder.glob(f"{ident}.*.json"):
         if file.resolve().parent != folder.resolve():
@@ -330,7 +336,7 @@ def adjudicate(path: Path, verdict: dict) -> dict:
                 raise DatasetError("level/split target already full")
             result = {**verdict, **{key: row[key] for key in ("groupId", "split", "level")},
                       "time": run._now()}
-            gen.write_json(path / "decisions" / f"{ident}.json", result)
+            run._atomic_json(path / "decisions" / f"{ident}.json", result)
         else:
             raise DatasetError("verdict must be approved or rejected; uncertain items cannot enter SFT")
         state = gen.read_json(path / "state.json")
@@ -349,7 +355,9 @@ def export(path: Path) -> dict:
     for item in decisions(path):
         if item["verdict"] == "approved":
             row = gen.read_json(path / "candidates" / f"{item['id']}.teacher-result.json")
-            rows.extend(row["records"])
+            for record in row["records"]:
+                record["semanticReviewReference"] = str(path / "decisions" / f"{item['id']}.json")
+                rows.append(record)
     source = output / "approved.jsonl"
     source.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8", newline="\n")
     review_file = output / "decisions.csv"
