@@ -313,7 +313,8 @@ atomically in the shared Redis store before sending HTTP. The current three
 sources operate at 13 RPM each, with a global cap of 39 RPM. A key is selected
 only before dispatch; a sent request is never retried on another account.
 Without a pool, requests are spaced by at least 13 seconds. These are run limits, not proof of remaining
-project quota. HTTP errors stop without target retries or silent model fallback.
+project quota. HTTP failures exclude the affected batch without target retries
+or silent model fallback; collection may continue with unattempted groups.
 The judge must first reject seeded AM/PM invention, answer leakage and fake
 inference, and accept a valid calibration example. Then deterministic checks
 and semantic review run for every candidate. Failed groups and exact copied
@@ -325,8 +326,21 @@ continues with different, unattempted groups. Dependent later turns of a failed
 group are skipped. This never replays a sent request or repairs its response.
 When starting a new plan after a failed run, `--exclude-group-file` accepts one
 previously attempted `groupId` per line and freezes those exclusions in the new
-manifest. Keep the original requests/errors as evidence. Cached successful
+manifest. Selection then uses a different unattempted catalogue branch for each
+scenario/level; exhausted scenario/levels are skipped and holdouts stay reserved.
+`--levels B1 A2` limits collection to the missing levels, in that order, before
+any API calls. Keep the original requests/errors as evidence. Cached successful
 responses must match the exact request, response hashes and current schema.
+
+Each teacher item also carries drafting constraints outside the exported production
+context: A1 aims for 16-26 words and two slots; A2 for 29-43 words and three slots;
+B1 for 48-72 words and three slots under the current profiles. The ranges are
+computed inside the authoritative bounds. Instructions require transcript-only
+word counting, aligned slot/content/translation counts and useful connected
+sentences. The local production validator still enforces the original contract,
+without padding or rewriting received targets. Semantic review distinguishes
+omitting an old detail from contradicting it; new details must still develop the
+same established encounter. A new run is required after changing these instructions.
 
 To fit the free daily quota, teacher calls contain batches of contexts and
 request paired English/Vietnamese targets. Exported three-message inputs use
@@ -382,7 +396,7 @@ sources for the **approved teacher/judge model**, not just the production Flash-
 matching model fails before HTTP; no silent substitution occurs. Use the common JSON, not Java-only A/B/C
 variables. See `docs/ai-platform-runbook.md` for runtime secrets and shared Redis setup.
 
-Pool mode replaces the legacy fixed 13-second spacing with shared admission. The frozen **19-call run cap**,
+Pool mode replaces the legacy fixed 13-second spacing with shared admission. The frozen **109-call run cap**,
 cached-request integrity checks, no retry/repair rule and human-review gates remain unchanged. More accounts
 do not authorize more teacher calls or a model change. Quota rejection stops this collection script safely;
 rerun the same untouched run only after capacity returns. A request already written without a complete

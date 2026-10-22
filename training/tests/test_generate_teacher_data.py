@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from training.generate_teacher_data import (CHECKS, TEACHER, JUDGE, REQUEST_CAP, Gemini, build_records, export_review,
-    batch_schema, provider_schema, strict_json, judge_pass, make_context, plan_groups, roles, unpack_batch, run)
+    authoring_rules, batch_schema, provider_schema, strict_json, judge_pass, make_context, plan_groups, roles, unpack_batch, run)
 from jsonschema import Draft202012Validator
 from training.prepare_dataset import DatasetError, ROOT, digest
 from training.tests.test_prepare_dataset import ARTIFACT, _row
@@ -45,6 +45,43 @@ def test_roles_match_authored_branch_overrides():
     assert roles("hotel", "quiet") == {"partnerRole": "guest", "learnerRole": "receptionist"}
     assert roles("cafe", "payment")["partnerRole"] == "server"
     assert roles("tickets", "collection")["partnerRole"] == "ticket clerk"
+
+
+def test_exclusions_choose_unattempted_branches_and_never_reuse_exhausted_groups():
+    catalogue = json.loads((ROOT / "data/conversation-distillation/production-contract.json").read_text(encoding="utf-8"))["catalogue"]
+    original = plan_groups(catalogue)
+    excluded = {group["groupId"] for group in original}
+    remaining = plan_groups(catalogue, excluded)
+    assert len(remaining) == 66  # plans/delivery have only one non-holdout branch per level.
+    assert not ({group["groupId"] for group in remaining} & excluded)
+    assert not any(group["scenarioId"] in {"cafe", "hotel", "directions", "plans", "delivery"}
+                   and group["branchId"] == "standard" for group in remaining)
+    exhausted = {f"{row['scenarioId']}/{row['branchId']}/{row['level']}" for row in catalogue}
+    assert plan_groups(catalogue, exhausted) == []
+    with pytest.raises(DatasetError, match="outside the frozen catalogue"):
+        plan_groups(catalogue, {"unknown/branch/B1"})
+
+
+@pytest.mark.parametrize("level,expected", [("A1", (16, 26, 2)), ("A2", (29, 43, 3)), ("B1", (48, 72, 3))])
+def test_teacher_drafting_targets_stay_inside_authoritative_bounds(level, expected):
+    context = {"difficulty": level, "levelProfile": ARTIFACT["levelProfiles"][level]["wordBounds"]}
+    original = copy.deepcopy(context)
+    assert tuple(authoring_rules(context).values()) == expected
+    assert context == original
+    context["levelProfile"] = {"minWords": 30, "maxWords": 30}
+    assert authoring_rules(context)["draftMinWords"] == authoring_rules(context)["draftMaxWords"] == 30
+
+
+def test_targeted_plan_filters_levels_before_any_api_call(tmp_path):
+    summary = run(tmp_path / "targeted", prepare_only=True, levels=("B1", "A2"))
+    assert summary["plannedTasks"] == 144 and not summary["trainingReady"]
+    plan = json.loads((tmp_path / "targeted/generation-plan.json").read_text(encoding="utf-8"))
+    assert plan["levels"] == ["B1", "A2"]
+    assert {group["level"] for group in plan["groups"]} == {"A2", "B1"}
+    assert not (tmp_path / "targeted/api-reservations.jsonl").exists()
+    for levels in ((), ("B1", "B1"), ("C1",)):
+        with pytest.raises(DatasetError, match="levels must be distinct"):
+            run(tmp_path / "invalid", prepare_only=True, levels=levels)
 
 
 def test_turn_four_removes_old_story_and_preserves_only_answer_avoidance():
@@ -216,7 +253,7 @@ def test_failed_batch_does_not_replay_or_discard_other_unattempted_groups(tmp_pa
     catalogue = tmp_path / "catalogue.json"
     catalogue.write_text('{"catalogue":[]}', encoding="utf-8")
     monkeypatch.setattr(module, "CATALOGUE", catalogue)
-    monkeypatch.setattr(module, "plan_groups", lambda _: groups)
+    monkeypatch.setattr(module, "plan_groups", lambda *args: groups)
     calls = []
     class FailingCloud:
         def __init__(self, _):

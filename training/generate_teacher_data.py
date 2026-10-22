@@ -43,6 +43,9 @@ Return {"items":[{"id":...,"rolesCorrect":true/false,"historyConsistent":true/fa
 Roles: partnerRole speaks, learnerRole listens. Every question must concern the speaker's speech.
 History: turns 2/3 keep the encounter and settled arrangements. Do not invent a second speaker,
 contradict a settled fact, repeat an already-tested meaning, or merely rename its slot.
+Omitting an old detail is NOT a contradiction: it need not be repeated in every utterance.
+New practical details are valid when they serve the same established goal, participants and setting.
+Reject an incompatible replacement or unrelated goal, not the absence of verbatim history.
 Turn 4 must be a NEW unrelated encounter/goal, without old story references or old answer values.
 Question, slot askVi, textEn and textVi must express the same answerable meaning in the same order.
 Translation must preserve numbers, names, times, codes, negation, limits and conditions exactly.
@@ -61,14 +64,26 @@ Create English content FIRST, then translate that exact content following transl
 translationSchema. Return ONLY {"items":[{"id": supplied id,"content": content object,
 "translation": translation object}]}. Keep items separate; never mix their facts or histories.
 Produce each id exactly once, in the given order. No markdown, commentary or hidden reasoning.
-Aim near the MIDDLE of each word range. Count whitespace-delimited English words before finishing.
+Each item's authoringRules specify its drafting word range and slot count. Apply them separately.
+Count ONLY utteranceEn words, separated by ASCII whitespace; punctuation attached to a word does
+not add a word. The short history and few-shot utterances are NOT length templates.
+Draft A1 as 2-3 short sentences, A2 as 3-4 connected sentences, B1 as 4-6 connected sentences.
+Reach the drafting range with useful setting/action/reason/condition information, not filler,
+repeated answers, a second speaker, or language above the supplied CEFR level.
 Use natural varied wording and practical new meanings. Preserve authored speaker/listener roles.
-For A1 use exactly 2 direct-detail targets; for A2/B1 prefer 2 or 3 independent targets.
+Plan exactly authoringRules.slotCount independent slots. Return the SAME number of content.slots,
+content.facts and translation.facts, aligned by index; never return just one slot or fact.
+For A1 use direct-detail targets only. Additional transcript background is not another tested slot.
 Include fact.taskType. If practiceFocus requests a task type, include it at least once, genuinely.
 Never copy few-shot outputs, openings, or old tested meanings. Do not put answer cues in UI text.
 For inference use at most ONE inference target, exact supporting transcript segments, and a brief
 public evidence explanation (not chain-of-thought). Do not turn direct detail into fake inference.
 Translation is literal in meaning: no invented AM/PM, gender, dates, causes, names, or quantities.
+For turns 2/3, keep the established item/booking/activity and add a practical next step for it.
+Old arrangements remain true without restating them. Announce any actual change explicitly.
+Before emitting JSON, privately check EACH item's transcript word count, slot/fact counts, exact
+evidence substrings, roles, continuity and faithful translation. Revise the draft before sending
+if necessary; do not emit counts, checks, explanations or extra fields in the response.
 """
 TEACHER_BATCH += JSON_RULES
 JUDGE_SYSTEM += JSON_RULES
@@ -163,8 +178,12 @@ def roles(scene: str, branch: str) -> dict:
     return {"partnerRole": speaker, "learnerRole": listener}
 
 
-def plan_groups(catalogue: list[dict]) -> list[dict]:
+def plan_groups(catalogue: list[dict], excluded: set[str] | None = None) -> list[dict]:
     groups = []
+    excluded = excluded or set()
+    known = {f"{r['scenarioId']}/{r['branchId']}/{r['level']}" for r in catalogue}
+    if not excluded <= known:
+        raise DatasetError("excluded group is outside the frozen catalogue")
     scenes = sorted({r["scenarioId"] for r in catalogue})
     if len(scenes) != 24:
         raise DatasetError("expected the reviewed 24-scenario synthetic catalogue")
@@ -174,10 +193,22 @@ def plan_groups(catalogue: list[dict]) -> list[dict]:
                        and not (scene in CORE and r["branchId"] == "standard")]
             if not choices:
                 raise DatasetError(f"no non-holdout source for {scene}/{level}")
+            choices = [r for r in choices if f"{scene}/{r['branchId']}/{level}" not in excluded]
+            if not choices:
+                continue
             selected = copy.deepcopy(min(choices, key=lambda r: digest([17, scene, level, r["branchId"]])))
             selected["groupId"] = f"{scene}/{selected['branchId']}/{level}"
             groups.append(selected)
     return groups
+
+
+def authoring_rules(context: dict) -> dict:
+    bounds = context["levelProfile"]
+    middle = (bounds["minWords"] + bounds["maxWords"]) // 2
+    margin = (bounds["maxWords"] - bounds["minWords"]) // 5
+    return {"draftMinWords": max(bounds["minWords"], middle - margin),
+            "draftMaxWords": min(bounds["maxWords"], middle + margin),
+            "slotCount": 2 if context["difficulty"] == "A1" else 3}
 
 
 def production_messages(artifact: dict, context: dict, purpose: str) -> list[dict]:
@@ -471,15 +502,16 @@ def export_review(output: Path, candidates: list[dict], artifact: dict, holdouts
     return summary
 
 
-def run(output: Path, *, prepare_only: bool = False, exclude_groups: list[str] | None = None) -> dict:
+def run(output: Path, *, prepare_only: bool = False, exclude_groups: list[str] | None = None,
+        levels: tuple[str, ...] = ("A1", "A2", "B1")) -> dict:
     artifact = read_json(ARTIFACT)
     if artifact.get("sha256") != digest({k: v for k, v in artifact.items() if k != "sha256"}):
         raise DatasetError("artifact hash mismatch")
-    groups = plan_groups(read_json(CATALOGUE)["catalogue"])
+    if not levels or len(set(levels)) != len(levels) or not set(levels) <= {"A1", "A2", "B1"}:
+        raise DatasetError("levels must be distinct A1/A2/B1 values")
     excluded = set(exclude_groups or [])
-    if not excluded <= {group["groupId"] for group in groups}:
-        raise DatasetError("excluded group is outside the frozen catalogue selection")
-    groups = [group for group in groups if group["groupId"] not in excluded]
+    groups = [group for group in plan_groups(read_json(CATALOGUE)["catalogue"], excluded)
+              if group["level"] in levels]
     if not groups:
         raise DatasetError("no unattempted groups remain")
     holdouts = sorted(f"{scene}/standard/{level}" for scene in CORE for level in ("A1", "A2", "B1"))
@@ -490,6 +522,7 @@ def run(output: Path, *, prepare_only: bool = False, exclude_groups: list[str] |
         "teacherInstructionHash": digest(TEACHER_BATCH), "judgeInstructionHash": digest(JUDGE_SYSTEM),
         "sharedModelRequestCap": REQUEST_CAP, "batchSize": BATCH_SIZE,
         "excludedPreviouslyAttemptedGroups": sorted(excluded),
+        "levels": list(levels),
         "independentJudgeModel": TEACHER != JUDGE,
         "holdoutGroups": holdouts, "repairEnabled": False, "fallbackEnabled": False,
         "humanApproved": False, "trainingReady": False}
@@ -509,7 +542,7 @@ def run(output: Path, *, prepare_only: bool = False, exclude_groups: list[str] |
     if [judge_pass(verdicts[r["id"]]) for r in calibration] != [True, False, False, False]:
         raise DatasetError("semantic judge failed calibration; no teacher data was generated")
     candidates, prior_by_group, failed_groups = [], {}, set()
-    for level in ("A1", "A2", "B1"):
+    for level in levels:
         selected = [r for r in groups if r["level"] == level]
         for turn in (2, 3, 4):
             for offset in range(0, len(selected), BATCH_SIZE):
@@ -524,7 +557,7 @@ def run(output: Path, *, prepare_only: bool = False, exclude_groups: list[str] |
                         continue
                     context = make_context(group, turn, prior, artifact, index)
                     ident = group["groupId"].replace("/", "-") + f"-t{turn}"
-                    batch.append({"id": ident, "context": context})
+                    batch.append({"id": ident, "context": context, "authoringRules": authoring_rules(context)})
                     lookup[ident] = (context, group)
                 if not batch:
                     continue
@@ -592,10 +625,12 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--exclude-group-file", type=Path, help="groups already attempted in a preserved earlier run")
+    parser.add_argument("--levels", nargs="+", choices=("A1", "A2", "B1"), default=("A1", "A2", "B1"))
     args = parser.parse_args()
     try:
         excluded = args.exclude_group_file.read_text(encoding="utf-8").splitlines() if args.exclude_group_file else []
-        print(json.dumps(run(args.output, prepare_only=args.prepare_only, exclude_groups=excluded), ensure_ascii=False))
+        print(json.dumps(run(args.output, prepare_only=args.prepare_only, exclude_groups=excluded,
+                             levels=tuple(args.levels)), ensure_ascii=False))
         return 0
     except (OSError, ValueError, KeyError, TypeError, urllib.error.URLError) as exc:
         print(f"generate_teacher_data: {exc}", file=sys.stderr)
