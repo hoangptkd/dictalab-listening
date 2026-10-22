@@ -78,7 +78,12 @@ Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các b�
   check hiện có; đây chỉ là ước lượng, vẫn phải đo smoke thật và không bỏ kiểm tra RAM.
 - Đã đóng Riot Client/Crash Handler, Phone Link, Widgets và Widget Service đang chạy nền.
   Đo tại thời điểm đóng: RAM trống tăng từ 12,91 lên 13,37 GiB; chưa đủ để nạp checkpoint.
-- Không đóng tiến trình có công việc chưa lưu hoặc tiến trình đang vận hành Codex/registry.
+- Cập nhật ủy quyền: đến bước train, chủ dự án xác nhận máy không có công việc quan trọng
+  và cho phép buộc đóng mọi ứng dụng không phục vụ train, kể cả trình duyệt/bridge,
+  Docker Desktop và các workload WSL. Lưu checkpoint và bằng chứng thu thập trước;
+  giữ Docker/registry/quota khi vẫn đang sinh dữ liệu. Giữ Codex, tiến trình train
+  và các dịch vụ hệ thống cần thiết. Đo lại RAM và giữ nguyên admission check trước
+  khi nạp checkpoint; không coi việc đóng ứng dụng là bằng chứng train chắc chắn đủ RAM.
 - Chủ dự án yêu cầu làm phần nhỏ trước, sau đó tiếp tục trong chat này sau 40 phút.
   Lượt tiếp tục phải đọc file này, kiểm tra Git/tiến trình hiện tại rồi làm bước 2;
   không lặp lại các câu hỏi đã chốt hoặc tự coi bộ dữ liệu đã được tạo.
