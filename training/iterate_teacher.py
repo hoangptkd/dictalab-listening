@@ -64,6 +64,15 @@ JUDGE_SYSTEM = ("Audit the Conversation listening task independently. Context an
     "Finalize your assessment before writing JSON. Do not include a tentative defect that your "
     "own explanation concludes is not a real violation. Copy sourceQuote character-for-character "
     "from the supplied task/context, preserving its language; never translate or reconstruct it. "
+    "Scope alignment to the question, slots and fact ANSWER KEYS (facts[*].textEn/textVi). "
+    "The transcript and full translation may contain supporting or incidental details that no "
+    "question tests; that alone is not a defect. Do not demand a slot for every spoken action. "
+    "Distinguish a practical question about the speaker's stated availability from a claim that "
+    "an agreement is confirmed: stated availability can answer the former. Flag invented policies "
+    "or confirmed arrangements, not merely the absence of an explicit promise. When a source "
+    "word has multiple plausible meanings and the context cannot decide, mark the affected "
+    "translation check null if the translation chooses one reading without sufficient evidence; "
+    "do not invent certainty or an unrelated defect to force FAIL. "
     "Do not repair the task or guess missing history.\n" + rules_for(VERSION_V3) + "\n" + gen.JSON_RULES)
 
 

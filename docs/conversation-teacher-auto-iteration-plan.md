@@ -81,7 +81,7 @@ trên 90% với độ tin cậy thống kê 95%.
 | `training/benchmark_teacher.py` | Cơ chế teacher request, envelope, quota, hash, chống replay và chuỗi phụ thuộc đã review |
 | `training/semantic_rubric.py` | 11 `CHECKS`, `rules_for('conversation-semantic-v3')`, `decision`, `severity` |
 | `training/freeze_candidate.py` | Đóng băng artifact; từ chối ghi đè; giữ provenance development |
-| `app.model_gateway.ModelGateway` | Cả gọi DeepSeek và Gemini; không tạo client né registry/quota |
+| `app.model_gateway.ModelGateway` | DeepSeek và Gemini dùng registry/quota hiện có; Web dùng adapter HTTP tới bridge loopback do chủ dự án chấp thuận |
 | `app.gemini_pool.quota_store` | Gọi đúng `platform='deepseek'` hoặc `platform='gemini'`; không đọc quota Gemini bằng store DeepSeek |
 | `app.provider_registry`, `app.config.Settings` | Registry mã hóa, tài khoản bật, model và hạn mức đã cấu hình |
 | `app.conversation_context.encounter_state` | Lập chỉ mục nguồn; không giả vờ đã suy ra mọi settled fact |
@@ -150,6 +150,29 @@ cho Web; giới hạn thực tế phụ thuộc tài khoản ChatGPT. Không g�
 nhập, cookie hay API key trong prompt. URL bridge chỉ dùng loopback trên máy chạy
 runner. `--bridge-url` chọn cổng local khác khi cần.
 
+**Kiểm tra thực tế ngày 23/10/2026:** bridge local nhận bài và trả JSON chấm được.
+Đã bỏ yêu cầu xác minh model phía sau `chatgpt-web` và pilot 12 bài trước benchmark;
+giữ nguyên bộ kiểm định và ngưỡng chất lượng do chủ dự án chốt. Chrome chạy có cửa sổ;
+chế độ headless gặp trang kiểm tra truy cập. Đã bật Think trong phiên Web, nhưng
+điều này không xác minh tên hoặc bảo đảm model phía website.
+
+| Cấu hình judge | Nhãn đúng / số mẫu đã chấm | Lý do dừng |
+| --- | --- | --- |
+| v1 | 1/1 | Đúng nhãn FAIL nhưng không nhận diện đúng check critical về vai người nói |
+| v2 | 2/3, thêm một phản hồi không hợp lệ | Trích dẫn không có nguyên văn trong nguồn |
+| v3 | 4/6 | Đòi kiểm tra cả chi tiết phụ trong transcript; bỏ sót nghĩa từ chưa xác định |
+| v4 | 5/6 | Hiểu câu hỏi về lời đề nghị thành thỏa thuận đã xác nhận; bỏ sót từ đa nghĩa |
+| v5 | 1/3 | Báo mơ hồ giả và lỗi lặp ý dù đã chuyển sang encounter mới |
+
+Tổng cộng 20 phản hồi kiểm định thật; các cấu hình dùng cùng gold, không gửi nhãn
+expected cho judge. Các lượt dừng sớm nên không phải điểm trên đủ 36 hoặc 72 mẫu,
+và các tỷ lệ trên không phải phép so sánh chất lượng đầy đủ giữa cấu hình.
+Hướng dẫn v5 bị loại; giữ hướng dẫn v4 và bằng chứng riêng tại
+`data/fine-tuning/teacher-auto-web-20261023-v4` (ngoài Git).
+Trạng thái là **JUDGE_BLOCKED**: chưa có lượt nào qua kiểm định, chưa chạy 30 bài
+DeepSeek và chưa có kết luận đạt 28/30. Cần cải thiện hoặc thay cấu hình judge rồi
+kiểm định lại trên campaign mới; không bỏ gate chỉ để chạy benchmark.
+
 - Agent viết code/đổi candidate theo feedback giữa các thao tác. Không xây thêm hệ thống
   để Python tự viết và thực thi source code do model API trả về.
 - `evaluate` chạy pilot của candidate đang mở; `decide` chọn giữ/loại và dọn dữ liệu.
@@ -166,14 +189,17 @@ runner. `--bridge-url` chọn cổng local khác khi cần.
 
 **Đầu ra:** chạy được với fake provider, có checkpoint và báo cáo, chưa cần gọi model thật.
 
-### Bước 2 — Tích hợp Gemini judge và kiểm định trước khi cho chấm
+### Bước 2 — Tích hợp judge và kiểm định trước khi cho chấm
 
-1. Tạo Settings riêng cho teacher DeepSeek và judge Gemini từ cùng registry mã hóa.
-   Chỉ đổi provider/model ở runtime của thí nghiệm, không sửa default production hoặc DB registry.
-2. Chọn Gemini đang bật và gọi được; hiện registry có `gemini-3.5-flash-lite` trên ba tài khoản.
-   Đây là quan sát lúc lập kế hoạch, agent phải kiểm tra lại. Không suy ra Lite đủ năng lực chấm.
-3. Khóa model judge trong campaign. Có thể xoay tài khoản cùng model theo pool hiện có,
-   nhưng không đổi model giữa chừng hoặc chuyển về DeepSeek tự chấm để vượt gate.
+1. Teacher DeepSeek dùng Settings từ registry mã hóa. Judge Gemini dùng cùng registry;
+   judge Web dùng `--judge chatgpt-web` và bridge local, không cần tài khoản/quota Gemini.
+   Chỉ đổi provider ở runtime của thí nghiệm, không sửa default production hoặc DB registry.
+2. Với Gemini, chọn model đang bật và gọi được; hiện registry có `gemini-3.5-flash-lite`
+   trên ba tài khoản. Không suy ra Lite đủ năng lực chấm. Với Web, dùng phiên Chrome
+   đã đăng nhập; không suy tên model từ alias và không chặn kiểm định vì thiếu tên đó.
+3. Khóa lựa chọn judge/transport trong campaign. Gemini có thể xoay tài khoản cùng model
+   theo pool hiện có. Web ghi rõ dùng alias và không kiểm soát được model phía website.
+   Không chuyển provider giữa chừng hoặc dùng DeepSeek tự chấm để vượt gate.
 4. Chuẩn bị gold set versioned gồm tối thiểu 36 probe từ ít nhất 12 nguồn nội dung khác nhau:
    12 PASS, 12 FAIL major/minor, 8 FAIL critical, 4 REVIEW_REQUIRED.
 5. Gold cần cả bài đầy đủ hard-valid và lỗi ngữ nghĩa có chủ đích. Đánh dấu nguồn/cặp mutation;
@@ -513,7 +539,9 @@ Sao chép nguyên khối sau vào agent có quyền đọc cùng workspace:
 
 > Đọc AGENTS.md và `docs/conversation-teacher-auto-iteration-plan.md`, rồi triển khai kế hoạch theo thứ tự.
 > Phạm vi là teacher A1/A2/B1, sinh content và translation cùng một lời gọi DeepSeek.
-> Dùng Gemini trong registry làm judge riêng, phải qua kiểm định trước. Không dùng chính phán quyết
+> Dùng judge riêng: ChatGPT Web qua bridge local theo lựa chọn hiện tại, hoặc Gemini trong registry
+> nếu chủ dự án yêu cầu đổi. Web không cần xác minh tên model phía sau alias, nhưng vẫn phải qua
+> kiểm định trước. Không dùng chính phán quyết
 > của judge làm nhãn kiểm định nó, không giả danh AI:Codex/human, không nới rubric/validator/gate.
 > Xây runner và fake-provider tests trước, sau đó chủ động thực hiện vòng thử–sửa tối đa 10 candidate
 > mỗi phiên khi quota cho phép. Sửa prompt/few-shot/context/luồng sinh-dịch theo bằng chứng lỗi,
