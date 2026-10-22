@@ -13,9 +13,13 @@
   campaign v1/v2/v3 đã gửi request để replay.
 - Kiểm tra trực tiếp VPS Windows `160.191.244.27` ngày 23/10: không còn
   `C:\DictaLab\coach-bridge\index.js`, tác vụ `DictaLabCoachBridge` hay listener
-  loopback cổng 3000. Máy local cũng không chạy bridge. Báo cáo 02/10 chỉ chứng minh
-  bridge lịch sử đã sinh được bài; `chatgpt-web` là alias do bridge trả lại, không
-  xác nhận model thực tế. ChatGPT Web hiện **chưa đủ điều kiện làm judge**.
+  loopback cổng 3000. Checkout bridge local trong `data/chatgpt-api-web` còn dùng được:
+  `/health` thành công và một lời gọi thử trả JSON Unicode đúng khi Chrome hiện cửa sổ.
+  Chrome ẩn gặp trang xác minh Cloudflare. Mã bridge chép `model` từ request vào
+  phản hồi; giao diện bài thử không hiển thị định danh model đã xử lý phản hồi.
+  Vì vậy alias `chatgpt-web` chưa xác nhận model thực tế và ChatGPT Web hiện
+  **chưa đủ điều kiện làm judge**. Bài thử đã được xóa trên giao diện và trong
+  danh mục conversation local của bridge; không đưa vào gold/campaign.
 - Trong một campaign hiện tại, runner thử các artifact prompt khác nhau với cùng schema,
   level profile và code sinh đã khóa. Thay code dựng context/luồng sinh cần mở campaign
   mới để giữ khả năng so sánh. Bản candidate không hiệu quả bị xóa khỏi `current/`;
