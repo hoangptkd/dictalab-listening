@@ -295,7 +295,7 @@ changes billing, calls production jobs, or starts training.
 ```powershell
 data/fine-tuning/.venv-cpu/Scripts/python.exe training/generate_teacher_data.py `
   --output data/fine-tuning/gemini-p0-new-run --prepare-only
-data/fine-tuning/.venv-cpu/Scripts/python.exe training/generate_teacher_data.py `
+python training/generate_teacher_data.py `
   --output data/fine-tuning/gemini-p0-new-run
 ```
 
@@ -304,18 +304,29 @@ The plan covers 24 scenarios, three levels and turns 2/3/4: at most 216 tasks,
 reserved and not selected. Groups bind all turns and both purposes. Turn 4
 removes the previous story and keeps only answer values to avoid repeating.
 
-The teacher and judge both use the user-approved Gemini 3 Flash Preview in
+The teacher and judge both use the user-approved Gemini 3.5 Flash Lite in
 separate calls. This is same-model semantic review, not independent-model evidence;
-human review remains required. Each batch contains up to 24 contexts: nine teacher
-calls, nine judge calls and one calibration call. The shared model cap is 19
-requests, reserving one daily request for the earlier health probe. Requests are
-spaced by at least 13 seconds. These are run limits, not proof of remaining
+human review remains required. Each batch contains up to four contexts: at most 54
+teacher calls, 54 judge calls and one calibration call (109 requests per run).
+With `GEMINI_QUOTA_ENABLED=true`, the existing project pool reserves RPM/TPM/RPD
+atomically in the shared Redis store before sending HTTP. The current three
+sources operate at 13 RPM each, with a global cap of 39 RPM. A key is selected
+only before dispatch; a sent request is never retried on another account.
+Without a pool, requests are spaced by at least 13 seconds. These are run limits, not proof of remaining
 project quota. HTTP errors stop without target retries or silent model fallback.
 The judge must first reject seeded AM/PM invention, answer leakage and fake
 inference, and accept a valid calibration example. Then deterministic checks
 and semantic review run for every candidate. Failed groups and exact copied
 outputs are excluded from the review export; near-duplicate auditing remains
 a separate human gate.
+
+A failed teacher/judge batch is checkpointed and excludes its groups; collection
+continues with different, unattempted groups. Dependent later turns of a failed
+group are skipped. This never replays a sent request or repairs its response.
+When starting a new plan after a failed run, `--exclude-group-file` accepts one
+previously attempted `groupId` per line and freezes those exclusions in the new
+manifest. Keep the original requests/errors as evidence. Cached successful
+responses must match the exact request, response hashes and current schema.
 
 To fit the free daily quota, teacher calls contain batches of contexts and
 request paired English/Vietnamese targets. Exported three-message inputs use
@@ -324,6 +335,23 @@ from the teacher response. Provenance explicitly records the batch requests
 and `productionWireRequest=false`. This data collection is **not** a production
 first-pass benchmark or evidence about Qwen quality. Teacher responses are
 never repaired or rewritten.
+
+Every real teacher/judge call now sends `response_format=json_schema` with an
+explicit item shape, allowed IDs and batch cardinality. The provider receives a
+Gemini-compatible subset without unsupported string-length/uniqueness constraints
+or nested array bounds; the original full schema is still enforced locally.
+The prompt requests literal UTF-8 Vietnamese. Strict parsing rejects malformed
+escapes, duplicate keys, non-finite numbers, unpaired surrogates and replacement
+characters. Correct JSON Unicode escapes remain valid and decode losslessly.
+IDs/count/order and the production content contract are checked after parsing.
+Schema-constrained decoding does not certify semantic or CEFR quality.
+Reference: [Gemini structured output limits](https://ai.google.dev/gemini-api/docs/structured-output).
+
+Pool collection uses the existing AI service dependencies (`app.config` and
+`app.gemini_pool`); run it with a Python environment containing that service's
+requirements. The preparation/CPU-training locks stay isolated and do not install
+Redis merely to run offline data validation. Redis must be ready before collection;
+do not reset quota counters to make a run pass.
 
 The output includes exact credential-free requests, raw responses, usage,
 candidate verdicts, `teacher-export.pending-review.jsonl`, `human-review.html`,

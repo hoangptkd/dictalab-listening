@@ -22,10 +22,16 @@ from training.prepare_dataset import ROOT, DatasetError, _contract, _contains_se
 
 ARTIFACT = ROOT / "artifacts/prompts/conversation-cefr-b1-v7-20261021.json"
 CATALOGUE = ROOT / "data/conversation-distillation/production-contract.json"
-TEACHER = JUDGE = "gemini-3-flash-preview"
-BATCH_SIZE, REQUEST_CAP = 24, 19  # One earlier health probe used the twentieth daily request.
+TEACHER = JUDGE = "gemini-3.5-flash-lite"
+BATCH_SIZE, REQUEST_CAP = 4, 109  # 54 teacher batches + 54 judge batches + calibration.
 CORE = {"cafe", "hotel", "directions", "plans", "delivery"}
 REVIEW_VERSION = "gemini-sft-semantic-v1"
+JSON_RULES = """Return one complete JSON object only, without markdown or commentary.
+Write Vietnamese directly as UTF-8 characters (for example: giờ, phòng, điều kiện).
+Do not spell Vietnamese using backslash-u escape sequences or double-encode JSON strings.
+Escape quotes, backslashes and control characters correctly. Never emit NaN, Infinity,
+duplicate object keys, unpaired surrogates or Unicode replacement characters.
+"""
 CHECKS = ("rolesCorrect", "historyConsistent", "newMeanings", "questionFactsAligned",
           "translationFaithful", "cefrAppropriate", "reasoningGrounded", "noAnswerLeak")
 JUDGE_SYSTEM = """Independently audit synthetic English listening tasks for Vietnamese learners.
@@ -64,6 +70,58 @@ For inference use at most ONE inference target, exact supporting transcript segm
 public evidence explanation (not chain-of-thought). Do not turn direct detail into fake inference.
 Translation is literal in meaning: no invented AM/PM, gender, dates, causes, names, or quantities.
 """
+TEACHER_BATCH += JSON_RULES
+JUDGE_SYSTEM += JSON_RULES
+
+
+def strict_json(value: str):
+    def object_pairs(pairs):
+        result = {}
+        for key, item in pairs:
+            if key in result:
+                raise DatasetError("duplicate JSON object key")
+            result[key] = item
+        return result
+
+    def invalid_constant(_):
+        raise DatasetError("non-finite JSON constant")
+
+    result = json.loads(value, object_pairs_hook=object_pairs, parse_constant=invalid_constant)
+    decoded = json.dumps(result, ensure_ascii=False, allow_nan=False)
+    try:
+        decoded.encode("utf-8", errors="strict")
+    except UnicodeError:
+        raise DatasetError("invalid Unicode surrogate in target") from None
+    if "\ufffd" in decoded:
+        raise DatasetError("Unicode replacement character in target")
+    return result
+
+
+def batch_schema(ids: list[str], content: dict | None = None, translation: dict | None = None) -> dict:
+    properties = {"id": {"type": "string", "enum": ids}}
+    if content is not None and translation is not None:
+        properties.update(content=content, translation=translation)
+    else:
+        properties.update({key: {"type": "boolean"} for key in CHECKS})
+        properties["issues"] = {"type": "array", "items": {"type": "string"}}
+    item = {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
+    return {"type": "object", "properties": {"items": {"type": "array", "items": item,
+        "minItems": len(ids), "maxItems": len(ids)}}, "required": ["items"], "additionalProperties": False}
+
+
+def provider_schema(schema: dict, depth: int = 0) -> dict:
+    # Gemini's decoder supports only a subset; full constraints are still checked locally.
+    result = {}
+    for key, value in schema.items():
+        if key in {"minLength", "maxLength", "uniqueItems"} or depth > 2 and key in {"minItems", "maxItems"}:
+            continue
+        if isinstance(value, dict):
+            result[key] = provider_schema(value, depth + 1)
+        elif isinstance(value, list):
+            result[key] = [provider_schema(item, depth + 1) if isinstance(item, dict) else item for item in value]
+        else:
+            result[key] = value
+    return result
 
 
 def read_json(path: Path):
@@ -194,16 +252,20 @@ class Gemini:
             raise DatasetError("GEMINI_API_KEY unavailable")
         self.opener = urllib.request.build_opener(NoRedirect)
 
-    def call(self, model: str, system: str, data: dict, name: str) -> dict:
+    def call(self, model: str, system: str, data: dict, name: str, *, schema: dict | None = None) -> dict:
+        schema = schema if schema is not None else {"type": "object"}
+        Draft202012Validator.check_schema(schema)
         request_path, response_path = self.output / f"{name}.request.json", self.output / f"{name}.response.json"
         if response_path.exists():
             saved, wire = read_json(response_path), read_json(request_path)
             if (saved.get("requestHash") != digest(wire) or saved.get("responseHash") != digest(saved.get("result"))
                     or wire.get("model") != model or wire.get("messages") != [
                         {"role": "system", "content": system},
-                        {"role": "user", "content": json.dumps(data, ensure_ascii=False)}]):
+                        {"role": "user", "content": json.dumps(data, ensure_ascii=False)}]
+                    or wire.get("response_format", {}).get("json_schema", {}).get("schema") != provider_schema(schema)):
                 raise DatasetError("cached request/response integrity mismatch")
-            return saved["result"]
+            Draft202012Validator(schema).validate(saved["result"])
+            return strict_json(json.dumps(saved["result"], ensure_ascii=False))
         if request_path.exists():
             raise DatasetError(f"{name}: prior attempt has no complete response; refusing automatic retry")
         reservations = [json.loads(line) for line in (self.output / "api-reservations.jsonl").read_text(encoding="utf-8").splitlines()] \
@@ -213,9 +275,12 @@ class Gemini:
             raise DatasetError("run request cap reached; quota/billing changes require a separate decision")
         if used and not getattr(self, "pool", None):
             time.sleep(max(0, 13 - (time.time() - used[-1]["time"])))
-        body = {"model": model, "stream": False, "reasoning_effort": "medium",
-            "max_tokens": 32768 if name.startswith("teacher-") else 10000,
-            "response_format": {"type": "json_object"},
+        body = {"model": model, "stream": False,
+            "temperature": 0.2 if name.startswith("teacher-") else 0,
+            "max_tokens": 8192 if name.startswith("teacher-") else 4096,
+            "response_format": {"type": "json_schema", "json_schema": {
+                "name": "teacher_batch" if name.startswith("teacher-") else "judge_batch",
+                "strict": True, "schema": provider_schema(schema)}},
             "messages": [{"role": "system", "content": system},
                          {"role": "user", "content": json.dumps(data, ensure_ascii=False)}]}
         if _contains_secret(data):
@@ -225,7 +290,7 @@ class Gemini:
         if getattr(self, "pool", None):
             from app.gemini_pool import estimate_tokens, QuotaUnavailable
             try:
-                source = self.pool.select(model, estimate_tokens(body["messages"], body["max_tokens"]))
+                source = self.pool.select(model, estimate_tokens(body["messages"], body["max_tokens"], schema))
             except QuotaUnavailable as exc:
                 raise DatasetError(f"Gemini pool admission rejected; retry after {exc.retry_after}s; no request sent") from None
             request_key, request_url = source.api_key, source.url
@@ -247,7 +312,7 @@ class Gemini:
             if choice["finish_reason"] != "stop":
                 raise DatasetError("unfinished response; no retry/repair allowed")
             try:
-                result = json.loads(choice["message"]["content"])
+                result = strict_json(choice["message"]["content"])
             except json.JSONDecodeError as exc:
                 write_json(self.output / f"{name}.invalid-json.json", {
                     "requestHash": digest(body), "envelopeHash": digest(envelope),
@@ -257,6 +322,8 @@ class Gemini:
                                    "raw envelope preserved, stopped without repair/retry") from None
             if not isinstance(result, dict):
                 raise DatasetError("expected one strict JSON object")
+            if list(Draft202012Validator(schema).iter_errors(result)):
+                raise DatasetError(f"{name}: response schema failed; no repair/retry allowed")
             write_json(response_path, {"result": result, "responseHash": digest(result),
                 "requestHash": digest(body), "returnedModel": envelope.get("model"),
                 "sourceId": source.id if source else "legacy",
@@ -268,7 +335,13 @@ class Gemini:
             if source:
                 from app.gemini_pool import retry_seconds
                 self.pool.report(source, "429" if exc.code == 429 else "failure", retry_seconds(exc.headers.get("Retry-After")))
-            append(self.output / "api-errors.jsonl", {"name": name, "model": model, "httpStatus": exc.code})
+            try:
+                error = json.loads(exc.read(16000).decode("utf-8")).get("error", {})
+                message = str(error.get("message", ""))[:2000].replace(request_key, "[redacted]")
+            except (ValueError, UnicodeError, AttributeError):
+                message = "provider error body unavailable"
+            append(self.output / "api-errors.jsonl", {"name": name, "model": model,
+                "httpStatus": exc.code, "message": message})
             raise DatasetError(f"{model}: HTTP {exc.code}; stopped without retry or fallback") from None
 
 
@@ -398,11 +471,17 @@ def export_review(output: Path, candidates: list[dict], artifact: dict, holdouts
     return summary
 
 
-def run(output: Path, *, prepare_only: bool = False) -> dict:
+def run(output: Path, *, prepare_only: bool = False, exclude_groups: list[str] | None = None) -> dict:
     artifact = read_json(ARTIFACT)
     if artifact.get("sha256") != digest({k: v for k, v in artifact.items() if k != "sha256"}):
         raise DatasetError("artifact hash mismatch")
     groups = plan_groups(read_json(CATALOGUE)["catalogue"])
+    excluded = set(exclude_groups or [])
+    if not excluded <= {group["groupId"] for group in groups}:
+        raise DatasetError("excluded group is outside the frozen catalogue selection")
+    groups = [group for group in groups if group["groupId"] not in excluded]
+    if not groups:
+        raise DatasetError("no unattempted groups remain")
     holdouts = sorted(f"{scene}/standard/{level}" for scene in CORE for level in ("A1", "A2", "B1"))
     manifest = {"artifactPath": str(ARTIFACT.relative_to(ROOT)), "artifactHash": artifact["sha256"],
         "generatorHash": digest(Path(__file__).read_text(encoding="utf-8")),
@@ -410,6 +489,7 @@ def run(output: Path, *, prepare_only: bool = False) -> dict:
         "teacher": TEACHER, "judge": JUDGE, "reviewVersion": REVIEW_VERSION,
         "teacherInstructionHash": digest(TEACHER_BATCH), "judgeInstructionHash": digest(JUDGE_SYSTEM),
         "sharedModelRequestCap": REQUEST_CAP, "batchSize": BATCH_SIZE,
+        "excludedPreviouslyAttemptedGroups": sorted(excluded),
         "independentJudgeModel": TEACHER != JUDGE,
         "holdoutGroups": holdouts, "repairEnabled": False, "fallbackEnabled": False,
         "humanApproved": False, "trainingReady": False}
@@ -424,10 +504,11 @@ def run(output: Path, *, prepare_only: bool = False) -> dict:
         return read_json(output / "summary.json")
     cloud = Gemini(output)
     calibration = calibration_items()
-    verdicts = unpack_batch(cloud.call(JUDGE, JUDGE_SYSTEM, {"items": calibration}, "judge-calibration"), [r["id"] for r in calibration])
+    verdicts = unpack_batch(cloud.call(JUDGE, JUDGE_SYSTEM, {"items": calibration}, "judge-calibration",
+        schema=batch_schema([r["id"] for r in calibration])), [r["id"] for r in calibration])
     if [judge_pass(verdicts[r["id"]]) for r in calibration] != [True, False, False, False]:
         raise DatasetError("semantic judge failed calibration; no teacher data was generated")
-    candidates, prior_by_group = [], {}
+    candidates, prior_by_group, failed_groups = [], {}, set()
     for level in ("A1", "A2", "B1"):
         selected = [r for r in groups if r["level"] == level]
         for turn in (2, 3, 4):
@@ -436,6 +517,8 @@ def run(output: Path, *, prepare_only: bool = False) -> dict:
                 name = f"{level}-t{turn}-b{offset//BATCH_SIZE+1}"
                 reference = f"judge-{name}.response.json"
                 for index, group in enumerate(selected[offset:offset+BATCH_SIZE], offset):
+                    if group["groupId"] in failed_groups:
+                        continue
                     prior = prior_by_group.get(group["groupId"], [])
                     if turn == 3 and not prior:
                         continue
@@ -446,11 +529,23 @@ def run(output: Path, *, prepare_only: bool = False) -> dict:
                 if not batch:
                     continue
                 system = production_messages(artifact, batch[0]["context"], "content")[0]["content"]
-                result = cloud.call(TEACHER, TEACHER_BATCH, {"contentSystem": system,
-                    "contentSchema": artifact.get("contentSchemas", {}).get(level, artifact["contentSchema"]),
-                    "translationSystem": artifact["translationSystem"], "translationSchema": artifact["translationSchema"],
-                    "items": batch}, f"teacher-{name}")
-                items = unpack_batch(result, [r["id"] for r in batch])
+                try:
+                    result = cloud.call(TEACHER, TEACHER_BATCH, {"contentSystem": system,
+                        "contentSchema": artifact.get("contentSchemas", {}).get(level, artifact["contentSchema"]),
+                        "translationSystem": artifact["translationSystem"], "translationSchema": artifact["translationSchema"],
+                        "items": batch}, f"teacher-{name}", schema=batch_schema([r["id"] for r in batch],
+                            artifact.get("contentSchemas", {}).get(level, artifact["contentSchema"]), artifact["translationSchema"]))
+                    items = unpack_batch(result, [r["id"] for r in batch])
+                except (DatasetError, OSError, urllib.error.URLError) as exc:
+                    failures = [{"id": entry["id"], "context": entry["context"], "group": lookup[entry["id"]][1],
+                        "eligible": False, "teacherError": str(exc)} for entry in batch]
+                    candidates.extend(failures)
+                    failed_groups.update(row["group"]["groupId"] for row in failures)
+                    snapshot = output / f"{name}.candidates.json"
+                    if not snapshot.exists():
+                        write_json(snapshot, {"items": failures})
+                    print(json.dumps({"batch": name, "teacherFailed": True, "excludedGroups": len(failed_groups)}), flush=True)
+                    continue
                 staged = []
                 for item in items.values():
                     context, group = lookup[item["id"]]
@@ -462,10 +557,17 @@ def run(output: Path, *, prepare_only: bool = False) -> dict:
                         row["hardError"] = str(exc)
                     candidates.append(row)
                 if staged:
-                    reviews = unpack_batch(cloud.call(JUDGE, JUDGE_SYSTEM,
-                        {"items": [{"id": r["id"], "context": r["context"], "task": r["task"]} for r in staged]},
-                        f"judge-{name}"), [r["id"] for r in staged])
+                    try:
+                        reviews = unpack_batch(cloud.call(JUDGE, JUDGE_SYSTEM,
+                            {"items": [{"id": r["id"], "context": r["context"], "task": r["task"]} for r in staged]},
+                            f"judge-{name}", schema=batch_schema([r["id"] for r in staged])), [r["id"] for r in staged])
+                    except (DatasetError, OSError, urllib.error.URLError) as exc:
+                        for row in staged:
+                            row["judgeError"] = str(exc)
+                        reviews = {}
                     for row in staged:
+                        if row["id"] not in reviews:
+                            continue
                         row["verdict"] = reviews[row["id"]]
                         row["eligible"] = judge_pass(row["verdict"])
                         teacher_receipt = read_json(output / f"teacher-{name}.response.json")
@@ -476,6 +578,7 @@ def run(output: Path, *, prepare_only: bool = False) -> dict:
                                 judgeRequestHash=judge_receipt["requestHash"], judgeResponseHash=judge_receipt["responseHash"])
                         if row["eligible"] and turn < 4:
                             prior_by_group.setdefault(row["group"]["groupId"], []).append(row)
+                failed_groups.update(r["group"]["groupId"] for r in candidates if not r["eligible"])
                 snapshot = output / f"{name}.candidates.json"
                 if not snapshot.exists():
                     write_json(snapshot, {"items": [r for r in candidates if r["id"] in items]})
@@ -488,9 +591,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--exclude-group-file", type=Path, help="groups already attempted in a preserved earlier run")
     args = parser.parse_args()
     try:
-        print(json.dumps(run(args.output, prepare_only=args.prepare_only), ensure_ascii=False))
+        excluded = args.exclude_group_file.read_text(encoding="utf-8").splitlines() if args.exclude_group_file else []
+        print(json.dumps(run(args.output, prepare_only=args.prepare_only, exclude_groups=excluded), ensure_ascii=False))
         return 0
     except (OSError, ValueError, KeyError, TypeError, urllib.error.URLError) as exc:
         print(f"generate_teacher_data: {exc}", file=sys.stderr)

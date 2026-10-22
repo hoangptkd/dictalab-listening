@@ -10,7 +10,8 @@ from types import SimpleNamespace
 import pytest
 
 from training.generate_teacher_data import (CHECKS, TEACHER, JUDGE, REQUEST_CAP, Gemini, build_records, export_review,
-    judge_pass, make_context, plan_groups, roles, unpack_batch)
+    batch_schema, provider_schema, strict_json, judge_pass, make_context, plan_groups, roles, unpack_batch, run)
+from jsonschema import Draft202012Validator
 from training.prepare_dataset import DatasetError, ROOT, digest
 from training.tests.test_prepare_dataset import ARTIFACT, _row
 
@@ -109,7 +110,8 @@ def test_cached_provider_response_requires_matching_input_and_output_hashes(tmp_
     client = object.__new__(Gemini)
     client.output = tmp_path
     wire = {"model": TEACHER, "messages": [{"role": "system", "content": "system"},
-                                                       {"role": "user", "content": "{}"}]}
+        {"role": "user", "content": "{}"}],
+        "response_format": {"type": "json_schema", "json_schema": {"schema": {"type": "object"}}}}
     result = {"items": []}
     (tmp_path / "batch.request.json").write_text(json.dumps(wire), encoding="utf-8")
     response = {"result": result, "requestHash": digest(wire), "responseHash": digest(result)}
@@ -132,8 +134,10 @@ def test_teacher_and_judge_share_quota_but_use_separate_output_budgets(tmp_path,
     assert TEACHER == JUDGE
     client.call(TEACHER, "author", {}, "teacher-first")
     client.call(JUDGE, "audit", {}, "judge-first")
-    assert json.loads((tmp_path / "teacher-first.request.json").read_text())["max_tokens"] == 32768
-    assert json.loads((tmp_path / "judge-first.request.json").read_text())["max_tokens"] == 10000
+    wire = json.loads((tmp_path / "teacher-first.request.json").read_text())
+    assert wire["max_tokens"] == 8192 and wire["response_format"]["type"] == "json_schema"
+    assert wire["response_format"]["json_schema"]["strict"] is True
+    assert json.loads((tmp_path / "judge-first.request.json").read_text())["max_tokens"] == 4096
     ledger = tmp_path / "api-reservations.jsonl"
     used = ledger.read_text().splitlines()
     ledger.write_text("\n".join(used + [used[0]] * (REQUEST_CAP - len(used))) + "\n", encoding="utf-8")
@@ -158,6 +162,76 @@ def test_malformed_unicode_target_is_preserved_and_never_repaired_or_retried(tmp
     assert not (tmp_path / "teacher-bad.response.json").exists()
     with pytest.raises(DatasetError, match="refusing automatic retry"):
         client.call(TEACHER, "author", {}, "teacher-bad")
+
+
+@pytest.mark.parametrize("target", [r'{"x":"\ud800"}', r'{"x":"\ufffd"}',
+    '{"x":1,"x":2}', '{"x":NaN}', '{"x":Infinity}'])
+def test_ambiguous_or_corrupt_json_is_rejected(target):
+    with pytest.raises(DatasetError):
+        strict_json(target)
+
+
+def test_valid_unicode_is_preserved_and_provider_schema_enforces_shape():
+    target = {"textVi": "giờ, phòng, điều kiện"}
+    assert strict_json(json.dumps(target, ensure_ascii=False)) == target
+    assert strict_json(json.dumps(target, ensure_ascii=True)) == target
+    verdict = {"id": "a", "issues": [], **dict.fromkeys(CHECKS, True)}
+    schema = batch_schema(["a"])
+    validator = Draft202012Validator(schema)
+    validator.validate({"items": [verdict]})
+    assert list(validator.iter_errors({"items": []}))
+    assert list(validator.iter_errors({"items": [{**verdict, "id": "unknown"}]}))
+    assert list(validator.iter_errors({"items": [{**verdict, "rolesCorrect": "true"}]}))
+    item, _ = _item()
+    item["id"] = "a"
+    Draft202012Validator(batch_schema(["a"], ARTIFACT["contentSchema"], ARTIFACT["translationSchema"])).validate({"items": [item]})
+
+
+def test_gemini_schema_subset_does_not_remove_local_production_constraints(tmp_path):
+    schema = batch_schema(["a"], ARTIFACT["contentSchema"], ARTIFACT["translationSchema"])
+    wire = provider_schema(schema)
+    assert wire["properties"]["items"]["maxItems"] == 1
+    assert "maxLength" not in json.dumps(wire) and "uniqueItems" not in json.dumps(wire)
+    item, _ = _item()
+    item["id"] = "a"
+    item["translation"]["translationVi"] = "x" * 1201
+    result = {"items": [item]}
+    Draft202012Validator(wire).validate(result)
+    assert list(Draft202012Validator(schema).iter_errors(result))
+    client = object.__new__(Gemini)
+    client.output, client.key = tmp_path, "test-only"
+    envelope = {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(result)}}]}
+    client.opener = SimpleNamespace(open=lambda *a, **kw: BytesIO(json.dumps(envelope).encode()))
+    with pytest.raises(DatasetError, match="response schema failed"):
+        client.call(TEACHER, "author", {}, "teacher-overlength", schema=schema)
+    assert not (tmp_path / "teacher-overlength.response.json").exists()
+
+
+def test_failed_batch_does_not_replay_or_discard_other_unattempted_groups(tmp_path, monkeypatch):
+    import training.generate_teacher_data as module
+    _, context = _item()
+    context["history"] = []
+    groups = [{**_group(), "scenarioId": "meeting", "level": level,
+        "groupId": f"meeting/standard/{level}", "input": context} for level in ("A1", "A2")]
+    catalogue = tmp_path / "catalogue.json"
+    catalogue.write_text('{"catalogue":[]}', encoding="utf-8")
+    monkeypatch.setattr(module, "CATALOGUE", catalogue)
+    monkeypatch.setattr(module, "plan_groups", lambda _: groups)
+    calls = []
+    class FailingCloud:
+        def __init__(self, _):
+            pass
+        def call(self, model, system, data, name, **kwargs):
+            calls.append(name)
+            if name == "judge-calibration":
+                return {"items": [{"id": item["id"], "issues": [] if index == 0 else ["seeded"],
+                    **{key: index == 0 for key in CHECKS}} for index, item in enumerate(data["items"])]}
+            raise DatasetError("HTTP 503; no retry")
+    monkeypatch.setattr(module, "Gemini", FailingCloud)
+    summary = run(tmp_path / "result")
+    assert calls == ["judge-calibration", "teacher-A1-t2-b1", "teacher-A2-t2-b1"]
+    assert summary["pendingTargetRecords"] == 0 and len(summary["excludedGroups"]) == 2
+    assert not summary["trainingReady"]
 
 
 def test_review_export_does_not_fabricate_human_approval_and_excludes_failed_groups(tmp_path):
