@@ -33,6 +33,38 @@ Check every question/slot/fact in order, faithful full translation and fact answ
 Do not infer audio tone. Development calibration cases must never be exported as training/holdout data.
 """
 
+# Keep v2 byte-for-byte reproducible for frozen v8 evidence.
+VERSION_V3 = "conversation-semantic-v3"
+RULES_V3 = RULES + """
+Boundary rules (take precedence over broad wording above):
+One slot is one requested meaning, not necessarily one word. A location may include a landmark
+(the cupboard beside the entrance); a time interval may include its two endpoints. 'When/when by'
+can ask for a date and time together; 'what time/how many minutes' asks only for clock time/duration.
+An unasked independently testable day, person, place, reason or action in textEn/textVi fails alignment.
+An optional grammatical subject or a location's identifying modifier is not a second tested answer.
+An opinion answer may name its object and evaluation; independent reasons require a why question.
+Requested action/order -> instruction_sequence; requested item/place/time/duration -> direct_detail,
+even when the source is an imperative. Requested prerequisite -> condition. Requested action under
+an if-clause is still action/order, not the condition. Explicitly contrasted final value -> change_revision.
+Gist covers the communicative point of the whole utterance, not a selected reason or detail.
+A speaker's tentative plan can be tested as tentative; a request about a policy cannot establish it.
+Same time for two events is not itself a contradiction. 'Still' must refer to the SAME established event;
+reusing a rehearsal time as an already-set presentation time without evidence is REVIEW_REQUIRED.
+Unknown history speaker alone is not grounds for uncertainty when the new task is independently clear.
+Common role-neutral Vietnamese address (tôi/bạn) is acceptable; do not assign sibling age or third-person
+gender absent source evidence. Unsupported age/gender in English fact answers also fails faithfulness.
+For every false/null check cite the offending wording and the violated rule. Do not invent defects
+or approve ambiguous cases. Hard schema checks are separate; these fixtures test semantic boundaries.
+"""
+
+
+def rules_for(version: str) -> str:
+    if version == VERSION:
+        return RULES
+    if version == VERSION_V3:
+        return RULES_V3
+    raise ValueError("unknown semantic rubric version")
+
 
 def decision(verdict: dict) -> str:
     if not isinstance(verdict, dict):
@@ -128,4 +160,51 @@ def calibration_cases() -> list[dict]:
         r["task"]["facts"][0].update(textVi="trước tối thứ Sáu")))
     novelty = copy.deepcopy(base); novelty["id"] = novelty["family"] = "novelty_leak"
     triplet(novelty, lambda r: r["task"].update(questionVi="Cuộc họp ở phòng tám và bắt đầu lúc mười giờ phải không?"))
+    return cases
+
+
+def boundary_cases_v3() -> list[dict]:
+    """Six paired semantic boundaries, separate from the unchanged v2 calibration."""
+    cases = []
+
+    def pair(name, text, question, slot, answer, kind, check, mutation, *, history=None, turn=2):
+        good = {"id": name + "-positive", "family": name, "expected": "PASS",
+            "context": {"difficulty": "B1", "turnNumber": turn, "partnerRole": "colleague",
+                "learnerRole": "colleague", "history": history or [], "practiceFocus": ""},
+            "task": {"utteranceEn": text, "questionVi": question, "taskVi": "Nghe thông tin và trả lời.",
+                "skill": "Nắm thông tin cụ thể", "slots": [{"kind": name, "askVi": slot}],
+                "facts": [{"textEn": answer, "taskType": kind}]}}
+        bad = copy.deepcopy(good)
+        bad.update(id=name + "-negative", expected="FAIL", expectedCheck=check)
+        mutation(bad)
+        cases.extend([good, bad])
+
+    pair("date_time", "Please come at nine on Monday morning.",
+        "Bạn cần đến khi nào?", "Thời điểm cần đến", "nine on Monday morning", "direct_detail",
+        "questionFactsAligned", lambda r: (r["task"].update(questionVi="Bạn cần đến lúc mấy giờ?"),
+            r["task"]["slots"][0].update(askVi="Giờ cần đến")))
+    pair("location_modifier", "Leave your coat in the cupboard beside the entrance. Nam will collect it.",
+        "Bạn cần để áo khoác ở đâu?", "Nơi để áo khoác", "the cupboard beside the entrance", "direct_detail",
+        "questionFactsAligned", lambda r: r["task"]["facts"][0].update(
+            textEn="the cupboard beside the entrance; Nam will collect it"))
+    pair("action_condition", "If any parts are replaced, please keep the old ones for me.",
+        "Nếu thay linh kiện thì cần làm gì với linh kiện cũ?", "Hành động với linh kiện cũ",
+        "keep the old parts", "instruction_sequence", "taskTypeAccurate",
+        lambda r: r["task"]["facts"][0].update(taskType="condition"))
+    pair("duration_instruction", "Please arrive ten minutes early so we can check your booking.",
+        "Bạn cần đến sớm bao lâu?", "Khoảng thời gian đến sớm", "ten minutes early", "direct_detail",
+        "taskTypeAccurate", lambda r: r["task"]["facts"][0].update(taskType="instruction_sequence"))
+    pair("opinion_scope", "I like the breakfast room because it is quiet and the food is fresh.",
+        "Người nói có quan điểm gì về phòng ăn sáng?", "Quan điểm về phòng ăn sáng",
+        "The speaker likes the breakfast room", "opinion_attitude", "questionFactsAligned",
+        lambda r: r["task"]["facts"][0].update(
+            textEn="The speaker likes the breakfast room because it is quiet and the food is fresh"))
+    pair("tentative_plan", "Could you tell me whether I need a receipt? I may visit on Tuesday.",
+        "Người nói có thể đến vào ngày nào?", "Ngày có thể đến", "possibly Tuesday", "direct_detail",
+        "informationStatusCorrect", lambda r: (r["task"].update(questionVi="Người nói đã chốt đến ngày nào?"),
+            r["task"]["slots"][0].update(askVi="Ngày đã chốt"),
+            r["task"]["facts"][0].update(textEn="Tuesday is confirmed")))
+    # Semantic probes deliberately omit translations/schema fields so only the named boundary is judged.
+    for row in cases:
+        row["semanticProbeOnly"] = True
     return cases

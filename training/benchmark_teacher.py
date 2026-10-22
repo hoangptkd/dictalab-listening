@@ -19,7 +19,7 @@ import sys
 import time
 
 from training import generate_teacher_data as gen
-from training.semantic_rubric import CHECKS, RULES, VERSION, decision, severity
+from training.semantic_rubric import CHECKS, VERSION, VERSION_V3, rules_for, decision, severity
 from jsonschema import Draft202012Validator
 
 sys.path.insert(0, str(gen.ROOT / "services/ai-generation"))
@@ -43,11 +43,13 @@ def settings_from_registry():
         num_predict=8192, temperature=0.2, timeout_seconds=120, repair_enabled=False)
 
 
-def prepare(output: Path, settings) -> dict:
+def prepare(output: Path, settings, *, baseline: Path = BASELINE, candidate: Path | None = None,
+            pilot: bool = False, rubric_version: str = VERSION) -> dict:
     if output.exists():
         raise gen.DatasetError("refusing to overwrite/replan a benchmark")
     catalogue = gen.read_json(gen.CATALOGUE)["catalogue"]
-    artifacts = [gen.read_json(BASELINE), gen.read_json(gen.ARTIFACT)]
+    rules = rules_for(rubric_version)
+    artifacts = [gen.read_json(baseline), gen.read_json(candidate or gen.ARTIFACT)]
     for artifact in artifacts:
         if artifact["sha256"] != gen.digest({k: v for k, v in artifact.items() if k != "sha256"}):
             raise gen.DatasetError("artifact hash mismatch before benchmark freeze")
@@ -55,10 +57,12 @@ def prepare(output: Path, settings) -> dict:
     contexts, chains = [], []
     for level in ("A1", "A2", "B1"):
         selected = sorted((g for g in groups if g["level"] == level), key=lambda g: gen.digest(g["groupId"]))
-        for group in selected[:5]:
+        for group in selected[:1 if pilot else 5]:
             for turn in (2, 4):
                 contexts.append({"group": group, "context": gen.make_context(group, turn, [], artifacts[1], 0)})
-        chains.extend(selected[5:7])
+        if not pilot:
+            chains.extend(selected[5:7])
+    cap = len(contexts) * 2 + len(chains) * 3
     sources = settings.sources_for("deepseek")
     if len(sources) != 1:
         raise gen.DatasetError("benchmark requires the single configured DeepSeek account")
@@ -66,9 +70,9 @@ def prepare(output: Path, settings) -> dict:
     pool = quota_store(settings)
     status = pool.execute(source, op="status")
     policy = settings.registry_pools["deepseek"]
-    if source.rpd_limit and source.rpd_limit - status[2] < 78 or (
-            policy["global_rpd_limit"] and policy["global_rpd_limit"] - status[4] < 78):
-        raise gen.DatasetError("insufficient remaining quota for the bounded 78-call plan; no requests sent")
+    if source.rpd_limit and source.rpd_limit - status[2] < cap or (
+            policy["global_rpd_limit"] and policy["global_rpd_limit"] - status[4] < cap):
+        raise gen.DatasetError(f"insufficient remaining quota for the bounded {cap}-call plan; no requests sent")
     entries = [{"id": f"sample-{i:03}", "arm": arm, "group": row["group"],
                 "context": copy.deepcopy(row["context"])}
                for i, (arm, row) in enumerate((a, row) for row in contexts for a in (0, 1))]
@@ -78,7 +82,10 @@ def prepare(output: Path, settings) -> dict:
     plan = {"createdAt": datetime.now(timezone.utc).isoformat(), "entries": entries,
         "chains": chains, "artifacts": artifacts, "artifactHashes": [a["sha256"] for a in artifacts],
         "teacherSystem": gen.TEACHER_BATCH, "teacherSystemHash": gen.digest(gen.TEACHER_BATCH),
-        "rubricVersion": VERSION, "rubricHash": gen.digest(RULES), "httpCap": 78,
+        "rubricVersion": rubric_version, "rubricHash": gen.digest(rules), "httpCap": cap,
+        "pilotOnly": pilot,
+        "developmentGate": {"hardPass": 30, "semanticPass": 27, "perLevel": 9,
+            "criticalFailures": 0, "completeChains": 5},
         "provider": "deepseek", "model": settings.active_cloud_model, "sourceId": source.id,
         "quotaBefore": status, "maxOutputTokens": 8192, "temperature": 0.2,
         "intervalSeconds": max(5.1, 60 / min(source.effective_rpm, policy["global_rpm_limit"] or source.effective_rpm) + 0.2),
@@ -96,13 +103,17 @@ def load_plan(output: Path) -> dict:
     plan = gen.read_json(output / "plan.json")
     if plan["planHash"] != gen.digest({k: v for k, v in plan.items() if k != "planHash"}):
         raise gen.DatasetError("benchmark plan hash mismatch")
-    if plan["rubricHash"] != gen.digest(RULES):
+    if plan["rubricHash"] != gen.digest(rules_for(plan["rubricVersion"])):
         raise gen.DatasetError("rubric changed after plan freeze")
     return plan
 
 
-def reviewed(row: dict, reviews: dict) -> str:
+def reviewed(row: dict, reviews: dict, rubric_version: str | None = None) -> str:
     review = reviews.get(row["id"], {})
+    if rubric_version is not None and review.get("rubricVersion") != rubric_version:
+        return "REVIEW_REQUIRED"
+    if rubric_version == VERSION_V3 and review.get("rubricHash") != gen.digest(rules_for(rubric_version)):
+        return "REVIEW_REQUIRED"
     if not row.get("hardPass") or review.get("reviewer") != "AI:Codex":
         return "REVIEW_REQUIRED"
     if review.get("taskHash") != gen.digest(row.get("task")) or review.get("contextHash") != gen.digest(row["context"]):
@@ -114,10 +125,12 @@ def reviewed(row: dict, reviews: dict) -> str:
 
 
 def blind_packet(output: Path):
+    plan = load_plan(output)
     rows = [gen.read_json(path) for path in sorted(output.glob("*.candidate.json"))]
     # Write a fresh numbered packet; previous review evidence is never overwritten.
     number = len(list(output.glob("review-packet-*.json"))) + 1
-    gen.write_json(output / f"review-packet-{number:02}.json", {"rubricVersion": VERSION,
+    gen.write_json(output / f"review-packet-{number:02}.json", {"rubricVersion": plan["rubricVersion"],
+        "rubricHash": plan["rubricHash"], "rubricRules": rules_for(plan["rubricVersion"]),
         "items": [{"id": row["id"], "context": row["context"], "task": row.get("task"),
             "hardPass": row.get("hardPass", False), "taskHash": gen.digest(row.get("task")),
             "contextHash": gen.digest(row["context"])} for row in rows]})
@@ -137,7 +150,7 @@ async def generate(output: Path, mode: str, settings):
                 path = output / f"{ident}.candidate.json"
                 if path.exists():
                     row = gen.read_json(path)
-                    if reviewed(row, reviews) != "PASS":
+                    if reviewed(row, reviews, plan["rubricVersion"]) != "PASS":
                         break
                     prior.append({**row, "eligible": True})
                     continue
@@ -221,6 +234,7 @@ async def generate(output: Path, mode: str, settings):
                     request_reference=f"{ident}.request.json")
                 request = gen.read_json(output / f"{ident}.request.json")
                 for record in row["records"]:
+                    record["reviewVersion"] = plan["rubricVersion"]
                     record["teacherProvenance"].update(requestHash=gen.digest(request),
                         batchResponseHash=gen.digest(strict), envelopeHash=gen.digest(envelope))
                     if mode == "ab":
@@ -242,28 +256,33 @@ def report(output: Path) -> dict:
     arms = []
     for arm in (0, 1):
         selected = [rows[e["id"]] for e in plan["entries"] if e["arm"] == arm and e["id"] in rows]
-        passed = [row for row in selected if reviewed(row, reviews) == "PASS"]
+        passed = [row for row in selected if reviewed(row, reviews, plan["rubricVersion"]) == "PASS"]
+        decisions = Counter(reviewed(row, reviews, plan["rubricVersion"]) for row in selected)
         levels = {level: sum(row["group"]["level"] == level for row in passed) for level in ("A1", "A2", "B1")}
         critical = sum(severity({**reviews.get(row["id"], {}).get("checks", {}),
             "severity": reviews.get(row["id"], {}).get("severity")}) == "critical" for row in selected)
         hard = sum(row["hardPass"] for row in selected)
-        arms.append({"artifact": plan["artifacts"][arm]["version"], "planned": 30, "attempted": len(selected),
+        arms.append({"artifact": plan["artifacts"][arm]["version"],
+            "planned": sum(e["arm"] == arm for e in plan["entries"]), "attempted": len(selected),
             "http200": sum(row.get("httpStatus") == 200 for row in selected), "hardPass": hard,
-            "semanticPass": len(passed), "semanticPassByLevel": levels, "criticalFailures": critical,
-            "developmentGatePassed": hard == 30 and len(passed) >= 27 and min(levels.values()) >= 9 and critical == 0})
+            "semanticPass": len(passed), "semanticDecisions": dict(decisions),
+            "semanticPassByLevel": levels, "criticalFailures": critical,
+            "developmentGatePassed": not plan.get("pilotOnly", False) and hard == 30
+                and len(passed) >= 27 and min(levels.values()) >= 9 and critical == 0})
     chains, retained = [], []
     for index, group in enumerate(plan["chains"]):
         tasks = [rows.get(f"chain-{index+1}-t{turn}") for turn in (2, 3, 4)]
-        passed = all(row and reviewed(row, reviews) == "PASS" for row in tasks)
+        passed = all(row and reviewed(row, reviews, plan["rubricVersion"]) == "PASS" for row in tasks)
         chains.append({"group": group["groupId"], "completePass": bool(passed),
-            "turns": [{"turn": turn, "state": reviewed(row, reviews) if row else "UNSENT_DEPENDENCY_OR_PENDING"}
+            "turns": [{"turn": turn, "state": reviewed(row, reviews, plan["rubricVersion"]) if row else "UNSENT_DEPENDENCY_OR_PENDING"}
                 for turn, row in zip((2, 3, 4), tasks)]})
         if passed:
             retained.extend(tasks)
     ledger = output / "api-reservations.jsonl"
     envelopes = [gen.read_json(path) for path in output.glob("*.envelope.json")]
     summary = {"arms": arms, "chains": chains, "chainGroupsPassed": sum(c["completePass"] for c in chains),
-        "calls": len(ledger.read_text(encoding="utf-8").splitlines()) if ledger.exists() else 0, "httpCap": 78,
+        "calls": len(ledger.read_text(encoding="utf-8").splitlines()) if ledger.exists() else 0, "httpCap": plan["httpCap"],
+        "pilotOnly": plan.get("pilotOnly", False),
         "candidateGatePassed": arms[1]["developmentGatePassed"] and sum(c["completePass"] for c in chains) >= 5,
         "trainingReady": False, "automaticJudgeEnabled": False,
         "pendingTrainingGates": ["dataset count/coverage/splits", "RAM/hardware preflight", "checkpoint/loss-mask preflight"],
@@ -292,13 +311,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--stage", choices=("prepare", "ab", "chain", "report"), required=True)
+    parser.add_argument("--baseline", type=Path, default=BASELINE)
+    parser.add_argument("--candidate", type=Path)
+    parser.add_argument("--pilot", action="store_true", help="12 paired calls, no chains or release approval")
+    parser.add_argument("--rubric", choices=(VERSION, VERSION_V3), default=VERSION)
     args = parser.parse_args()
     if args.stage == "report":
         print(json.dumps(report(args.output)))
         return
     settings = settings_from_registry()
     if args.stage == "prepare":
-        plan = prepare(args.output, settings)
+        plan = prepare(args.output, settings, baseline=args.baseline, candidate=args.candidate,
+                       pilot=args.pilot, rubric_version=args.rubric)
         print(json.dumps({"tasks": len(plan["entries"]), "quotaBefore": plan["quotaBefore"], "cap": plan["httpCap"]}))
     else:
         asyncio.run(generate(args.output, args.stage, settings))
