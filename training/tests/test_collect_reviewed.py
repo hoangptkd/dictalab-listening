@@ -100,6 +100,16 @@ def test_rejection_compacts_evidence_and_preserves_other_candidates(campaign):
     assert (path / "candidates/candidate-0002.teacher-request.json").exists()
 
 
+def test_compact_failure_retains_word_bounds_without_rejected_text(campaign):
+    path, _ = campaign
+    row = {"id": "candidate-0001", "groupId": "fresh/a/b", "level": "B2", "split": "train",
+           "context": {}, "error": "production validator: utteranceEn:word_count=91,min=30,max=90 source body"}
+    collect.reject(path, row, "hard-check")
+    compact = gen.read_json(path / "decisions/candidate-0001.json")
+    assert compact["validationCodes"] == ["utteranceEn:word_count=91,min=30,max=90"]
+    assert "source body" not in json.dumps(compact)
+
+
 def test_duplicate_audit_detects_small_rewrites_without_rejecting_different_topics():
     old = "Please meet me outside the library at seven in the evening and bring your red notebook."
     assert collect.duplicate(old, [collect.normalized(old)])

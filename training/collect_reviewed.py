@@ -190,6 +190,10 @@ def reject(path: Path, row: dict, reason: str, *, reviewer: str = "automatic-har
         r"\bdeepseek:teacher_batch:(?:schema_mismatch|invalid_json|response_not_object|"
         r"output_truncated|http_or_parse_error|timeout|client_error:(?:400|401|403|422))\b",
         row.get("error", ""))
+    compact["validationCodes"] = re.findall(
+        r"(?:utteranceEn:word_count=\d+,min=\d+,max=\d+|"
+        r"(?:fact\[\d+\]\.[A-Za-z]+|facts|skill|level|levelProfile|missing_or_empty_field):[A-Za-z_]+|"
+        r"fact_slot_count_mismatch:slots=\d+,facts=\d+)", row.get("error", ""))
     for kind in ("teacher-request", "teacher-envelope", "request", "envelope", "result"):
         file = folder / f"{ident}.{kind}.json"
         if file.exists():
