@@ -2,6 +2,17 @@
 
 Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các báo cáo benchmark cũ giữ nguyên.
 
+**Quyết định mới nhất 24/10/2026:** tổng **500 bài**, gồm **400 train + 48 validation
++ 52 test**, mỗi mức A1–B2 là 100/12/13. Dừng gọi Gemini mới; giữ dữ liệu đã duyệt.
+Chiến dịch hiện tại: `data/fine-tuning/reviewed-500-v9-deepseek-20261024`, snapshot
+185 bài/311 ứng viên, trần 1.500 cộng dồn. Chấm 2 bài trong mỗi hội thoại Web mới
+đã thử thật; Codex vẫn duyệt độc lập. Đủ dữ liệu và audit đạt thì chạy SFT/LoRA thật.
+Chủ dự án cấp lại quyền tắt máy khi hết quota hoặc không thể tạo thêm dữ liệu:
+lưu checkpoint/báo cáo/flush trước, dừng lịch rồi `shutdown.exe /s /f /t 60`, không
+hỏi lại. Không tắt khi chỉ vừa đủ số bài, phải tiến hành audit/SFT.
+Xem [cập nhật vận hành](conversation-collection-v9-improvements-20261024.md).
+Các mục 700 bài, hai teacher và hủy tắt máy bên dưới là lịch sử đã được thay thế.
+
 **Thu thập mới sau vòng thử v8:** chủ dự án xác nhận làm đủ 700 bài theo bảng bên
 dưới. Hai tài khoản ChatGPT Web dùng hai profile độc lập, mỗi profile một tab.
 Chỉ chuyển tài khoản sau thông báo quota rõ ràng; giữ nguyên bài và yêu cầu chấm.

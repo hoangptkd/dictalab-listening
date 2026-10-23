@@ -23,6 +23,7 @@ from training.semantic_rubric import CHECKS, VERSION_V3, rules_for
 
 LEVELS = ("A1", "A2", "B1", "B2")
 TARGETS = {"train": 125, "validation": 25, "test": 25}
+TARGETS_500 = {"train": 100, "validation": 12, "test": 13}
 ARTIFACT = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v9-20261024.json"
 
 
@@ -63,13 +64,16 @@ def prior_corpus() -> list[str]:
 def prepare(path: Path, settings=None, *, diagnostic: bool = False,
             retain_diagnostic_evidence: bool = False, artifact_path: Path | None = None,
             web_accounts: list[dict] | None = None, continue_from: Path | None = None,
-            gemini_teacher: bool = False) -> dict:
+            gemini_teacher: bool = False, total_articles: int = 700) -> dict:
     if retain_diagnostic_evidence and not diagnostic:
         raise DatasetError("full rejection evidence retention requires a diagnostic campaign")
     path = run._private_path(path)
     if path.exists():
         raise DatasetError("collection directory already exists")
     settings = settings or run.settings_from_registry()
+    if total_articles not in (500, 700):
+        raise DatasetError("supported collection totals are 500 or 700")
+    targets = TARGETS_500 if total_articles == 500 else TARGETS
     selected_artifact = (artifact_path or ARTIFACT).resolve()
     artifact = gen.read_json(selected_artifact)
     if artifact.get("collectionPolicy") != COLLECTION_POLICY:
@@ -129,7 +133,7 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
         "requireSemanticAudit": True,
         "useIssueReferences": True,
         "candidateCap": 1500 if not diagnostic or getattr(settings, "operational_limits_enabled", True) else 0,
-        "targetsPerLevel": TARGETS,
+        "targetsPerLevel": targets,
         "groups": groups, "holdouts": sorted(set(holdouts)), "priorCorpusHash": gen.digest(corpus),
         "approvalAuthority": "delegated AI:Codex; independent per-item review, no automatic approval"}
     if web_accounts:
@@ -159,10 +163,12 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
             previous = status(parent)
             if (diagnostic or old.get("diagnosticOnly") or previous["pending"] or
                     previous["status"] != "READY" or old["groups"] != manifest["groups"] or
-                    old["holdouts"] != manifest["holdouts"] or old["targetsPerLevel"] != TARGETS or
+                    old["holdouts"] != manifest["holdouts"] or
                     old["candidateCap"] != manifest["candidateCap"] or
                     old["teacher"]["model"] != manifest["teacher"]["model"]):
                 raise DatasetError("continuation requires a fully decided READY non-diagnostic campaign with matching allocation")
+            if any(previous["counts"][split][level] > target for split, target in targets.items() for level in LEVELS):
+                raise DatasetError("approved inherited cell exceeds the requested target; never discard approvals")
             done = decisions(parent)
             next_index = previous["attempted"]
             if {item["id"] for item in done} != {f"candidate-{i:04d}" for i in range(1, next_index + 1)}:
@@ -181,9 +187,11 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
                 files.extend((parent / "candidates").glob(f"{ident}.*.json"))
             if (parent / "sent-index.jsonl").exists():
                 files.append(parent / "sent-index.jsonl")
+            files.extend((parent / "web-batches").glob("*.json"))
             inventory = {}
             for source in files:
                 relative = source.relative_to(parent)
+                (path / relative).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, path / relative)
                 inventory[relative.as_posix()] = run.hashlib.sha256(source.read_bytes()).hexdigest()
             manifest["continuation"] = {"parentPath": str(parent), "parentManifest": old,
@@ -243,6 +251,7 @@ def verify_inherited(path: Path, manifest: dict) -> None:
 
 def status(path: Path) -> dict:
     manifest, _ = load(path)
+    targets = manifest["targetsPerLevel"]
     done = decisions(path)
     counts = Counter((item["split"], item["level"]) for item in done if item["verdict"] == "approved")
     pending = [file.stem.removesuffix(".teacher-result") for file in sorted((path / "candidates").glob("*.teacher-result.json"))
@@ -255,7 +264,7 @@ def status(path: Path) -> dict:
         "counts": {split: {level: counts[split, level] for level in LEVELS} for split in TARGETS},
         "retryAt": state.get("retryAt"), "stopReason": state.get("stopReason"),
         "pending": pending, "complete": all(counts[split, level] == target
-            for split, target in TARGETS.items() for level in LEVELS), "trainingReady": False}
+            for split, target in targets.items() for level in LEVELS), "trainingReady": False}
 
 
 def duplicate(text: str, corpus: list[str]) -> bool:
@@ -307,7 +316,24 @@ def reject(path: Path, row: dict, reason: str, *, reviewer: str = "automatic-har
             compact[kind + "Hash"] = gen.digest(value)
             if isinstance(value, dict) and value.get("usage"):
                 compact.setdefault("allUsage", {})[kind] = value["usage"]
+    shared_raw = []
+    link_file = folder / f"{ident}.web-batch.json"
+    if link_file.exists():
+        link = gen.read_json(link_file)
+        stem = link["stem"]
+        if stem != "batch-" + "-".join(link["ids"]) or any(not re.fullmatch(r"candidate-\d{4}", i) for i in link["ids"]):
+            raise DatasetError("invalid Web batch cleanup reference")
+        batch_folder = path / "web-batches"
+        meta = batch_folder / f"{stem}.meta.json"
+        if not meta.exists():
+            raise DatasetError("Web batch has unresolved outcome; retain evidence before rejecting")
+        compact["webBatch"] = gen.read_json(meta)
+        # Shared raw bodies contain every member. Keep compact provenance, remove rejected text.
+        shared_raw = [file for file in batch_folder.glob(f"{stem}.*.json") if file != meta]
     run._atomic_json(path / "decisions" / f"{ident}.json", compact)
+    if not gen.read_json(path / "manifest.json").get("retainDiagnosticEvidence"):
+        for file in shared_raw:
+            file.unlink()
     if gen.read_json(path / "manifest.json").get("retainDiagnosticEvidence"):
         manifest, _ = load(path)
         if not manifest.get("diagnosticOnly"):
@@ -324,11 +350,13 @@ def reject(path: Path, row: dict, reason: str, *, reviewer: str = "automatic-har
 
 
 async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_failure: bool = False,
-                  overlap_web: bool = False) -> dict:
+                  overlap_web: bool = False, deepseek_only: bool = False, web_batch_size: int = 1) -> dict:
     path = run._private_path(path)
     manifest, artifact = load(path)
     settings = settings or run.settings_from_registry()
     teachers = [manifest["teacher"], *manifest.get("additionalTeachers", [])]
+    if deepseek_only:
+        teachers = [teacher for teacher in teachers if teacher["provider"] == "deepseek"]
     for teacher in teachers:
         provider = teacher["provider"]
         if (settings.registry_pools[provider]["default_model"] != teacher["model"] or
@@ -336,11 +364,19 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
             raise DatasetError("teacher registry changed; create a new frozen collection")
     if limit < 1:
         raise DatasetError("collect limit must be positive")
+    if web_batch_size not in (1, 2, 3):
+        raise DatasetError("Web batch size must be one, two or three")
     with run._campaign_lock(path):
         verify_inherited(path, manifest)
         current = status(path)
         state = gen.read_json(path / "state.json")
         folder = path / "candidates"
+        watchdog = None
+        def arm_watchdog():
+            nonlocal watchdog
+            if shutdown_on_failure and watchdog is None:
+                from training.shutdown_watchdog import arm
+                watchdog = arm(path)
 
         async def judge(row):
             ident = row["id"]
@@ -361,9 +397,16 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
         else:
             waiting = []
         for ident in waiting:
+            if (folder / f"{ident}.result.json").exists():
+                continue
             row = gen.read_json(folder / f"{ident}.teacher-result.json")
             try:
-                await judge(row)
+                link = folder / f"{ident}.web-batch.json"
+                if link.exists():
+                    rows = [gen.read_json(folder / f"{i}.teacher-result.json") for i in gen.read_json(link)["ids"]]
+                    await run._judge_web_batch(path, manifest, rows, folder=folder)
+                else:
+                    await judge(row)
             except run.web_accounts.WebQuotaWait as error:
                 state.update(status="WAITING_WEB_QUOTA", currentId=ident, retryAt=error.retry_at)
                 run._atomic_json(path / "state.json", state)
@@ -389,6 +432,7 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
             corpus.append(normalized(gen.read_json(path / "candidates" / f"{item['id']}.teacher-result.json")["task"]["utteranceEn"]))
         web_job = None
         web_row = None
+        web_buffer = []
         teacher_jobs = []
         scheduled = 0
         teacher_offset = state["nextIndex"] // 8 % len(teachers)
@@ -429,7 +473,7 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
             for entry, _ in teacher_jobs:
                 if entry["id"] not in current["pending"]:
                     reserved[entry["split"], entry["level"]] += 1
-            cells = [(s, level) for s, target in TARGETS.items() for level in LEVELS
+            cells = [(s, level) for s, target in manifest["targetsPerLevel"].items() for level in LEVELS
                      if current["counts"][s][level] + reserved[s, level] < target]
             if not cells:
                 state["status"] = "AWAITING_CODEX_REVIEW"
@@ -449,6 +493,7 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                      "teacherProvider": teacher["provider"]}
             state.update(status="RUNNING", nextIndex=index + 1, currentId=ident)
             run._atomic_json(path / "state.json", state)
+            arm_watchdog()
             contract = {**manifest, "teacher": teacher}
             teacher_jobs.append((entry, asyncio.create_task(
                 run._teacher_one(path, contract, entry, group, artifact, folder, settings))))
@@ -512,9 +557,6 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                     break
                 entry, teacher_job = teacher_jobs.pop(0)
                 ident, level = entry["id"], entry["level"]
-                if shutdown_on_failure and processed == 0:
-                    from training.shutdown_watchdog import arm
-                    arm(path)
                 try:
                     row = await teacher_job
                     needs_review = retain_teacher(row)
@@ -525,13 +567,17 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                         state["status"] = state["teacherStopStatus"]
                         break
                     if needs_review:
-                        if overlap_web:
-                            web_row = row
-                            web_job = asyncio.create_task(judge(row))
+                        web_buffer.append(row)
+                        if len(web_buffer) >= web_batch_size:
+                            rows, web_buffer = web_buffer, []
+                            web_row = rows[0]
+                            work = (run._judge_web_batch(path, manifest, rows, folder=folder)
+                                    if len(rows) > 1 else judge(rows[0]))
+                            web_job = asyncio.create_task(work)
                             # Start Web now, before the next teacher's synchronous setup.
                             await asyncio.sleep(0)
-                        else:
-                            await judge(row)
+                            if not overlap_web:
+                                await finish_web()
                     state["status"] = "RUNNING"
                     run._atomic_json(path / "state.json", state)
                     print(json.dumps({"candidate": ident, "level": level, "hardPass": row["hardPass"],
@@ -579,10 +625,28 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                     state.update(status="BLOCKED", errorType=type(error).__name__)
                     run._atomic_json(path / "state.json", state)
                     raise
+            if web_buffer and state["status"] in {"RUNNING", "CANDIDATE_CAP", "AWAITING_CODEX_REVIEW"} and not state.get("teacherStopStatus"):
+                state["currentId"] = web_buffer[0]["id"]
+                try:
+                    if len(web_buffer) > 1:
+                        await run._judge_web_batch(path, manifest, web_buffer, folder=folder)
+                    else:
+                        await judge(web_buffer[0])
+                except run.web_accounts.WebQuotaWait as error:
+                    state.update(status="WAITING_WEB_QUOTA", retryAt=error.retry_at)
+                except Exception as error:
+                    state.update(status="BLOCKED", errorType=type(error).__name__)
+                    run._atomic_json(path / "state.json", state)
+                    raise
             run._atomic_json(path / "state.json", state)
         if state["status"] == "RUNNING":
             state["status"] = "AWAITING_CODEX_REVIEW"
         run._atomic_json(path / "state.json", state)
+        if shutdown_on_failure and watchdog is None:
+            from training.shutdown_watchdog import request_shutdown, shutdown_reason
+            reason = shutdown_reason(state, worker_alive=True)
+            if reason and not (path / "shutdown-request.json").exists():
+                request_shutdown(reason, path / "shutdown-request.json")
     return status(path)
 
 
@@ -621,7 +685,7 @@ def adjudicate(path: Path, verdict: dict) -> dict:
                 any(not isinstance(item.get("basis"), str) or not item["basis"].strip() for item in overrides)):
                 raise DatasetError("every Web disagreement requires an explicit independent override basis")
             current = status(path)
-            if current["counts"][row["split"]][row["level"]] >= TARGETS[row["split"]]:
+            if current["counts"][row["split"]][row["level"]] >= manifest["targetsPerLevel"][row["split"]]:
                 raise DatasetError("level/split target already full")
             result = {**verdict, **{key: row[key] for key in ("groupId", "split", "level")},
                       "time": run._now()}
@@ -640,7 +704,8 @@ def export(path: Path) -> dict:
     if manifest.get("diagnosticOnly"):
         raise DatasetError("diagnostic experiments cannot be exported for SFT")
     if not status(path)["complete"] or status(path)["pending"]:
-        raise DatasetError("all 700 independently approved tasks are required before dataset export")
+        total = sum(manifest["targetsPerLevel"].values()) * len(LEVELS)
+        raise DatasetError(f"all {total} independently approved tasks are required before dataset export")
     verify_inherited(path, manifest)
     extra_artifacts = []
     inherited = manifest
@@ -678,6 +743,8 @@ def main() -> int:
     parser.add_argument("command", choices=("prepare", "collect", "status", "adjudicate", "export"))
     parser.add_argument("--campaign", required=True, type=Path)
     parser.add_argument("--limit", type=int, default=4)
+    parser.add_argument("--total-articles", type=int, choices=(500, 700), default=700,
+                        help="freeze total on prepare: 500 uses 400 train / 48 validation / 52 test")
     parser.add_argument("--decision-file", type=Path)
     parser.add_argument("--artifact", type=Path, help="freeze this candidate on prepare; default is the best measured baseline")
     parser.add_argument("--web-account", action="append", default=[], metavar="ID=URL",
@@ -687,6 +754,9 @@ def main() -> int:
     parser.add_argument("--gemini-teacher", action="store_true",
                         help="freeze Gemini 3.5 Flash-Lite accounts as parallel teachers on prepare")
     parser.add_argument("--overlap-web", action="store_true", help="overlap one teacher call with one Web review")
+    parser.add_argument("--deepseek-only", action="store_true", help="disable additional teachers without changing frozen evidence")
+    parser.add_argument("--web-batch-size", type=int, choices=(1, 2, 3), default=1,
+                        help="independent articles per fresh Web conversation; default one")
     parser.add_argument("--retain-diagnostic-evidence", action="store_true",
                         help="preserve rejected diagnostic requests and responses for owner review")
     parser.add_argument("--shutdown-on-worker-failure", action="store_true",
@@ -697,10 +767,12 @@ def main() -> int:
         result = prepare(path, diagnostic=args.diagnostic,
                          retain_diagnostic_evidence=args.retain_diagnostic_evidence, artifact_path=args.artifact,
                          web_accounts=[dict(zip(("id", "url"), item.split("=", 1))) for item in args.web_account] or None,
-                         continue_from=args.continue_from, gemini_teacher=args.gemini_teacher)
+                         continue_from=args.continue_from, gemini_teacher=args.gemini_teacher,
+                         total_articles=args.total_articles)
     elif args.command == "collect":
         result = asyncio.run(collect(path, limit=args.limit, shutdown_on_failure=args.shutdown_on_worker_failure,
-                                     overlap_web=args.overlap_web))
+                                     overlap_web=args.overlap_web, deepseek_only=args.deepseek_only,
+                                     web_batch_size=args.web_batch_size))
     elif args.command == "adjudicate":
         if not args.decision_file:
             parser.error("adjudicate requires --decision-file")

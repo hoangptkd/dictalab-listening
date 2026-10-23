@@ -1,5 +1,13 @@
 # Thu thập 700 bài với hai tài khoản Web
 
+**Thay thế ngày 24/10:** chủ dự án chốt tổng **500 bài: 400/48/52**, dừng Gemini,
+chấm Web theo cặp trong hội thoại mới sau phép thử thực tế. Chiến dịch hiện tại
+`data/fine-tuning/reviewed-500-v9-deepseek-20261024`; đủ dữ liệu/audit thì SFT.
+Một Web hết quota vẫn chuyển tài khoản; cả hai hết quota hoặc không thể thu thập
+thêm thì checkpoint, báo cáo, dừng lịch và tắt máy theo quyền mới, không chờ qua đêm.
+Chi tiết mới nhất tại [báo cáo v9](conversation-collection-v9-improvements-20261024.md).
+Các quyết định trái với mục này bên dưới chỉ còn là lịch sử.
+
 **Cập nhật 24/10/2026:** chủ dự án yêu cầu dừng lịch; automation đã `PAUSED`,
 lô cuối đã kết thúc và không tự sinh thêm. Cấu hình v9 cho chiến dịch mới cùng
 phân tích lỗi nằm trong [báo cáo cải thiện](conversation-collection-v9-improvements-20261024.md).

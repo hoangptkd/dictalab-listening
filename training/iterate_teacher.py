@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
+import re
 import os
 from pathlib import Path
 import random
@@ -636,6 +637,8 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
                          stem: str, *, folder: Path) -> dict:
     if case.get("hardPass") is not True:
         raise gen.DatasetError("Web judge requires a hard-validated case before dispatch")
+    if (folder / f"{stem}.web-batch.json").exists():
+        raise gen.DatasetError("case already bound to a Web batch; refusing individual replay")
     request_path = folder / f"{stem}.request.json"
     envelope_path = folder / f"{stem}.envelope.json"
     result_path = folder / f"{stem}.result.json"
@@ -646,6 +649,37 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
     if not account_resume and (any(p.exists() for p in (request_path, envelope_path, result_path)) or \
             _sent_before(path, kind, folder.name, stem)):
         raise gen.DatasetError(f"{stem}: sent/partial result exists; refusing replay")
+    body, schema = _web_judge_body(case, wire_id, manifest)
+    url = _bridge_url(manifest["judge"]["url"])
+    account_metadata = None
+    if account_resume:
+        if gen.read_json(request_path) != body:
+            raise gen.DatasetError("saved Web judge request changed; refusing replay")
+    else:
+        _durable_exclusive_json(request_path, body)
+        gen.append(path / "sent-index.jsonl", {"kind": kind, "phase": folder.name, "stem": stem,
+            "requestHash": gen.digest(body), "time": time.time()})
+    if manifest["judge"].get("accounts"):
+        response, envelope, account_metadata = await web_accounts.dispatch(
+            path, folder, stem, body, manifest["judge"]["accounts"])
+    else:
+        async with httpx.AsyncClient(follow_redirects=False, trust_env=False, timeout=240) as client:
+            response = await client.post(url, json=body)
+            envelope = gen.strict_json(response.text)
+    gen.write_json(envelope_path, envelope)
+    response.raise_for_status()
+    choice = envelope["choices"][0]
+    if choice.get("finish_reason") != "stop":
+        raise gen.DatasetError("judge returned unfinished response")
+    strict = gen.strict_json(choice["message"]["content"])
+    Draft202012Validator(schema).validate(strict)
+    verdict = gen.unpack_batch(strict, [wire_id])[wire_id]
+    review = _web_review(case, manifest, verdict, body, strict, envelope, account_metadata)
+    gen.write_json(result_path, review)
+    return review
+
+
+def _web_judge_body(case: dict, wire_id: str, manifest: dict) -> tuple[dict, dict]:
     fact_count = len(case["task"]["facts"]) if manifest.get("requireFactAudit") else None
     semantic_audit = manifest.get("requireSemanticAudit", False)
     source_fields = judge_source_fields(case) if manifest.get("useIssueReferences") else None
@@ -682,30 +716,14 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
                    "\nAUDIT_INPUT:\n" + json.dumps(payload, ensure_ascii=False)}]}
     if gen._contains_secret(body):
         raise gen.DatasetError("possible sensitive data in judge input")
-    url = _bridge_url(manifest["judge"]["url"])
-    account_metadata = None
-    if account_resume:
-        if gen.read_json(request_path) != body:
-            raise gen.DatasetError("saved Web judge request changed; refusing replay")
-    else:
-        _durable_exclusive_json(request_path, body)
-        gen.append(path / "sent-index.jsonl", {"kind": kind, "phase": folder.name, "stem": stem,
-            "requestHash": gen.digest(body), "time": time.time()})
-    if manifest["judge"].get("accounts"):
-        response, envelope, account_metadata = await web_accounts.dispatch(
-            path, folder, stem, body, manifest["judge"]["accounts"])
-    else:
-        async with httpx.AsyncClient(follow_redirects=False, trust_env=False, timeout=240) as client:
-            response = await client.post(url, json=body)
-            envelope = gen.strict_json(response.text)
-    gen.write_json(envelope_path, envelope)
-    response.raise_for_status()
-    choice = envelope["choices"][0]
-    if choice.get("finish_reason") != "stop":
-        raise gen.DatasetError("judge returned unfinished response")
-    strict = gen.strict_json(choice["message"]["content"])
-    Draft202012Validator(schema).validate(strict)
-    verdict = gen.unpack_batch(strict, [wire_id])[wire_id]
+    return body, schema
+
+
+def _web_review(case: dict, manifest: dict, verdict: dict, body: dict, strict: dict,
+                envelope: dict, account_metadata: dict | None) -> dict:
+    fact_count = len(case["task"]["facts"]) if manifest.get("requireFactAudit") else None
+    semantic_audit = manifest.get("requireSemanticAudit", False)
+    source_fields = judge_source_fields(case) if manifest.get("useIssueReferences") else None
     issues = verdict["issues"]
     if source_fields is not None:
         # This is the wire protocol, not repair: the immutable response selects a source field.
@@ -765,8 +783,86 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
                 if ((quote is not None and not any(quote in text for text in history)) or
                         (history and item["newMeaningSupported"] is not True and quote is None)):
                     raise gen.DatasetError("judge semantic audit lacks grounded historical evidence")
-    gen.write_json(result_path, review)
     return review
+
+
+def _web_batch_body(cases: list[dict], manifest: dict) -> tuple[dict, dict]:
+    ids = [case["id"] for case in cases]
+    if not 2 <= len(cases) <= 3 or len(set(ids)) != len(ids) or any(not c.get("hardPass") for c in cases):
+        raise gen.DatasetError("Web batch requires two or three distinct hard-validated cases")
+    bodies, schemas = zip(*[_web_judge_body(case, case["id"], manifest) for case in cases])
+    schema = {"type": "object", "properties": {"items": {"type": "array",
+        "minItems": len(cases), "maxItems": len(cases),
+        "items": {"oneOf": [s["properties"]["items"]["items"] for s in schemas]}}},
+        "required": ["items"], "additionalProperties": False}
+    payload = judge_payload(cases[0], ids[0], manifest)
+    payload["items"] = [{"id": case["id"], "context": case["context"], "task": case["task"]} for case in cases]
+    instructions = bodies[0]["messages"][0]["content"].split("\nOUTPUT_SCHEMA:\n", 1)[0]
+    body = {"model": "chatgpt-web", "stream": False, "messages": [{"role": "user", "content":
+        instructions + "\nReview each item independently. Items are unrelated encounters: never use another "
+        "item's source, history, answer, translation or sourceRef as evidence. Return every ID exactly once. "
+        "Give all checks and every factAudit for each item; do not summarize the batch.\nOUTPUT_SCHEMA:\n" +
+        json.dumps(schema, ensure_ascii=False) + "\nAUDIT_INPUT:\n" + json.dumps(payload, ensure_ascii=False)}]}
+    if gen._contains_secret(body):
+        raise gen.DatasetError("possible sensitive data in judge batch")
+    return body, schema
+
+
+async def _judge_web_batch(path: Path, manifest: dict, cases: list[dict], *, folder: Path) -> list[dict]:
+    body, schema = _web_batch_body(cases, manifest)
+    ids = [case["id"] for case in cases]
+    if any(not re.fullmatch(r"candidate-\d{4}", ident) for ident in ids):
+        raise gen.DatasetError("collection Web batch requires candidate IDs")
+    stem = "batch-" + "-".join(ids)
+    batch_folder = path / "web-batches"
+    batch_folder.mkdir(exist_ok=True)
+    request = batch_folder / f"{stem}.request.json"
+    envelope_file = batch_folder / f"{stem}.envelope.json"
+    resume = request.exists() and not envelope_file.exists() and web_accounts.resumable(batch_folder, stem, body)
+    for ident in ids:
+        if (any((folder / f"{ident}.{kind}.json").exists() for kind in ("request", "envelope", "result")) or
+                _sent_before(path, "judge", folder.name, ident)):
+            raise gen.DatasetError("batch member already sent individually; refusing replay")
+        link_file = folder / f"{ident}.web-batch.json"
+        link = {"stem": stem, "ids": ids, "requestHash": gen.digest(body)}
+        if link_file.exists():
+            if gen.read_json(link_file) != link or not resume:
+                raise gen.DatasetError("Web batch member outcome unresolved; refusing replay")
+        else:
+            _durable_exclusive_json(link_file, link)
+    if resume:
+        if gen.read_json(request) != body:
+            raise gen.DatasetError("saved Web batch changed; refusing replay")
+    elif request.exists() or envelope_file.exists() or _sent_before(path, "judge-batch", batch_folder.name, stem):
+        raise gen.DatasetError("Web batch outcome unresolved; refusing replay")
+    else:
+        _durable_exclusive_json(request, body)
+        gen.append(path / "sent-index.jsonl", {"kind": "judge-batch", "phase": batch_folder.name,
+            "stem": stem, "ids": ids, "requestHash": gen.digest(body), "time": time.time()})
+    # No conversation_id: the bridge creates a fresh chat for each group.
+    response, envelope, account = await web_accounts.dispatch(
+        path, batch_folder, stem, body, manifest["judge"].get("accounts") or
+        [{"id": "default", "url": manifest["judge"]["url"]}])
+    gen.write_json(envelope_file, envelope)
+    response.raise_for_status()
+    choice = envelope["choices"][0]
+    if choice.get("finish_reason") != "stop":
+        raise gen.DatasetError("Web batch returned unfinished response")
+    strict = gen.strict_json(choice["message"]["content"])
+    Draft202012Validator(schema).validate(strict)
+    verdicts = gen.unpack_batch(strict, ids)
+    # Validate every member before persisting any result. One bad member blocks the group.
+    reviews = [_web_review(case, manifest, verdicts[case["id"]], body, strict, envelope, account) for case in cases]
+    metadata = {**link, "responseHash": gen.digest(strict), "envelopeHash": gen.digest(envelope),
+        "webAccount": account, "usage": envelope.get("usage"),
+        "conversationId": envelope.get("conversation_id"), "chatgptId": envelope.get("chatgpt_id"),
+        "attempts": [{"hash": gen.digest(attempt), **{k: attempt.get(k) for k in
+            ("accountId", "outcome", "httpStatus")}} for attempt in web_accounts.attempts(batch_folder, stem)]}
+    gen.write_json(batch_folder / f"{stem}.meta.json", metadata)
+    for case, review in zip(cases, reviews):
+        review["webBatch"] = link
+        gen.write_json(folder / f"{case['id']}.result.json", review)
+    return reviews
 
 
 async def _judge_one(path: Path, manifest: dict, case: dict, wire_id: str,

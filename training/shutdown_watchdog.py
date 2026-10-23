@@ -12,7 +12,8 @@ from training.prepare_dataset import DatasetError, ROOT
 
 
 def shutdown_reason(state: dict, worker_alive: bool) -> str | None:
-    if state.get("status") in {"COMPLETE", "BLOCKED", "WAITING_QUOTA", "CANDIDATE_CAP"}:
+    if state.get("status") in {"BLOCKED", "WAITING_QUOTA", "WAITING_DEEPSEEK_QUOTA",
+                               "WAITING_GEMINI_QUOTA", "WAITING_WEB_QUOTA", "CANDIDATE_CAP"}:
         return state["status"]
     if state.get("status") == "RUNNING" and not worker_alive:
         return "WORKER_EXITED_UNEXPECTEDLY"
@@ -22,6 +23,26 @@ def shutdown_reason(state: dict, worker_alive: bool) -> str | None:
 def request_shutdown(reason: str, evidence: Path, *, execute=subprocess.run) -> None:
     # This function is called only by an explicitly armed watchdog or the operator.
     report = {"reason": reason, "requestedAt": time.time(), "command": ["shutdown.exe", "/s", "/f", "/t", "60"]}
+    campaign = evidence.parent
+    if (campaign / "manifest.json").exists() and (campaign / "state.json").exists():
+        from training import collect_reviewed as collect
+        manifest, _ = collect.load(campaign)
+        report["checkpoint"] = collect.status(campaign)
+        report["missing"] = {split: {level: target - report["checkpoint"]["counts"][split][level]
+            for level in collect.LEVELS} for split, target in manifest["targetsPerLevel"].items()}
+        # Sum known teacher usage once per candidate, including purged rejections.
+        known = {}
+        rows = {row["id"]: row for row in collect.decisions(campaign)}
+        for file in (campaign / "candidates").glob("*.teacher-result.json"):
+            row = json.loads(file.read_text(encoding="utf-8"))
+            rows[row["id"]] = row
+        for row in rows.values():
+            usage = row.get("usage") or row.get("allUsage", {}).get("teacher-envelope") or {}
+            for key, value in usage.items():
+                if type(value) in (int, float):
+                    known[key] = known.get(key, 0) + value
+        report["knownTeacherUsage"] = known
+        report["usageLimit"] = "Known numeric teacher usage only; unavailable usage and Web cost are not estimated."
     with evidence.open("x", encoding="utf-8", newline="\n") as handle:
         json.dump(report, handle, indent=2)
         handle.flush()
@@ -46,11 +67,11 @@ def watch(campaign: Path, pid: int, created: float) -> None:
         except psutil.NoSuchProcess:
             alive = False
         reason = shutdown_reason(state, alive)
-        if reason:
+        if reason and not alive:
             request_shutdown(reason, campaign / "shutdown-request.json")
             return
-        if state.get("status") in {"READY", "AWAITING_CODEX_REVIEW"}:
-            # A normal batch exit awaits independent review; it is not a stopped workflow.
+        if state.get("status") in {"READY", "AWAITING_CODEX_REVIEW", "COMPLETE"}:
+            # Collection completion must proceed to dataset audit/SFT, not shut down here.
             return
         time.sleep(2)
 

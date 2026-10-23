@@ -1,5 +1,69 @@
 # Cải thiện thu thập v9 — 24/10/2026
 
+## Quyết định mới nhất: 500 bài, DeepSeek và chấm Web theo cặp
+
+Chủ dự án đã xác nhận **400 train + 48 validation + 52 test**, mỗi mức A1/A2/B1/B2
+lần lượt **100/12/13**. Tổng là 500 bài, không phải 500 train cộng tập khác.
+Chiến dịch đang dùng: `data/fine-tuning/reviewed-500-v9-deepseek-20261024`.
+Snapshot giữ nguyên 185 bài duyệt/311 ứng viên từ phiên mixed; không loại bỏ ba bài
+Gemini đã duyệt, không gọi Gemini mới, không sửa manifest hoặc reset quota của phiên cũ.
+Trần 1.500 ứng viên vẫn cộng dồn. Những mục 700/mixed bên dưới là lịch sử.
+
+Đã thử thật trong **ba hội thoại mới khác nhau** của account-1:
+
+| Nhóm | Mẫu | Thời gian Web | Kết quả đối chiếu độc lập |
+| --- | --- | ---: | --- |
+| 3 bài | A1/A2/B1 validation đã chấm riêng | 25,16 giây | Đủ 8 fact audit; có một lỗi giả `noAnswerLeak` ở bài A2 |
+| 2 bài | Một bài tốt và một bản diagnostic cố ý dịch sai thời lượng | 15,37 giây | Bài tốt giữ kết quả; lỗi dịch được phát hiện đúng |
+| 2 bài | Hai bài A2/B1 validation gốc | 18,55 giây | Khớp toàn bộ checks chấm riêng và duyệt độc lập |
+
+Lỗi giả nhóm 3 cho rằng câu hỏi “giấy tờ gì” tiết lộ đáp án “phiếu đăng ký”.
+Câu hỏi không nêu loại giấy tờ; đáp án gist chỉ nói chào đón và hướng dẫn nhận phòng,
+không đòi liệt kê loại phiếu. Vì vậy cảnh báo không có căn cứ. Không dùng nhóm 3 tiếp.
+Mẫu sai diagnostic được tách riêng, không sửa bản gốc và không đưa vào SFT.
+Biên bản đầy đủ local: `data/fine-tuning/diagnostic-web-batch-20261024/`.
+Nhãn model Web không được UI cung cấp; không coi alias là model đã xác minh.
+
+Đã chạy tiếp lô thật DeepSeek-only candidate-0308–0311: hai hội thoại Web mới,
+đủ 11 fact audit, cả 4 bài được Codex duyệt độc lập sau khi đọc nguồn trước Web.
+Mẫu nhỏ không chứng minh tỷ lệ dài hạn hoặc phần trăm tăng tốc. Quyết định vận hành:
+**2 bài/hội thoại mới**, một yêu cầu Web mỗi lúc; `--overlap-web` vẫn chồng sinh và chấm.
+
+```powershell
+python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v9-deepseek-20261024 --limit 8 --deepseek-only --web-batch-size 2 --overlap-web --shutdown-on-worker-failure
+```
+
+Không prepare lại thư mục này. Chấm nhóm giữ schema/checks/evidence riêng từng bài,
+hash request/response chung và liên kết thành viên. Thiếu/trùng ID, trích dẫn chéo bài,
+JSON sai hoặc kết quả gửi chưa rõ đều chặn; không tự gửi lại riêng thành viên.
+Quota rõ ràng mới cho phép tiếp tục đúng request nhóm đã lưu. Bài lẻ cuối lô được
+chấm riêng. Bài loại xóa raw request/response/attempt dùng chung có chứa chi tiết bài
+đó; giữ metadata hash/account/usage/trạng thái và bằng chứng riêng của bài đạt.
+
+### SFT và quyền tắt máy mới
+
+Đủ **500 bài duyệt**, không còn pending: audit phân bổ 100/12/13 mỗi mức, provenance,
+exact/near duplicate, holdout và cặp content/translation; export. Không tự gắn gate
+audit đạt khi chưa kiểm tra, không train dữ liệu thiếu/chưa duyệt. Sau audit đạt,
+chạy SFT/LoRA thật Qwen3.5-4B bằng runner hiện có, chọn checkpoint bằng validation.
+Config local `training-config.yaml` trong chiến dịch mới trỏ vào export/dataset và
+training-review.json. Dùng Python `.venv-cpu`, giữ loss mask và quyền thử dưới RAM
+ước lượng bằng `--attempt-below-memory-estimate`; không chạy smoke tài nguyên riêng.
+Lưu optimizer step/checkpoint/loss hoặc lỗi thật; không deploy production.
+
+Chủ dự án đã cấp lại quyền **tắt máy khi hết quota hoặc không thể tạo thêm dữ liệu**,
+không hỏi lại. Web một tài khoản hết quota vẫn chuyển đúng quy tắc; cả hai hết quota
+thì lưu checkpoint/báo cáo và tắt máy. Không chờ quota qua đêm như chỉ dẫn cũ.
+Không tắt chỉ vì đủ bài: phải chuyển sang audit/SFT. Khi thất bại không thể tiếp tục,
+lưu kết quả/lỗi và usage biết được/phần thiếu, dừng automation, flush file rồi gọi
+`shutdown.exe /s /f /t 60`. Không dùng lệnh thật trong kiểm thử.
+
+Watchdog ngoài worker đã triển khai: chờ worker lưu/drain các lời gọi đã gửi rồi
+xử lý trạng thái quota/BLOCKED/cap hoặc worker thoát bất thường. Duyệt Codex giữa
+lô là trạng thái bình thường. Watchdog này không giám sát việc Codex hết token,
+Codex bị treo hoặc Windows treo; prompt/lịch không bảo đảm xử lý các tình huống đó.
+Các mục hủy quyền tắt máy trước đây được thay thế bằng yêu cầu mới này.
+
 ## Đã dừng lịch chạy
 
 Automation `ti-p-t-c-thu-th-p-700-b-i-duy-t` đã chuyển sang `PAUSED` theo yêu cầu.

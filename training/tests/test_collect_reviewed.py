@@ -53,6 +53,28 @@ def test_diagnostic_experiment_cannot_export_sft(campaign):
         collect.export(diagnostic)
 
 
+def test_500_total_continuation_freezes_new_targets_and_preserves_parent(campaign):
+    parent, settings = campaign
+    original = (parent / "manifest.json").read_bytes()
+    path = parent.parent / "total-500"
+    collect.prepare(path, settings, continue_from=parent, total_articles=500)
+    manifest, _ = collect.load(path)
+    assert manifest["targetsPerLevel"] == {"train": 100, "validation": 12, "test": 13}
+    assert sum(manifest["targetsPerLevel"].values()) * 4 == 500
+    assert (parent / "manifest.json").read_bytes() == original
+    with pytest.raises(DatasetError, match="500"):
+        collect.export(path)
+
+
+def test_reduced_target_never_discards_existing_approved_cells(campaign):
+    parent, settings = campaign
+    for i in range(13):
+        gen.write_json(parent / "decisions" / f"candidate-{i+1:04d}.json", {
+            "id": f"candidate-{i+1:04d}", "verdict": "approved", "split": "validation", "level": "A1"})
+    with pytest.raises(DatasetError, match="exceeds"):
+        collect.prepare(parent.parent / "too-small", settings, continue_from=parent, total_articles=500)
+
+
 def test_requested_diagnostic_rejection_evidence_is_preserved(campaign):
     path, settings = campaign
     with pytest.raises(DatasetError, match="diagnostic"):
@@ -92,6 +114,17 @@ async def test_quota_stop_sends_nothing_and_resume_does_not_reset_it(campaign, m
     assert result["status"] == "WAITING_QUOTA" and result["attempted"] == 0
     assert not (path / "sent-index.jsonl").exists()
     assert (await collect.collect(path, settings=settings))["attempted"] == 0
+
+
+@pytest.mark.asyncio
+async def test_authorized_quota_shutdown_is_mocked_without_paid_call(campaign, monkeypatch):
+    from training import shutdown_watchdog
+    path, settings = campaign
+    calls = []
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, **k: {"deepseek": {"availableCalls": 0}})
+    monkeypatch.setattr(shutdown_watchdog, "request_shutdown", lambda reason, evidence: calls.append((reason, evidence)))
+    result = await collect.collect(path, settings=settings, shutdown_on_failure=True)
+    assert result["attempted"] == 0 and calls == [("WAITING_QUOTA", path / "shutdown-request.json")]
 
 
 @pytest.mark.asyncio
@@ -168,6 +201,9 @@ def test_shutdown_policy_and_command_are_mocked(tmp_path):
     assert shutdown_reason({"status": "AWAITING_CODEX_REVIEW"}, False) is None
     assert shutdown_reason({"status": "READY"}, True) is None
     assert shutdown_reason({"status": "WAITING_QUOTA"}, True) == "WAITING_QUOTA"
+    assert shutdown_reason({"status": "WAITING_DEEPSEEK_QUOTA"}, True) == "WAITING_DEEPSEEK_QUOTA"
+    assert shutdown_reason({"status": "WAITING_WEB_QUOTA"}, True) == "WAITING_WEB_QUOTA"
+    assert shutdown_reason({"status": "COMPLETE"}, False) is None
     calls = []
     def fake_execute(command, **kwargs):
         calls.append(command)
@@ -997,6 +1033,107 @@ async def test_mixed_deepseek_zero_stops_both_providers_before_sending(campaign,
     monkeypatch.setattr(run, "_teacher_one", forbidden)
     result = await collect.collect(path, settings=settings, limit=8, overlap_web=True)
     assert result["status"] == "WAITING_DEEPSEEK_QUOTA" and result["attempted"] == 0
+
+
+@pytest.mark.asyncio
+async def test_deepseek_only_batches_and_flushes_tail_without_gemini(campaign, monkeypatch):
+    path, settings = mixed_campaign(campaign)
+    original_manifest = (path / "manifest.json").read_bytes()
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, platforms, **k:
+                        {p: {"availableCalls": None} for p in platforms})
+    monkeypatch.setattr(collect, "duplicate", lambda *a: False)
+    teachers, groups = [], []
+    async def teacher(path, contract, entry, group, artifact, folder, settings):
+        teachers.append(contract["teacher"]["provider"])
+        row = {**entry, "hardPass": True, "task": {"utteranceEn": "Original " + entry["id"]}}
+        gen.write_json(folder / f"{entry['id']}.teacher-result.json", row)
+        return row
+    async def batch(path, manifest, rows, *, folder):
+        groups.append([r["id"] for r in rows])
+        for row in rows:
+            gen.write_json(folder / f"{row['id']}.result.json", {"fixture": True})
+    async def single(path, manifest, row, wire, stem, settings, *, folder):
+        await batch(path, manifest, [row], folder=folder)
+    monkeypatch.setattr(run, "_teacher_one", teacher)
+    monkeypatch.setattr(run, "_judge_web_batch", batch)
+    monkeypatch.setattr(run, "_judge_one", single)
+    result = await collect.collect(path, settings=settings, limit=3, overlap_web=True,
+                                   deepseek_only=True, web_batch_size=2)
+    assert teachers == ["deepseek"] * 3
+    assert groups == [["candidate-0001", "candidate-0002"], ["candidate-0003"]]
+    assert len(result["pending"]) == 3 and result["approvedTasks"] == 0
+    assert (path / "manifest.json").read_bytes() == original_manifest
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [None, "duplicate-id", "foreign-quote", "unknown", "quota"])
+async def test_web_batch_identity_evidence_and_replay_guards(campaign, monkeypatch, failure):
+    path, _ = campaign
+    manifest, _ = collect.load(path)
+    folder = path / "candidates"
+    rows = [{"id": f"candidate-{i:04d}", "hardPass": True, "context": {"history": []},
+        "task": {"utteranceEn": source, "facts": [{"taskType": "direct_detail"}]}}
+        for i, source in enumerate(("The first source is distinct.", "The second source is separate."), 1)]
+    calls = []
+    async def dispatch(path, folder, stem, body, accounts):
+        calls.append(body)
+        if failure == "unknown":
+            raise TimeoutError("Unknown send outcome")
+        if failure == "quota" and len(calls) == 1:
+            gen.write_json(folder / f"{stem}.web-attempt-001.json", {
+                "outcome": "QUOTA", "requestHash": gen.digest(body)})
+            raise run.web_accounts.WebQuotaWait(0)
+        items = [{"id": row["id"], **dict.fromkeys(collect.CHECKS, True), "issues": [], "factAudit": [{
+            "index": 0, "sourceQuote": row["task"]["utteranceEn"], "claimSupported": True,
+            "translationSupported": True, "basis": "Direct source property.",
+            "expectedTaskType": "direct_detail", "answerScopeSupported": True,
+            "newMeaningSupported": True, "attributesSupported": True, "historyQuote": None}]} for row in rows]
+        if failure == "duplicate-id":
+            items[1] = copy.deepcopy(items[0])
+        if failure == "foreign-quote":
+            items[0]["factAudit"][0]["sourceQuote"] = rows[1]["task"]["utteranceEn"]
+        envelope = {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps({"items": items})}}],
+                    "model": "chatgpt-web", "conversation_id": "fresh-group"}
+        return httpx.Response(200, request=httpx.Request("POST", "http://localhost/")), envelope, {"accountId": "a"}
+    monkeypatch.setattr(run.web_accounts, "dispatch", dispatch)
+    if failure in ("duplicate-id", "foreign-quote", "unknown"):
+        with pytest.raises((DatasetError, TimeoutError)):
+            await run._judge_web_batch(path, manifest, rows, folder=folder)
+        assert not list(folder.glob("*.result.json"))
+        with pytest.raises(DatasetError, match="unresolved"):
+            await run._judge_web_batch(path, manifest, rows, folder=folder)
+        assert len(calls) == 1
+    else:
+        if failure == "quota":
+            with pytest.raises(run.web_accounts.WebQuotaWait):
+                await run._judge_web_batch(path, manifest, rows, folder=folder)
+        reviews = await run._judge_web_batch(path, manifest, rows, folder=folder)
+        assert len(reviews) == 2
+        assert all(run._review_integrity(row, review, manifest) for row, review in zip(rows, reviews))
+        assert calls[0] == calls[-1] and "conversation_id" not in calls[0]
+        with pytest.raises(DatasetError):
+            await run._judge_web_batch(path, manifest, rows, folder=folder)
+    with pytest.raises(DatasetError, match="bound to a Web batch"):
+        await run._judge_web_one(path, manifest, rows[0], rows[0]["id"], rows[0]["id"], folder=folder)
+
+
+def test_rejected_batch_member_purges_shared_raw_but_keeps_hashes(campaign):
+    path, _ = campaign
+    folder = path / "candidates"
+    ids = ["candidate-0001", "candidate-0002"]
+    stem = "batch-" + "-".join(ids)
+    batch = path / "web-batches"
+    batch.mkdir()
+    row = {"id": ids[0], "groupId": "fresh/a/b", "split": "train", "level": "A1", "context": {}, "task": {}}
+    gen.write_json(folder / f"{ids[0]}.web-batch.json", {"stem": stem, "ids": ids})
+    for suffix in ("request", "envelope", "web-attempt-001"):
+        gen.write_json(batch / f"{stem}.{suffix}.json", {"privateRejectedText": "must purge"})
+    gen.write_json(batch / f"{stem}.meta.json", {"requestHash": "a"*64, "ids": ids})
+    gen.write_json(folder / f"{ids[1]}.result.json", {"keep": "accepted member evidence"})
+    collect.reject(path, row, "controlled-test")
+    assert [f.name for f in batch.iterdir()] == [f"{stem}.meta.json"]
+    assert (folder / f"{ids[1]}.result.json").exists()
+    assert gen.read_json(path / "decisions" / f"{ids[0]}.json")["webBatch"]["requestHash"] == "a"*64
 
 
 @pytest.mark.asyncio
