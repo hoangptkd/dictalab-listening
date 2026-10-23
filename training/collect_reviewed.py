@@ -407,7 +407,7 @@ def adjudicate(path: Path, verdict: dict) -> dict:
         else:
             raise DatasetError("verdict must be approved or rejected; uncertain items cannot enter SFT")
         state = gen.read_json(path / "state.json")
-        if state["status"] != "WAITING_DEEPSEEK_QUOTA":
+        if state["status"] not in {"WAITING_DEEPSEEK_QUOTA", "WAITING_WEB_QUOTA"}:
             state["status"] = "AWAITING_CODEX_REVIEW" if status(path)["pending"] else "READY"
         run._atomic_json(path / "state.json", state)
     return status(path)

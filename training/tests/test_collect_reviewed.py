@@ -294,6 +294,18 @@ async def test_web_quota_resume_only_judges_saved_teacher_output(campaign, monke
     assert not (path / "sent-index.jsonl").exists()
 
 
+@pytest.mark.parametrize("waiting_status", ["WAITING_WEB_QUOTA", "WAITING_DEEPSEEK_QUOTA"])
+def test_reviewing_prior_items_does_not_clear_provider_wait(campaign, waiting_status):
+    path, _ = campaign
+    row, review, verdict = review_fixture(path)
+    gen.write_json(path / "candidates/candidate-0001.teacher-result.json", row)
+    gen.write_json(path / "candidates/candidate-0001.result.json", review)
+    run._atomic_json(path / "state.json", {"status": waiting_status, "nextIndex": 2,
+        "currentId": "candidate-0002", "retryAt": 12345})
+    assert collect.adjudicate(path, verdict)["status"] == waiting_status
+    assert gen.read_json(path / "state.json")["currentId"] == "candidate-0002"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fault", [None, "unsupported", "quote", "index", "type", "scope",
                                   "novelty", "attributes", "history", "unknown-type"])
