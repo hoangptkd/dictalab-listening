@@ -27,7 +27,10 @@ for (const text of ['Network disconnected', 'Something went wrong', 'Timeout', '
 }
 (async () => {
   const page = texts => ({ evaluate: async fn => {
-    assert(fn.toString().includes('[data-message-author-role], #prompt-textarea, nav, aside'));
+    for (const selector of ['[data-message-author-role]', '[data-markdown-text-style]',
+      '[data-testid="user-message"]', 'article', '#prompt-textarea', 'nav', 'aside']) {
+      assert(fn.toString().includes(selector));
+    }
     return texts;
   }});
   await assertWebQuotaAvailable(page(['Everything is ready']));
