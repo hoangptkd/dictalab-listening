@@ -99,7 +99,40 @@ python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/
   đã khóa. Export kiểm tra artifact gốc theo từng record, giữ nguyên prompt/messages,
   không gán bài v8 thành v9. Artifact bổ sung phải cùng schema, level và chính sách.
   Dedup/holdout/coverage và loss mask vẫn là các gate riêng khi chuẩn bị dataset.
-- Lịch vẫn PAUSED; yêu cầu tiếp tục sinh lần này không tự bật lại lịch, train hoặc tắt máy.
+- Sau đó chủ dự án đã trả lời rõ “Bật lại lịch, tiếp tục đến đủ 700 bài”; lịch đã
+  được bật `ACTIVE`. Không train hoặc tắt máy trong giai đoạn này.
+
+## Bổ sung Gemini song song theo yêu cầu mới
+
+Chủ dự án yêu cầu dùng thêm các tài khoản Gemini với đúng model
+`gemini-3.5-flash-lite`. Mã model đã đối chiếu [tài liệu Google](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite).
+Registry hiện có ba nguồn Gemini `a`, `b`, `c`; giữ credential và quota trong registry.
+
+Chiến dịch tiếp tục mới: `data/fine-tuning/reviewed-700-v9-mixed-20261024`.
+Snapshot từ phiên v9 đã duyệt xong: 283 ứng viên cộng dồn, 167 bài đạt.
+Không chạy prepare lại, sửa manifest hoặc gán lại model cho các bài kế thừa.
+
+```powershell
+python -X utf8 -m training.collect_reviewed prepare --campaign data/fine-tuning/reviewed-700-v9-mixed-20261024 --continue-from data/fine-tuning/reviewed-700-v9-20261024 --gemini-teacher --artifact artifacts/prompts/conversation-reviewed-collection-v9-20261024.json --web-account account-1=http://127.0.0.1:3000/v1/chat/completions --web-account account-2=http://127.0.0.1:3001/v1/chat/completions
+python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-700-v9-mixed-20261024 --limit 8 --overlap-web
+```
+
+- Hai lời gọi sinh tối đa: một DeepSeek, một Gemini. Pool Gemini luân phiên nguồn
+  theo registry và admission hiện có; không reset quota hoặc tự chuyển model.
+  Đổi nhà cung cấp bắt đầu giữa các lô để tránh gắn cố định một model vào một mức CEFR.
+- Gemini dùng cùng prompt/schema, temperature 0,2 và giới hạn output/timeout của
+  artifact. Gemini giữ thinking mặc định của nhà cung cấp; không gửi tham số
+  `thinking` riêng của DeepSeek sang Gemini. DeepSeek vẫn thinking enabled.
+- Một bài chỉ được sinh bởi một model. Lưu provider, source ID, model yêu cầu/thực trả,
+  hash request/response và usage trong bằng chứng; không trộn hai phản hồi thành một bài.
+- Web tiếp tục một yêu cầu mỗi lúc, chồng thời gian với sinh. Codex vẫn duyệt
+  độc lập, căn cứ từng fact và từng lỗi Web bị bác; Web PASS không tự nhận.
+- Đặt chỗ trước cho các ô mức/tập đang sinh, giữ trần 1.500 ứng viên cộng dồn.
+  Khi dừng, đợi và lưu phản hồi đã gửi từ cả hai luồng, không hủy hay replay.
+- DeepSeek hết quota/số dư hoặc pool0: dừng toàn bộ, báo cáo và tạm dừng lịch.
+  Gemini HTTP402/429 hoặc quota không nhận thêm: giữ checkpoint, dừng lô và báo cáo;
+  không gọi lại bài lỗi. UNKNOWN của một nguồn chặn gửi mới và cần đọc bằng chứng.
+- Không lấy bài diagnostic bù, không đổi tiêu chí nhận bài, không train/deploy/tắt máy.
 
 ## Kiểm tra không gọi model
 

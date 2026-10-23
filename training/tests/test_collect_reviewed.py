@@ -928,3 +928,161 @@ async def test_overlap_drains_web_on_teacher_failure_without_new_dispatch(campai
     assert calls == ["candidate-0001", "candidate-0002"]
     assert (path / "candidates/candidate-0001.result.json").exists() is not web_quota
     assert collect.status(path)["status"] == ("WAITING_DEEPSEEK_QUOTA" if failure == "teacher-quota" else "BLOCKED")
+
+
+def mixed_campaign(campaign):
+    parent, _ = campaign
+    sources = {"deepseek": [SimpleNamespace(id="d1", model="deepseek-test")],
+               "gemini": [SimpleNamespace(id=i, model="gemini-3.5-flash-lite") for i in ("g1", "g2", "g3")]}
+    settings = SimpleNamespace(sources_for=lambda provider: sources[provider], registry_pools={
+        "deepseek": {"default_model": "deepseek-test"}, "gemini": {"default_model": "gemini-3.5-flash-lite"}})
+    path = parent.parent / "mixed"
+    collect.prepare(path, settings, continue_from=parent, gemini_teacher=True)
+    return path, settings
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [None, "deepseek-quota", "gemini-unknown", "web-quota"])
+async def test_mixed_teachers_really_overlap_and_drain_on_failure(campaign, monkeypatch, failure):
+    path, settings = mixed_campaign(campaign)
+    manifest, _ = collect.load(path)
+    assert manifest["additionalTeachers"][0]["sourceIds"] == ["g1", "g2", "g3"]
+    assert manifest["candidateCap"] == 1500
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, platforms, **k:
+                        {p: {"availableCalls": None} for p in platforms})
+    monkeypatch.setattr(collect, "duplicate", lambda *a: False)
+    first_started, second_started = asyncio.Event(), asyncio.Event()
+    calls, web_calls = [], []
+    async def teacher(path, contract, entry, group, artifact, folder, settings):
+        provider = contract["teacher"]["provider"]
+        calls.append(provider)
+        if len(calls) == 1:
+            first_started.set()
+            await asyncio.wait_for(second_started.wait(), 2)
+        else:
+            assert first_started.is_set()
+            second_started.set()
+        if failure == "deepseek-quota" and provider == "deepseek":
+            row = {**entry, "hardPass": False, "providerHttpStatus": 402, "sent": True}
+        elif failure == "gemini-unknown" and provider == "gemini":
+            row = {**entry, "hardPass": False, "transportOutcomeUnknown": True, "sent": True}
+        else:
+            row = {**entry, "hardPass": True, "task": {"utteranceEn": "Original " + entry["id"]}}
+        gen.write_json(folder / f"{entry['id']}.teacher-result.json", row)
+        return row
+    async def judge(path, manifest, row, wire, stem, settings, *, folder):
+        web_calls.append(stem)
+        if failure == "web-quota":
+            raise run.web_accounts.WebQuotaWait(999)
+        gen.write_json(folder / f"{stem}.result.json", {"fixture": True})
+    monkeypatch.setattr(run, "_teacher_one", teacher)
+    monkeypatch.setattr(run, "_judge_one", judge)
+    result = await collect.collect(path, settings=settings, limit=2, overlap_web=True)
+    assert calls == ["deepseek", "gemini"] and result["attempted"] == 2
+    assert result["approvedTasks"] == 0  # Web never self-approves.
+    if failure == "deepseek-quota":
+        assert result["status"] == "WAITING_DEEPSEEK_QUOTA" and not web_calls
+        assert result["pending"] == ["candidate-0002"]
+        assert collect.decisions(path)[0]["teacherProvider"] == "deepseek"
+    elif failure == "gemini-unknown":
+        assert result["status"] == "BLOCKED"
+        assert collect.decisions(path)[0]["transportOutcomeUnknown"]
+        await collect.collect(path, settings=settings, limit=8, overlap_web=True)
+        assert len(calls) == 2
+    elif failure == "web-quota":
+        assert result["status"] == "WAITING_WEB_QUOTA" and len(result["pending"]) == 2
+    else:
+        assert len(web_calls) == 2 and result["status"] == "AWAITING_CODEX_REVIEW"
+
+
+@pytest.mark.asyncio
+async def test_mixed_deepseek_zero_stops_both_providers_before_sending(campaign, monkeypatch):
+    path, settings = mixed_campaign(campaign)
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, platforms, **k:
+                        {p: {"availableCalls": 0 if p == "deepseek" else None} for p in platforms})
+    async def forbidden(*a, **k):
+        raise AssertionError("No paid request after DeepSeek pool exhaustion")
+    monkeypatch.setattr(run, "_teacher_one", forbidden)
+    result = await collect.collect(path, settings=settings, limit=8, overlap_web=True)
+    assert result["status"] == "WAITING_DEEPSEEK_QUOTA" and result["attempted"] == 0
+
+
+@pytest.mark.asyncio
+async def test_mixed_cap_and_reserved_cells_bound_parallel_sends(campaign, monkeypatch):
+    path, settings = mixed_campaign(campaign)
+    run._atomic_json(path / "state.json", {"status": "READY", "nextIndex": 1499})
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, platforms, **k:
+                        {p: {"availableCalls": None} for p in platforms})
+    calls = []
+    async def teacher(path, contract, entry, group, artifact, folder, settings):
+        calls.append(entry["id"])
+        return {**entry, "hardPass": False}
+    monkeypatch.setattr(run, "_teacher_one", teacher)
+    result = await collect.collect(path, settings=settings, limit=8, overlap_web=True)
+    assert result["attempted"] == 1500 and calls == ["candidate-1500"]
+
+
+@pytest.mark.asyncio
+async def test_parallel_reservation_prevents_overfilling_the_last_cell(campaign, monkeypatch):
+    path, settings = mixed_campaign(campaign)
+    original_status = collect.status
+    def near_complete(path):
+        value = original_status(path)
+        value["counts"] = {s: dict.fromkeys(collect.LEVELS, target) for s, target in collect.TARGETS.items()}
+        value["counts"]["train"]["A1"] -= 1
+        return value
+    monkeypatch.setattr(collect, "status", near_complete)
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, platforms, **k:
+                        {p: {"availableCalls": None} for p in platforms})
+    monkeypatch.setattr(collect, "duplicate", lambda *a: False)
+    calls = []
+    async def teacher(path, contract, entry, group, artifact, folder, settings):
+        calls.append(entry["id"])
+        row = {**entry, "hardPass": True, "task": {"utteranceEn": "Last open cell source"}}
+        gen.write_json(folder / f"{entry['id']}.teacher-result.json", row)
+        return row
+    async def judge(path, manifest, row, wire, stem, settings, *, folder):
+        gen.write_json(folder / f"{stem}.result.json", {"fixture": True})
+    monkeypatch.setattr(run, "_teacher_one", teacher)
+    monkeypatch.setattr(run, "_judge_one", judge)
+    result = await collect.collect(path, settings=settings, limit=8, overlap_web=True)
+    assert calls == ["candidate-0001"] and result["pending"] == calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["deepseek", "gemini"])
+async def test_teacher_wire_uses_exact_provider_model_and_thinking_contract(tmp_path, monkeypatch, provider):
+    from app.providers.base import ProviderError
+    artifact = gen.read_json(collect.ARTIFACT)
+    model = "gemini-3.5-flash-lite" if provider == "gemini" else "deepseek-test"
+    manifest = {"teacher": {"provider": provider, "model": model,
+        "thinkingMode": "provider-default" if provider == "gemini" else "enabled",
+        "generationConfig": artifact["teacherGenerationConfig"]}}
+    entry = {"id": "wire-test", "level": "A1", "context": {"difficulty": "A1", "turnNumber": 4,
+             "levelProfile": {"minWords": 8, "maxWords": 35}}}
+    settings = SimpleNamespace(timeout_seconds=120, enabled_cloud_sources=(),
+        model_copy=lambda *, update: SimpleNamespace(**update))
+    calls = []
+    class Gateway:
+        last_source_id = "account-test"
+        def __init__(self, config, client):
+            self.config, self.client = config, client
+        async def complete(self, messages, schema, deadline, purpose, **kwargs):
+            assert self.config.primary_provider == provider
+            assert kwargs["deepseek_thinking"] is (provider == "deepseek")
+            body = {"model": model, "temperature": .2, "max_tokens": 16384}
+            if provider == "deepseek":
+                body["thinking"] = {"type": "enabled"}
+            await self.client.post("https://teacher.invalid/chat/completions", json=body)
+            raise ProviderError(provider + ":teacher_batch:output_truncated")
+    def respond(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json={"usage": {"completion_tokens": 16384}})
+    original = httpx.AsyncClient
+    monkeypatch.setattr(run, "ModelGateway", Gateway)
+    monkeypatch.setattr(run.httpx, "AsyncClient", lambda **kw: original(transport=httpx.MockTransport(respond), **kw))
+    row = await run._teacher_one(tmp_path, manifest, entry, {}, artifact, tmp_path, settings)
+    assert len(calls) == 1 and row["sent"] and not row["hardPass"]
+    assert row["teacherProvider"] == provider and row["teacherSourceId"] == "account-test"
+    with pytest.raises(DatasetError, match="refusing replay"):
+        await run._teacher_one(tmp_path, manifest, entry, {}, artifact, tmp_path, settings)

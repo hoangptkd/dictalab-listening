@@ -62,7 +62,8 @@ def prior_corpus() -> list[str]:
 
 def prepare(path: Path, settings=None, *, diagnostic: bool = False,
             retain_diagnostic_evidence: bool = False, artifact_path: Path | None = None,
-            web_accounts: list[dict] | None = None, continue_from: Path | None = None) -> dict:
+            web_accounts: list[dict] | None = None, continue_from: Path | None = None,
+            gemini_teacher: bool = False) -> dict:
     if retain_diagnostic_evidence and not diagnostic:
         raise DatasetError("full rejection evidence retention requires a diagnostic campaign")
     path = run._private_path(path)
@@ -136,6 +137,14 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
         manifest["judge"]["url"] = web_accounts[0]["url"]
     if artifact.get("teacherGenerationConfig"):
         manifest["teacher"]["generationConfig"] = artifact["teacherGenerationConfig"]
+    if gemini_teacher:
+        gemini_sources = settings.sources_for("gemini")
+        if (settings.registry_pools.get("gemini", {}).get("default_model") != "gemini-3.5-flash-lite" or
+                not gemini_sources or any(s.model != "gemini-3.5-flash-lite" for s in gemini_sources)):
+            raise DatasetError("Gemini teacher requires registered gemini-3.5-flash-lite accounts")
+        manifest["additionalTeachers"] = [{**manifest["teacher"], "provider": "gemini",
+            "model": "gemini-3.5-flash-lite", "thinkingMode": "provider-default",
+            "sourceIds": [s.id for s in gemini_sources]}]
     if artifact.get("judgeAuditInstructions"):
         manifest["judge"]["auditInstructions"] = artifact["judgeAuditInstructions"]
     path.mkdir(parents=True)
@@ -272,6 +281,9 @@ def reject(path: Path, row: dict, reason: str, *, reviewer: str = "automatic-har
         taskHash=gen.digest(row.get("task")), contextHash=gen.digest(row["context"]),
         recordHashes=[record["outputHash"] for record in row.get("records", [])],
         usage=row.get("usage"), sent=bool(row.get("sent")), time=run._now())
+    for key in ("teacherProvider", "teacherModel", "teacherSourceId", "returnedModel"):
+        if key in row:
+            compact[key] = row[key]
     # Retain controlled provider codes, never exception dumps containing rejected text.
     compact["errorType"] = row.get("errorType")
     compact["providerHttpStatus"] = row.get("providerHttpStatus")
@@ -281,7 +293,7 @@ def reject(path: Path, row: dict, reason: str, *, reviewer: str = "automatic-har
         "outcome": attempt.get("outcome"), "httpStatus": attempt.get("httpStatus")}
         for attempt in run.web_accounts.attempts(folder, ident)]
     compact["errorCodes"] = re.findall(
-        r"\bdeepseek:teacher_batch:(?:schema_mismatch|invalid_json|response_not_object|"
+        r"\b(?:deepseek|gemini):teacher_batch:(?:schema_mismatch|invalid_json|response_not_object|"
         r"output_truncated|http_or_parse_error|timeout|client_error:(?:400|401|402|403|422|429))\b",
         row.get("error", ""))
     compact["validationCodes"] = re.findall(
@@ -316,9 +328,12 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
     path = run._private_path(path)
     manifest, artifact = load(path)
     settings = settings or run.settings_from_registry()
-    if (settings.registry_pools["deepseek"]["default_model"] != manifest["teacher"]["model"] or
-        [source.id for source in settings.sources_for("deepseek")] != manifest["teacher"]["sourceIds"]):
-        raise DatasetError("teacher registry changed; create a new frozen collection")
+    teachers = [manifest["teacher"], *manifest.get("additionalTeachers", [])]
+    for teacher in teachers:
+        provider = teacher["provider"]
+        if (settings.registry_pools[provider]["default_model"] != teacher["model"] or
+                [source.id for source in settings.sources_for(provider)] != teacher["sourceIds"]):
+            raise DatasetError("teacher registry changed; create a new frozen collection")
     if limit < 1:
         raise DatasetError("collect limit must be positive")
     with run._campaign_lock(path):
@@ -361,7 +376,7 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
             run._atomic_json(path / "state.json", state)
         if waiting:
             return status(path)
-        if current["pending"] or current["complete"] or state["status"] == "WAITING_DEEPSEEK_QUOTA":
+        if current["pending"] or current["complete"] or state["status"] in {"WAITING_DEEPSEEK_QUOTA", "WAITING_GEMINI_QUOTA"}:
             return current
         if state["status"] in {"RUNNING", "BLOCKED", "PREPARING"}:
             raise DatasetError("unresolved worker/request outcome; inspect checkpoint before continuing")
@@ -374,6 +389,86 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
             corpus.append(normalized(gen.read_json(path / "candidates" / f"{item['id']}.teacher-result.json")["task"]["utteranceEn"]))
         web_job = None
         web_row = None
+        teacher_jobs = []
+        scheduled = 0
+        teacher_offset = state["nextIndex"] // 8 % len(teachers)
+
+        def teacher_stop(value, reason):
+            priority = {"BLOCKED": 3, "WAITING_DEEPSEEK_QUOTA": 2, "WAITING_GEMINI_QUOTA": 1}
+            previous = state.get("teacherStopStatus")
+            if state["status"] == "BLOCKED":
+                previous = "BLOCKED"
+            if priority.get(value, 0) >= priority.get(previous, 0):
+                state.update(teacherStopStatus=value, stopReason=reason)
+
+        def start_teacher():
+            nonlocal scheduled
+            current = status(path)
+            if ((not manifest.get("diagnosticOnly") or getattr(settings, "operational_limits_enabled", True)) and
+                    manifest["candidateCap"] and current["attempted"] >= manifest["candidateCap"]) or current["complete"]:
+                state["status"] = "COMPLETE" if current["complete"] else "CANDIDATE_CAP"
+                return False
+            # Alternate the starting provider across batches to cover every CEFR level.
+            teacher = teachers[(scheduled + teacher_offset) % len(teachers)]
+            platforms = tuple(dict.fromkeys(("deepseek", teacher["provider"])))
+            quota = run.quota_snapshot(settings, platforms=platforms)
+            for provider in platforms:
+                if quota[provider]["availableCalls"] == 0:
+                    state.update(status=("WAITING_" + provider.upper() + "_QUOTA") if len(teachers) > 1
+                                 else "AWAITING_CODEX_REVIEW" if current["pending"] else "WAITING_QUOTA",
+                                 quota=quota, stopReason=provider + " quota pool exhausted")
+                    teacher_stop(state["status"], state["stopReason"])
+                    return False
+            index = state["nextIndex"]
+            preferred_level = LEVELS[index % len(LEVELS)]
+            preferred_split = (("train",) * 5 + ("validation", "test"))[(index // len(LEVELS)) % 7]
+            reserved = Counter()
+            for ident in current["pending"]:
+                pending_row = gen.read_json(folder / f"{ident}.teacher-result.json")
+                reserved[pending_row["split"], pending_row["level"]] += 1
+            for entry, _ in teacher_jobs:
+                if entry["id"] not in current["pending"]:
+                    reserved[entry["split"], entry["level"]] += 1
+            cells = [(s, level) for s, target in TARGETS.items() for level in LEVELS
+                     if current["counts"][s][level] + reserved[s, level] < target]
+            if not cells:
+                state["status"] = "AWAITING_CODEX_REVIEW"
+                return False
+            split, level = (preferred_split, preferred_level) if (preferred_split, preferred_level) in cells else cells[0]
+            choices = [g for g in manifest["groups"] if g["split"] == split and g["level"] == level]
+            group = min(choices, key=lambda g: gen.digest([index, g["groupId"], level]))
+            prior = [item for item in accepted if item["groupId"] == group["groupId"] and item["level"] == level]
+            previous = gen.read_json(folder / f"{prior[-1]['id']}.teacher-result.json") if prior else None
+            turn = 3 if previous and previous["context"]["turnNumber"] == 2 else (2 if index // 4 % 2 == 0 else 4)
+            history = [{**previous, "eligible": True}] if turn == 3 else []
+            varied_group = copy.deepcopy(group)
+            varied_group["input"]["variationSeed"] = 17000 + index
+            context = gen.make_context(varied_group, turn, history, artifact, index)
+            ident = f"candidate-{index + 1:04d}"
+            entry = {"id": ident, "groupId": group["groupId"], "split": split, "level": level, "context": context,
+                     "teacherProvider": teacher["provider"]}
+            state.update(status="RUNNING", nextIndex=index + 1, currentId=ident)
+            run._atomic_json(path / "state.json", state)
+            contract = {**manifest, "teacher": teacher}
+            teacher_jobs.append((entry, asyncio.create_task(
+                run._teacher_one(path, contract, entry, group, artifact, folder, settings))))
+            scheduled += 1
+            return True
+
+        def retain_teacher(row):
+            if not row["hardPass"]:
+                reject(path, row, "hard-validation-or-provider-error:" + row.get("errorType", "unknown"))
+                if row.get("providerHttpStatus") in {402, 429} or row.get("errorType") == "QuotaUnavailable":
+                    provider = row.get("teacherProvider", "deepseek")
+                    teacher_stop("WAITING_" + provider.upper() + "_QUOTA", provider + " quota or balance exhausted")
+                elif row.get("transportOutcomeUnknown"):
+                    teacher_stop("BLOCKED", "Teacher transport outcome unknown; inspect before continuing")
+                return False
+            if duplicate(row["task"]["utteranceEn"], corpus):
+                reject(path, row, "exact-or-near-duplicate")
+                return False
+            corpus.append(normalized(row["task"]["utteranceEn"]))
+            return True
 
         async def finish_web():
             nonlocal web_job
@@ -385,7 +480,7 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
             await job
 
         try:
-            for _ in range(limit):
+            for processed in range(limit):
                 # Observe a completed failure before starting another paid request.
                 if web_job is not None and web_job.done():
                     try:
@@ -397,70 +492,39 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                         state.update(status="BLOCKED", errorType=type(error).__name__)
                         run._atomic_json(path / "state.json", state)
                         raise
-                current = status(path)
-                if ((not manifest.get("diagnosticOnly") or getattr(settings, "operational_limits_enabled", True)) and
-                        manifest["candidateCap"] and current["attempted"] >= manifest["candidateCap"]) or current["complete"]:
-                    state["status"] = "COMPLETE" if current["complete"] else "CANDIDATE_CAP"
+                # An out-of-order sibling failure must stop new paid calls immediately.
+                for _, job in teacher_jobs:
+                    if job.done():
+                        try:
+                            result = job.result()
+                        except Exception:
+                            teacher_stop("BLOCKED", "Teacher worker failed; inspect checkpoint")
+                            break
+                        if result.get("transportOutcomeUnknown"):
+                            teacher_stop("BLOCKED", "Teacher transport outcome unknown; inspect before continuing")
+                        elif result.get("providerHttpStatus") in {402, 429} or result.get("errorType") == "QuotaUnavailable":
+                            provider = result.get("teacherProvider", "deepseek")
+                            teacher_stop("WAITING_" + provider.upper() + "_QUOTA", provider + " quota or balance exhausted")
+                while scheduled < limit and len(teacher_jobs) < len(teachers) and not state.get("teacherStopStatus"):
+                    if not start_teacher():
+                        break
+                if not teacher_jobs:
                     break
-                quota = run.quota_snapshot(settings, platforms=("deepseek",))
-                if quota["deepseek"]["availableCalls"] == 0:
-                    state.update(status="AWAITING_CODEX_REVIEW" if current["pending"] else "WAITING_QUOTA", quota=quota)
-                    break
-                index = state["nextIndex"]
-                # Ratio 5:1:1 matches the requested 125/25/25 task counts.
-                preferred_level = LEVELS[index % len(LEVELS)]
-                preferred_split = ("train",) * 5 + ("validation", "test")
-                preferred_split = preferred_split[(index // len(LEVELS)) % 7]
-                reserved = Counter()
-                for pending in current["pending"]:
-                    pending_row = gen.read_json(path / "candidates" / f"{pending}.teacher-result.json")
-                    reserved[pending_row["split"], pending_row["level"]] += 1
-                cells = [(s, level) for s, target in TARGETS.items() for level in LEVELS
-                         if current["counts"][s][level] + reserved[s, level] < target]
-                if not cells:
-                    state["status"] = "AWAITING_CODEX_REVIEW"
-                    break
-                split, level = (preferred_split, preferred_level) if (preferred_split, preferred_level) in cells else cells[0]
-                choices = [g for g in manifest["groups"] if g["split"] == split and g["level"] == level]
-                group = min(choices, key=lambda g: gen.digest([index, g["groupId"], level]))
-                prior = [item for item in accepted if item["groupId"] == group["groupId"] and item["level"] == level]
-                previous = gen.read_json(path / "candidates" / f"{prior[-1]['id']}.teacher-result.json") if prior else None
-                turn = 3 if previous and previous["context"]["turnNumber"] == 2 else (2 if index // 4 % 2 == 0 else 4)
-                history = [{**previous, "eligible": True}] if turn == 3 else []
-                varied_group = copy.deepcopy(group)
-                varied_group["input"]["variationSeed"] = 17000 + index
-                context = gen.make_context(varied_group, turn, history, artifact, index)
-                ident = f"candidate-{index + 1:04d}"
-                entry = {"id": ident, "groupId": group["groupId"], "split": split,
-                         "level": level, "context": context}
-                state.update(status="RUNNING", nextIndex=index + 1, currentId=ident)
-                run._atomic_json(path / "state.json", state)
-                if shutdown_on_failure and _ == 0:
+                entry, teacher_job = teacher_jobs.pop(0)
+                ident, level = entry["id"], entry["level"]
+                if shutdown_on_failure and processed == 0:
                     from training.shutdown_watchdog import arm
                     arm(path)
                 try:
-                    row = await run._teacher_one(path, manifest, entry, group, artifact, folder, settings)
-                    if not row["hardPass"]:
-                        reject(path, row, "hard-validation-or-provider-error:" + row.get("errorType", "unknown"))
-                        if row.get("providerHttpStatus") in {402, 429} or row.get("errorType") == "QuotaUnavailable":
-                            state.update(teacherStopStatus="WAITING_DEEPSEEK_QUOTA", stopReason="DeepSeek quota or balance exhausted")
-                        elif row.get("transportOutcomeUnknown"):
-                            state.update(teacherStopStatus="BLOCKED", stopReason="Teacher transport outcome unknown; inspect before continuing")
-                    needs_review = row["hardPass"]
-                    if needs_review and duplicate(row["task"]["utteranceEn"], corpus):
-                        reject(path, row, "exact-or-near-duplicate")
-                        needs_review = False
+                    row = await teacher_job
+                    needs_review = retain_teacher(row)
                     # Never cancel an in-flight Web request, including on teacher failure.
                     await finish_web()
                     state["currentId"] = ident
-                    if not row["hardPass"]:
-                        if row.get("providerHttpStatus") in {402, 429} or row.get("errorType") == "QuotaUnavailable":
-                            state.update(status="WAITING_DEEPSEEK_QUOTA", stopReason="DeepSeek quota or balance exhausted")
-                            break
-                        if row.get("transportOutcomeUnknown"):
-                            state.update(status="BLOCKED", stopReason="Teacher transport outcome unknown; inspect before continuing")
-                            break
-                    elif needs_review:
+                    if state.get("teacherStopStatus"):
+                        state["status"] = state["teacherStopStatus"]
+                        break
+                    if needs_review:
                         if overlap_web:
                             web_row = row
                             web_job = asyncio.create_task(judge(row))
@@ -468,7 +532,6 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                             await asyncio.sleep(0)
                         else:
                             await judge(row)
-                        corpus.append(normalized(row["task"]["utteranceEn"]))
                     state["status"] = "RUNNING"
                     run._atomic_json(path / "state.json", state)
                     print(json.dumps({"candidate": ident, "level": level, "hardPass": row["hardPass"],
@@ -478,7 +541,11 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                                                   else "WAITING_WEB_QUOTA"), retryAt=error.retry_at)
                     break
                 except run.QuotaUnavailable:
-                    state.update(status="AWAITING_CODEX_REVIEW" if status(path)["pending"] else "WAITING_QUOTA")
+                    provider = entry["teacherProvider"]
+                    teacher_stop("WAITING_" + provider.upper() + "_QUOTA" if len(teachers) > 1 else
+                                 "AWAITING_CODEX_REVIEW" if status(path)["pending"] else "WAITING_QUOTA",
+                                 provider + " quota unavailable")
+                    state["status"] = state["teacherStopStatus"]
                     break
                 except Exception as error:
                     # A possibly sent request must never be dispatched again on resume.
@@ -490,6 +557,18 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
             run._atomic_json(path / "state.json", state)
             raise
         finally:
+            # Preserve every paid response on stop; never cancel or resend sibling calls.
+            for entry, job in teacher_jobs:
+                try:
+                    retain_teacher(await job)
+                except run.QuotaUnavailable:
+                    teacher_stop("WAITING_" + entry["teacherProvider"].upper() + "_QUOTA" if len(teachers) > 1 else "WAITING_QUOTA",
+                                 "Queued teacher quota unavailable")
+                except Exception as error:
+                    teacher_stop("BLOCKED", "Queued teacher failed; inspect checkpoint")
+                    state["errorType"] = type(error).__name__
+            if state.get("teacherStopStatus"):
+                state["status"] = state["teacherStopStatus"]
             if web_job is not None:
                 try:
                     await finish_web()
@@ -550,7 +629,7 @@ def adjudicate(path: Path, verdict: dict) -> dict:
         else:
             raise DatasetError("verdict must be approved or rejected; uncertain items cannot enter SFT")
         state = gen.read_json(path / "state.json")
-        if state["status"] not in {"WAITING_DEEPSEEK_QUOTA", "WAITING_WEB_QUOTA", "BLOCKED"}:
+        if state["status"] not in {"WAITING_DEEPSEEK_QUOTA", "WAITING_GEMINI_QUOTA", "WAITING_WEB_QUOTA", "BLOCKED"}:
             state["status"] = "AWAITING_CODEX_REVIEW" if status(path)["pending"] else "READY"
         run._atomic_json(path / "state.json", state)
     return status(path)
@@ -605,6 +684,8 @@ def main() -> int:
                         help="repeat for independent local bridge accounts; switch only on explicit Web quota")
     parser.add_argument("--diagnostic", action="store_true", help="prepare an experiment excluded from SFT")
     parser.add_argument("--continue-from", type=Path, help="snapshot a fully decided main campaign on prepare")
+    parser.add_argument("--gemini-teacher", action="store_true",
+                        help="freeze Gemini 3.5 Flash-Lite accounts as parallel teachers on prepare")
     parser.add_argument("--overlap-web", action="store_true", help="overlap one teacher call with one Web review")
     parser.add_argument("--retain-diagnostic-evidence", action="store_true",
                         help="preserve rejected diagnostic requests and responses for owner review")
@@ -616,7 +697,7 @@ def main() -> int:
         result = prepare(path, diagnostic=args.diagnostic,
                          retain_diagnostic_evidence=args.retain_diagnostic_evidence, artifact_path=args.artifact,
                          web_accounts=[dict(zip(("id", "url"), item.split("=", 1))) for item in args.web_account] or None,
-                         continue_from=args.continue_from)
+                         continue_from=args.continue_from, gemini_teacher=args.gemini_teacher)
     elif args.command == "collect":
         result = asyncio.run(collect(path, limit=args.limit, shutdown_on_failure=args.shutdown_on_worker_failure,
                                      overlap_web=args.overlap_web))

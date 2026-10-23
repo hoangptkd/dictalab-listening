@@ -861,8 +861,12 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
             _sent_before(path, "teacher", folder.name, ident):
         raise gen.DatasetError(f"{ident}: teacher attempt already exists; refusing replay")
     context = entry["context"]
+    teacher_provider = manifest["teacher"].get("provider", "deepseek")
+    if teacher_provider not in {"deepseek", "gemini"}:
+        raise gen.DatasetError("unsupported teacher provider")
     thinking_mode = artifact.get("teacherThinkingMode", "disabled")
-    if thinking_mode not in {"enabled", "disabled"} or manifest["teacher"].get("thinkingMode", "disabled") != thinking_mode:
+    expected_thinking = thinking_mode if teacher_provider == "deepseek" else "provider-default"
+    if thinking_mode not in {"enabled", "disabled"} or manifest["teacher"].get("thinkingMode", "disabled") != expected_thinking:
         raise gen.DatasetError("teacher thinking mode differs from frozen artifact/campaign")
     schema = artifact.get("teacherContentSchemas", artifact["contentSchemas"])[entry["level"]]
     full_schema = gen.batch_schema([ident], schema, artifact["translationSchema"])
@@ -884,7 +888,7 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
     if (type(max_tokens) is not int or not 1 <= max_tokens <= 32768 or
             type(timeout_seconds) not in (int, float) or not 1 <= timeout_seconds <= 600):
         raise gen.DatasetError("invalid teacher generation limits")
-    run_settings = settings.model_copy(update={"primary_provider": "deepseek", "temperature": 0.2,
+    run_settings = settings.model_copy(update={"primary_provider": teacher_provider, "temperature": 0.2,
         "num_predict": max_tokens, "timeout_seconds": timeout_seconds, "repair_enabled": False})
     captured = {}
 
@@ -892,7 +896,8 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
         body = gen.strict_json(request.content.decode("utf-8"))
         if (body.get("model") != manifest["teacher"]["model"] or
             body.get("temperature") != 0.2 or body.get("max_tokens") != max_tokens or
-            body.get("thinking") != {"type": thinking_mode} or gen._contains_secret(body)):
+            (body.get("thinking") != {"type": thinking_mode} if teacher_provider == "deepseek"
+             else "thinking" in body) or gen._contains_secret(body)):
             raise gen.DatasetError("teacher request differs from frozen model/decoding/privacy contract")
         _durable_exclusive_json(request_path, body)
         gen.append(path / "sent-index.jsonl", {"kind": "teacher", "phase": folder.name, "id": ident,
@@ -915,7 +920,8 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
     collection = (manifest.get("policy") == artifact.get("collectionPolicy") == COLLECTION_POLICY
                   and not manifest.get("diagnosticOnly"))
     row = {**entry, "hardPass": False, "attempt": 1, "developmentOnly": not collection,
-           "trainingReady": False, "decision": "FAIL"}
+           "trainingReady": False, "decision": "FAIL",
+           "teacherProvider": teacher_provider, "teacherModel": manifest["teacher"]["model"]}
     try:
         async with httpx.AsyncClient(follow_redirects=False,
                 event_hooks={"request": [on_request], "response": [on_response]}) as client:
@@ -924,8 +930,9 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
                 {"role": "system", "content": gen.teacher_batch_system(artifact)},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
                 full_schema, time.monotonic() + run_settings.timeout_seconds, "teacher_batch",
-                deepseek_thinking=thinking_mode == "enabled")
-        if (provider != "deepseek" or gateway.last_model != manifest["teacher"]["model"] or
+                deepseek_thinking=teacher_provider == "deepseek" and thinking_mode == "enabled")
+        row["teacherSourceId"] = gateway.last_source_id
+        if (provider != teacher_provider or gateway.last_model != manifest["teacher"]["model"] or
                 gateway.last_source_id not in manifest["teacher"]["sourceIds"]):
             raise gen.DatasetError("teacher provider/model/account differs from campaign")
         envelope = captured["envelope"]
@@ -953,7 +960,8 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
             record["reviewVersion"] = manifest["rubricVersion"]
             record["developmentOnly"] = not collection
             record["teacherProvenance"].update(requestHash=gen.digest(captured["body"]),
-                batchResponseHash=gen.digest(strict), envelopeHash=gen.digest(envelope))
+                batchResponseHash=gen.digest(strict), envelopeHash=gen.digest(envelope),
+                provider=teacher_provider, sourceId=gateway.last_source_id)
         row.update(hardPass=True, task=task, records=records, usage=envelope.get("usage"),
                    returnedModel=envelope.get("model"))
     except QuotaUnavailable:
@@ -969,6 +977,11 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
             message = message.replace(source.api_key, "[redacted]")
         row["error"] = "[redacted]" if gen._contains_secret(message) else message[:1000]
     row["sent"] = request_path.exists()
+    returned_model = captured.get("envelope", {}).get("model", "")
+    if isinstance(returned_model, str) and cloud_model_id_matches(manifest["teacher"]["model"], returned_model):
+        row["returnedModel"] = returned_model
+    if "gateway" in locals():
+        row["teacherSourceId"] = getattr(gateway, "last_source_id", None)
     if "httpStatus" in captured:
         row["providerHttpStatus"] = captured["httpStatus"]
     gen.write_json(result_path, row)
