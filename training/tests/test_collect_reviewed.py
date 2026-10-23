@@ -294,7 +294,7 @@ async def test_web_quota_resume_only_judges_saved_teacher_output(campaign, monke
     assert not (path / "sent-index.jsonl").exists()
 
 
-@pytest.mark.parametrize("waiting_status", ["WAITING_WEB_QUOTA", "WAITING_DEEPSEEK_QUOTA"])
+@pytest.mark.parametrize("waiting_status", ["WAITING_WEB_QUOTA", "WAITING_DEEPSEEK_QUOTA", "BLOCKED"])
 def test_reviewing_prior_items_does_not_clear_provider_wait(campaign, waiting_status):
     path, _ = campaign
     row, review, verdict = review_fixture(path)
@@ -510,6 +510,7 @@ async def test_web_can_report_wrong_role_in_task_instruction(campaign, monkeypat
     original = httpx.AsyncClient
     def respond(request):
         prompt = json.loads(request.content)["messages"][0]["content"]
+        assert manifest["judge"]["auditInstructions"] in prompt
         payload = json.loads(prompt.split("\nAUDIT_INPUT:\n", 1)[1])
         assert payload["items"][0]["task"]["taskVi"] == row["task"]["taskVi"]
         return httpx.Response(200, json={"choices": [{"finish_reason": "stop",
@@ -595,7 +596,7 @@ def test_v6_candidate_keeps_contract_and_requires_explicit_selection(tmp_path, m
         assert new[key] == old[key]
     assert new["sha256"] == gen.digest({k: v for k, v in new.items() if k != "sha256"})
     assert not new["metricReport"]["gate"]["releaseAllowed"]
-    assert collect.ARTIFACT.name == "conversation-reviewed-collection-v8-20261023.json"
+    assert collect.ARTIFACT.name == "conversation-reviewed-collection-v9-20261024.json"
     monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path)
     monkeypatch.setattr(collect, "prior_corpus", lambda: [])
     path = tmp_path / "explicit-candidate"
@@ -658,3 +659,113 @@ def test_previous_sources_remain_interpretable_without_carrying_encounter_forwar
             "facts": [{"textVi": "Đáp án kiểm tra."} for _ in example["facts"]]}},
         context, group, artifact, "review.json")
     assert len(records) == 2 and task["facts"]
+
+
+def test_v9_wire_constraints_and_frozen_configuration_preserve_v8(tmp_path, monkeypatch, campaign):
+    from jsonschema import Draft202012Validator, ValidationError
+    from training.freeze_candidate import freeze_collection_v9
+    old_path = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v8-20261023.json"
+    original = old_path.read_bytes()
+    old = gen.read_json(old_path)
+    artifact_path = tmp_path / "v9.json"
+    new = freeze_collection_v9(artifact_path)
+    assert old_path.read_bytes() == original
+    for key in ("contentSchemas", "translationSchema", "levelProfiles", "semanticRubric", "collectionPolicy"):
+        assert new[key] == old[key]
+    schema = new["teacherContentSchemas"]["B2"]["properties"]["targets"]["items"]
+    target = {"kind": "detail", "askVi": "Vật đó ở đâu?", "textEn": "On the table.",
+        "evidenceEn": "It is on the table.", "taskType": "direct_detail"}
+    validator = Draft202012Validator(schema)
+    validator.validate(target)
+    reasoning = {"segmentsEn": [target["evidenceEn"]], "rationaleEn": "The linked cues support this conclusion."}
+    with pytest.raises(ValidationError):
+        validator.validate({**target, "reasoningEvidence": reasoning})
+    with pytest.raises(ValidationError):
+        validator.validate({**target, "taskType": "argument_relation"})
+    validator.validate({**target, "taskType": "argument_relation", "reasoningEvidence": reasoning})
+    task_schema = new["teacherContentSchemas"]["B2"]["properties"]["taskVi"]
+    Draft202012Validator(task_schema).validate("Nghe và trả lời các câu hỏi.")
+    with pytest.raises(ValidationError):
+        Draft202012Validator(task_schema).validate("Nghe lời nhắc về buổi họp.")
+    path = tmp_path / "v9-campaign"
+    collect.prepare(path, campaign[1], diagnostic=True, artifact_path=artifact_path)
+    manifest, loaded = collect.load(path)
+    assert manifest["teacher"]["generationConfig"] == new["teacherGenerationConfig"]
+    assert manifest["judge"]["auditInstructions"] == new["judgeAuditInstructions"]
+    assert loaded == new and not new["metricReport"]["releaseAllowed"]
+    # Even a newly hashed manifest cannot substitute a config from another artifact.
+    manifest["judge"]["auditInstructions"] = "Unrelated instructions"
+    manifest["hash"] = gen.digest({k: v for k, v in manifest.items() if k != "hash"})
+    run._atomic_json(path / "manifest.json", manifest)
+    with pytest.raises(DatasetError, match="configuration differs"):
+        collect.load(path)
+    old_campaign = tmp_path / "v8-campaign"
+    collect.prepare(old_campaign, campaign[1], artifact_path=old_path)
+    old_manifest, _ = collect.load(old_campaign)
+    assert "generationConfig" not in old_manifest["teacher"]
+    assert "auditInstructions" not in old_manifest["judge"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version,max_tokens,timeout", [("v8-20261023", 8192, 120), ("v9-20261024", 16384, 240)])
+@pytest.mark.parametrize("failure", ["truncated", "transport"])
+async def test_teacher_dispatch_uses_frozen_budget_and_marks_unknown_transport(
+        tmp_path, monkeypatch, version, max_tokens, timeout, failure):
+    import time
+    from app.providers.base import ProviderError
+    artifact = gen.read_json(gen.ROOT / f"artifacts/prompts/conversation-reviewed-collection-{version}.json")
+    manifest = {"teacher": {"model": "deepseek-test", "thinkingMode": "enabled"}}
+    if "teacherGenerationConfig" in artifact:
+        manifest["teacher"]["generationConfig"] = artifact["teacherGenerationConfig"]
+    context = {"difficulty": "A1", "turnNumber": 4, "levelProfile": {"minWords": 8, "maxWords": 35}}
+    entry = {"id": "new-item", "level": "A1", "context": context}
+    settings = SimpleNamespace(timeout_seconds=120, enabled_cloud_sources=(),
+        model_copy=lambda *, update: SimpleNamespace(**update))
+    calls = []
+    class Gateway:
+        def __init__(self, config, client):
+            self.config, self.client = config, client
+        async def complete(self, messages, schema, deadline, purpose, **kwargs):
+            assert self.config.num_predict == max_tokens and self.config.timeout_seconds == timeout
+            assert timeout - 2 < deadline - time.monotonic() <= timeout
+            await self.client.post("https://teacher.invalid/v1/chat/completions", json={
+                "model": "deepseek-test", "temperature": 0.2, "max_tokens": self.config.num_predict,
+                "thinking": {"type": "enabled"}})
+            raise ProviderError("deepseek:teacher_batch:output_truncated")
+    def respond(request):
+        calls.append(json.loads(request.content))
+        if failure == "transport":
+            raise httpx.ReadError("Connection lost", request=request)
+        return httpx.Response(200, json={"usage": {"completion_tokens": max_tokens}})
+    original = httpx.AsyncClient
+    monkeypatch.setattr(run, "ModelGateway", Gateway)
+    monkeypatch.setattr(run.httpx, "AsyncClient", lambda **kwargs: original(
+        transport=httpx.MockTransport(respond), **kwargs))
+    row = await run._teacher_one(tmp_path, manifest, entry, {}, artifact, tmp_path, settings)
+    assert row["sent"] and not row["hardPass"] and len(calls) == 1
+    assert row.get("transportOutcomeUnknown", False) == (failure == "transport")
+    with pytest.raises(DatasetError, match="refusing replay"):
+        await run._teacher_one(tmp_path, manifest, entry, {}, artifact, tmp_path, settings)
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_unknown_transport_stops_new_candidates_without_replay(campaign, monkeypatch):
+    path, settings = campaign
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, **k: {"deepseek": {"availableCalls": None}})
+    calls = []
+    async def teacher(path, manifest, entry, group, artifact, folder, settings):
+        calls.append(entry["id"])
+        row = {**entry, "hardPass": False, "sent": True, "transportOutcomeUnknown": True,
+            "errorType": "TimeoutError", "error": "deepseek:teacher_batch:timeout"}
+        gen.write_json(folder / f"{entry['id']}.teacher-result.json", row)
+        return row
+    monkeypatch.setattr(run, "_teacher_one", teacher)
+    result = await collect.collect(path, settings=settings, limit=8)
+    assert result["status"] == "BLOCKED" and result["attempted"] == 1
+    compact = collect.decisions(path)[0]
+    assert compact["transportOutcomeUnknown"] and compact["sent"]
+    assert not list((path / "candidates").glob("*.json"))
+    with pytest.raises(DatasetError, match="unresolved"):
+        await collect.collect(path, settings=settings, limit=8)
+    assert len(calls) == 1

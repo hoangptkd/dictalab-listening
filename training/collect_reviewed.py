@@ -23,7 +23,7 @@ from training.semantic_rubric import CHECKS, VERSION_V3, rules_for
 
 LEVELS = ("A1", "A2", "B1", "B2")
 TARGETS = {"train": 125, "validation": 25, "test": 25}
-ARTIFACT = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v8-20261023.json"
+ARTIFACT = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v9-20261024.json"
 
 
 def normalized(text: str) -> str:
@@ -134,6 +134,10 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
     if web_accounts:
         manifest["judge"]["accounts"] = web_accounts
         manifest["judge"]["url"] = web_accounts[0]["url"]
+    if artifact.get("teacherGenerationConfig"):
+        manifest["teacher"]["generationConfig"] = artifact["teacherGenerationConfig"]
+    if artifact.get("judgeAuditInstructions"):
+        manifest["judge"]["auditInstructions"] = artifact["judgeAuditInstructions"]
     manifest["hash"] = gen.digest(manifest)
     path.mkdir(parents=True)
     for folder in ("candidates", "decisions"):
@@ -158,6 +162,9 @@ def load(path: Path) -> tuple[dict, dict]:
     if artifact["sha256"] != manifest["artifactHash"] or artifact["sha256"] != gen.digest(
             {k: v for k, v in artifact.items() if k != "sha256"}):
         raise DatasetError("frozen artifact changed")
+    if (manifest["teacher"].get("generationConfig", {}) != artifact.get("teacherGenerationConfig", {}) or
+            manifest["judge"].get("auditInstructions", "") != artifact.get("judgeAuditInstructions", "")):
+        raise DatasetError("frozen generation/judge configuration differs from artifact")
     return manifest, artifact
 
 
@@ -208,6 +215,8 @@ def reject(path: Path, row: dict, reason: str, *, reviewer: str = "automatic-har
     # Retain controlled provider codes, never exception dumps containing rejected text.
     compact["errorType"] = row.get("errorType")
     compact["providerHttpStatus"] = row.get("providerHttpStatus")
+    if row.get("transportOutcomeUnknown"):
+        compact["transportOutcomeUnknown"] = True
     compact["webAttempts"] = [{"hash": gen.digest(attempt), "accountId": attempt.get("accountId"),
         "outcome": attempt.get("outcome"), "httpStatus": attempt.get("httpStatus")}
         for attempt in run.web_accounts.attempts(folder, ident)]
@@ -332,6 +341,9 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                     if row.get("providerHttpStatus") in {402, 429} or row.get("errorType") == "QuotaUnavailable":
                         state.update(status="WAITING_DEEPSEEK_QUOTA", stopReason="DeepSeek quota or balance exhausted")
                         break
+                    if row.get("transportOutcomeUnknown"):
+                        state.update(status="BLOCKED", stopReason="Teacher transport outcome unknown; inspect before continuing")
+                        break
                 elif duplicate(row["task"]["utteranceEn"], corpus):
                     reject(path, row, "exact-or-near-duplicate")
                 else:
@@ -407,7 +419,7 @@ def adjudicate(path: Path, verdict: dict) -> dict:
         else:
             raise DatasetError("verdict must be approved or rejected; uncertain items cannot enter SFT")
         state = gen.read_json(path / "state.json")
-        if state["status"] not in {"WAITING_DEEPSEEK_QUOTA", "WAITING_WEB_QUOTA"}:
+        if state["status"] not in {"WAITING_DEEPSEEK_QUOTA", "WAITING_WEB_QUOTA", "BLOCKED"}:
             state["status"] = "AWAITING_CODEX_REVIEW" if status(path)["pending"] else "READY"
         run._atomic_json(path / "state.json", state)
     return status(path)

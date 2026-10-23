@@ -1,5 +1,10 @@
 # Thu thập 700 bài với hai tài khoản Web
 
+**Cập nhật 24/10/2026:** chủ dự án yêu cầu dừng lịch; automation đã `PAUSED`,
+lô cuối đã kết thúc và không tự sinh thêm. Cấu hình v9 cho chiến dịch mới cùng
+phân tích lỗi nằm trong [báo cáo cải thiện](conversation-collection-v9-improvements-20261024.md).
+Chiến dịch v8 vẫn giữ nguyên artifact/manifest; không sửa hash để thay cấu hình.
+
 ## Quyết định đã chốt ngày 23/10/2026
 
 - Train 125 bài/mức A1–B2, validation 25/mức, test 25/mức. Sinh mới toàn bộ.

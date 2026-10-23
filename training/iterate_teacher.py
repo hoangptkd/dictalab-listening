@@ -677,7 +677,8 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
                    "values (false if any false; otherwise null if any null; otherwise true). "
                    "A translation audit checks translation meaning, not whether the question is well aligned. "
                    "Reconcile these fields with the corresponding top-level checks.\n"
-                   if semantic_audit else "") + "\nOUTPUT_SCHEMA:\n" + json.dumps(schema, ensure_ascii=False) +
+                   if semantic_audit else "") + manifest["judge"].get("auditInstructions", "") +
+                   "\nOUTPUT_SCHEMA:\n" + json.dumps(schema, ensure_ascii=False) +
                    "\nAUDIT_INPUT:\n" + json.dumps(payload, ensure_ascii=False)}]}
     if gen._contains_secret(body):
         raise gen.DatasetError("possible sensitive data in judge input")
@@ -875,14 +876,22 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
             artifact["typeCards"], ensure_ascii=False)
     if gen._contains_secret(payload):
         raise gen.DatasetError("possible sensitive data in teacher input")
+    generation = artifact.get("teacherGenerationConfig", {})
+    if manifest["teacher"].get("generationConfig", {}) != generation:
+        raise gen.DatasetError("teacher generation configuration differs from frozen artifact")
+    max_tokens = generation.get("maxTokens", 8192)
+    timeout_seconds = generation.get("timeoutSeconds", settings.timeout_seconds)
+    if (type(max_tokens) is not int or not 1 <= max_tokens <= 32768 or
+            type(timeout_seconds) not in (int, float) or not 1 <= timeout_seconds <= 600):
+        raise gen.DatasetError("invalid teacher generation limits")
     run_settings = settings.model_copy(update={"primary_provider": "deepseek", "temperature": 0.2,
-                                        "num_predict": 8192, "repair_enabled": False})
+        "num_predict": max_tokens, "timeout_seconds": timeout_seconds, "repair_enabled": False})
     captured = {}
 
     async def on_request(request):
         body = gen.strict_json(request.content.decode("utf-8"))
         if (body.get("model") != manifest["teacher"]["model"] or
-            body.get("temperature") != 0.2 or body.get("max_tokens") != 8192 or
+            body.get("temperature") != 0.2 or body.get("max_tokens") != max_tokens or
             body.get("thinking") != {"type": thinking_mode} or gen._contains_secret(body)):
             raise gen.DatasetError("teacher request differs from frozen model/decoding/privacy contract")
         _durable_exclusive_json(request_path, body)
@@ -953,6 +962,8 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
         row["errorType"] = "QuotaUnavailable"
     except Exception as error:
         row["errorType"] = type(error).__name__
+        if isinstance(error, (TimeoutError, httpx.TransportError)):
+            row["transportOutcomeUnknown"] = True
         message = str(error)
         for source in settings.enabled_cloud_sources:
             message = message.replace(source.api_key, "[redacted]")
