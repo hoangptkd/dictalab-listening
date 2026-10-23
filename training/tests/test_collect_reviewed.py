@@ -15,7 +15,15 @@ from training import iterate_teacher as run
 from training.prepare_dataset import DatasetError, _contract, _split, validate_training_task
 from training.shutdown_watchdog import request_shutdown, shutdown_reason
 from training.tests.test_prepare_dataset import _row
+from training.tests.test_generate_teacher_data import _catalogue
 from training.train_sft_lora import check_cpu_memory
+
+
+@pytest.fixture(autouse=True)
+def synthetic_catalogue(tmp_path, monkeypatch):
+    catalogue = tmp_path / "catalogue.json"
+    gen.write_json(catalogue, {"catalogue": _catalogue()})
+    monkeypatch.setattr(gen, "CATALOGUE", catalogue)
 
 
 @pytest.fixture

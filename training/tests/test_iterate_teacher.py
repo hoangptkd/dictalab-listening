@@ -9,7 +9,17 @@ import httpx
 from jsonschema import ValidationError
 
 from training import iterate_teacher as run
+from training.tests.test_generate_teacher_data import _catalogue
 from training.semantic_rubric import CHECKS, VERSION_V3, judge_generalization_cases, rules_for
+
+
+@pytest.fixture(autouse=True)
+def synthetic_campaign_sources(tmp_path, monkeypatch):
+    catalogue = tmp_path / "catalogue.json"
+    run.gen.write_json(catalogue, {"catalogue": _catalogue()})
+    monkeypatch.setattr(run.gen, "CATALOGUE", catalogue)
+    monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(run, "SOURCE_PLANS", ())
 
 
 def _items(per_level=(10, 10, 10)):
@@ -467,9 +477,11 @@ def test_final_allocation_has_frozen_focus_coverage_and_no_group_reuse():
     for level in run.LEVELS:
         assert sorted(row["focus"] for row in allocation["entries"] if row["level"] == level) == \
             sorted(run.FINAL_FOCUSES[level])
-    retired = [row["groupId"] for row in allocation["entries"] if row["level"] == "B1"]
+    development = {row["groupId"] for row in manifest["groups"]["development"]}
+    available = [row["groupId"] for row in run._unseen_groups()
+                 if row["level"] == "B1" and row["groupId"] not in development]
     with pytest.raises(ValueError, match="DATA_COVERAGE_BLOCKED"):
-        run.final_allocation(manifest, artifact, set(retired[:2]))
+        run.final_allocation(manifest, artifact, set(available[11:]))
 
 
 def test_retired_final_groups_apply_across_campaigns(tmp_path, monkeypatch):

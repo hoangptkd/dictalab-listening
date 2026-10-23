@@ -33,10 +33,18 @@ def _item():
 def _catalogue():
     source = (ROOT / "src/main/java/com/dictalab/service/ConversationContent.java").read_text(encoding="utf-8")
     scenes = re.findall(r'new Scene\("([^"]+)"', source)
-    return [{"scenarioId":scene,"level":level,"branchId":branch,"input":{}}
+    branches = {scene: ["standard"] for scene in scenes}
+    for line in source.splitlines():
+        case = re.search(r'case "([^"]+)" ->', line)
+        if case and case[1] in branches:
+            scene = case[1]
+        branch = re.search(r'branch\(s,"([^"]+)"', line)
+        if branch:
+            branches[scene].append(branch[1])
+    return [{"scenarioId":scene,"level":level,"branchId":branch,"input":{
+                "scenario": scene, "history": [{"utteranceEn": "We agreed to meet at ten.", "facts": []}]}}
             for scene in scenes for level in ("A1","A2","B1")
-            for branch in (("standard","alternative") if scene in ("plans","delivery") else
-                           ("standard","alternative","another"))]
+            for branch in branches[scene]]
 
 
 def test_plan_covers_all_scenarios_levels_and_reserves_benchmark_groups():

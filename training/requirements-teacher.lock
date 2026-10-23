@@ -1,0 +1,9 @@
+# Teacher/review tests import the AI gateway. Pins match its runtime lock.
+# Keep this separate from CPU libraries and their platform-specific tzdata pins.
+httpx==0.28.1
+pydantic==2.12.5
+pydantic-settings==2.16.0
+redis==5.2.1
+psycopg[binary]==3.3.6
+cryptography==50.0.2
+pytest-asyncio==0.26.0
