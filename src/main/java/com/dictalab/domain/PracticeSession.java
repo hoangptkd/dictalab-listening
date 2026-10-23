@@ -87,6 +87,17 @@ public class PracticeSession {
     @Version
     private long version;
 
+    @Column(name = "sync_enabled", nullable = false)
+    private boolean syncEnabled;
+
+    @Column(name = "sync_revision", nullable = false)
+    private long syncRevision;
+
+    public boolean isSyncEnabled() { return syncEnabled; }
+    public long getSyncRevision() { return syncRevision; }
+    public void enableSync() { syncEnabled = true; }
+    public void advanceSync(int events) { syncRevision = Math.addExact(syncRevision, events); }
+
     protected PracticeSession() {
     }
 

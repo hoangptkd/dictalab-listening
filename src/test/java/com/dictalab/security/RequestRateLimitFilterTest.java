@@ -8,6 +8,28 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.BDDMockito.*;
 
 class RequestRateLimitFilterTest {
+    @Test void batchWorkConsumesOneTokenPerDeclaredAndVerifiedEvent() {
+        long now = System.nanoTime();
+        var bucket = new RequestRateLimitFilter.Bucket(600, now);
+        for (int i = 0; i < 18; i++) assertThat(bucket.take(600, now, 32)).isTrue();
+        assertThat(bucket.take(600, now, 32)).isFalse();
+        assertThat(bucket.take(600, now, 24)).isTrue();
+        assertThat(bucket.take(600, now, 1)).isFalse();
+    }
+    @Test void redisBatchLimitReceivesEventWeightAndRejectsInvalidCounts() throws Exception {
+        var redis=mock(org.springframework.data.redis.core.StringRedisTemplate.class);
+        given(redis.execute(any(org.springframework.data.redis.core.script.RedisScript.class),anyList(),any(Object[].class))).willReturn(1L);
+        var filter=new RequestRateLimitFilter(true,1,new SimpleMeterRegistry(),1,1,10,"redis",redis);
+        var request=new MockHttpServletRequest("POST","/api/v1/practice-sessions/test/sync/batches");
+        request.addHeader("X-Practice-Events", "8");
+        filter.doFilter(request,new MockHttpServletResponse(),(r,s)->{});
+        then(redis).should().execute(any(org.springframework.data.redis.core.script.RedisScript.class), anyList(), eq("600"), eq("10"), eq("8"));
+        request=new MockHttpServletRequest("POST","/api/v1/practice-sessions/test/sync/batches");
+        request.addHeader("X-Practice-Events", "0");
+        var response=new MockHttpServletResponse();
+        filter.doFilter(request,response,(r,s)->{throw new AssertionError("Invalid batch reached controller");});
+        assertThat(response.getStatus()).isEqualTo(400);
+    }
     @Test void practiceWritesUseRateLimiterAndGetRemainsAvailable() throws Exception {
         var redis=mock(org.springframework.data.redis.core.StringRedisTemplate.class);
         given(redis.execute(any(org.springframework.data.redis.core.script.RedisScript.class),anyList(),any(Object[].class))).willReturn(0L);

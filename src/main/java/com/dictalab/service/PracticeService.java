@@ -57,6 +57,9 @@ public class PracticeService {
     private final boolean learningEnabled;
     private final PremiumAccessService premium;
 
+    @org.springframework.beans.factory.annotation.Value("${dictalab.practice.local-grading.enabled:true}")
+    private boolean localGradingEnabled;
+
     public PracticeService(LessonRepository lessonRepository,
                            LessonPreviewWordRepository previewWordRepository,
                            LessonSentenceRepository sentenceRepository,
@@ -266,26 +269,37 @@ public class PracticeService {
 
     private CheckedWord gradeWord(PracticeSession session, Long sentenceId,
                                   int wordIndex, ApiDtos.CheckWordRequest request) {
+        CheckedWord checked = loadWords(session, sentenceId);
+        gradeWord(checked, wordIndex, request, false);
+        return checked;
+    }
+
+    private CheckedWord loadWords(PracticeSession session, Long sentenceId) {
         SentenceAttempt attempt = currentAttempt(session, sentenceId);
-        requireListening(attempt);
         List<TranscriptTokenizer.TranscriptToken> tokens = tokenizer.tokens(attempt.getSentence().getTranscript());
         List<String> expectedWords = tokens.stream().map(TranscriptTokenizer.TranscriptToken::word).toList();
-        validateWordIndex(wordIndex, expectedWords);
         Set<Integer> properNames = properNameIndices(expectedWords, properNameTokens(session.getLesson().getId()));
         Map<Integer, WordAttempt> attempts = new HashMap<>();
         wordAttemptRepository.findBySentenceAttemptIdOrderByWordIndex(attempt.getId())
                 .forEach(word -> attempts.put(word.getWordIndex(), word));
-        CheckedWord checked = new CheckedWord(attempt, tokens, properNames, attempts);
-        if (properNames.contains(wordIndex)) return checked;
+        return new CheckedWord(attempt, tokens, properNames, attempts);
+    }
 
-        WordAttempt wordAttempt = attempts.get(wordIndex);
+    private void gradeWord(CheckedWord checked, int wordIndex, ApiDtos.CheckWordRequest request, boolean newEvent) {
+        SentenceAttempt attempt = checked.attempt();
+        requireListening(attempt);
+        List<String> expectedWords = checked.tokens().stream().map(TranscriptTokenizer.TranscriptToken::word).toList();
+        validateWordIndex(wordIndex, expectedWords);
+        if (checked.properNames().contains(wordIndex)) return;
+
+        WordAttempt wordAttempt = checked.attempts().get(wordIndex);
         if (wordAttempt == null) {
             wordAttempt = wordAttemptRepository.save(new WordAttempt(attempt, wordIndex));
-            attempts.put(wordIndex, wordAttempt);
+            checked.attempts().put(wordIndex, wordAttempt);
         }
         String rawAnswer = request.answer().trim();
         if (wordAttempt.isFinalCorrect() || wordAttempt.isRevealed()
-                || rawAnswer.equals(wordAttempt.getLastAnswer())) return checked;
+                || !newEvent && rawAnswer.equals(wordAttempt.getLastAnswer())) return;
         if (wordAttempt.getAttemptCount() >= 50)
             throw new InvalidPracticeStateException("Đã đạt giới hạn thử từ này. Hãy dùng gợi ý để tiếp tục.");
         String normalizedAnswer = tokenizer.normalize(rawAnswer);
@@ -305,7 +319,80 @@ public class PracticeService {
                 wordAttempt, wordAttempt.getAttemptCount(), rawAnswer, normalizedAnswer,
                 correct, responseTimeMs, errorCategory, now()
         ));
-        return checked;
+    }
+
+    @Transactional
+    public ApiDtos.PracticeSyncState openSync(Long userId, String sessionId) {
+        PracticeSession session = getSession(userId, sessionId);
+        if (session.getRoomId() != null)
+            throw new InvalidPracticeStateException("Phòng học chung dùng cơ chế đồng bộ riêng.");
+        if (!localGradingEnabled && !session.isSyncEnabled())
+            throw new ResourceNotFoundException("Chấm nhanh chưa được bật cho phiên mới.");
+        CheckedWord checked = loadWords(session, currentSentence(session).getId());
+        session.enableSync();
+        return syncState(session, checked);
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public ApiDtos.PracticeSyncState syncBatch(PracticeSession session, ApiDtos.PracticeSyncRequest request) {
+        if (!session.isSyncEnabled() || session.getRoomId() != null)
+            throw new InvalidPracticeStateException("Phiên chưa bật đồng bộ chấm nhanh.");
+        if (session.getSyncRevision() != request.baseRevision())
+            throw new InvalidPracticeStateException("Tiến độ đã thay đổi ở thiết bị khác. Dữ liệu cục bộ được giữ để kiểm tra.");
+        CheckedWord checked = loadWords(session, request.sentenceId());
+        if (!manifest(session, checked).contentVersion().equals(request.contentVersion()))
+            throw new InvalidPracticeStateException("Nội dung câu đã thay đổi. Không thể tự gộp các lượt thử cũ.");
+        long sequence = request.baseRevision();
+        for (var event : request.events()) {
+            int commands = (event.check() != null ? 1 : 0) + (event.replay() != null ? 1 : 0)
+                    + (event.hint() != null ? 1 : 0) + (event.classification() != null ? 1 : 0)
+                    + (event.complete() != null ? 1 : 0);
+            if (commands != 1 || event.sequence() != ++sequence
+                    || event.check() != null && event.wordIndex() == null
+                    || event.check() == null && (request.events().size() != 1 || event.wordIndex() != null))
+                throw new InvalidPracticeStateException("Thứ tự hoặc nội dung thao tác đồng bộ không hợp lệ.");
+            if (event.check() != null) {
+                gradeWord(checked, event.wordIndex(), event.check(), true);
+            } else {
+                // Commands are ordered barriers; checks are preloaded once for a whole batch.
+                Long user = session.getUser().getId();
+                if (event.complete() != null) {
+                    var completion = completeSentence(user, session.getId(), request.sentenceId(), event.complete());
+                    session.advanceSync(1);
+                    return new ApiDtos.PracticeSyncState(session.getSyncRevision(), null, null, completion);
+                }
+                ApiDtos.SentenceState state = event.replay() != null
+                        ? replay(user, session.getId(), request.sentenceId(), event.replay())
+                        : event.hint() != null ? useHint(user, session.getId(), request.sentenceId(), event.hint())
+                        : classifyWord(user, session.getId(), request.sentenceId(), event.classification());
+                session.advanceSync(1);
+                return new ApiDtos.PracticeSyncState(session.getSyncRevision(), state, manifest(session, checked), null);
+            }
+        }
+        session.advanceSync(request.events().size());
+        return syncState(session, checked);
+    }
+
+    private ApiDtos.PracticeSyncState syncState(PracticeSession session, CheckedWord checked) {
+        List<ApiDtos.WordSlot> slots = java.util.stream.IntStream.range(0, checked.tokens().size())
+                .mapToObj(i -> toWordSlot(i, checked.tokens().get(i), checked.attempts().get(i), checked.properNames().contains(i)))
+                .toList();
+        int count = Math.toIntExact(sentenceRepository.countByLessonId(session.getLesson().getId()));
+        return new ApiDtos.PracticeSyncState(session.getSyncRevision(), toState(checked.attempt(), slots, count),
+                manifest(session, checked), null);
+    }
+
+    private ApiDtos.GradingManifest manifest(PracticeSession session, CheckedWord checked) {
+        String content = AiBackgroundJobs.hash("ascii-nfkc-v1\n" + checked.attempt().getSentence().getTranscript()
+                + "\n" + checked.properNames().stream().sorted().toList());
+        String salt = AiBackgroundJobs.hash(session.getId() + "\n" + checked.attempt().getSentence().getId() + "\n" + content);
+        List<String> hashes = java.util.stream.IntStream.range(0, checked.tokens().size()).mapToObj(i -> {
+            String normalized = tokenizer.normalize(checked.tokens().get(i).word());
+            // Unsupported Unicode uses authoritative grading, never a guessed local result.
+            return normalized.chars().allMatch(c -> c >= 32 && c <= 126)
+                    ? AiBackgroundJobs.hash(salt + "\n" + i + "\n" + normalized) : null;
+        }).toList();
+        return new ApiDtos.GradingManifest("ascii-nfkc-v1", content, salt, hashes);
     }
 
     private record CheckedWord(SentenceAttempt attempt, List<TranscriptTokenizer.TranscriptToken> tokens,

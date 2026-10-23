@@ -22,6 +22,7 @@ public class RequestRateLimitFilter extends OncePerRequestFilter {
             local now = tonumber(clock[1]) * 1000 + math.floor(tonumber(clock[2]) / 1000)
             local capacity = tonumber(ARGV[1])
             local maximum = tonumber(ARGV[2])
+            local cost = tonumber(ARGV[3])
             local ttl = 600000
             local saved = redis.call('HMGET', KEYS[1], 'tokens', 'touched')
             redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', now)
@@ -31,7 +32,7 @@ public class RequestRateLimitFilter extends OncePerRequestFilter {
                 tokens = math.min(capacity, tonumber(saved[1]) + math.max(0, now - tonumber(saved[2])) * capacity / 60000)
             end
             local allowed = 0
-            if tokens >= 1 then tokens = tokens - 1; allowed = 1 end
+            if tokens >= cost then tokens = tokens - cost; allowed = 1 end
             redis.call('HSET', KEYS[1], 'tokens', tokens, 'touched', now)
             redis.call('PEXPIRE', KEYS[1], ttl)
             redis.call('ZADD', KEYS[2], now + ttl, KEYS[1])
@@ -80,6 +81,15 @@ public class RequestRateLimitFilter extends OncePerRequestFilter {
             throws ServletException,IOException {
         if(!enabled || request.getMethod().equals("GET")){chain.doFilter(request,response);return;}
         String path=request.getRequestURI().substring(request.getContextPath().length());
+        int cost = 1;
+        if (path.startsWith("/api/v1/practice-sessions/") && path.endsWith("/sync/batches")) {
+            String count = request.getHeader("X-Practice-Events");
+            if (count != null && !count.matches("[1-9]|[12][0-9]|3[0-2]")) {
+                reject(response,400,"Số thao tác đồng bộ không hợp lệ."); return;
+            }
+            // The controller checks the declared count against the validated body before any write.
+            cost = count == null ? 32 : Integer.parseInt(count);
+        }
         String group=path.startsWith("/api/auth/")?"auth":path.startsWith("/api/v1/conversation/")||path.endsWith("/coach")||path.endsWith("/coach/events")||path.startsWith("/api/admin/listening")
                 || path.startsWith("/api/v1/listening/") && (path.contains("/grading/") && path.endsWith("/retry")
                     || request.getMethod().equals("POST") && path.endsWith("/answers"))?"ai"
@@ -100,7 +110,7 @@ public class RequestRateLimitFilter extends OncePerRequestFilter {
                 // The hash tag keeps the script's keys in one Redis Cluster slot.
                 Long result=redis.execute(TAKE_REDIS_TOKEN,
                         java.util.List.of("{dictalab-rate}:v1:"+key,"{dictalab-rate}:v1:index"),
-                        Integer.toString(capacity),Integer.toString(maximumEntries));
+                        Integer.toString(capacity),Integer.toString(maximumEntries),Integer.toString(cost));
                 if(result==null)throw new org.springframework.dao.DataAccessResourceFailureException("Missing Redis result");
                 allowed=result==1;
             }catch(org.springframework.dao.DataAccessException unavailable){
@@ -119,7 +129,7 @@ public class RequestRateLimitFilter extends OncePerRequestFilter {
                 if(bucket==null && buckets.size()<maximumEntries){bucket=new Bucket(capacity,now);buckets.put(key,bucket);}
             }
         }
-        if(bucket==null || !bucket.take(capacity,now)){
+        if(bucket==null || !bucket.take(capacity,now,cost)){
             metrics.counter("dictalab.rate_limit.rejected","group",group).increment();
             reject(response,429,"Bạn thao tác quá nhanh. Vui lòng chờ vài giây rồi thử lại.");return;
         }
@@ -134,8 +144,11 @@ public class RequestRateLimitFilter extends OncePerRequestFilter {
         double tokens; volatile long touched;
         Bucket(int capacity,long now){tokens=capacity;touched=now;}
         synchronized boolean take(int capacity,long now){
+            return take(capacity, now, 1);
+        }
+        synchronized boolean take(int capacity,long now,int cost){
             tokens=Math.min(capacity,tokens+(now-touched)/1_000_000_000.0*capacity/60.0);touched=now;
-            if(tokens<1)return false;tokens--;return true;
+            if(tokens<cost)return false;tokens-=cost;return true;
         }
     }
 }

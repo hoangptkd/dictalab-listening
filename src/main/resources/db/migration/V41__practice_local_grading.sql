@@ -1,0 +1,2 @@
+ALTER TABLE practice_sessions ADD COLUMN sync_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE practice_sessions ADD COLUMN sync_revision BIGINT NOT NULL DEFAULT 0;

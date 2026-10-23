@@ -151,6 +151,24 @@ public final class ApiDtos {
     ) {
     }
 
+    public record GradingManifest(String normalization, String contentVersion, String salt, List<String> hashes) {}
+
+    public record PracticeSyncState(long revision, SentenceState sentence, GradingManifest grading,
+                                    CompleteSentenceResponse completion) {}
+
+    // The sequence is the event identity within the owned session, independent of batch boundaries.
+    public record PracticeSyncEvent(@Min(1) long sequence, @Min(0) Integer wordIndex,
+                                    @jakarta.validation.Valid CheckWordRequest check,
+                                    @jakarta.validation.Valid ReplayRequest replay,
+                                    @jakarta.validation.Valid HintRequest hint,
+                                    @jakarta.validation.Valid ClassifyWordRequest classification,
+                                    @jakarta.validation.Valid CompleteSentenceRequest complete) {}
+
+    public record PracticeSyncRequest(@NotNull @Positive Long sentenceId, @Min(0) long baseRevision,
+                                      @NotBlank @Size(max = 64) String contentVersion,
+                                      @NotNull @Size(min = 1, max = 32)
+                                      List<@NotNull @jakarta.validation.Valid PracticeSyncEvent> events) {}
+
     public record LessonResult(
             String sessionId,
             Long lessonId,

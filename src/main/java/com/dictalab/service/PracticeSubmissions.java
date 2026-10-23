@@ -28,8 +28,6 @@ public class PracticeSubmissions {
     @Transactional(timeout = 20)
     public <T> T execute(long user, String session, String key, String action, Object payload,
                          Class<T> type, Supplier<T> write) {
-        // Older clients remain compatible; they do not get transport retry protection.
-        if (key == null) return write.get();
         return execute(user, session, key, action, payload, type, locked -> write.get());
     }
 
@@ -40,6 +38,8 @@ public class PracticeSubmissions {
             throw new InvalidPracticeStateException("Mã gửi bài không hợp lệ.");
         PracticeSession locked = sessions.lockOwned(session, user)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phiên luyện."));
+        if (locked.isSyncEnabled() && !action.endsWith("/sync-batches"))
+            throw new InvalidPracticeStateException("Phiên này đã bật chấm nhanh. Hãy tải lại trang để tiếp tục.");
         if (key == null) return write.apply(locked);
         String hash = AiBackgroundJobs.hash(action + "\n" + json.writeValueAsString(payload));
         // Ownership is already locked; read the retry and its action limit in one round trip.

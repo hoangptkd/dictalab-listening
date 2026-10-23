@@ -256,6 +256,7 @@
                                 <include>**/AiUsageBudgetIntegrationTest.java</include>
                                 <include>**/BackendReadIntegrationTest.java</include>
                                 <include>**/PracticeWordCheckIntegrationTest.java</include>
+                                <include>**/PracticeSyncIntegrationTest.java</include>
                                 <include>**/CapacityReadPathIntegrationTest.java</include>
                                 <include>**/QueryOptimizationIntegrationTest.java</include>
                                 <include>**/AuthTransactionIntegrationTest.java</include>
