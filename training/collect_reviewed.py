@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 
 from training import generate_teacher_data as gen
 from training import iterate_teacher as run
@@ -59,7 +60,10 @@ def prior_corpus() -> list[str]:
     return sorted(texts - {""})
 
 
-def prepare(path: Path, settings=None, *, diagnostic: bool = False) -> dict:
+def prepare(path: Path, settings=None, *, diagnostic: bool = False,
+            retain_diagnostic_evidence: bool = False) -> dict:
+    if retain_diagnostic_evidence and not diagnostic:
+        raise DatasetError("full rejection evidence retention requires a diagnostic campaign")
     path = run._private_path(path)
     if path.exists():
         raise DatasetError("collection directory already exists")
@@ -102,6 +106,7 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False) -> dict:
     corpus = sorted(set(prior_corpus()) | set(_texts(artifact)))
     manifest = {"policy": COLLECTION_POLICY, "createdAt": run._now(), "seed": 17,
         "diagnosticOnly": diagnostic,
+        "retainDiagnosticEvidence": retain_diagnostic_evidence,
         "artifactPath": str(ARTIFACT), "artifactHash": artifact["sha256"],
         "validatorHash": run.validator_hash(), "judgeSystemHash": gen.digest(run.JUDGE_SYSTEM),
         "teacherWrapperHash": gen.digest(gen.TEACHER_BATCH),
@@ -202,6 +207,14 @@ def reject(path: Path, row: dict, reason: str, *, reviewer: str = "automatic-har
             if isinstance(value, dict) and value.get("usage"):
                 compact.setdefault("allUsage", {})[kind] = value["usage"]
     run._atomic_json(path / "decisions" / f"{ident}.json", compact)
+    if gen.read_json(path / "manifest.json").get("retainDiagnosticEvidence"):
+        manifest, _ = load(path)
+        if not manifest.get("diagnosticOnly"):
+            raise DatasetError("full rejection evidence retention requires a diagnostic campaign")
+        archive = path / "rejected-evidence" / ident
+        archive.mkdir(parents=True, exist_ok=True)
+        for file in folder.glob(f"{ident}.*.json"):
+            shutil.copy2(file, archive / file.name)
     # Persist compact evidence first; only remove this campaign's candidate-specific files.
     for file in folder.glob(f"{ident}.*.json"):
         if file.resolve().parent != folder.resolve():
@@ -391,12 +404,15 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=4)
     parser.add_argument("--decision-file", type=Path)
     parser.add_argument("--diagnostic", action="store_true", help="prepare an experiment excluded from SFT")
+    parser.add_argument("--retain-diagnostic-evidence", action="store_true",
+                        help="preserve rejected diagnostic requests and responses for owner review")
     parser.add_argument("--shutdown-on-worker-failure", action="store_true",
                         help="arm an external watchdog with the owner's forced shutdown authorization")
     args = parser.parse_args()
     path = run._private_path(args.campaign)
     if args.command == "prepare":
-        result = prepare(path, diagnostic=args.diagnostic)
+        result = prepare(path, diagnostic=args.diagnostic,
+                         retain_diagnostic_evidence=args.retain_diagnostic_evidence)
     elif args.command == "collect":
         result = asyncio.run(collect(path, limit=args.limit, shutdown_on_failure=args.shutdown_on_worker_failure))
     elif args.command == "adjudicate":

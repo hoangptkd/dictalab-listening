@@ -2,6 +2,15 @@
 
 Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các báo cáo benchmark cũ giữ nguyên.
 
+**Cập nhật mới nhất ngày 23/10/2026:** chủ dự án đã hủy yêu cầu tự động tắt máy.
+Lệnh Windows đang chờ đã được hủy thành công. Không bật
+`--shutdown-on-worker-failure` hoặc gọi shutdown khi hoàn tất/gặp lỗi; các đoạn
+ủy quyền tắt máy bên dưới chỉ là lịch sử và đã hết hiệu lực.
+
+Lô thử bổ sung 10 lần sinh và chấm lại 5 bài bất đồng phải giữ đầy đủ biên bản,
+kể cả nội dung bị loại, theo yêu cầu mới. Dùng chiến dịch diagnostic riêng với
+`--retain-diagnostic-evidence`; toàn bộ lô nằm ngoài dữ liệu SFT.
+
 ## Yêu cầu đã được chủ dự án chốt
 
 | Tập | A1 | A2 | B1 | B2 | Tổng bài |

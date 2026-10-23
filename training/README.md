@@ -428,7 +428,7 @@ tab after restart and across three independent Web reviews, with a fresh chat ea
 
 ```powershell
 python -m training.collect_reviewed prepare --campaign data/fine-tuning/reviewed-500-20261023
-python -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-20261023 --limit 4 --shutdown-on-worker-failure
+python -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-20261023 --limit 4
 python -m training.collect_reviewed status --campaign data/fine-tuning/reviewed-500-20261023
 python -m training.collect_reviewed adjudicate --campaign data/fine-tuning/reviewed-500-20261023 --decision-file <private-decision.json>
 python -m training.collect_reviewed export --campaign data/fine-tuning/reviewed-500-20261023
@@ -440,6 +440,14 @@ Uncertain items are rejected; any overridden Web finding needs its own recorded 
 Source families are split before generation, across all four levels. Export requires all
 700 approved tasks; the existing integrity, coverage, loss-mask and holdout audits still apply.
 Generated artifacts, decisions and API evidence stay in the ignored private campaign folder.
+
+For owner-requested diagnostic review, prepare with `--diagnostic --retain-diagnostic-evidence`.
+Rejected requests, responses and teacher results are then copied to `rejected-evidence/<id>/`
+before removal from the active candidate queue. This option is refused for the actual training
+collection; diagnostic campaigns remain excluded from SFT. It does not change generation or judging.
+
+The owner canceled automatic shutdown on 2026-10-23. Current runs must omit
+`--shutdown-on-worker-failure`; the implementation described below is historical and opt-in only.
 
 The shutdown flag explicitly arms a separate process while the collection worker runs.
 It saves shutdown evidence before calling Windows on terminal failure, quota stop or an

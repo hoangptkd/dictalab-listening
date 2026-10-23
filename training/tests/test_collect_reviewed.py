@@ -52,6 +52,25 @@ def test_diagnostic_experiment_cannot_export_sft(campaign):
         collect.export(diagnostic)
 
 
+def test_requested_diagnostic_rejection_evidence_is_preserved(campaign):
+    path, settings = campaign
+    with pytest.raises(DatasetError, match="diagnostic"):
+        collect.prepare(path.parent / "invalid", settings, retain_diagnostic_evidence=True)
+    diagnostic = path.parent / "diagnostic"
+    collect.prepare(diagnostic, settings, diagnostic=True, retain_diagnostic_evidence=True)
+    row = {"id": "candidate-0001", "groupId": "fresh/a/b", "level": "A1", "split": "train",
+           "context": {}, "task": {"utteranceEn": "Original evidence"}}
+    file = diagnostic / "candidates/candidate-0001.teacher-result.json"
+    gen.write_json(file, row)
+    collect.reject(diagnostic, row, "diagnostic-review")
+    assert not file.exists()
+    archived = diagnostic / "rejected-evidence/candidate-0001" / file.name
+    assert gen.read_json(archived) == row
+    assert collect.status(diagnostic)["pending"] == []
+    with pytest.raises(DatasetError, match="diagnostic"):
+        collect.export(diagnostic)
+
+
 def test_existing_gold_source_families_cannot_enter_collection(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path)
     monkeypatch.setattr(run, "SOURCE_PLANS", ())
