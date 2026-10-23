@@ -68,6 +68,22 @@ def test_two_workers_claim_only_once(tmp_path):
     assert len(calls) == 1
 
 
+def test_unrestricted_job_admission_passes_1000_without_dropping_existing_jobs(tmp_path):
+    settings, store, req, job_id, _ = setup_job(tmp_path)
+    with store.connect() as db:
+        db.executemany("INSERT INTO jobs(id,scope,idem,fingerprint,status,deadline,updated) VALUES (?,?,?,?,?,?,?)",
+            [(f"pending-{i}", req.userScope, f"pending-{i}", "fixture", "PENDING", time.time()+60, time.time())
+             for i in range(999)])
+    new_request = request()
+    with pytest.raises(OverflowError):
+        store.register(new_request, settings)
+    settings.operational_limits_enabled = False
+    assert store.register(new_request, settings) == str(new_request.jobId)
+    assert store.get(job_id, req.userScope)["status"] == "PENDING"
+    with store.connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 1001
+
+
 def test_bounded_safe_transport_retries_then_dead_letter(tmp_path):
     settings, store, req, job_id, body = setup_job(tmp_path)
     def unavailable(_):

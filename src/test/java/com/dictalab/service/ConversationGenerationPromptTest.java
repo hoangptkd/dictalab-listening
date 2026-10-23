@@ -103,7 +103,7 @@ class ConversationGenerationPromptTest {
             assertEquals("workshop employee", input.get("partnerRole"));
             var output = json.readTree(ConversationGenerationPrompt.example(level, turn));
             String speech = output.path("utteranceEn").asText();
-            assertEquals(2, output.path("facts").size());
+            assertEquals(level.equals("A1") ? 2 : 3, output.path("facts").size());
             output.path("facts").forEach(f -> assertTrue(speech.contains(f.path("evidenceEn").asText())));
             int words = speech.split("\\s+").length;
             var bounds = json.valueToTree(input.get("levelProfile"));
@@ -130,6 +130,9 @@ class ConversationGenerationPromptTest {
         assertEquals("parcel recipient", result.path("partnerRole").asText());
         assertEquals(result, ConversationGenerationPrompt.context(json, result));
         assertFalse(input.path("history").isEmpty());
+        result.put("scenarioJourney", "STALE STORY");
+        ((tools.jackson.databind.node.ObjectNode) result.path("previouslyTestedDetails").path(0)).put("evidenceEn", "STALE STORY");
+        assertFalse(ConversationGenerationPrompt.context(json, result).toString().contains("STALE STORY"));
     }
 
     @Test void continuationKeepsFullHistoryAndAuthoredRolesCoverEveryBranch() {
@@ -139,6 +142,8 @@ class ConversationGenerationPromptTest {
                 """);
         var result = ConversationGenerationPrompt.context(json, input);
         assertEquals(input.path("history"), result.path("history"));
+        assertEquals("unknown", result.path("encounterState").path("sourceTurns").path(0).path("speaker").asText());
+        assertTrue(result.path("encounterState").path("currentObject").isNull());
         assertEquals("customer", result.path("partnerRole").asText());
         for (var scene : ConversationContent.SCENES) for (var branch : ConversationContent.branches(scene.id())) {
             var roles = ConversationContent.roles(scene.id(), branch.id());
@@ -160,7 +165,7 @@ class ConversationGenerationPromptTest {
             };
             assertTrue(speech.split("\\s+").length >= bounds.get("minWords"));
             assertTrue(speech.split("\\s+").length <= bounds.get("maxWords"));
-            assertEquals(2, example.path("facts").size());
+            assertEquals(level.equals("A1") ? 2 : 3, example.path("facts").size());
             assertTrue(ConversationContent.SKILLS.containsValue(example.path("skill").asText()));
             assertEquals(level, ConversationGenerationPrompt.exampleInput(level).get("difficulty"));
             example.path("facts").forEach(f -> assertTrue(speech.contains(f.path("evidenceEn").asText())));

@@ -14,8 +14,9 @@ import time
 from typing import Any
 
 import httpx
+from jsonschema import Draft202012Validator, ValidationError
 
-from ..providers.base import ModelProvider, ProviderError
+from ..providers.base import ModelProvider, ProviderError, ProviderHttpError
 
 logger = logging.getLogger("dictalab.ai_generation.providers.openai_compatible")
 
@@ -39,6 +40,7 @@ class OpenAiCompatibleProvider(ModelProvider):
         chat_completions_path: str | None = None,
         extra_headers: dict[str, str] | None = None,
         use_json_schema: bool = False,
+        extra_body: dict[str, Any] | None = None,
     ) -> None:
         base = base_url.rstrip("/")
         if chat_completions_path:
@@ -55,6 +57,7 @@ class OpenAiCompatibleProvider(ModelProvider):
         self._provider_name = provider_name
         self._extra_headers = dict(extra_headers or {})
         self._use_json_schema = use_json_schema
+        self._extra_body = dict(extra_body or {})
 
     @property
     def name(self) -> str:
@@ -86,7 +89,10 @@ class OpenAiCompatibleProvider(ModelProvider):
             "temperature": temperature if temperature is not None else self._temperature,
             "messages": messages,
             "response_format": response_format,
+            **self._extra_body,
         }
+        if self._provider_name != "gemini" and schema:
+            body["messages"] = [{"role": "system", "content": "Return one JSON object matching this JSON schema: " + json.dumps(schema)}, *messages]
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -97,6 +103,8 @@ class OpenAiCompatibleProvider(ModelProvider):
             response = await self._client.post(
                 self._url, json=body, headers=headers, timeout=timeout
             )
+            if response.status_code == 429 or response.status_code >= 500:
+                raise ProviderHttpError(response.status_code, response.headers.get("Retry-After"), self._provider_name)
             if response.status_code in (400, 401, 403, 422):
                 raise ProviderError(
                     f"{self._provider_name}:{purpose}:client_error:{response.status_code}"
@@ -108,6 +116,11 @@ class OpenAiCompatibleProvider(ModelProvider):
                 raise ProviderError(f"{self._provider_name}:{purpose}:output_truncated")
             raw = (choice.get("message") or {}).get("content", "")
             parsed = _parse_content(raw, purpose, self._provider_name)
+            if self._provider_name != "gemini" and schema:
+                try:
+                    Draft202012Validator(schema).validate(parsed)
+                except ValidationError:
+                    raise ProviderError(f"{self._provider_name}:{purpose}:schema_mismatch") from None
             logger.info(
                 f"{self._provider_name}_provider_complete",
                 extra={"provider": self._provider_name, "purpose": purpose, "model": self._model},

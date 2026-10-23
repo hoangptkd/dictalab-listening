@@ -33,6 +33,14 @@ class AiUsageBudgetIntegrationTest {
         return new AiUsageBudget(db,manager,true,global,perUser,10,20,calls,calls);
     }
 
+    @Test void disabledBudgetAlsoRemovesLocalDailyCallCap(){
+        var budget=new AiUsageBudget(db,manager,false,1,1,10,20,1,1);
+        for(int i=0;i<101;i++){budget.reserveLocal(actor);budget.reserve(actor,false);}
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM ai_daily_budget",Integer.class)).isZero();
+        budget.setEnabled(actor,false);
+        assertThatThrownBy(()->budget.reserveLocal(actor)).isInstanceOf(AiUsageBudget.Rejected.class);
+    }
+
     @Test void rejectedUserReservationRollsBackGlobalCounter() {
         var budget=budget(100,10,10);
         budget.reserve(actor,false);

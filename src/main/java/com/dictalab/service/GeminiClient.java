@@ -1,5 +1,6 @@
 package com.dictalab.service;
 
+import com.dictalab.config.GeminiProviderProperties;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,6 +13,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Gemini text client using Google's OpenAI-compatible chat endpoint; keeps an ephemeral Ollama path for local development. */
 @Service
@@ -22,9 +24,20 @@ public class GeminiClient {
     private final String model;
     private final String url;
     private final ProviderGuard guard;
+    private final GeminiProviderProperties providerProperties;
+    private final GeminiQuotaCoordinator quota;
+    private final AtomicInteger nextProvider = new AtomicInteger();
     private Duration assessmentTimeout=Duration.ofSeconds(60);
     private Duration generationTimeout=Duration.ofSeconds(30);
     private boolean local;
+    private String cloudPlatform = "gemini";
+    private AiProviderRegistry registry;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureRegistry(AiProviderRegistry registry) { this.registry = registry; }
+
+    private boolean databaseEnabled() { return registry != null && registry.databaseEnabled(); }
+    private GeminiProviderProperties properties() { return databaseEnabled() ? registry.properties(cloudPlatform) : providerProperties; }
     private String localBaseUrl = "http://127.0.0.1:11434", localModel = "qwen3.5:9b";
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -32,7 +45,8 @@ public class GeminiClient {
                         @Value("${dictalab.conversation.generation.local-base-url:http://127.0.0.1:11434}") String baseUrl,
                         @Value("${dictalab.conversation.generation.local-model:qwen3.5:9b}") String model) {
         var validated = new com.dictalab.config.ConversationGenerationProperties("ollama", baseUrl, model, 60);
-        if (!java.util.Set.of("ollama", "gemini").contains(provider)) throw new IllegalArgumentException("Invalid AI provider");
+        if (!java.util.Set.of("ollama", "gemini", "deepseek", "openai_compatible").contains(provider)) throw new IllegalArgumentException("Invalid AI provider");
+        cloudPlatform = provider;
         local = provider.equals("ollama"); localBaseUrl = validated.localBaseUrl(); localModel = validated.localModel();
     }
 
@@ -67,27 +81,40 @@ public class GeminiClient {
                            io.micrometer.core.instrument.MeterRegistry metrics,
                            io.micrometer.observation.ObservationRegistry observations,
                            @Value("${dictalab.provider.circuit-failures:5}") int circuitFailures,
-                           @Value("${dictalab.provider.circuit-open-seconds:30}") int circuitOpenSeconds) {
+                           @Value("${dictalab.provider.circuit-open-seconds:30}") int circuitOpenSeconds,
+                           GeminiProviderProperties providerProperties,
+                           GeminiQuotaCoordinator quota) {
         this.json = json;
         this.key = key;
         this.model = model;
         this.url = url;
         this.guard=new ProviderGuard("gemini",concurrency,metrics,observations,circuitFailures,Duration.ofSeconds(circuitOpenSeconds));
+        this.providerProperties = providerProperties;
+        this.quota = quota;
     }
 
     public GeminiClient(ObjectMapper json,String key,String model,String url){
         this(json,key,model,url,8,new io.micrometer.core.instrument.simple.SimpleMeterRegistry(),
-                io.micrometer.observation.ObservationRegistry.NOOP,5,30);
+                io.micrometer.observation.ObservationRegistry.NOOP,5,30,
+                new GeminiProviderProperties(List.of(),0,0,false,"memory"),null);
+    }
+
+    public GeminiClient(ObjectMapper json,String key,String model,String url,int concurrency,
+                        io.micrometer.core.instrument.MeterRegistry metrics,
+                        io.micrometer.observation.ObservationRegistry observations,int circuitFailures,
+                        int circuitOpenSeconds) {
+        this(json,key,model,url,concurrency,metrics,observations,circuitFailures,circuitOpenSeconds,
+                new GeminiProviderProperties(List.of(),0,0,false,"memory"),null);
     }
 
     public boolean configured() {
-        return local || !key.isBlank();
+        return local || (databaseEnabled() || !cloudPlatform.equals("gemini") ? routingEnabled() : !key.isBlank() || routingEnabled());
     }
 
-    public String model() { return local ? localModel : model; }
+    public String model() { return local ? localModel : databaseEnabled() ? registry.model(cloudPlatform) : model; }
 
     public JsonNode completeJson(String instruction, String input) {
-        return requestJson(instruction, input, model, assessmentTimeout);
+        return requestJson(instruction, input, model(), assessmentTimeout);
     }
 
     public JsonNode completeJson(String instruction, String input, String requestModel) {
@@ -107,18 +134,24 @@ public class GeminiClient {
         if (requestModel == null || requestModel.isBlank()) throw new IllegalArgumentException("Missing Gemini model");
         try (var permit=guard.enter()) {
           try {
-            String body = json.writeValueAsString(local ? Map.of("model", localModel, "stream", false, "think", false,
+            ProviderSelection selection = local ? null : selectProvider(instruction, input, requestModel);
+            String targetModel = local ? localModel : selection.model();
+            String targetUrl = local ? localBaseUrl + "/api/chat" : selection.url();
+            String targetKey = local ? "" : selection.apiKey();
+            var payload = new java.util.HashMap<String,Object>(local ? Map.of("model", localModel, "stream", false, "think", false,
                     "format", "json", "options", Map.of("temperature", 0, "num_ctx", 8192, "num_predict", 2200),
                     "messages", List.of(Map.of("role", "system", "content", instruction), Map.of("role", "user", "content", input))) : Map.of(
-                    "model", requestModel, "temperature", 0, "max_tokens", 2200,
+                    "model", targetModel, "temperature", 0, "max_tokens", 2200,
                     "response_format", Map.of("type", "json_object"),
-                    "messages", List.of(Map.of("role", "system", "content", instruction),
+                    "messages", List.of(Map.of("role", "system", "content", cloudPlatform.equals("gemini") ? instruction : "Return one JSON object. " + instruction),
                             Map.of("role", "user", "content", input))));
-            var builder = HttpRequest.newBuilder(URI.create(local ? localBaseUrl + "/api/chat" : url))
+            if (!local && cloudPlatform.equals("deepseek")) payload.put("thinking", Map.of("type","disabled"));
+            String body = json.writeValueAsString(payload);
+            var builder = HttpRequest.newBuilder(URI.create(targetUrl))
                     .timeout(timeout)
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body));
-            if (!local) builder.header("Authorization", "Bearer " + key);
+            if (!local) builder.header("Authorization", "Bearer " + targetKey);
             HttpRequest request = builder.build();
             var pending = http.sendAsync(request, info -> BoundedProviderBody.bytes(100_000));
             HttpResponse<byte[]> response;
@@ -126,13 +159,16 @@ public class GeminiClient {
                 // HttpRequest.timeout alone must not leave a slow response body occupying a permit.
                 response = pending.get(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
             } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException exception) {
-                permit.failure();
+                if (routingEnabled()) recordOutcome(selection, "failure", 0); else permit.failure();
                 throw new Failure(exception instanceof java.util.concurrent.TimeoutException
                         || exception.getCause() instanceof java.net.http.HttpTimeoutException ? "TIMEOUT" : "TRANSPORT",
                         "Không thể đọc phản hồi Gemini trong thời hạn.");
             } finally { pending.cancel(true); }
             if (response.statusCode() != 200) {
-                if(response.statusCode()==429 || response.statusCode()>=500)permit.failure();
+                if (routingEnabled() && (response.statusCode()==429 || response.statusCode()>=500)) {
+                    int delay = cooldownSeconds(response.headers().firstValue("Retry-After").orElse(null));
+                    recordOutcome(selection, response.statusCode()==429 ? "429" : "failure", delay);
+                } else if(response.statusCode()==429 || response.statusCode()>=500) permit.failure();
                 if(response.statusCode()==429){
                     int delay=ProviderGuard.retryAfterSeconds(response.headers().firstValue("Retry-After").orElse(null),java.time.Instant.now());
                     if(delay>0) throw new ProviderGuard.Unavailable("Gemini trả HTTP 429",delay);
@@ -166,6 +202,7 @@ public class GeminiClient {
             JsonNode result = json.reader().with(tools.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                     .readTree(content);
             if (!result.isObject()) throw new IllegalStateException("Gemini JSON object missing");
+            if (routingEnabled()) recordOutcome(selection, "success", 0);
             permit.success();
             return result;
         } catch (InterruptedException exception) {
@@ -175,5 +212,54 @@ public class GeminiClient {
             throw new Failure("INVALID_JSON","Gemini JSON không hợp lệ.");
         }
         }
+    }
+
+    private boolean routingEnabled() {
+        return !local && properties() != null && properties().quotaEnabled()
+                && !properties().enabledProviders().isEmpty() && quota != null;
+    }
+
+    private ProviderSelection selectProvider(String instruction, String input, String requestModel) {
+        if (!routingEnabled()) {
+            if (databaseEnabled() || !cloudPlatform.equals("gemini")) throw new IllegalStateException("Cloud account unavailable; no fallback");
+            return new ProviderSelection(null, requestModel, url, key);
+        }
+        var providers = properties().enabledProviders();
+        int start = Math.floorMod(nextProvider.getAndIncrement(), providers.size());
+        // Byte-based upper bound is deliberately conservative for Vietnamese input.
+        int estimatedTokens = Math.addExact(Math.addExact(instruction.getBytes(java.nio.charset.StandardCharsets.UTF_8).length,
+                input.getBytes(java.nio.charset.StandardCharsets.UTF_8).length), 2300);
+        long retryMs = Long.MAX_VALUE;
+        for (int offset = 0; offset < providers.size(); offset++) {
+            var provider = providers.get((start + offset) % providers.size());
+            String selectedModel = requestModel.replaceFirst("^models/", "");
+            if (!provider.model().equals(selectedModel)) continue;
+            var admission = quota.reserve(cloudPlatform, provider.id(), selectedModel, estimatedTokens);
+            if (admission.allowed()) return new ProviderSelection(provider.id(), selectedModel, provider.url(), provider.apiKey());
+            retryMs = Math.min(retryMs, admission.retryAfterMs());
+        }
+        int retry = retryMs == Long.MAX_VALUE ? 60 : (int)Math.min(86400, Math.max(1, (retryMs + 999) / 1000));
+        throw new ProviderGuard.Unavailable("Gemini đã hết quota tạm thời.", retry, true);
+    }
+
+    private void recordOutcome(ProviderSelection selection, String outcome, int delay) {
+        try { quota.outcome(cloudPlatform, selection.id(), selection.model(), outcome, delay); }
+        catch (RuntimeException unavailable) {
+            // Preserve the original result: a Redis outage after send is never retry-safe.
+            org.slf4j.LoggerFactory.getLogger(GeminiClient.class).warn("Gemini quota outcome persistence unavailable");
+        }
+    }
+
+    private static int cooldownSeconds(String header) {
+        try {
+            if (header != null && header.matches("[0-9]+")) return (int)Math.min(86400, Math.max(1, Long.parseLong(header)));
+            if (header != null) return (int)Math.min(86400, Math.max(1, Duration.between(java.time.Instant.now(),
+                    java.time.ZonedDateTime.parse(header, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant()).getSeconds()));
+        } catch (RuntimeException invalid) { /* Use bounded fallback. */ }
+        return 60;
+    }
+
+    private record ProviderSelection(String id, String model, String url, String apiKey) {
+        @Override public String toString() { return "ProviderSelection[id=" + id + ", model=" + model + "]"; }
     }
 }

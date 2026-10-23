@@ -2,8 +2,28 @@ package com.dictalab.service;
 
 /** Generation contracts and the offline shadow review rubric. */
 final class ConversationGenerationPrompt {
-    static final String VERSION = "CONVERSATION_GENERATION_V7_B1_EVIDENCE";
+    static final String VERSION = "CONVERSATION_GENERATION_V8_SEMANTIC_GROUNDING";
     private ConversationGenerationPrompt() {}
+
+    static final String QUALITY_RULES = """
+            SEMANTIC CONTRACT: classify the meaning actually requested, not the answer's surrounding sentence.
+            gist=overall message, reason_purpose=why/goal, condition=prerequisite or if-clause,
+            instruction_sequence=what to do/order, change_revision=explicit old-to-new revision,
+            opinion_attitude=expressed evaluation, inference_prediction=unstated conclusion from linked cues.
+            A replacement ingredient is direct_detail even when its sentence also contains an if-clause.
+            A directly stated next action is instruction_sequence or direct_detail, never inference_prediction.
+            A speaker may describe their own plan, sequence or constraint regardless of their job role.
+            A customer asking 'Should I bring a receipt?' has NOT confirmed a shop requirement.
+            Ask what the customer asks about, not what the store requires; never invent the listener's reply.
+            Preserve the same object/order/booking in turns 2/3. Do not silently replace it with another item.
+            Source wording distinguishes settled arrangements, open requests and proposals. Unknown stays unknown.
+            History fact labels are tested meanings, not proof that every proposition is a settled policy.
+            Preserve modality and uncertainty in answers and translation. 'by Friday evening' includes the
+            deadline (chậm nhất vào tối thứ Sáu); 'before' excludes it; 'until' marks continued duration.
+            'my brother/sister' gives no relative age: use anh/em trai or chị/em gái unless age is stated.
+            Short history is a warm-up, never an output length template. Draft near the supplied midpoint
+            with useful new information, then check utteranceEn words separated by ASCII whitespace.
+            """;
 
     static final String SHADOW_INSTRUCTION_ENGLISH = """
             Create ONE English listening task for offline B2/C1 evaluation, never a proficiency certification.
@@ -67,7 +87,15 @@ final class ConversationGenerationPrompt {
         for (String key : java.util.List.of("partnerRole", "learnerRole"))
             if (!result.hasNonNull(key)) result.put(key, roles.get(key));
         if (result.path("turnNumber").asInt() == 4 && result.path("history").isEmpty()
-                && result.has("previouslyTestedDetails") && result.has("weakSkills")) return result;
+                && result.has("previouslyTestedDetails") && result.has("weakSkills")) {
+            result.remove("scenarioJourney"); result.remove("sessionBlueprint"); result.remove("recentPractice");
+            for (var detail : result.path("previouslyTestedDetails")) {
+                var object = (tools.jackson.databind.node.ObjectNode) detail;
+                var value = object.path("textVi").deepCopy();
+                object.removeAll(); object.set("textVi", value);
+            }
+            addEncounterState(json, result); return result;
+        }
         var history = result.path("history");
         var used = result.putArray("previouslyTestedDetails");
         var weak = new java.util.LinkedHashSet<String>();
@@ -79,6 +107,7 @@ final class ConversationGenerationPrompt {
                 if (turn.has("questionVi")) detail.set("questionVi", turn.path("questionVi"));
                 if (fact.has("slotKind")) detail.set("slotKind", fact.path("slotKind"));
                 if (fact.has("askVi")) detail.set("askVi", fact.path("askVi"));
+                if (fact.has("taskType")) detail.set("taskType", fact.path("taskType"));
             }
             if (turn.path("evaluation").path("facts").valueStream().anyMatch(f ->
                     java.util.Set.of("MISSED", "PARTIAL", "INCORRECT", "UNCERTAIN").contains(f.path("status").asText())))
@@ -88,16 +117,43 @@ final class ConversationGenerationPrompt {
         if (result.path("turnNumber").asInt() == 4) {
             result.putArray("history");
             result.remove("scenarioJourney");
-            if (result.path("sessionBlueprint").isObject())
-                ((tools.jackson.databind.node.ObjectNode) result.path("sessionBlueprint")).remove("journey");
+            result.remove("sessionBlueprint");
+            result.remove("recentPractice");
             // Only values/skill remain; old question prose must not seed a continuation of the old story.
             for (var detail : used) {
                 ((tools.jackson.databind.node.ObjectNode) detail).remove("questionVi");
                 ((tools.jackson.databind.node.ObjectNode) detail).remove("askVi");
                 ((tools.jackson.databind.node.ObjectNode) detail).remove("slotKind");
+                ((tools.jackson.databind.node.ObjectNode) detail).remove("evidenceEn");
+                ((tools.jackson.databind.node.ObjectNode) detail).remove("taskType");
             }
         }
+        addEncounterState(json, result);
         return result;
+    }
+
+    private static void addEncounterState(tools.jackson.databind.ObjectMapper json,
+                                          tools.jackson.databind.node.ObjectNode context) {
+        var state = context.putObject("encounterState");
+        state.put("speaker", context.path("partnerRole").asText("unknown"));
+        state.put("listener", context.path("learnerRole").asText("unknown"));
+        state.putNull("currentObject");
+        state.put("informationStatus", "Read source wording: requests/proposals are not settled agreements; unknown stays unknown.");
+        state.put("encounterRule", context.path("turnNumber").asInt() == 4 ? "new" : "same");
+        var turns = state.putArray("sourceTurns");
+        if (context.path("turnNumber").asInt() == 4) return;
+        int number = 0;
+        for (var turn : context.path("history")) {
+            var source = turns.addObject(); source.put("sourceTurn", ++number);
+            source.put("speaker", turn.path("speaker").asText("unknown"));
+            source.put("utteranceEn", turn.path("utteranceEn").asText());
+            var meanings = source.putArray("testedMeanings");
+            for (var fact : turn.path("facts")) {
+                var meaning = meanings.addObject();
+                for (String key : java.util.List.of("textVi", "evidenceEn", "slotKind", "askVi", "taskType"))
+                    if (fact.has(key)) meaning.set(key, fact.path(key));
+            }
+        }
     }
 
     static String turnBrief(tools.jackson.databind.JsonNode context) {
@@ -200,7 +256,7 @@ final class ConversationGenerationPrompt {
             One fact = exactly one slot explicitly requested by questionVi, without unasked reasons,
             days, times or places. Supply every requested slot. evidenceEn is an exact utteranceEn substring.
             A reason and an action are separate slots only when BOTH are explicitly asked.
-            For B1 each fact also has taskType from allowedTaskTypes. For inference_prediction additionally
+            For EVERY level each fact also has taskType from allowedTaskTypes. For inference_prediction additionally
             supply reasoningEvidence:{segmentsEn:[exact transcript quotes],rationaleEn:brief English explanation}.
             Use 1-4 distinct segments (max 300 characters each), including evidenceEn as one segment.
             The inferred answer may be absent verbatim; all cues must be in the transcript. One segment
@@ -247,7 +303,7 @@ final class ConversationGenerationPrompt {
             purpose and requested meanings, not just wording/names/numbers. A shared skill/common word
             or incidental background alone is not duplication.
             REPAIR: validationError means repair previousInvalidPrompt under ALL rules, not a new journey.
-            """;
+            """ + QUALITY_RULES;
 
     /** English-first variant: output slots, utteranceEn, facts[{textEn,evidenceEn}], questionVi, taskVi, skill.
      *  No translationVi or textVi — a separate translation call handles those at lower temperature. */
@@ -287,7 +343,7 @@ final class ConversationGenerationPrompt {
             One fact = exactly one slot explicitly requested by questionVi, without unasked reasons,
             days, times or places. Supply every requested slot.
             A reason and an action are separate slots only when BOTH are explicitly asked.
-            For B1 each fact also has taskType from allowedTaskTypes. For inference_prediction additionally
+            For EVERY level each fact also has taskType from allowedTaskTypes. For inference_prediction additionally
             supply reasoningEvidence:{segmentsEn:[exact transcript quotes],rationaleEn:brief English explanation}.
             Use 1-4 distinct segments (max 300 characters each), including evidenceEn as one segment.
             The inferred answer may be absent verbatim; all cues must be in the transcript. One segment
@@ -334,7 +390,7 @@ final class ConversationGenerationPrompt {
             purpose and requested meanings, not just wording/names/numbers. A shared skill/common word
             or incidental background alone is not duplication.
             REPAIR: validationError means repair previousInvalidPrompt under ALL rules, not a new journey.
-            """;
+            """ + QUALITY_RULES;
 
     /** System prompt for the dedicated translation step (temperature 0.1). */
     static final String TRANSLATE = """
@@ -346,6 +402,9 @@ final class ConversationGenerationPrompt {
             Preserve every number, letter code (including case), name, direction, negation and condition.
             Exit C -> Lối ra C; stop D -> trạm D. Do not turn a request into an assertion or infer AM/PM.
             Keep code/password literals unchanged, including upper/lower case. Return only the translations.
+            Preserve modality: could/may/should are not confirmed requirements. Preserve unknown sibling age:
+            brother=anh/em trai, sister=chị/em gái unless explicitly known. By Friday evening=chậm nhất vào
+            tối thứ Sáu; before=trước; until=cho đến. Do not change inclusive deadlines into exclusive ones.
             """;
 
     static String example(String level) {
@@ -358,10 +417,10 @@ final class ConversationGenerationPrompt {
         String labels = switch (level + (turn == 4 ? "-transfer" : "-continue")) {
             case "A1-continue" -> "collection_place|Nơi lấy đất sét|cutting_tool|Dụng cụ cắt đất sét";
             case "A1-transfer" -> "apron_collection_place|Nơi lấy tạp dề|bring_item|Vật cần mang";
-            case "A2-continue" -> "packing_reason|Lý do dùng hộp|box_location|Nơi đặt hộp";
-            case "A2-transfer" -> "start_prerequisite|Việc cần làm trước khi bắt đầu|tool_provider|Người cung cấp dụng cụ";
-            case "B1-continue" -> "collection_prediction|Điều cần chờ để lấy bát|protective_container|Vật đựng bát";
-            case "B1-transfer" -> "wheel_opinion|Quan điểm về bàn xoay nhỏ|required_document|Giấy tờ cần đưa";
+            case "A2-continue" -> "packing_reason|Lý do dùng hộp|box_location|Nơi đặt hộp|packing_helper|Người giúp đóng gói";
+            case "A2-transfer" -> "start_prerequisite|Việc cần làm trước khi bắt đầu|tool_provider|Người cung cấp dụng cụ|bag_storage|Nơi để túi";
+            case "B1-continue" -> "collection_prediction|Điều cần chờ để lấy bát|protective_container|Vật đựng bát|collection_contact|Người cần hỏi khi quay lại";
+            case "B1-transfer" -> "wheel_opinion|Quan điểm về bàn xoay nhỏ|required_document|Giấy tờ cần đưa|coat_storage|Nơi để áo khoác";
             default -> throw new IllegalArgumentException("Unsupported conversation level");
         };
         var result = json.createObjectNode(); var slots = result.putArray("slots");
@@ -386,8 +445,8 @@ final class ConversationGenerationPrompt {
         for (var fact : result.path("facts")) {
             var entry = (tools.jackson.databind.node.ObjectNode) fact;
             String answer = level.equals("B1")
-                    ? (turn == 4 ? java.util.List.of("A positive opinion of the smaller wheel", "Your booking receipt")
-                                  : java.util.List.of("Wait until the kiln has cooled before collecting the bowl", "A padded bag")).get(i)
+                    ? (turn == 4 ? java.util.List.of("A positive opinion of the smaller wheel", "Your booking receipt", "The cupboard beside the entrance")
+                                  : java.util.List.of("Wait until the kiln has cooled before collecting the bowl", "A padded bag", "The assistant at reception")).get(i)
                     : fact.path("evidenceEn").asText();
             entry.remove("textVi"); entry.put("textEn", answer); i++;
         }
@@ -400,22 +459,24 @@ final class ConversationGenerationPrompt {
                     {"taskVi":"Nghe hướng dẫn chuẩn bị cho lớp mới.","questionVi":"Bạn lấy tạp dề ở đâu và cần mang gì?",
                     "utteranceEn":"At the weekend pottery workshop, collect your apron by the back door. Please bring a small towel with you.",
                     "translationVi":"Tại lớp làm gốm cuối tuần, lấy tạp dề cạnh cửa sau. Xin mang theo một khăn nhỏ.","skill":"Nắm thông tin cụ thể",
-                    "facts":[{"id":"f1","textVi":"Cạnh cửa sau","evidenceEn":"by the back door"},
-                    {"id":"f2","textVi":"Một khăn nhỏ","evidenceEn":"a small towel"}]}
+                    "facts":[{"id":"f1","textVi":"Cạnh cửa sau","evidenceEn":"by the back door","taskType":"direct_detail"},
+                    {"id":"f2","textVi":"Một khăn nhỏ","evidenceEn":"a small towel","taskType":"direct_detail"}]}
                     """;
             case "A2" -> """
-                    {"taskVi":"Nghe điều kiện và dụng cụ cho lớp mới.","questionVi":"Bạn cần làm gì trước khi bắt đầu và lấy dụng cụ từ ai?",
-                    "utteranceEn":"For your first class at our other pottery studio, please wash your hands before you start. Collect your tools from the technician when you arrive at the studio.",
-                    "translationVi":"Ở buổi học đầu tiên tại xưởng gốm khác của chúng tôi, xin rửa tay trước khi bắt đầu. Lấy dụng cụ từ kỹ thuật viên khi bạn đến xưởng.","skill":"Hiểu điều kiện",
-                    "facts":[{"id":"f1","textVi":"Rửa tay","evidenceEn":"wash your hands"},
-                    {"id":"f2","textVi":"Kỹ thuật viên","evidenceEn":"the technician"}]}
+                    {"taskVi":"Nghe hướng dẫn chuẩn bị cho lớp mới.","questionVi":"Trước khi bắt đầu cần làm gì, lấy dụng cụ từ ai và để túi ở đâu?",
+                    "utteranceEn":"At our other pottery studio, wash your hands before you start. Collect your tools from the technician when you arrive. Please leave your bag on the shelf near the entrance.",
+                    "translationVi":"Tại xưởng gốm khác của chúng tôi, hãy rửa tay trước khi bắt đầu. Lấy dụng cụ từ kỹ thuật viên khi đến. Xin để túi trên kệ gần lối vào.","skill":"Theo dõi hướng dẫn",
+                    "facts":[{"id":"f1","textVi":"Rửa tay","evidenceEn":"wash your hands","taskType":"instruction_sequence"},
+                    {"id":"f2","textVi":"Kỹ thuật viên","evidenceEn":"the technician","taskType":"direct_detail"},
+                    {"id":"f3","textVi":"Trên kệ gần lối vào","evidenceEn":"on the shelf near the entrance","taskType":"direct_detail"}]}
                     """;
             case "B1" -> """
-                    {"taskVi":"Nghe nhận xét và hướng dẫn tại lớp mới.","questionVi":"Người hướng dẫn nghĩ gì về bàn xoay nhỏ và bạn cần đưa giấy tờ gì?",
-                    "utteranceEn":"At our new pottery studio, I tried the smaller wheel yesterday. It was easier to control, and I enjoyed working with it. Before today's class begins, please show your booking receipt so we can confirm your place.",
-                    "translationVi":"Tại xưởng gốm mới của chúng tôi, hôm qua tôi đã thử bàn xoay nhỏ hơn. Nó dễ điều khiển hơn và tôi thích sử dụng nó. Trước khi lớp hôm nay bắt đầu, xin đưa biên nhận đặt chỗ để chúng tôi xác nhận chỗ của bạn.","skill":"Hiểu thái độ và quan điểm",
+                    {"taskVi":"Nghe nhận xét và hướng dẫn tại lớp mới.","questionVi":"Người hướng dẫn nghĩ gì về bàn xoay nhỏ, bạn cần đưa giấy tờ gì và để áo khoác ở đâu?",
+                    "utteranceEn":"At our new pottery studio, I tried the smaller wheel yesterday. It was easier to control, and I enjoyed working with it. Before today's class begins, please show your booking receipt so we can confirm your place. Leave your coat in the cupboard beside the entrance while you work.",
+                    "translationVi":"Tại xưởng gốm mới của chúng tôi, hôm qua tôi đã thử bàn xoay nhỏ hơn. Nó dễ điều khiển hơn và tôi thích sử dụng nó. Trước khi lớp hôm nay bắt đầu, xin đưa biên nhận đặt chỗ để chúng tôi xác nhận chỗ của bạn. Để áo khoác trong tủ cạnh lối vào trong khi làm.","skill":"Hiểu thái độ và quan điểm",
                     "facts":[{"id":"f1","textVi":"Đánh giá tích cực về bàn xoay nhỏ","evidenceEn":"It was easier to control, and I enjoyed working with it.","taskType":"opinion_attitude"},
-                    {"id":"f2","textVi":"Biên nhận đặt chỗ","evidenceEn":"your booking receipt","taskType":"direct_detail"}]}
+                    {"id":"f2","textVi":"Biên nhận đặt chỗ","evidenceEn":"your booking receipt","taskType":"direct_detail"},
+                    {"id":"f3","textVi":"Trong tủ cạnh lối vào","evidenceEn":"the cupboard beside the entrance","taskType":"direct_detail"}]}
                     """;
             default -> throw new IllegalArgumentException("Unsupported conversation level");
         };
@@ -424,24 +485,26 @@ final class ConversationGenerationPrompt {
                     {"taskVi":"Nghe thông tin nhận dụng cụ.","questionVi":"Bạn lấy đất sét ở đâu và dùng dụng cụ gì?",
                     "utteranceEn":"Please collect your clay at the window counter. Use a wooden knife to cut it into small pieces.",
                     "translationVi":"Xin lấy đất sét tại quầy cạnh cửa sổ. Dùng dao gỗ để cắt đất sét thành các miếng nhỏ.","skill":"Nắm thông tin cụ thể",
-                    "facts":[{"id":"f1","textVi":"Quầy cạnh cửa sổ","evidenceEn":"the window counter"},
-                    {"id":"f2","textVi":"Dao gỗ","evidenceEn":"a wooden knife"}]}
+                    "facts":[{"id":"f1","textVi":"Quầy cạnh cửa sổ","evidenceEn":"the window counter","taskType":"direct_detail"},
+                    {"id":"f2","textVi":"Dao gỗ","evidenceEn":"a wooden knife","taskType":"direct_detail"}]}
                     """;
             case "A2" -> """
-                    {"taskVi":"Nghe lý do và cách bảo quản sản phẩm.","questionVi":"Vì sao cần dùng hộp và hộp được đặt ở đâu?",
+                    {"taskVi":"Nghe lý do và cách bảo quản sản phẩm.","questionVi":"Vì sao cần dùng hộp, hộp được đặt ở đâu và ai có thể giúp đóng gói?",
                     "utteranceEn":"Please use a box because the clay is still soft. The empty boxes are under the equipment table. Our assistant can help you pack your work before you leave.",
                     "translationVi":"Xin dùng hộp vì đất sét vẫn còn mềm. Các hộp rỗng nằm dưới bàn dụng cụ. Trợ lý của chúng tôi có thể giúp bạn đóng gói sản phẩm trước khi rời đi.","skill":"Hiểu lý do và mục đích",
-                    "facts":[{"id":"f1","textVi":"Đất sét vẫn còn mềm","evidenceEn":"the clay is still soft"},
-                    {"id":"f2","textVi":"Dưới bàn dụng cụ","evidenceEn":"under the equipment table"}]}
+                    "facts":[{"id":"f1","textVi":"Đất sét vẫn còn mềm","evidenceEn":"the clay is still soft","taskType":"reason_purpose"},
+                    {"id":"f2","textVi":"Dưới bàn dụng cụ","evidenceEn":"under the equipment table","taskType":"direct_detail"},
+                    {"id":"f3","textVi":"Trợ lý của chúng tôi","evidenceEn":"Our assistant","taskType":"direct_detail"}]}
                     """;
             case "B1" -> """
-                    {"taskVi":"Nghe thông tin và suy ra việc nhận sản phẩm.","questionVi":"Bạn cần chờ điều gì để lấy bát và mang vật gì để đựng bát?",
-                    "utteranceEn":"The kiln is still hot, and your bowl is inside it. We only open the kiln once it has cooled. Our technician checks it after lunch. Please bring a padded bag when you return to protect your bowl.",
-                    "translationVi":"Lò vẫn còn nóng và bát của bạn đang ở trong đó. Chúng tôi chỉ mở lò khi nó đã nguội. Kỹ thuật viên của chúng tôi kiểm tra lò sau bữa trưa. Khi quay lại, xin mang túi có lớp đệm để bảo vệ bát.","skill":"Suy luận và dự đoán có căn cứ",
+                    {"taskVi":"Nghe thông tin và suy ra việc nhận sản phẩm.","questionVi":"Bạn cần chờ điều gì để lấy bát, mang vật gì để đựng bát và hỏi ai khi quay lại?",
+                    "utteranceEn":"The kiln is still hot, and your bowl is inside it. We only open the kiln once it has cooled. Our technician checks it after lunch. Please bring a padded bag when you return to protect your bowl. Ask the assistant at reception when you come back for collection.",
+                    "translationVi":"Lò vẫn còn nóng và bát của bạn đang ở trong đó. Chúng tôi chỉ mở lò khi nó đã nguội. Kỹ thuật viên của chúng tôi kiểm tra lò sau bữa trưa. Khi quay lại, xin mang túi có lớp đệm để bảo vệ bát. Hỏi trợ lý ở quầy lễ tân khi bạn quay lại lấy bát.","skill":"Suy luận và dự đoán có căn cứ",
                     "facts":[{"id":"f1","textVi":"Chờ lò nguội rồi mới lấy bát","evidenceEn":"The kiln is still hot, and your bowl is inside it.","taskType":"inference_prediction",
                       "reasoningEvidence":{"segmentsEn":["The kiln is still hot, and your bowl is inside it.","We only open the kiln once it has cooled."],
                         "rationaleEn":"The bowl is inside a hot kiln that cannot be opened until it cools, so collection must wait."}},
-                    {"id":"f2","textVi":"Túi có lớp đệm","evidenceEn":"a padded bag","taskType":"direct_detail"}]}
+                    {"id":"f2","textVi":"Túi có lớp đệm","evidenceEn":"a padded bag","taskType":"direct_detail"},
+                    {"id":"f3","textVi":"Trợ lý ở quầy lễ tân","evidenceEn":"the assistant at reception","taskType":"direct_detail"}]}
                     """;
             default -> throw new IllegalArgumentException("Unsupported conversation level");
         };

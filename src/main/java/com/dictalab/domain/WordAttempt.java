@@ -151,7 +151,7 @@ public class WordAttempt {
     }
 
     public boolean markFirstLetterHint() {
-        if (firstLetterHint) {
+        if (firstLetterHint || finalCorrect || revealed) {
             return false;
         }
         firstLetterHint = true;

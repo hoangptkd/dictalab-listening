@@ -4,9 +4,9 @@
 
 Mục tiêu là huấn luyện một adapter LoRA bằng Supervised Fine-Tuning để model tạo task Conversation đúng ngay ở lần đầu: đúng vai giao tiếp, đúng số lượng fact/slot, đúng giới hạn từ, đúng loại năng lực CEFR, grounding chính xác và không tự thêm thông tin trong bản dịch.
 
-Kế hoạch này dùng Qwen3.5-9B làm base model, dữ liệu hội thoại có cấu trúc của dự án và pipeline SFT của Hugging Face TRL + PEFT. Adapter được đánh giá độc lập, sau đó merge vào checkpoint và đóng gói thành model Ollama có tên, digest, artifact và rollback riêng.
+Kế hoạch này dùng Qwen3.5-4B làm base model theo yêu cầu cập nhật ngày 2026-10-22, dữ liệu hội thoại có cấu trúc của dự án và pipeline SFT của Hugging Face TRL + PEFT. Adapter được đánh giá độc lập, sau đó merge vào checkpoint và đóng gói thành model Ollama có tên, digest, artifact và rollback riêng.
 
-Qwen3.5-9B trên Hugging Face là checkpoint Transformers dạng safetensors. Model card mô tả model có 9B tham số và kiến trúc hybrid, đồng thời cung cấp đường chạy text-only riêng. Training phải dùng checkpoint Transformers tương ứng, không dùng trực tiếp model GGUF đang chạy trong Ollama. Nguồn: https://huggingface.co/Qwen/Qwen3.5-9B và https://huggingface.co/docs/transformers/en/model_doc/qwen3_5.
+Qwen3.5-4B trên Hugging Face là checkpoint Transformers dạng safetensors, có backbone text và vision encoder. Training dùng class text-only và checkpoint Transformers tương ứng, không dùng trực tiếp model GGUF đang chạy trong Ollama. Revision đang pin: `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`. Nguồn: https://huggingface.co/Qwen/Qwen3.5-4B và https://huggingface.co/docs/transformers/en/model_doc/qwen3_5.
 
 ## 1. Phạm vi và nguyên tắc bất biến
 
@@ -42,15 +42,15 @@ Qwen3.5-9B trên Hugging Face là checkpoint Transformers dạng safetensors. Mo
 - Bundle hiện tại là immutable registry; production yêu cầu model digest, artifact SHA và evaluation gate.
 - Dataset distillation cũ có 324 mẫu provisional (train=267, validation=15, test=42) và hàng đợi human review 65 mẫu. trainingReady=false; đây là dữ liệu nghiên cứu, chưa được dùng thẳng làm target.
 - Benchmark đã phát hiện role inversion, lỗi độ dài, answer leak, AM/PM invention và B1 inference giả. Các lỗi này phải trở thành nhãn loại trừ/ca adversarial, không được lặp lại trong target.
-- Máy phát triển hiện dùng CPU AMD và integrated GPU rất nhỏ; không lập kế hoạch train QLoRA 9B trên máy local. Cần GPU remote/cloud hoặc workstation có VRAM phù hợp. Máy local chỉ dùng chuẩn bị dữ liệu, chạy test và benchmark Ollama sau khi export.
+- Máy hiện tại: Ryzen 7 PRO 6850HS, RAM 31,3 GiB, Radeon integrated và không có CUDA. Cấu hình P0 đổi sang CPU LoRA float32 cho 4B. Inspection đếm 4.205.751.296 tham số text; riêng base cần khoảng 15,7 GiB. Runner yêu cầu thêm 8 GiB workspace ước tính, tổng khoảng 23,7 GiB RAM trống trước khi load. Máy đang còn khoảng 14,7 GiB nên chưa qua cổng RAM. Ngưỡng này chưa bảo đảm đủ bộ nhớ ở 4.096 token; phải đo bằng pretrained smoke sau khi đủ RAM và có dataset được duyệt. CPU train sẽ chậm, chưa có đo tốc độ thực tế.
 
 ## 3. Kiến trúc model và quyết định LoRA
 
 ### Lựa chọn ban đầu
 
-- Base: Qwen/Qwen3.5-9B text-only model class tương ứng với phiên bản Transformers hỗ trợ Qwen3.5.
+- Base: Qwen/Qwen3.5-4B, class `Qwen3_5ForCausalLM`, revision cố định như trên.
 - Objective: causal language modeling, SFT trên conversational prompt/completion.
-- Adapter: LoRA; nếu GPU hạn chế thì QLoRA 4-bit NF4 + compute bfloat16.
+- Adapter mặc định trên máy hiện tại: LoRA float32, CPU, batch 1, gradient accumulation 8, gradient checkpointing bật; giữ max_seq_length=4096 và cấm truncation. Nếu chuyển sang GPU, tạo lock/config CUDA riêng; QLoRA 4-bit NF4 chỉ dùng qua đường CUDA đã kiểm tra khả năng dtype. Không dùng QLoRA CPU hoặc tự chuyển dtype để né lỗi RAM.
 - Thinking: tắt khi serving và khi tạo dữ liệu; không đưa reasoning ẩn vào completion.
 - Adapter đầu tiên là một multi-task adapter dùng cho content và translation nhưng giữ nguyên system/user message production. Không tách hai model ở vòng đầu để tránh thay đổi routing Java/Python. Nếu adapter chung làm giảm translation hoặc content, vòng sau tách thành content và translation adapter/model riêng.
 
@@ -60,7 +60,7 @@ PEFT cho phép train adapter trên model 4-bit; QLoRA giảm memory nhưng khôn
 
 ### Target module policy
 
-1. Load checkpoint trên GPU training.
+1. Inspect config/tokenizer trên meta device trước, sau đó load checkpoint trên thiết bị training đã qua preflight RAM/CUDA.
 2. In toàn bộ module Linear và tên parameter trainable.
 3. Chọn các projection có mặt thực tế: ưu tiên q_proj, k_proj, v_proj, o_proj; nếu architecture hybrid dùng tên khác thì lập mapping từ module inspection.
 4. Không đưa vision encoder vào adapter của text-only task.
@@ -168,29 +168,29 @@ Tạo thư mục riêng training/ và lock dependency. Không trộn dependency 
 Dependency tối thiểu cần pin:
 
 - Python 3.11 hoặc 3.12.
-- PyTorch bản phù hợp CUDA của máy train.
+- PyTorch CPU đã pin trong `training/requirements-cpu.lock` cho máy hiện tại; nếu dùng CUDA phải có lock tương ứng riêng.
 - transformers phiên bản có Qwen3.5 text-only support.
 - trl, peft, accelerate, datasets, safetensors.
 - bitsandbytes chỉ khi dùng QLoRA và GPU hỗ trợ.
 - sentencepiece/tokenizer dependency theo checkpoint.
 
-Trước khi train, ghi pip freeze, CUDA version, GPU name/VRAM, git HEAD, checkpoint revision/hash và lock hash vào manifest. Không tự động cài dependency vào môi trường production.
+Trước khi train, ghi lock dependency, device/dtype, ước tính RAM CPU hoặc CUDA version/GPU name/VRAM, git HEAD và checkpoint revision/hash vào manifest. Không tự động cài dependency vào môi trường production.
 
 ### Preflight bắt buộc
 
 - Download checkpoint từ revision cố định; kiểm tra đủ file và dung lượng.
-- Load tokenizer/model ở device_map=auto.
+- Load tokenizer/model trên thiết bị đã cấu hình rõ (`cpu` hiện tại); không tự offload sang thiết bị khác.
 - Render 3 message mẫu bằng chat template.
 - Chạy one-example forward/backward.
 - Chạy PEFT module inspection.
-- Kiểm tra assistant_only_loss tạo mask khác -100 ở assistant tokens và mask toàn bộ system/user.
-- Nếu chat template không hỗ trợ generation markers, chuyển sang prompt-completion dataset với completion_only_loss=true; không âm thầm train full sequence.
+- Kiểm tra nhãn đã token hóa chỉ giám sát assistant output cuối và terminator; toàn bộ system/user và padding là -100. TRL nhận nhãn đã kiểm tra, tắt automatic assistant/completion mask để tránh tạo mask lần hai.
+- Nếu prefix/token boundary của chat template không rõ hoặc có hidden reasoning chèn thêm, dừng; không đoán mask, không train full sequence và không truncation.
 
 ## 7. Cấu hình pilot SFT/QLoRA
 
 ### Cấu hình P0 đề xuất
 
-- Quantization: 4-bit NF4, double quantization, compute dtype bfloat16 nếu GPU hỗ trợ; nếu không, fp16 có loss scaling.
+- Cấu hình đang dùng trên máy hiện tại: CPU LoRA float32, không quantize trọng số. QLoRA 4-bit NF4/double quantization/bfloat16 hoặc fp16 chỉ thuộc cấu hình CUDA riêng ở vòng sau.
 - LoRA rank r=16, alpha=32, dropout 0.05, bias=none.
 - Learning rate 1e-4 cho adapter; warmup ratio 0.05; cosine scheduler.
 - Epochs 2; max_steps chỉ dùng cho smoke test.

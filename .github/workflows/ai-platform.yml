@@ -7,13 +7,25 @@ on:
     branches: ['codex/**']
     paths:
       - 'services/ai-generation/**'
+      - 'training/generate_teacher_data.py'
+      - 'training/benchmark_teacher.py'
+      - 'training/semantic_rubric.py'
+      - 'training/freeze_candidate.py'
+      - 'training/prepare_dataset.py'
+      - 'training/tests/test_generate_teacher_data.py'
+      - 'training/tests/test_benchmark_teacher.py'
+      - 'training/tests/test_prepare_dataset.py'
+      - 'training/requirements-prepare.lock'
       - 'tools/ai-eval/**'
       - 'artifacts/prompts/**'
       - 'artifacts/reports/ai-platform-*.json'
       - 'src/**'
       - 'compose.yaml'
+      - '.dockerignore'
+      - 'pom.xml'
       - 'ops/observability/**'
       - 'scripts/run-local.ps1'
+      - 'scripts/test-run-local-env.ps1'
       - '.env*.example'
       - '.github/workflows/ai-platform.yml'
 
@@ -25,6 +37,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
+      redis:
+        image: redis:8.10.2-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 3s --health-timeout 3s --health-retries 20
       rabbitmq:
         image: rabbitmq:4.3.6-alpine
         ports: ['5672:5672']
@@ -42,11 +60,15 @@ jobs:
           java-version: '17'
           cache: maven
       - name: Install pinned Python runtime and test tools
-        run: python -m pip install -r services/ai-generation/requirements.lock pytest==8.4.2 pytest-asyncio==0.26.0
+        run: python -m pip install -r services/ai-generation/requirements.lock -r training/requirements-prepare.lock pytest==8.4.2 pytest-asyncio==0.26.0
       - name: Python contracts, registry, readiness, regression and golden metrics
-        run: python -m pytest -q services/ai-generation/tests tools/ai-eval
+        env:
+          TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
+        run: python -m pytest -q services/ai-generation/tests tools/ai-eval training/tests/test_generate_teacher_data.py training/tests/test_benchmark_teacher.py training/tests/test_prepare_dataset.py
       - name: Java routing and contract tests
-        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,ListeningComprehensionIntegrationTest test
+        env:
+          TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
+        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,AiProviderRegistryTest,ListeningComprehensionIntegrationTest test
       - name: Java to Python to fake Ollama smoke
         run: python tools/ai-eval/smoke.py
       - name: Java API RabbitMQ worker smoke, local/cloud routing and capacity sweep
@@ -70,6 +92,9 @@ jobs:
         run: |
           python tools/ai-eval/check_encoding.py
           git diff --check
+      - name: Local dotenv quoting contract
+        shell: pwsh
+        run: ./scripts/test-run-local-env.ps1
       - uses: actions/upload-artifact@v4
         if: always()
         with:

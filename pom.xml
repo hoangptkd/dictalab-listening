@@ -139,6 +139,13 @@
 
     <build>
         <directory>${dictalab.build.directory}</directory>
+        <resources>
+            <resource><directory>src/main/resources</directory></resource>
+            <resource>
+                <directory>services/ai-generation/app</directory>
+                <includes><include>gemini_quota.lua</include></includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -252,6 +259,7 @@
                                 <include>**/AiUsageBudgetIntegrationTest.java</include>
                                 <include>**/BackendReadIntegrationTest.java</include>
                                 <include>**/PracticeWordCheckIntegrationTest.java</include>
+                                <include>**/PracticeSyncIntegrationTest.java</include>
                                 <include>**/CapacityReadPathIntegrationTest.java</include>
                                 <include>**/QueryOptimizationIntegrationTest.java</include>
                                 <include>**/AuthTransactionIntegrationTest.java</include>

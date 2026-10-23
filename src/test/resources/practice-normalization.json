@@ -1,0 +1,12 @@
+[
+  {"answer":"\u0000 MILK\t","normalized":"milk","supported":true},
+  {"answer":"\u00a0MILK\u00a0","normalized":" milk ","supported":true},
+  {"answer":"DON’T","normalized":"don't","supported":true},
+  {"answer":"ＭＩＬＫ","normalized":"milk","supported":true},
+  {"answer":"KELVIN","normalized":"kelvin","supported":true},
+  {"answer":"oﬃce","normalized":"office","supported":true},
+  {"answer":"café","normalized":"café","supported":false},
+  {"answer":"İ","normalized":"i̇","supported":false},
+  {"answer":"Σ","normalized":"σ","supported":false},
+  {"answer":"a\u0001b","normalized":"a\u0001b","supported":false}
+]

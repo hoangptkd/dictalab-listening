@@ -1,6 +1,7 @@
 package com.dictalab.service;
 
 import com.dictalab.config.ConversationProperties;
+import com.dictalab.config.GeminiProviderProperties;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -111,6 +112,30 @@ class GeminiClientTest {
         assertThat(received.get()).isNull();
     }
 
+    @Test void databaseDeepseekUsesOnlyItsOwnAccountAndNeverFallsBack() {
+        var provider = new GeminiProviderProperties.Provider("ds1","ds-account","fake-deepseek","deepseek-flash",
+            "http://127.0.0.1:"+server.getAddress().getPort()+"/v1/chat/completions",1,0,100,1,true,0);
+        var props = new GeminiProviderProperties(List.of(provider),1,100,true,"memory");
+        var registry = org.mockito.Mockito.mock(AiProviderRegistry.class);
+        org.mockito.BDDMockito.given(registry.databaseEnabled()).willReturn(true);
+        org.mockito.BDDMockito.given(registry.properties("deepseek")).willReturn(props);
+        org.mockito.BDDMockito.given(registry.model("deepseek")).willReturn("deepseek-flash");
+        var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        var quota = new GeminiQuotaCoordinator(props,metrics,null,java.time.Clock.systemUTC());
+        quota.configureRegistry(registry);
+        var routed = new GeminiClient(json,"must-not-fallback","gemini-3.5-flash-lite","http://127.0.0.1:1/wrong",8,
+            metrics,io.micrometer.observation.ObservationRegistry.NOOP,5,30,props,quota);
+        routed.configureRegistry(registry);
+        routed.configureLocal("deepseek","http://127.0.0.1:11434","qwen3.5:9b");
+        assertThat(routed.completeJson("Instruction","Context").path("ok").asBoolean()).isTrue();
+        assertThat(authorization.get()).isEqualTo("Bearer fake-deepseek");
+        assertThat(received.get().path("model").asText()).isEqualTo("deepseek-flash");
+        assertThat(received.get().path("thinking").path("type").asText()).isEqualTo("disabled");
+        assertThat(received.get().path("response_format").path("type").asText()).isEqualTo("json_object");
+        assertThatThrownBy(()->routed.completeJson("Instruction","Context")).isInstanceOf(ProviderGuard.Unavailable.class);
+        assertThat(requests.get()).isEqualTo(1);
+    }
+
     @Test void truncatedAndMalformedOutputAreTypedFailuresWithoutRetry() {
         finishReason.set("length");
         assertThatThrownBy(()->client.completeJson("synthetic","synthetic"))
@@ -195,5 +220,48 @@ class GeminiClientTest {
             assertThat(requests.get()).isEqualTo(1);
         } finally { stalled.countDown(); }
         assertThat(client.completeJson("synthetic", "synthetic", "fixture", java.time.Duration.ofSeconds(2)).path("ok").asBoolean()).isTrue();
+    }
+
+    @Test
+    void enabledProviderPoolRotatesBeforeSendingAndUsesProviderModelAndKey() {
+        var properties = new GeminiProviderProperties(List.of(
+                new GeminiProviderProperties.Provider("a", "project-a", "key-a", "legacy-model",
+                        "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions", 2, 0, 0, 2, true, 0),
+                new GeminiProviderProperties.Provider("b", "project-b", "key-b", "legacy-model",
+                        "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions", 2, 0, 0, 2, true, 1)),
+                4, 0, true, "memory");
+        var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        {
+            var quota = new GeminiQuotaCoordinator(properties, metrics, null, java.time.Clock.systemUTC());
+            var pooled = new GeminiClient(json, "legacy-key", "legacy-model",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions", 8, metrics,
+                    io.micrometer.observation.ObservationRegistry.NOOP, 5, 30, properties, quota);
+
+            pooled.completeJson("Instruction", "Context");
+            assertThat(received.get().path("model").asText()).isEqualTo("legacy-model");
+            assertThat(authorization.get()).isEqualTo("Bearer key-a");
+            pooled.completeJson("Instruction", "Context");
+            assertThat(received.get().path("model").asText()).isEqualTo("legacy-model");
+            assertThat(authorization.get()).isEqualTo("Bearer key-b");
+        }
+    }
+
+    @Test
+    void exhaustedProviderPoolRejectsBeforeSending() {
+        var properties = new GeminiProviderProperties(List.of(
+                new GeminiProviderProperties.Provider("a", "project-a", "key-a", "legacy-model",
+                        "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions", 1, 0, 0, 1, true, 0)),
+                1, 0, true, "memory");
+        var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        var quota = new GeminiQuotaCoordinator(properties, metrics, null, java.time.Clock.systemUTC());
+        var pooled = new GeminiClient(json, "legacy-key", "legacy-model",
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions", 8, metrics,
+                io.micrometer.observation.ObservationRegistry.NOOP, 5, 30, properties, quota);
+
+        pooled.completeJson("Instruction", "Context");
+        assertThatThrownBy(() -> pooled.completeJson("Instruction", "Context"))
+                .isInstanceOfSatisfying(ProviderGuard.Unavailable.class,
+                        error -> assertThat(error.retrySafe()).isTrue());
+        assertThat(requests.get()).isEqualTo(1);
     }
 }

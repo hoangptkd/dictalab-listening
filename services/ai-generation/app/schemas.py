@@ -28,6 +28,7 @@ class ConversationContext(BaseModel):
     variationSeed: int | None = None
     previouslyTestedDetails: list[dict[str, Any]] | None = None
     weakSkills: list[str] | None = None
+    encounterState: dict[str, Any] | None = None
     validationError: str | None = Field(default=None, max_length=4000)
     previousInvalidPrompt: dict[str, Any] | None = None
 

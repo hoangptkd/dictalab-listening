@@ -59,7 +59,7 @@ public class AiUsageBudget {
             if (premium != null && userId != null) premium.takeAi(userId,tts);
             Boolean accepting=db.queryForObject("SELECT enabled FROM ai_budget_control WHERE id=1 FOR UPDATE",Boolean.class);
             if (!Boolean.TRUE.equals(accepting)) throw rejected("AI đang tạm dừng. Bài làm của bạn vẫn được lưu.");
-            if (!enabled && !local) return; // Local always retains resource call limits, even without dollar accounting.
+            if (!enabled) return;
             Date day=Date.valueOf(LocalDate.now(ZoneOffset.UTC));
             long amount=local ? 0 : tts?ttsReservation:llmReservation;
             add(day,local ? "LOCAL_GLOBAL" : "GLOBAL",amount,globalLimit,globalCalls);

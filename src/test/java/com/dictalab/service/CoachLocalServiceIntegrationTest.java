@@ -12,7 +12,8 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.BDDMockito.*;
 
-@SpringBootTest(properties = {"dictalab.coach.enabled=true", "dictalab.coach.provider=ollama"})
+@SpringBootTest(properties = {"dictalab.coach.enabled=true", "dictalab.coach.provider=ollama",
+        "dictalab.ai.budget.enabled=true"})
 class CoachLocalServiceIntegrationTest {
     @Autowired CoachService coach;
     @Autowired JdbcTemplate db;

@@ -5,6 +5,7 @@
 !services/ai-generation/app/
 !services/ai-generation/app/**/*.py
 !services/ai-generation/app/*.py
+!services/ai-generation/app/*.lua
 !artifacts/
 !artifacts/prompts/
 !artifacts/prompts/*.json

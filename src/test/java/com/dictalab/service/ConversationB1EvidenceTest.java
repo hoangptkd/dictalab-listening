@@ -126,21 +126,24 @@ class ConversationB1EvidenceTest {
     @Test void registeredCefrCandidateMatchesTheJavaGenerationContract() throws Exception {
         var profiles = new LinkedHashMap<String, Object>();
         var examples = new ArrayList<Object>();
+        var schemas = new LinkedHashMap<String, Object>();
         for (String level : ConversationLevelProfile.SUPPORTED_LEVELS) {
             var profile = ConversationLevelProfile.require(level);
             profiles.put(level, Map.of("wordBounds", profile.wordBounds(), "minSlots", profile.minSlots(),
                     "maxSlots", profile.maxSlots(), "taskTypes", profile.taskTypes(), "skills", profile.skills()));
+            schemas.put(level, ConversationLocalClient.schemaEnglish(level));
             for (int turn : List.of(2, 4)) examples.add(Map.of("input", ConversationGenerationPrompt.exampleInput(level, turn),
                     "output", json.readTree(ConversationGenerationPrompt.wireExampleEnglish(level, turn))));
         }
         var contract = Map.of("instruction", ConversationGenerationPrompt.INSTRUCTION_ENGLISH,
                 "contentSchema", ConversationLocalClient.schemaEnglish("B1"), "translationSchema", json.readTree(ConversationLocalClient.SCHEMA_TRANSLATE),
+                "contentSchemas", schemas, "translationSystem", ConversationGenerationPrompt.TRANSLATE,
                 "fewShotExamples", examples, "levelProfiles", profiles);
         if (Boolean.getBoolean("conversation.cefrExport")) {
             Files.createDirectories(Path.of("target"));
             Files.writeString(Path.of("target/conversation-cefr-java-contract.json"), json.writeValueAsString(contract), StandardCharsets.UTF_8);
         } else {
-            var artifact = json.readTree(Files.readString(Path.of("artifacts/prompts/conversation-cefr-b1-v7-20261021.json"), StandardCharsets.UTF_8));
+            var artifact = json.readTree(Files.readString(Path.of("artifacts/prompts/conversation-cefr-v8-20261022.json"), StandardCharsets.UTF_8));
             for (var key : contract.keySet()) assertEquals(json.valueToTree(contract.get(key)), artifact.path(key), key);
         }
     }

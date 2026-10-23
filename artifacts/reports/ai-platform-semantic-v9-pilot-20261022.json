@@ -1,0 +1,160 @@
+{
+  "arms": [
+    {
+      "artifact": "conversation-cefr-v8-20261022",
+      "planned": 6,
+      "attempted": 6,
+      "http200": 6,
+      "hardPass": 6,
+      "semanticPass": 2,
+      "semanticDecisions": {
+        "PASS": 2,
+        "FAIL": 4
+      },
+      "semanticPassByLevel": {
+        "A1": 1,
+        "A2": 1,
+        "B1": 0
+      },
+      "criticalFailures": 0,
+      "developmentGatePassed": false,
+      "usage": {
+        "prompt_tokens": 33476,
+        "completion_tokens": 2601,
+        "total_tokens": 36077
+      },
+      "wordRange": [
+        17,
+        76
+      ]
+    },
+    {
+      "artifact": "conversation-cefr-v9-20261022",
+      "planned": 6,
+      "attempted": 6,
+      "http200": 6,
+      "hardPass": 6,
+      "semanticPass": 3,
+      "semanticDecisions": {
+        "PASS": 3,
+        "FAIL": 2,
+        "REVIEW_REQUIRED": 1
+      },
+      "semanticPassByLevel": {
+        "A1": 2,
+        "A2": 1,
+        "B1": 0
+      },
+      "criticalFailures": 1,
+      "developmentGatePassed": false,
+      "usage": {
+        "prompt_tokens": 27080,
+        "completion_tokens": 2313,
+        "total_tokens": 29393
+      },
+      "wordRange": [
+        20,
+        56
+      ]
+    }
+  ],
+  "chains": [],
+  "chainGroupsPassed": 0,
+  "calls": 12,
+  "httpCap": 12,
+  "pilotOnly": true,
+  "candidateGatePassed": false,
+  "trainingReady": false,
+  "automaticJudgeEnabled": false,
+  "pendingTrainingGates": [
+    "dataset count/coverage/splits",
+    "RAM/hardware preflight",
+    "checkpoint/loss-mask preflight"
+  ],
+  "retainedChainTasks": 0,
+  "reviewer": "AI:Codex",
+  "humanApproved": false,
+  "httpStatusCounts": {
+    "200": 12
+  },
+  "returnedModels": {
+    "deepseek-flash": 12
+  },
+  "usage": {
+    "prompt_tokens": 60556,
+    "completion_tokens": 4914,
+    "total_tokens": 65470
+  },
+  "medianSeconds": 2.475,
+  "semanticIssueCountsNonExclusive": {
+    "rolesCorrect": 0,
+    "historyConsistent": 0,
+    "newMeanings": 2,
+    "questionFactsAligned": 3,
+    "translationFaithful": 1,
+    "cefrAppropriate": 0,
+    "reasoningGrounded": 0,
+    "noAnswerLeak": 0,
+    "informationStatusCorrect": 1,
+    "taskTypeAccurate": 1,
+    "focusFulfilled": 0
+  },
+  "reviewHash": "929f2748749b645fddd1ba3d83b04afded1e5cc4903eece5327d96f6cdb116b0",
+  "planHash": "ccae87be69e297ce901b390d28a6208d6beda88e06746b9459e792a4051e94c1",
+  "reportVersion": 1,
+  "createdAt": "2026-10-22T11:45:40.856089+00:00",
+  "baselineArtifactHash": "3849aa32548f1bd6eba9c0bebd7933131f4f8b17e4b48b3104c34c37c4df7e33",
+  "candidateArtifactHash": "1563a47fb9737131d660f3b26e900705382cd3d64d7ebe1585cf1fd6581fae98",
+  "rubricVersion": "conversation-semantic-v3",
+  "rubricHash": "ddcd5efa78ac6083edeaca961b0bec056d2504444eeb84f0f0ba3544c5948cb6",
+  "teacherSystemHash": "dc3c587d4fadfadf0960fe242d1381e9cd7a89a50401fbc200cef4c277296a71",
+  "quotaBefore": [
+    0,
+    0,
+    84,
+    0,
+    84,
+    0
+  ],
+  "quotaAfter": [
+    0,
+    0,
+    96,
+    0,
+    96,
+    0
+  ],
+  "strictJSONUnicodePass": 12,
+  "lengthPass": 12,
+  "releaseAllowed": false,
+  "productionWireRequest": false,
+  "retryEnabled": false,
+  "repairEnabled": false,
+  "fallbackEnabled": false,
+  "instructionCharacters": {
+    "v8": 8160,
+    "v9": 3421
+  },
+  "reviewRequiredItems": [
+    "blind-011"
+  ],
+  "focusedTaskTypes": {
+    "direct_detail": 10,
+    "reason_purpose": 2
+  },
+  "comparison": "Same six frozen contexts, model, schemas, examples and combined teacher wrapper; only instruction text differs. Both reviewed under v3; no historical v8 rescore.",
+  "conclusion": "Neither candidate qualifies. One additional v9 pass in six cases is not evidence of improvement; v9 also has a critical information-status error.",
+  "limitations": [
+    "Only three scenario groups, two tasks per level/arm, no chains.",
+    "No gist, opinion or inference focus was requested by these frozen contexts.",
+    "Rubric author and delegated AI:Codex reviewer are the same; no independent adjudication.",
+    "One translation remains uncertain and is excluded from passes.",
+    "Translation prompt/architecture unchanged; no isolated translation experiment or production two-call test in this run."
+  ],
+  "nextSteps": [
+    "Resolve repeated-meaning and offer-versus-confirmed-purchase failures before expanding generation.",
+    "Test translation on fixed English content in a separate experiment.",
+    "Recheck quota before any further real calls; 78-call full benchmark remains gated.",
+    "No SFT export or training until semantic, chain, dataset and hardware gates pass."
+  ]
+}

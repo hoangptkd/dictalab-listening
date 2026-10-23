@@ -5,7 +5,7 @@ import logging
 import time
 import uuid
 import secrets
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager, nullcontext, suppress
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -21,6 +21,7 @@ from .prompt_versions import provider_calls, selected_artifact
 from .redaction import RedactingFilter, is_safe_log_value, redact
 from .workflow import run_workflow
 from .schemas import ConversationContext, ConversationTaskRequest, ConversationTaskResponse
+from .gemini_pool import quota_store, quota_metrics
 
 settings = Settings()
 
@@ -69,7 +70,7 @@ cache: dict[str, CachedResult] = {}
 _key_locks: dict[str, asyncio.Lock] = {}
 _key_locks_mu: asyncio.Lock = asyncio.Lock()
 
-semaphore = asyncio.Semaphore(settings.max_concurrency)
+semaphore = asyncio.Semaphore(settings.effective_max_concurrency) if settings.effective_max_concurrency else None
 
 
 @app.middleware("http")
@@ -111,7 +112,8 @@ async def metrics(x_service_token: str | None = Header(default=None), authorizat
     if settings.jobs_enabled:
         from .jobs import JobStore
         job_metrics = JobStore(settings.jobs_database, settings.job_retention_seconds).metrics()
-    return PlainTextResponse(telemetry.render() + job_metrics, media_type="text/plain; version=0.0.4")
+    quota = await asyncio.to_thread(quota_metrics, settings)
+    return PlainTextResponse(telemetry.render() + job_metrics + quota, media_type="text/plain; version=0.0.4")
 
 
 def _authorized(token: str | None) -> bool:
@@ -152,12 +154,23 @@ async def ready() -> dict[str, str]:
         provider = settings.selected_provider
         async with httpx.AsyncClient(timeout=timeout) as client:
             if provider in CLOUD_PROVIDERS:
-                if not settings.active_cloud_api_key:
-                    raise ValueError("cloud key is missing")
-                response = await client.get(
-                    settings.active_cloud_models_url,
-                    headers={"Authorization": "Bearer " + settings.active_cloud_api_key},
-                )
+                if settings.gemini_quota_enabled:
+                    store = quota_store(settings)
+                    for source in settings.sources_for(provider):
+                        await asyncio.to_thread(store.execute, source, 1, "status")
+                        url = source.url.removesuffix("/chat/completions") + "/models"
+                        check = await client.get(url, headers={"Authorization": "Bearer " + source.api_key})
+                        check.raise_for_status()
+                        if not any(cloud_model_id_matches(source.model, m.get("id") or "") for m in check.json().get("data", [])):
+                            raise ValueError("pool model missing")
+                    if not any(cloud_model_id_matches(settings.active_cloud_model, p.model) for p in settings.sources_for(provider)):
+                        raise ValueError("requested cloud model missing from pool")
+                    response = check
+                else:
+                    if not settings.active_cloud_api_key:
+                        raise ValueError("cloud key is missing")
+                    response = await client.get(settings.active_cloud_models_url,
+                        headers={"Authorization": "Bearer " + settings.active_cloud_api_key})
             else:
                 response = await client.get(settings.ollama_url.rstrip("/") + "/api/tags",
                     headers={"X-Service-Token": settings.ollama_service_token} if settings.ollama_service_token else {})
@@ -169,7 +182,7 @@ async def ready() -> dict[str, str]:
                     m.get("digest", "").removeprefix("sha256:") == settings.model_digest.removeprefix("sha256:"))
                     for m in response.json().get("models", [])):
                 raise ValueError("local model missing or digest drift")
-        elif not any(cloud_model_id_matches(settings.active_cloud_model, m.get("id") or "")
+        elif not settings.gemini_quota_enabled and not any(cloud_model_id_matches(settings.active_cloud_model, m.get("id") or "")
                      for m in response.json().get("data", [])):
             raise ValueError("cloud model missing")
         if settings.jobs_enabled:
@@ -237,19 +250,19 @@ async def create_task(payload: ConversationTaskRequest, request: Request,
         if cached:
             cache.pop(key, None)
 
-        if semaphore.locked():
+        if semaphore is not None and semaphore.locked():
             raise HTTPException(status_code=429, detail="generation capacity exhausted")
 
         started = time.monotonic()
         runtime_seconds = min(settings.timeout_seconds, x_ai_timeout_ms / 1000) if x_ai_timeout_ms is not None else settings.timeout_seconds
-        async with semaphore:
+        async with semaphore if semaphore is not None else nullcontext():
             telemetry.active += 1
             calls = []
             call_token = provider_calls.set(calls)
             artifact_token = selected_artifact.set(artifact)
             try:
                 timeout = httpx.Timeout(runtime_seconds)
-                async with httpx.AsyncClient(timeout=timeout, limits=httpx.Limits(max_connections=settings.http_max_connections)) as client:
+                async with httpx.AsyncClient(timeout=timeout, limits=httpx.Limits(max_connections=settings.effective_http_max_connections)) as client:
                     server_payload = payload.model_copy(update={"promptVersion": version,
                                                                "instruction": artifact["instruction"]})
                     runtime_settings = settings.model_copy(update={"timeout_seconds": runtime_seconds})

@@ -42,6 +42,24 @@ public class PracticeController {
         return practiceService.current(principal.id(), sessionId);
     }
 
+    @PostMapping("/{sessionId}/sync/open")
+    public ApiDtos.PracticeSyncState openSync(@AuthenticationPrincipal DictaLabPrincipal principal,
+                                             @PathVariable String sessionId) {
+        return practiceService.openSync(principal.id(), sessionId);
+    }
+
+    @PostMapping("/{sessionId}/sync/batches")
+    public ApiDtos.PracticeSyncState sync(@AuthenticationPrincipal DictaLabPrincipal principal,
+                                         @PathVariable String sessionId,
+                                         @Valid @RequestBody ApiDtos.PracticeSyncRequest request,
+                                         @RequestHeader("Idempotency-Key") String key,
+                                         @RequestHeader(value = "X-Practice-Events", required = false) Integer eventCount) {
+        if (eventCount != null && eventCount != request.events().size())
+            throw new com.dictalab.exception.InvalidPracticeStateException("Số thao tác đồng bộ không khớp.");
+        return submissions.execute(principal.id(), sessionId, key, request.sentenceId() + "/sync-batches", request,
+                ApiDtos.PracticeSyncState.class, locked -> practiceService.syncBatch(locked, request));
+    }
+
 
     @PostMapping("/{sessionId}/sentences/{sentenceId}/replay-events")
     public ApiDtos.SentenceState replay(

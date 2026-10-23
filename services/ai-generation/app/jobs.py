@@ -70,6 +70,8 @@ def capability_metadata(payload, settings):
 
 def execution_fingerprint(payload, settings):
     return digest({"payload": payload.model_dump(), "metadata": capability_metadata(payload, settings),
+        "pool": [{k: v for k, v in p.model_dump().items() if k != "api_key"}
+                 for p in settings.sources_for(settings.selected_provider)] if settings.gemini_quota_enabled else [],
         "config": {name: getattr(settings, name) for name in ("num_ctx", "num_predict", "ollama_url", "gemini_base_url",
                     "gemini_model", "cartesia_url", "cartesia_voice", "cartesia_version")}})
 
@@ -117,7 +119,8 @@ class JobStore:
                 if row["fingerprint"] != fingerprint:
                     raise Conflict("idempotency key was reused")
                 return row["id"]
-            if db.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('PENDING','RUNNING')").fetchone()[0] >= 1000:
+            if settings.operational_limits_enabled and db.execute(
+                    "SELECT COUNT(*) FROM jobs WHERE status IN ('PENDING','RUNNING')").fetchone()[0] >= 1000:
                 raise OverflowError("job capacity exhausted")
             try:
                 db.execute("INSERT INTO jobs(id,scope,idem,fingerprint,event,status,deadline,updated) VALUES (?,?,?,?,?,'PENDING',?,?)",

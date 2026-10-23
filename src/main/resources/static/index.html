@@ -358,6 +358,9 @@
 
                         <div class="sentence-actions">
                             <div><div id="practice-status" class="practice-status" role="status" aria-live="polite"></div>
+                            <p id="practice-sync-status" role="status" aria-live="polite" hidden></p>
+                            <button id="practice-sync-retry" class="text-button" type="button" hidden>Đồng bộ lại</button>
+                            <button id="practice-sync-discard" class="text-button" type="button" hidden>Bỏ dữ liệu cục bộ và tải tiến độ server</button>
                             <p id="next-requirement">Nghe câu ít nhất một lần để bắt đầu.</p></div>
                             <button id="next-sentence" class="primary-button" type="submit" disabled>
                                 Câu tiếp theo <span aria-hidden="true">→</span>
@@ -781,7 +784,18 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
+<dialog id="practice-logout-dialog" aria-labelledby="practice-logout-title" aria-describedby="practice-logout-description">
+    <form method="dialog">
+        <h2 id="practice-logout-title">Còn dữ liệu luyện tập trên thiết bị</h2>
+        <p id="practice-logout-description">Một số lượt thử hoặc bản nháp chưa được lưu trên server. Giữ dữ liệu để tiếp tục khi đăng nhập đúng tài khoản. Trên máy dùng chung, người có quyền dùng trình duyệt có thể đọc dữ liệu này.</p>
+        <button class="primary-button" value="keep">Giữ trên thiết bị và đăng xuất</button>
+        <button class="text-button" value="discard">Xóa dữ liệu cục bộ và đăng xuất</button>
+        <button class="text-button" value="cancel" autofocus>Tiếp tục học</button>
+    </form>
+</dialog>
+
 <script src="/js/google-login.js" defer></script>
+<script src="/js/practice-sync.js" defer></script>
 <script src="/js/app.js" defer></script>
 <script src="/js/library.js" defer></script>
 <script src="/js/coach.js" defer></script>

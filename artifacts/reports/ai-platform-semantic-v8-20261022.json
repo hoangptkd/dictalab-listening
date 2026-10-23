@@ -1,0 +1,227 @@
+{
+  "arms": [
+    {
+      "artifact": "conversation-cefr-b1-v7-20261021",
+      "planned": 30,
+      "attempted": 30,
+      "http200": 30,
+      "hardPass": 29,
+      "semanticPass": 17,
+      "semanticPassByLevel": {
+        "A1": 8,
+        "A2": 6,
+        "B1": 3
+      },
+      "criticalFailures": 2,
+      "developmentGatePassed": false
+    },
+    {
+      "artifact": "conversation-cefr-v8-20261022",
+      "planned": 30,
+      "attempted": 30,
+      "http200": 30,
+      "hardPass": 30,
+      "semanticPass": 10,
+      "semanticPassByLevel": {
+        "A1": 6,
+        "A2": 2,
+        "B1": 2
+      },
+      "criticalFailures": 2,
+      "developmentGatePassed": false
+    }
+  ],
+  "chains": [
+    {
+      "group": "delivery/reschedule/A1",
+      "completePass": false,
+      "turns": [
+        {
+          "turn": 2,
+          "state": "PASS"
+        },
+        {
+          "turn": 3,
+          "state": "FAIL"
+        },
+        {
+          "turn": 4,
+          "state": "UNSENT_DEPENDENCY_OR_PENDING"
+        }
+      ]
+    },
+    {
+      "group": "group-project/presentation/A1",
+      "completePass": false,
+      "turns": [
+        {
+          "turn": 2,
+          "state": "PASS"
+        },
+        {
+          "turn": 3,
+          "state": "REVIEW_REQUIRED"
+        },
+        {
+          "turn": 4,
+          "state": "UNSENT_DEPENDENCY_OR_PENDING"
+        }
+      ]
+    },
+    {
+      "group": "opening-hours/holiday/A2",
+      "completePass": false,
+      "turns": [
+        {
+          "turn": 2,
+          "state": "FAIL"
+        },
+        {
+          "turn": 3,
+          "state": "UNSENT_DEPENDENCY_OR_PENDING"
+        },
+        {
+          "turn": 4,
+          "state": "UNSENT_DEPENDENCY_OR_PENDING"
+        }
+      ]
+    },
+    {
+      "group": "product/stock/A2",
+      "completePass": false,
+      "turns": [
+        {
+          "turn": 2,
+          "state": "FAIL"
+        },
+        {
+          "turn": 3,
+          "state": "UNSENT_DEPENDENCY_OR_PENDING"
+        },
+        {
+          "turn": 4,
+          "state": "UNSENT_DEPENDENCY_OR_PENDING"
+        }
+      ]
+    },
+    {
+      "group": "delivery/reschedule/B1",
+      "completePass": false,
+      "turns": [
+        {
+          "turn": 2,
+          "state": "FAIL"
+        },
+        {
+          "turn": 3,
+          "state": "UNSENT_DEPENDENCY_OR_PENDING"
+        },
+        {
+          "turn": 4,
+          "state": "UNSENT_DEPENDENCY_OR_PENDING"
+        }
+      ]
+    },
+    {
+      "group": "returns/exchange/B1",
+      "completePass": false,
+      "turns": [
+        {
+          "turn": 2,
+          "state": "FAIL"
+        },
+        {
+          "turn": 3,
+          "state": "UNSENT_DEPENDENCY_OR_PENDING"
+        },
+        {
+          "turn": 4,
+          "state": "UNSENT_DEPENDENCY_OR_PENDING"
+        }
+      ]
+    }
+  ],
+  "chainGroupsPassed": 0,
+  "calls": 68,
+  "httpCap": 78,
+  "candidateGatePassed": false,
+  "trainingReady": false,
+  "automaticJudgeEnabled": false,
+  "pendingTrainingGates": [
+    "dataset count/coverage/splits",
+    "RAM/hardware preflight",
+    "checkpoint/loss-mask preflight"
+  ],
+  "retainedChainTasks": 0,
+  "reviewer": "AI:Codex",
+  "humanApproved": false,
+  "httpStatusCounts": {
+    "200": 68
+  },
+  "returnedModels": {
+    "deepseek-flash": 68
+  },
+  "usage": {
+    "prompt_tokens": 373019,
+    "completion_tokens": 28519,
+    "total_tokens": 401538
+  },
+  "medianSeconds": 2.5549999999999997,
+  "semanticIssueCountsNonExclusive": {
+    "rolesCorrect": 1,
+    "historyConsistent": 0,
+    "newMeanings": 4,
+    "questionFactsAligned": 20,
+    "translationFaithful": 12,
+    "cefrAppropriate": 2,
+    "reasoningGrounded": 1,
+    "noAnswerLeak": 1,
+    "informationStatusCorrect": 2,
+    "taskTypeAccurate": 12,
+    "focusFulfilled": 6
+  },
+  "reviewHash": "8bcc0aecdd8ee0045bcd07ad271c9e3d5448348ae8059f779b3b9ed3f030e320",
+  "planHash": "e37892ed6bd3ee9a866abc3444a7d9d29b86bb5a32475bc9cc22319470b12d75",
+  "reportVersion": 1,
+  "baselineArtifactHash": "09274af4b93c9562aa188ed920bc24cea3cb2016c74680083fcdddfacc3f1ae5",
+  "candidateArtifactHash": "3849aa32548f1bd6eba9c0bebd7933131f4f8b17e4b48b3104c34c37c4df7e33",
+  "rubricVersion": "conversation-semantic-v2",
+  "rubricHash": "c35071ed9d548fb4fb0711aa6950ec1ce4ce5a23295ef79541742137e4820ba6",
+  "teacherSystemHash": "dc3c587d4fadfadf0960fe242d1381e9cd7a89a50401fbc200cef4c277296a71",
+  "comparison": "Same frozen contexts and teacher wrapper; only prompt artifact differs. Development data, never final holdout/SFT.",
+  "quotaAfter": [
+    0,
+    0,
+    84,
+    0,
+    84,
+    0
+  ],
+  "releaseAllowed": false,
+  "abStrictJSONPass": 60,
+  "abLengthPass": 60,
+  "abWordRange": {
+    "A1": [
+      15,
+      23
+    ],
+    "A2": [
+      29,
+      43
+    ],
+    "B1": [
+      44,
+      84
+    ]
+  },
+  "rejectedCandidate": true,
+  "reviewerLimitations": [
+    "Rubric author and reviewer are both AI:Codex; no independent adjudication.",
+    "The 24 development calibration cases include paired UI paraphrases; no automated judge was used for these benchmark approvals."
+  ],
+  "nextExperiment": [
+    "Use a new candidate/version; preserve this failed run.",
+    "Compare a shorter generation prompt, with one variable changed per arm.",
+    "Test translation in a separate arm; do not mix it with content-prompt changes."
+  ]
+}

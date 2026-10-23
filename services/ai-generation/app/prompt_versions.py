@@ -10,6 +10,7 @@ from .registry import load_artifact
 from .redaction import redact
 from .validation import LEVEL_BOUNDS
 from .schemas import ShadowConversationTaskRequest
+from .conversation_context import encounter_state
 
 # Per-request metadata; no prompt/task bodies in logs or response metadata.
 provider_calls: ContextVar[list | None] = ContextVar("provider_calls", default=None)
@@ -24,7 +25,8 @@ async def _complete(request, settings, client, schema, purpose, data, temperatur
         examples = [e for e in artifact["fewShotExamples"] if e.get("input", {}).get("difficulty") == request.level
                     and e.get("input", {}).get("turnNumber") == (4 if request.turnNumber == 4 else 2)]
         system += "\nExamples are format only: " + json.dumps(examples, ensure_ascii=False)
-    result, provider = await ModelGateway(settings, client).complete(
+    gateway = ModelGateway(settings, client)
+    result, provider = await gateway.complete(
         [{"role": "system", "content": system},
          {"role": "user", "content": json.dumps(redact(data), ensure_ascii=False)}],
         (artifact.get("contentSchemas", {}).get(request.level, artifact["contentSchema"])
@@ -34,7 +36,7 @@ async def _complete(request, settings, client, schema, purpose, data, temperatur
     calls = provider_calls.get()
     if calls is not None:
         calls.append({"purpose": purpose, "provider": provider,
-                      "model": settings.model if provider == "ollama" else settings.active_cloud_model,
+                      "model": gateway.last_model,
                       "modelDigest": artifact["model"]["digest"] if provider == "ollama" else "unpinned-cloud"})
     return result
 
@@ -74,6 +76,7 @@ async def generate_content(request, settings, client, *, deadline=None):
         data.pop("sessionBlueprint", None)
         data["previouslyTestedDetails"] = [{"textVi": f.get("textVi", "")}
             for f in data.get("previouslyTestedDetails", [])]
+    data["encounterState"] = encounter_state(data)
     return await _complete(request, settings, client, CONTENT_SCHEMA, "content", data,
                            settings.temperature, deadline)
 

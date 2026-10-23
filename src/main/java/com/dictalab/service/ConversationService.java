@@ -82,7 +82,9 @@ public class ConversationService {
                     Follow sessionBlueprint when supplied. Compare with recentPractice: reject a semantically
                     repeated task/answer combination, including cosmetic name/number changes or paraphrases.
                     Do not reject merely sharing a skill, a common word or one background detail.
-                    """;
+                    If the semantic verdict is uncertain or missing, return valid=false with the unresolved issue.
+                    Never treat fluent prose, a schema pass or the author's own rationale as semantic approval.
+                    """ + ConversationGenerationPrompt.QUALITY_RULES;
     private final JdbcTemplate db;
     private final ObjectMapper json;
     private final GeminiClient ai;

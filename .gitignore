@@ -6,6 +6,7 @@ data/
 *.log
 .env
 .env.local
+.env.registry-*
 qa-output/
 downloads/
 __pycache__/
@@ -19,5 +20,8 @@ artifacts/reports/*
 !artifacts/reports/ai-platform-*.json
 logs/
 output/
+training/runs/
+training/outputs/
+training/downloads/
 target-*/
 .playwright-mcp/

@@ -401,7 +401,15 @@
 
     window.addEventListener("pagehide", () => {
         savePracticeDraft();
+        state.practiceSync?.flush().catch(() => {});
         stopTimer();
+    });
+    window.addEventListener("online", () => retryPracticeSync());
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") {
+            savePracticeDraft();
+            state.practiceSync?.flush().catch(() => {});
+        }
     });
     window.addEventListener("pageshow", event => {
         if (event.persisted && document.body.dataset.route === "practice" && state.sentence?.hasListened) startTimer();
@@ -851,11 +859,17 @@
                 const { sessionId } = params;
                 if (!sessionId) { await resolveUrlAndNavigate({ route: "catalog", params: { level: state.selectedLevel }, query }, pushHistory); return; }
                 try {
-                    const session = await api(`/api/v1/practice-sessions/${encodeURIComponent(sessionId)}`);
+                    const legacyCompletion = await recoverLegacyPractice(sessionId);
+                    if (legacyCompletion?.lessonCompleted) {
+                        await resolveUrlAndNavigate({route: "result", params: {sessionId}, query}, false);
+                        return;
+                    }
+                    const session = await attachPracticeSync(null, sessionId)
+                        || await api(`/api/v1/practice-sessions/${encodeURIComponent(sessionId)}`);
                     // Phục hồi session mà không tạo mới và không tự phát audio
                     state.session = session;
                     state.sentence = session.sentence;
-                    if (!state.room && !state.roomSharedSessionId) {
+                    if (!state.practiceSync && !state.room && !state.roomSharedSessionId) {
                         const mine = await api("/api/v1/rooms/mine");
                         if (mine?.lessonId === session.lessonId) {
                             state.room = {roomId: mine.roomId, inviteCode: mine.inviteCode};
@@ -865,7 +879,7 @@
                             roomStartPolling(mine.roomId);
                         }
                     }
-                    if (state.room && !state.roomSharedSessionId) {
+                    if (!state.practiceSync && state.room && !state.roomSharedSessionId) {
                         const roomState = await api(`/api/v1/rooms/${encodeURIComponent(state.room.roomId)}`);
                         if (roomState.lessonId === session.lessonId) {
                             const shared = await api(`/api/v1/rooms/${encodeURIComponent(state.room.roomId)}/practice`, {method: "POST"});
@@ -874,6 +888,15 @@
                                 state.roomStudy = roomState;
                             }
                         }
+                    }
+                    if (state.roomSharedSessionId !== sessionId) await attachPracticeSync(session, sessionId);
+                    if (state.practiceSync?.completion) {
+                        if (state.practiceSync.completion.lessonCompleted) {
+                            await resolveUrlAndNavigate({route: "result", params: {sessionId}, query}, false);
+                            return;
+                        }
+                        await state.practiceSync.nextSentence();
+                        state.sentence = state.practiceSync.view();
                     }
                     state.activeWordIndex = 0;
                     state.wordAttemptStartedAt.clear();
@@ -887,6 +910,7 @@
                     if (pushHistory) router.push("practice", { sessionId });
                     else router.replace("practice", { sessionId });
                     await _showView("practice");
+                    renderPracticeSyncStatus();
                     elements.replayButton.focus({ preventScroll: true });
                 } catch (error) {
                     // Phiên không tồn tại hoặc không thuộc user này → về catalog
@@ -1138,6 +1162,9 @@
         document.body.dataset.route = "login";
         stopTimer();
         resetPracticeInput();
+        state.practiceSyncClosing = state.practiceSync?.close();
+        state.practiceSyncClosing?.catch(() => {});
+        state.practiceSync = null;
         clearPracticeDrafts();
         state.currentUser = null;
         state.session = null;
@@ -1248,6 +1275,32 @@
         elements.logoutButton.disabled = true;
         try {
             if (state.room && !await roomLeave()) return;
+            savePracticeDraft();
+            const owner = state.currentUser?.id;
+            if (window.DictaLabPracticeSync?.supported()) {
+                await Promise.race([state.practiceSync?.flush().catch(() => {}),
+                    new Promise(resolve => window.setTimeout(resolve, 1500))]);
+                const store = window.DictaLabPracticeSync.database();
+                let records;
+                try {records = (await store.all()).filter(record => record.owner === owner);}
+                finally {store.close();}
+                if (records.some(record => record.events.length || record.draft?.drafts.length)) {
+                    const dialog = document.querySelector("#practice-logout-dialog");
+                    const choice = await new Promise(resolve => {
+                        dialog.returnValue = "cancel";
+                        dialog.addEventListener("close", () => resolve(dialog.returnValue), {once: true});
+                        dialog.showModal();
+                    });
+                    if (choice !== "keep" && choice !== "discard") return;
+                    await state.practiceSync?.close();
+                    state.practiceSync = null;
+                    if (choice === "discard") {
+                        const clean = window.DictaLabPracticeSync.database();
+                        try {for (const record of records) await clean.remove(record.key);}
+                        finally {clean.close();}
+                    }
+                }
+            }
             resetPracticeInput();
             await api("/api/auth/logout", {method: "POST", redirectOnUnauthorized: false});
         } catch (error) {
@@ -1578,6 +1631,14 @@
                 body: {lessonId}
             });
             state.sentence = state.session.sentence;
+            await attachPracticeSync(state.session, state.session.sessionId);
+            if (state.practiceSync?.completion) {
+                if (state.practiceSync.completion.lessonCompleted) {
+                    await resolveUrlAndNavigate({route: "result", params: {sessionId: state.session.sessionId}, query: new URLSearchParams()}, true);
+                    return;
+                }
+                state.sentence = await state.practiceSync.nextSentence();
+            }
             state.activeWordIndex = 0;
             state.wordAttemptStartedAt.clear();
             state.inputInteractionRevision = 0;
@@ -1590,6 +1651,7 @@
             // Push URL /practice/{sessionId} vào history
             router.push("practice", { sessionId: state.session.sessionId });
             _showView("practice");
+            renderPracticeSyncStatus();
             elements.replayButton.focus({preventScroll: true});
         } catch (error) {
             showToast(error.message, true);
@@ -1612,13 +1674,134 @@
         elements.lessonDetail.setAttribute("aria-busy", String(busy));
     }
 
+    async function recoverLegacyPractice(sessionId) {
+        await state.practiceMutationQueue;
+        const storageKey = `dictalab.practice.${state.currentUser?.id ?? "anonymous"}`;
+        let entries;
+        try {entries = JSON.parse(sessionStorage.getItem(storageKey) || "[]");}
+        catch (_) {return null;}
+        if (!Array.isArray(entries)) return null;
+        const prefix = `/api/v1/practice-sessions/${encodeURIComponent(sessionId)}/`;
+        let completion;
+        for (const [id, submission] of entries) {
+            if (typeof id !== "string" || !id.startsWith(prefix) || !submission?.headers?.["Idempotency-Key"]) continue;
+            const path = id.slice(0, id.indexOf(":"));
+            const result = await api(path, {...submission, timeoutMs: 15000});
+            // Recover uncertain legacy receipts before adopting the new session protocol.
+            const remaining = JSON.parse(sessionStorage.getItem(storageKey) || "[]").filter(([key]) => key !== id);
+            sessionStorage.setItem(storageKey, JSON.stringify(remaining));
+            if (practiceSubmissionOwner === storageKey) pendingPracticeSubmissions.delete(id);
+            if (path.endsWith("/complete")) completion = result;
+        }
+        return completion;
+    }
+
+    async function attachPracticeSync(session, sessionId) {
+        const Sync = window.DictaLabPracticeSync;
+        if (state.practiceSync && state.practiceSync.sessionId !== sessionId) {
+            await state.practiceSync.close();
+            state.practiceSync = null;
+        }
+        if (!Sync?.supported() || state.roomSharedSessionId === sessionId) return null;
+        const owner = state.currentUser?.id;
+        if (state.practiceSync?.sessionId === sessionId && state.practiceSync.owner === owner)
+            return state.practiceSync.session;
+        await state.practiceSyncClosing;
+        await state.practiceSync?.close();
+        state.practiceSync = null;
+        if (session) {
+            const completion = await recoverLegacyPractice(sessionId);
+            if (completion) session = await api(`/api/v1/practice-sessions/${encodeURIComponent(sessionId)}`);
+        }
+        let sync;
+        sync = new Sync({owner, sessionId,
+            send: (path, options) => {
+                if (state.currentUser?.id !== owner) throw Object.assign(new Error("Tài khoản đã thay đổi."), {status: 401});
+                return api(path, options);
+            },
+            onChange: sentence => {
+                if (state.practiceSync !== sync || state.currentUser?.id !== owner
+                    || document.body.dataset.route !== "practice" || state.session?.sessionId !== sessionId) return;
+                if (sync.completion && !state.completingSentence) {
+                    resolveUrlAndNavigate(router.parse(location.pathname, location.search), false).catch(error => showToast(error.message, true));
+                    return;
+                }
+                if (!sentence || state.sentence?.sentenceId !== sentence.sentenceId) return;
+                const focus = captureWordFocus();
+                state.sentence = sentence;
+                renderPractice(false);
+                if (focus) restoreWordFocus(focus);
+            },
+            onStatus: () => {if (state.practiceSync === sync) renderPracticeSyncStatus();},
+            onAuth: () => {
+                if (state.currentUser?.id === owner) showAuthScreen("Phiên đăng nhập đã hết hạn. Lượt thử trên thiết bị được giữ; hãy đăng nhập lại đúng tài khoản.");
+            }
+        });
+        try {
+            const restored = await sync.open(session);
+            if (!restored) return null;
+            if (state.currentUser?.id !== owner) {await sync.close(); return null;}
+            state.practiceSync = sync;
+            state.sentence = sync.view();
+            if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
+            return sync.session;
+        } catch (error) {
+            // A server without the feature retains the existing authoritative grading flow.
+            if (session && error.status === 404 && !sync.record?.grading && !sync.pending) return null;
+            throw error;
+        }
+    }
+
+    function retryPracticeSync() {
+        const sync = state.practiceSync;
+        if (!sync) return;
+        const retry = sync.completion && document.body.dataset.route === "practice"
+            ? resolveUrlAndNavigate(router.parse(location.pathname, location.search), false) : sync.flush();
+        retry.catch(error => {if (state.practiceSync === sync) setPracticeStatus(error.message, true);});
+    }
+
+    function renderPracticeSyncStatus() {
+        const label = document.querySelector("#practice-sync-status");
+        const retry = document.querySelector("#practice-sync-retry");
+        const discard = document.querySelector("#practice-sync-discard");
+        if (!label) return;
+        const sync = state.practiceSync;
+        label.hidden = !sync;
+        retry.hidden = !sync || sync.blocked || (!sync.pending && !sync.completion);
+        retry.textContent = sync?.completion ? "Tải tiến độ đã lưu" : "Đồng bộ lại";
+        discard.hidden = !sync || !["conflict", "storage"].includes(sync.phase);
+        if (!sync) return;
+        label.textContent = sync.phase === "storage" ? "Không thể lưu trên thiết bị. Hãy giữ tab này mở để tránh mất bản nháp."
+            : sync.phase === "conflict" ? "Tiến độ hoặc nội dung đã thay đổi. Dữ liệu cục bộ được giữ; chưa tự gộp vào server."
+            : sync.phase === "auth" ? "Cần đăng nhập lại để đồng bộ."
+            : sync.completion ? "Câu đã được lưu trên server. Cần kết nối để tải tiến độ tiếp theo."
+            : sync.pending ? `Đã lưu trên thiết bị · ${sync.pending} thao tác chờ server xác nhận${sync.phase === "offline" ? ". Đang chờ kết nối lại." : "."}`
+            : "Đã đồng bộ kết quả với server. Bản nháp đang gõ được lưu trên thiết bị.";
+        retry.onclick = retryPracticeSync;
+        discard.onclick = async () => {
+            if (!window.confirm("Bỏ các lượt thử và bản nháp cục bộ của phiên này? Những gì server đã lưu vẫn được giữ.")) return;
+            try {
+                await sync.close(true);
+                state.practiceSync = null;
+                state.wordDrafts.clear();
+                discardPracticeDraft();
+                await resolveUrlAndNavigate(router.parse(location.pathname, location.search), false);
+            } catch (error) {showToast(error.message, true);}
+        };
+        updatePracticeControls();
+    }
+
     function renderPractice(newSentence = false, wordIndex) {
         const sentence = state.sentence;
         if (!sentence || !state.session) {
             return;
         }
+        if (state.practiceSync && state.practiceSync.sessionId !== state.session.sessionId) {
+            state.practiceSync.close().catch(() => {});
+            state.practiceSync = null;
+        }
         if (newSentence) {
-            resetPracticeInput();
+            resetPracticeInput(false);
             state.wordDrafts.clear();
             state.wordAttemptStartedAt.clear();
             elements.dictationCopyText.value = "";
@@ -1667,7 +1850,7 @@
                 ? (word.userInput || "")
                 : draft;
             const classes = ["word-slot"];
-            const wrong = Boolean(word.userInput && !word.correct && !word.revealed
+            const wrong = Boolean(word.userInput && !word.correct && !word.revealed && !word.pendingGrade
                 && (draft === undefined || draft.trim() === word.userInput.trim()));
             if (word.prefilled) classes.push("is-prefilled");
             else if (word.correct) classes.push("is-correct");
@@ -1895,6 +2078,10 @@
             const remaining = sentence.words.filter(word => !word.correct && !word.revealed).length;
             elements.nextRequirement.textContent = `Còn ${remaining} từ cần hoàn thành.`;
         }
+        if (state.practiceSync?.blocked || state.practiceSync?.barrier) {
+            for (const control of [elements.hintLetter, elements.hintWord, elements.revealSentence,
+                elements.replayButton, elements.nextSentence, ...elements.wordSlots.querySelectorAll("input")]) control.disabled = true;
+        }
     }
 
     const wordChecks = new Map();
@@ -1912,6 +2099,10 @@
     }
 
     function savePracticeDraft() {
+        if (state.practiceSync?.sessionId === state.session?.sessionId
+            && state.practiceSync.view()?.sentenceId === state.sentence?.sentenceId) {
+            state.practiceSync.saveDraft({drafts: [...state.wordDrafts], elapsedSeconds: practiceElapsedSeconds()}).catch(() => {});
+        }
         if (!state.practiceDraftKey) return;
         try {
             sessionStorage.setItem(state.practiceDraftKey, JSON.stringify({
@@ -1925,7 +2116,8 @@
             ? null : `dictalab.practice-draft.${state.currentUser.id}.${state.session.sessionId}.${state.sentence.sentenceId}`;
         if (!state.practiceDraftKey) return;
         try {
-            const saved = JSON.parse(sessionStorage.getItem(state.practiceDraftKey) || "null");
+            const saved = state.practiceSync?.view()?.sentenceId === state.sentence?.sentenceId
+                ? state.practiceSync.draft : JSON.parse(sessionStorage.getItem(state.practiceDraftKey) || "null");
             if (!saved) return;
             if (Array.isArray(saved.drafts)) {
                 for (const entry of saved.drafts) {
@@ -1959,8 +2151,8 @@
         state.wordDrafts.clear();
     }
 
-    function resetPracticeInput() {
-        savePracticeDraft();
+    function resetPracticeInput(saveDraft = true) {
+        if (saveDraft) savePracticeDraft();
         state.practiceDraftKey = null;
         stopTimer();
         practiceInputGeneration++;
@@ -2107,6 +2299,7 @@
     }
 
     async function checkWord(index, answer) {
+        if (state.practiceSync) return checkLocalWord(index, answer);
         answer = answer.trim();
         if (!answer || !state.sentence || composingWords.has(index)) return false;
         const isCurrent = practiceInputContext();
@@ -2210,6 +2403,54 @@
                 if (isCurrent() && check.pendingAnswer && draft === check.pendingAnswer) {
                     checkWord(index, draft);
                 }
+            }
+        }
+    }
+
+    async function checkLocalWord(index, answer) {
+        const sync = state.practiceSync;
+        const isCurrent = practiceInputContext();
+        const word = state.sentence?.words[index];
+        if (!word || word.correct || word.revealed || composingWords.has(index)) return false;
+        const existing = wordChecks.get(index);
+        if (existing) {existing.pendingAnswer = answer === existing.answer ? null : answer; return false;}
+        if (word.userInput === answer.trim() && !state.wordDrafts.has(index)) return false;
+        const check = {answer, pendingAnswer: null};
+        wordChecks.set(index, check);
+        state.checkingWords.add(index);
+        const revision = state.inputInteractionRevision;
+        const time = Date.now() - (state.wordAttemptStartedAt.get(index) || Date.now());
+        try {
+            const result = await sync.check(index, answer, () => isCurrent() && state.practiceSync === sync
+                && !composingWords.has(index) && (state.wordDrafts.get(index) ?? answer) === answer, time);
+            if (!result || !isCurrent()) return false;
+            state.sentence = sync.view();
+            const focus = captureWordFocus();
+            if (result.correct || state.wordDrafts.get(index) === answer) state.wordDrafts.delete(index);
+            if (result.correct) state.wordAttemptStartedAt.delete(index);
+            else {state.wordAttemptStartedAt.set(index, Date.now()); state.completeAfterPendingCheck = false;}
+            savePracticeDraft();
+            renderPractice(false, index);
+            if (focus && (focus.index !== index || revision !== state.inputInteractionRevision || !result.correct)) restoreWordFocus(focus);
+            else if (focus && result.correct) focusNextWord(index);
+            const newerDraft = state.wordDrafts.has(index) && state.wordDrafts.get(index) !== answer;
+            setPracticeStatus(result.correct ? `Từ ${index + 1} chính xác trên thiết bị.` : newerDraft
+                ? `Đã giữ nội dung mới của từ ${index + 1}.` : `Từ ${index + 1} chưa khớp. Hãy nghe lại.`, !result.correct && !newerDraft);
+            if (result.correct && state.sentence.canComplete && state.completeAfterPendingCheck) {
+                state.completeAfterPendingCheck = false;
+                await completeSentence();
+            }
+            return result.correct;
+        } catch (error) {
+            if (isCurrent() && error.name !== "AbortError") setPracticeStatus(error.message, true);
+            return false;
+        } finally {
+            if (wordChecks.get(index) === check) {
+                wordChecks.delete(index); state.checkingWords.delete(index);
+                const draft = state.wordDrafts.get(index);
+                if (isCurrent() && draft && draft !== answer && !sync.blocked && !sync.barrier
+                    && (check.pendingAnswer === draft || Array.from(draft.trim()).length === state.sentence.words[index].length))
+                    checkWord(index, draft);
             }
         }
     }
@@ -2579,7 +2820,7 @@
                 router.push("result", { sessionId });
                 _showView("result");
             } else {
-                state.sentence = response.nextSentence;
+                state.sentence = state.practiceSync ? await state.practiceSync.nextSentence() : response.nextSentence;
                 state.activeWordIndex = 0;
                 state.inputInteractionRevision = 0;
                 state.completeAfterPendingCheck = false;
@@ -3961,6 +4202,9 @@
         if (!response.ok) {
             const error = new Error(payload?.message || `Yêu cầu thất bại (${response.status}).`);
             error.status = response.status;
+            const retryAfter = response.headers.get("Retry-After");
+            if (retryAfter) error.retryAfterMs = /^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000
+                : Math.max(0, Date.parse(retryAfter) - Date.now()) || 0;
             if (response.status === 401 && options.redirectOnUnauthorized !== false) {
                 showAuthScreen("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
             }
@@ -3973,6 +4217,14 @@
     let practiceSubmissionOwner = null;
     function queuePracticeMutation(path, options, isCurrent = () => true, shouldSend = () => true) {
         if (!isCurrent()) return Promise.reject(new DOMException("Practice changed", "AbortError"));
+        if (state.practiceSync && path.startsWith(`/api/v1/practice-sessions/${encodeURIComponent(state.practiceSync.sessionId)}/`)) {
+            if (!shouldSend()) return Promise.reject(new DOMException("Answer changed", "AbortError"));
+            const body = options.body;
+            const command = path.endsWith("/replay-events") ? {replay: body}
+                : path.endsWith("/hints") ? {hint: body} : path.endsWith("/classifications") ? {classification: body}
+                : path.endsWith("/complete") ? {complete: body} : null;
+            if (command) return state.practiceSync.command(command);
+        }
         const storageKey = `dictalab.practice.${state.currentUser?.id ?? "anonymous"}`;
         if (practiceSubmissionOwner !== storageKey) {
             pendingPracticeSubmissions.clear(); practiceSubmissionOwner = storageKey;
