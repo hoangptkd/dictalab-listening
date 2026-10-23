@@ -977,6 +977,9 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
             message = message.replace(source.api_key, "[redacted]")
         row["error"] = "[redacted]" if gen._contains_secret(message) else message[:1000]
     row["sent"] = request_path.exists()
+    returned_model = captured.get("envelope", {}).get("model", "")
+    if isinstance(returned_model, str) and cloud_model_id_matches(manifest["teacher"]["model"], returned_model):
+        row["returnedModel"] = returned_model
     if "gateway" in locals():
         row["teacherSourceId"] = getattr(gateway, "last_source_id", None)
     if "httpStatus" in captured:
