@@ -180,7 +180,7 @@ def review_fixture(path):
     manifest, _ = collect.load(path)
     row = {"id": "candidate-0001", "hardPass": True, "split": "train", "level": "A1",
            "groupId": "fresh/fixture/standard", "context": {"difficulty": "A1"},
-           "task": {"utteranceEn": "The shop opens at ten.", "facts": [{}]}}
+           "task": {"utteranceEn": "The shop opens at ten.", "facts": [{"taskType": "direct_detail"}]}}
     review = {"reviewer": "AI:chatgpt-web", "rubricVersion": manifest["rubricVersion"],
         "rubricHash": manifest["rubricHash"], "taskHash": gen.digest(row["task"]),
         "contextHash": gen.digest(row["context"]), "requestHash": "a" * 64,
@@ -257,17 +257,29 @@ async def test_unrestricted_collection_passes_frozen_candidate_and_batch_caps(ca
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fault", [None, "unsupported", "quote", "index"])
+@pytest.mark.parametrize("fault", [None, "unsupported", "quote", "index", "type", "scope",
+                                  "novelty", "attributes", "history", "unknown-type"])
 async def test_web_positive_fact_audit_is_grounded_and_consistent(campaign, monkeypatch, fault):
     path, _ = campaign
     manifest, _ = collect.load(path)
     row, _, _ = review_fixture(path)
     audit = {"index": 0, "sourceQuote": "opens at ten", "claimSupported": True,
-             "translationSupported": fault != "unsupported", "basis": "Direct source evidence."}
+             "translationSupported": fault != "unsupported", "basis": "Direct source evidence.",
+             "expectedTaskType": "direct_detail", "answerScopeSupported": True,
+             "newMeaningSupported": True, "attributesSupported": True, "historyQuote": None}
     if fault == "quote":
         audit["sourceQuote"] = "invented quote"
     if fault == "index":
         audit["index"] = 1
+    if fault == "type":
+        audit["expectedTaskType"] = "condition"
+    if fault == "unknown-type":
+        audit["expectedTaskType"] = None
+    if fault in ("scope", "novelty", "attributes"):
+        audit[{"scope": "answerScopeSupported", "novelty": "newMeaningSupported",
+               "attributes": "attributesSupported"}[fault]] = False
+    if fault == "history":
+        audit["historyQuote"] = "invented historical quote"
     verdict = {"id": row["id"], **dict.fromkeys(collect.CHECKS, True), "issues": [], "factAudit": [audit]}
     original = httpx.AsyncClient
     monkeypatch.setattr(run.httpx, "AsyncClient", lambda **kwargs: original(
@@ -279,3 +291,60 @@ async def test_web_positive_fact_audit_is_grounded_and_consistent(campaign, monk
     else:
         result = await run._judge_one(path, manifest, row, row["id"], row["id"], None, folder=path / "candidates")
         assert result["factAudit"] == [audit]
+
+
+@pytest.mark.asyncio
+async def test_web_recheck_without_hard_validation_never_dispatches(campaign, monkeypatch):
+    path, _ = campaign
+    manifest, _ = collect.load(path)
+    row, _, _ = review_fixture(path)
+    row.pop("hardPass")
+    monkeypatch.setattr(run.httpx, "AsyncClient", lambda **kwargs: pytest.fail("Must not call Web"))
+    with pytest.raises(DatasetError, match="before dispatch"):
+        await run._judge_one(path, manifest, row, row["id"], row["id"], None, folder=path / "candidates")
+    assert not (path / "sent-index.jsonl").exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("has_history", [True, False])
+async def test_semantic_audit_accepts_grounded_repetition_or_missing_history(campaign, monkeypatch, has_history):
+    path, _ = campaign
+    manifest, _ = collect.load(path)
+    row, _, _ = review_fixture(path)
+    row["context"]["history"] = [{"utteranceEn": "The shop opens at ten."}] if has_history else []
+    audit = {"index": 0, "sourceQuote": "opens at ten", "claimSupported": True,
+             "translationSupported": True, "expectedTaskType": "direct_detail",
+             "answerScopeSupported": True, "newMeaningSupported": False if has_history else None,
+             "attributesSupported": True, "historyQuote": "opens at ten" if has_history else None,
+             "basis": "Opening time was already asked." if has_history else "Earlier tested meanings are unavailable."}
+    verdict = {"id": row["id"], **dict.fromkeys(collect.CHECKS, True), "newMeanings": audit["newMeaningSupported"],
+        "issues": [{"check": "newMeanings", "sourceQuote": "opens at ten",
+                    "severity": "major" if has_history else "uncertain", "explanation": audit["basis"]}], "factAudit": [audit]}
+    original = httpx.AsyncClient
+    monkeypatch.setattr(run.httpx, "AsyncClient", lambda **kwargs: original(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"choices": [
+            {"finish_reason": "stop", "message": {"content": json.dumps({"items": [verdict]})}}]})), **kwargs))
+    result = await run._judge_one(path, manifest, row, row["id"], row["id"], None, folder=path / "candidates")
+    assert result["checks"]["newMeanings"] is audit["newMeaningSupported"]
+
+
+def test_collection_v2_preserves_frozen_contract_and_supplies_b2_demand(tmp_path):
+    from training.freeze_candidate import freeze_collection_v2
+    old_path = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v1-20261023.json"
+    old_bytes = old_path.read_bytes()
+    old = gen.read_json(old_path)
+    new = freeze_collection_v2(tmp_path / "v2.json")
+    assert new["sha256"] == gen.digest({k: v for k, v in new.items() if k != "sha256"})
+    assert old_path.read_bytes() == old_bytes
+    for key in ("contentSchemas", "contentSchema", "translationSchema", "levelProfiles",
+                "fewShotExamples", "semanticRubric", "collectionPolicy"):
+        assert new[key] == old[key]
+    assert not new["metricReport"]["gate"]["releaseAllowed"]
+    group = {"groupId": "fresh/tickets/standard", "scenarioId": "tickets", "branchId": "standard",
+             "level": "B2", "input": {"history": []}}
+    context = gen.make_context(group, 4, [], new, 0)
+    assert "levelDemand" in context
+    payload = run.judge_payload({"context": context, "task": {}}, "item", {"rubricVersion": new["semanticRubric"]["version"]})
+    assert payload["items"][0]["context"]["levelDemand"] == context["levelDemand"]
+    with pytest.raises(FileExistsError):
+        freeze_collection_v2(tmp_path / "v2.json")

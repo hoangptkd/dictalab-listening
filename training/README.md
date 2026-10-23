@@ -427,11 +427,11 @@ offline tab lifecycle check. The first live collection on 2026-10-23 confirmed o
 tab after restart and across three independent Web reviews, with a fresh chat each time.
 
 ```powershell
-python -m training.collect_reviewed prepare --campaign data/fine-tuning/reviewed-500-20261023
-python -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-20261023 --limit 4
-python -m training.collect_reviewed status --campaign data/fine-tuning/reviewed-500-20261023
-python -m training.collect_reviewed adjudicate --campaign data/fine-tuning/reviewed-500-20261023 --decision-file <private-decision.json>
-python -m training.collect_reviewed export --campaign data/fine-tuning/reviewed-500-20261023
+python -m training.collect_reviewed prepare --campaign data/fine-tuning/reviewed-500-v2
+python -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v2 --limit 4
+python -m training.collect_reviewed status --campaign data/fine-tuning/reviewed-500-v2
+python -m training.collect_reviewed adjudicate --campaign data/fine-tuning/reviewed-500-v2 --decision-file <private-decision.json>
+python -m training.collect_reviewed export --campaign data/fine-tuning/reviewed-500-v2
 ```
 
 Each approval binds the exact task, context and Web verdict hashes and needs independent
@@ -440,6 +440,13 @@ Uncertain items are rejected; any overridden Web finding needs its own recorded 
 Source families are split before generation, across all four levels. Export requires all
 700 approved tasks; the existing integrity, coverage, loss-mask and holdout audits still apply.
 Generated artifacts, decisions and API evidence stay in the ignored private campaign folder.
+
+New collections use `conversation-reviewed-collection-v2-20261023.json` and a structured semantic
+fact audit. Each fact reports independently derived taskType, answer scope, novelty/history quote
+and attribute support. Contradictory PASS fields fail the judge contract; they never auto-approve.
+The rubric, hard validators and first-attempt/no-repair policy are unchanged. Changed prompt hashes
+require a fresh campaign; do not edit old manifests to resume them with new code.
+The owner deferred live calls; see [the test handoff](../docs/conversation-prompt-judge-v2-handoff.md).
 
 For owner-requested diagnostic review, prepare with `--diagnostic --retain-diagnostic-evidence`.
 Rejected requests, responses and teacher results are then copied to `rejected-evidence/<id>/`

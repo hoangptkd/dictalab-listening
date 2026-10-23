@@ -56,6 +56,9 @@ GENERAL METHOD: scope -> source meaning -> tested claim -> evidence -> verdict.
    Apply history only to the event it concerns. An explicit new-encounter reset clears old arrangements;
    reusing a question category in a new event is not by itself repetition of an old tested answer.
    Within the same encounter, merely changing a name/number does not make an old tested meaning new.
+   Compare EACH asked meaning with history.facts and encounterState.sourceTurns.testedMeanings,
+   including CAPTURED answers. Extra new facts do not rescue a repeated slot. An explicitly signaled
+   actual revision is distinct from a renamed old target; apply the supplied revision boundary.
 2. Read the complete source and question as ordinary listening comprehension. Resolve reference,
    ellipsis and conventional paraphrases using the supplied context. Preserve who does what, polarity,
    modality and speech-act status. A question can ask for the content of a request, offer or tentative
@@ -71,6 +74,13 @@ GENERAL METHOD: scope -> source meaning -> tested claim -> evidence -> verdict.
    Respect field contracts: an identifier/name is not a formal classification unless the contract
    defines it as one. slots[*].kind names a semantic slot; facts[*].taskType is the classification.
    Do not invent a taskType error from a slot identifier when the requested meaning and taskType agree.
+   Derive the expected taskType from the question BEFORE comparing the model's label. Action under
+   if is still action; a prerequisite asks what must hold. An explicitly contrasted final value uses
+   the rubric's change_revision precedence. Then check whether a correctly classified fact fulfills focus.
+   Separate an opinion's object/evaluation from its causal explanation: under this rubric, an independent
+   reason in the answer needs a why question. A true source statement can still exceed the question.
+   Check full translation AND English/Vietnamese fact answers for added gender, age, deadlines and
+   certainty. First-person I alone supports neither he/she nor anh ấy/cô ấy; fluency is not evidence.
 4. For a potential defect identify the actual claim, its source evidence, the applicable rubric rule
    and the concrete semantic/task consequence. Check the strongest context-supported reading before
    reporting it. Do not assume extra facts to rescue a defect or extra requirements to invent one.
@@ -88,6 +98,11 @@ GENERAL METHOD: scope -> source meaning -> tested claim -> evidence -> verdict.
    slot or answer is rolesCorrect=false (critical), even if the transcript uses the correct role.
    Unsupported settled claims map to informationStatusCorrect; unsupported inference maps to
    reasoningGrounded. Do not let a finding in one check replace the audit of other checks.
+   Generic you can describe a general situation; a customer's knowledge of a rule alone does not prove
+   role reversal. Identify actual attribution before flagging rolesCorrect. Separately inspect whether
+   a policy question was promoted to permission in questionVi or in the answer's must/is allowed wording.
+   Apply context.levelDemand when supplied. B2 relationship processing must be needed by an asked answer,
+   not merely present in untested background. Do not infer audio properties from text.
 6. For each false/null check provide exactly one issue with check, sourceQuote, explanation, severity.
    Copy sourceQuote as a verbatim 4+ character substring of an actual string VALUE in context/task;
    preserve language, punctuation and Unicode. Never translate, reconstruct or quote JSON field names.
@@ -473,7 +488,9 @@ def judge_payload(case: dict, wire_id: str, manifest: dict) -> dict:
         "items": [{"id": wire_id, "context": case["context"], "task": case["task"]}]}
 
 
-def judge_schema(wire_id: str, *, fact_count: int | None = None) -> dict:
+def judge_schema(wire_id: str, *, fact_count: int | None = None, semantic_audit: bool = False) -> dict:
+    if semantic_audit and fact_count is None:
+        raise gen.DatasetError("semantic audit requires fact audit")
     issue = {"type": "object", "properties": {
         "check": {"type": "string", "enum": list(CHECKS)},
         "sourceQuote": {"type": "string", "minLength": 4},
@@ -490,6 +507,15 @@ def judge_schema(wire_id: str, *, fact_count: int | None = None) -> dict:
                  "claimSupported": {"type": ["boolean", "null"]},
                  "translationSupported": {"type": ["boolean", "null"]},
                  "basis": {"type": "string", "minLength": 1}}
+        if semantic_audit:
+            audit.update(
+                expectedTaskType={"enum": ["direct_detail", "gist", "reason_purpose", "condition",
+                    "instruction_sequence", "change_revision", "opinion_attitude",
+                    "inference_prediction", "argument_relation", None]},
+                answerScopeSupported={"type": ["boolean", "null"]},
+                newMeaningSupported={"type": ["boolean", "null"]},
+                attributesSupported={"type": ["boolean", "null"]},
+                historyQuote={"type": ["string", "null"], "minLength": 4})
         properties["factAudit"] = {"type": "array", "minItems": fact_count, "maxItems": fact_count,
             "items": {"type": "object", "properties": audit, "required": list(audit),
                       "additionalProperties": False}}
@@ -534,6 +560,8 @@ def _campaign_quota(settings, manifest: dict) -> dict:
 
 async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
                          stem: str, *, folder: Path) -> dict:
+    if case.get("hardPass") is not True:
+        raise gen.DatasetError("Web judge requires a hard-validated case before dispatch")
     request_path = folder / f"{stem}.request.json"
     envelope_path = folder / f"{stem}.envelope.json"
     result_path = folder / f"{stem}.result.json"
@@ -542,7 +570,8 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
             _sent_before(path, kind, folder.name, stem):
         raise gen.DatasetError(f"{stem}: sent/partial result exists; refusing replay")
     fact_count = len(case["task"]["facts"]) if manifest.get("requireFactAudit") else None
-    schema = judge_schema(wire_id, fact_count=fact_count)
+    semantic_audit = manifest.get("requireSemanticAudit", False)
+    schema = judge_schema(wire_id, fact_count=fact_count, semantic_audit=semantic_audit)
     payload = judge_payload(case, wire_id, manifest)
     body = {"model": "chatgpt-web", "stream": False, "messages": [{"role": "user",
         "content": JUDGE_SYSTEM + ("\nFor each factAudit entry give brief observable evidence, not hidden reasoning. "
@@ -550,7 +579,20 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
                    "reading from a reading established by context. Only consider context-plausible alternatives "
                    "that change a tested answer or translation. Quote the English transcript exactly. "
                    "Align claimSupported and translationSupported with the check verdicts.\n"
-                   if fact_count is not None else "") + "\nOUTPUT_SCHEMA:\n" + json.dumps(schema, ensure_ascii=False) +
+                   if fact_count is not None else "") + (
+                   "\nFor every factAudit: derive expectedTaskType from the asked meaning and rubric, "
+                   "not the supplied label (null only for a material unresolved classification). "
+                   "answerScopeSupported checks whether the answer matches and stays within slot/question. "
+                   "newMeaningSupported checks that this tested meaning was not already captured in this "
+                   "encounter; explicit revisions and genuinely new encounters are allowed by the rubric. "
+                   "historyQuote must quote a supplied historical utterance when newMeaningSupported is "
+                   "false/null and such history exists; otherwise use null. Missing history is not proof "
+                   "of repetition. attributesSupported checks all English/Vietnamese answer attributes, "
+                   "including gender/age/modality, against the source. In basis briefly identify the requested "
+                   "meaning, historical comparison when applicable, and any unsupported additions. "
+                   "A source quote alone does not establish alignment, novelty or faithful translation. "
+                   "Reconcile these fields with the corresponding top-level checks.\n"
+                   if semantic_audit else "") + "\nOUTPUT_SCHEMA:\n" + json.dumps(schema, ensure_ascii=False) +
                    "\nAUDIT_INPUT:\n" + json.dumps(payload, ensure_ascii=False)}]}
     if gen._contains_secret(body):
         raise gen.DatasetError("possible sensitive data in judge input")
@@ -589,6 +631,25 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
                 any(item["claimSupported"] is not True for item in audit)):
             raise gen.DatasetError("judge fact audit is incomplete, ungrounded or inconsistent")
         review["factAudit"] = audit
+        if semantic_audit:
+            history = [turn.get("utteranceEn", "") for turn in case["context"].get("history", [])]
+            history += [turn.get("utteranceEn", "") for turn in
+                        case["context"].get("encounterState", {}).get("sourceTurns", [])]
+            history = [text for text in history if text]
+            for item in audit:
+                expected = item["expectedTaskType"]
+                if (review["checks"]["taskTypeAccurate"] is True and
+                        (expected is None or expected != case["task"]["facts"][item["index"]]["taskType"])):
+                    raise gen.DatasetError("judge semantic audit contradicts taskTypeAccurate")
+                for field, check in (("answerScopeSupported", "questionFactsAligned"),
+                                     ("newMeaningSupported", "newMeanings"),
+                                     ("attributesSupported", "translationFaithful")):
+                    if review["checks"][check] is True and item[field] is not True:
+                        raise gen.DatasetError("judge semantic audit contradicts " + check)
+                quote = item["historyQuote"]
+                if ((quote is not None and not any(quote in text for text in history)) or
+                        (history and item["newMeaningSupported"] is not True and quote is None)):
+                    raise gen.DatasetError("judge semantic audit lacks grounded historical evidence")
     gen.write_json(result_path, review)
     return review
 

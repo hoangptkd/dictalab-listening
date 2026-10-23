@@ -74,12 +74,17 @@ Reach the drafting range with useful setting/action/reason/condition information
 repeated answers, a second speaker, or language above the supplied CEFR level.
 Use natural varied wording and practical new meanings. Preserve authored speaker/listener roles.
 Plan exactly authoringRules.slotCount independent slots. Return the SAME number of content.slots,
-content.facts and translation.facts, aligned by index; never return just one slot or fact.
+content.facts and translation.facts, aligned by index. Freeze those slots before drafting: supporting
+instructions/reasons stay untested unless one of the existing slots asks them. Never add a fourth
+slot/fact to cover extra transcript information. Count all three arrays before returning.
 For A1 use direct-detail targets only. Additional transcript background is not another tested slot.
 Include fact.taskType. If practiceFocus requests a task type, include it at least once, genuinely.
 Never copy few-shot outputs, openings, or old tested meanings. Do not put answer cues in UI text.
 For inference use at most ONE inference target, exact supporting transcript segments, and a brief
 public evidence explanation (not chain-of-thought). Do not turn direct detail into fake inference.
+For inference_prediction AND argument_relation, segmentsEn must contain the WHOLE evidenceEn as
+one identical array element, plus the other exact cues needed by the answer. A substring or two
+pieces that together reconstruct evidenceEn do not satisfy this contract.
 Translation is literal in meaning: no invented AM/PM, gender, dates, causes, names, or quantities.
 For turns 2/3, keep the established item/booking/activity and add a practical next step for it.
 Old arrangements remain true without restating them. Announce any actual change explicitly.
@@ -94,6 +99,11 @@ Use the supplied schema and slot count; examples are illustrations, never a conf
 A question/suggestion from a customer is not the listener's confirmed policy or instruction.
 Classify the meaning asked: reason is not gist; a replacement item is not a condition.
 Preserve by/before/until and modality. Brother/sister alone gives no relative age.
+Before writing each answer, check its requested meaning against history's tested meanings, ignoring
+changed names/numbers and renamed slots. Choose a genuinely untested property or an explicit revision.
+Keep an opinion answer to object + evaluation; ask why in a separate existing slot if testing its reason.
+Do not turn a question about permission into an answer stating that permission is granted.
+Translate unknown people with neutral references in BOTH full translation and fact answers.
 """
 JUDGE_SYSTEM += RULES + "\nReturn ALL these check keys, true/false/null: " + ", ".join(CHECKS) + "\n" + JSON_RULES
 
@@ -273,6 +283,11 @@ def make_context(group: dict, turn: int, prior: list[dict], artifact: dict, inde
         context["history"] = []
         context["previouslyTestedDetails"] = old_answers
     context["encounterState"] = encounter_state(context)
+    if level == "B2":
+        context["levelDemand"] = (
+            "This compact B2 task must test processing connected argument, contrast or qualified opinion. "
+            "At least one asked answer must depend on that relationship; adding an untested contrast "
+            "to a list of direct details/actions is insufficient. Keep the requested practiceFocus too.")
     if diagnostic:
         context["diagnosticOnly"] = True
     bounds = context["levelProfile"]

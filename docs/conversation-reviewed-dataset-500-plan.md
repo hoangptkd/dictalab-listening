@@ -11,6 +11,12 @@ Lô thử bổ sung 10 lần sinh và chấm lại 5 bài bất đồng phải g
 kể cả nội dung bị loại, theo yêu cầu mới. Dùng chiến dịch diagnostic riêng với
 `--retain-diagnostic-evidence`; toàn bộ lô nằm ngoài dữ liệu SFT.
 
+Cập nhật prompt sau lô thử: campaign mới dùng collection-v2 và semantic fact audit.
+Rubric v3, validator và ngưỡng nhận giữ nguyên. Chủ dự án yêu cầu chỉ sửa; các lượt
+gọi model thật được hoãn để model khác chạy theo
+[hướng dẫn bàn giao](conversation-prompt-judge-v2-handoff.md). Không tiếp tục campaign
+cũ bằng cách sửa hash; không ghi đè bằng chứng đã lưu.
+
 ## Yêu cầu đã được chủ dự án chốt
 
 | Tập | A1 | A2 | B1 | B2 | Tổng bài |
