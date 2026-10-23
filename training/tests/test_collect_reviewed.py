@@ -236,7 +236,7 @@ async def test_collection_stays_running_until_entire_batch_finishes(campaign, mo
 
 
 @pytest.mark.asyncio
-async def test_unrestricted_collection_passes_frozen_candidate_and_batch_caps(campaign, monkeypatch):
+async def test_collection_cap_is_preserved_when_provider_limits_are_disabled(campaign, monkeypatch):
     path, settings = campaign
     settings.operational_limits_enabled = False
     state = gen.read_json(path / "state.json")
@@ -249,11 +249,49 @@ async def test_unrestricted_collection_passes_frozen_candidate_and_batch_caps(ca
         return row
     monkeypatch.setattr(run, "_teacher_one", teacher)
     result = await collect.collect(path, settings=settings, limit=21)
-    assert result["attempted"] == 1521
-    assert result["candidateCap"] == 0
+    assert result["attempted"] == 1500
+    assert result["candidateCap"] == 1500
     assert result["configuredCandidateCap"] == 1500
-    assert result["status"] == "AWAITING_CODEX_REVIEW"
-    assert len(collect.decisions(path)) == 21
+    assert result["status"] == "CANDIDATE_CAP"
+    assert not collect.decisions(path)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("http_status", [402, 429])
+async def test_deepseek_exhaustion_stops_batch_and_preserves_compact_status(campaign, monkeypatch, http_status):
+    path, settings = campaign
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, **k: {"deepseek": {"availableCalls": None}})
+    calls = []
+    async def teacher(path, manifest, entry, group, artifact, folder, settings):
+        calls.append(entry["id"])
+        row = {**entry, "hardPass": False, "sent": True, "providerHttpStatus": http_status,
+               "errorType": "ProviderHttpError"}
+        gen.write_json(folder / f"{entry['id']}.teacher-result.json", row)
+        return row
+    monkeypatch.setattr(run, "_teacher_one", teacher)
+    assert (await collect.collect(path, settings=settings, limit=4))["status"] == "WAITING_DEEPSEEK_QUOTA"
+    assert (await collect.collect(path, settings=settings, limit=4))["attempted"] == 1
+    assert len(calls) == 1 and collect.decisions(path)[0]["providerHttpStatus"] == http_status
+
+
+@pytest.mark.asyncio
+async def test_web_quota_resume_only_judges_saved_teacher_output(campaign, monkeypatch):
+    path, settings = campaign
+    row, review, _ = review_fixture(path)
+    gen.write_json(path / "candidates/candidate-0001.teacher-result.json", row)
+    run._atomic_json(path / "state.json", {"status": "WAITING_WEB_QUOTA", "currentId": row["id"], "nextIndex": 1})
+    calls = []
+    async def judge(path, manifest, case, wire_id, stem, settings, *, folder):
+        calls.append(case)
+        if len(calls) == 1:
+            raise run.web_accounts.WebQuotaWait(12345)
+        gen.write_json(folder / f"{stem}.result.json", review)
+    monkeypatch.setattr(run, "_judge_one", judge)
+    assert (await collect.collect(path, settings=settings))["status"] == "WAITING_WEB_QUOTA"
+    assert (await collect.collect(path, settings=settings))["status"] == "AWAITING_CODEX_REVIEW"
+    assert len(calls) == 2 and calls[0] == calls[1] == row
+    assert collect.status(path)["attempted"] == 1
+    assert not (path / "sent-index.jsonl").exists()
 
 
 @pytest.mark.asyncio

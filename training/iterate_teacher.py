@@ -30,6 +30,7 @@ from training.semantic_rubric import CHECKS, VERSION_V3, decision, rules_for, se
 from app.config import cloud_model_id_matches
 from app.gemini_pool import QuotaUnavailable, quota_store
 from app.model_gateway import ModelGateway
+from training import web_judge_accounts as web_accounts
 
 
 POLICY = "teacher-first-pass-28of30-v1"
@@ -639,8 +640,11 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
     envelope_path = folder / f"{stem}.envelope.json"
     result_path = folder / f"{stem}.result.json"
     kind = "judge-calibration" if folder.name == "calibration" else "judge"
-    if any(p.exists() for p in (request_path, envelope_path, result_path)) or \
-            _sent_before(path, kind, folder.name, stem):
+    account_resume = bool(manifest["judge"].get("accounts") and request_path.exists() and
+        not envelope_path.exists() and not result_path.exists() and
+        web_accounts.resumable(folder, stem, gen.read_json(request_path)))
+    if not account_resume and (any(p.exists() for p in (request_path, envelope_path, result_path)) or \
+            _sent_before(path, kind, folder.name, stem)):
         raise gen.DatasetError(f"{stem}: sent/partial result exists; refusing replay")
     fact_count = len(case["task"]["facts"]) if manifest.get("requireFactAudit") else None
     semantic_audit = manifest.get("requireSemanticAudit", False)
@@ -678,15 +682,23 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
     if gen._contains_secret(body):
         raise gen.DatasetError("possible sensitive data in judge input")
     url = _bridge_url(manifest["judge"]["url"])
-    async with httpx.AsyncClient(follow_redirects=False, trust_env=False, timeout=240) as client:
-        # Record the attempt before HTTP; an ambiguous send is never replayed.
+    account_metadata = None
+    if account_resume:
+        if gen.read_json(request_path) != body:
+            raise gen.DatasetError("saved Web judge request changed; refusing replay")
+    else:
         _durable_exclusive_json(request_path, body)
         gen.append(path / "sent-index.jsonl", {"kind": kind, "phase": folder.name, "stem": stem,
             "requestHash": gen.digest(body), "time": time.time()})
-        response = await client.post(url, json=body)
-        envelope = gen.strict_json(response.text)
-        gen.write_json(envelope_path, envelope)
-        response.raise_for_status()
+    if manifest["judge"].get("accounts"):
+        response, envelope, account_metadata = await web_accounts.dispatch(
+            path, folder, stem, body, manifest["judge"]["accounts"])
+    else:
+        async with httpx.AsyncClient(follow_redirects=False, trust_env=False, timeout=240) as client:
+            response = await client.post(url, json=body)
+            envelope = gen.strict_json(response.text)
+    gen.write_json(envelope_path, envelope)
+    response.raise_for_status()
     choice = envelope["choices"][0]
     if choice.get("finish_reason") != "stop":
         raise gen.DatasetError("judge returned unfinished response")
@@ -706,6 +718,8 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
         "issues": issues, "sourceId": "local-chatgpt-bridge",
         "modelIdentity": "unverified-web-alias", "returnedModel": envelope.get("model"),
         "usage": envelope.get("usage")}
+    if account_metadata is not None:
+        review["webAccount"] = account_metadata
     if source_fields is not None:
         review["issueReferences"] = [issue["sourceRef"] for issue in verdict["issues"]]
     if not _review_integrity(case, review, manifest):
@@ -882,6 +896,7 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
         for source in settings.enabled_cloud_sources:
             raw = raw.replace(source.api_key, "[redacted]")
         try:
+            captured["httpStatus"] = response.status_code
             envelope = gen.strict_json(raw)
         except ValueError:
             envelope = {"invalidEnvelope": raw[:1_000_000]}
@@ -943,6 +958,8 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
             message = message.replace(source.api_key, "[redacted]")
         row["error"] = "[redacted]" if gen._contains_secret(message) else message[:1000]
     row["sent"] = request_path.exists()
+    if "httpStatus" in captured:
+        row["providerHttpStatus"] = captured["httpStatus"]
     gen.write_json(result_path, row)
     return row
 

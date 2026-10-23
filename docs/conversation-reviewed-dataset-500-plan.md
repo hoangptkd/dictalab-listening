@@ -2,6 +2,15 @@
 
 Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các báo cáo benchmark cũ giữ nguyên.
 
+**Thu thập mới sau vòng thử v8:** chủ dự án xác nhận làm đủ 700 bài theo bảng bên
+dưới. Hai tài khoản ChatGPT Web dùng hai profile độc lập, mỗi profile một tab.
+Chỉ chuyển tài khoản sau thông báo quota rõ ràng; giữ nguyên bài và yêu cầu chấm.
+Cả hai hết quota thì checkpoint, chờ rồi tiếp tục. DeepSeek hết quota/số dư thì
+dừng và báo cáo. Cho phép model Web khác nhau giữa tài khoản; biên bản phải ghi
+tài khoản và model quan sát được, ghi chưa xác minh khi giao diện không cung cấp.
+Chiến dịch mới: `data/fine-tuning/reviewed-700-v8-20261023`, không tính mẫu diagnostic.
+Hướng dẫn vận hành: [xoay tài khoản Web](conversation-reviewed-700-account-rotation-20261023.md).
+
 **Cập nhật mới nhất ngày 23/10/2026:** chủ dự án đã hủy yêu cầu tự động tắt máy.
 Lệnh Windows đang chờ đã được hủy thành công. Không bật
 `--shutdown-on-worker-failure` hoặc gọi shutdown khi hoàn tất/gặp lỗi; các đoạn

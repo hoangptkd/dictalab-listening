@@ -61,7 +61,8 @@ def prior_corpus() -> list[str]:
 
 
 def prepare(path: Path, settings=None, *, diagnostic: bool = False,
-            retain_diagnostic_evidence: bool = False, artifact_path: Path | None = None) -> dict:
+            retain_diagnostic_evidence: bool = False, artifact_path: Path | None = None,
+            web_accounts: list[dict] | None = None) -> dict:
     if retain_diagnostic_evidence and not diagnostic:
         raise DatasetError("full rejection evidence retention requires a diagnostic campaign")
     path = run._private_path(path)
@@ -75,6 +76,12 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
     sources = settings.sources_for("deepseek")
     if not sources:
         raise DatasetError("DeepSeek registry has no enabled source")
+    if web_accounts:
+        if (len({a["id"] for a in web_accounts}) != len(web_accounts) or
+                len({a["url"] for a in web_accounts}) != len(web_accounts)):
+            raise DatasetError("Web accounts must have distinct IDs and endpoints")
+        for account in web_accounts:
+            run._bridge_url(account["url"])
     groups = []
     holdouts = []
     retired = run._retired_groups()
@@ -120,10 +127,13 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
         "requireFactAudit": True,
         "requireSemanticAudit": True,
         "useIssueReferences": True,
-        "candidateCap": 1500 if getattr(settings, "operational_limits_enabled", True) else 0,
+        "candidateCap": 1500 if not diagnostic or getattr(settings, "operational_limits_enabled", True) else 0,
         "targetsPerLevel": TARGETS,
         "groups": groups, "holdouts": sorted(set(holdouts)), "priorCorpusHash": gen.digest(corpus),
         "approvalAuthority": "delegated AI:Codex; independent per-item review, no automatic approval"}
+    if web_accounts:
+        manifest["judge"]["accounts"] = web_accounts
+        manifest["judge"]["url"] = web_accounts[0]["url"]
     manifest["hash"] = gen.digest(manifest)
     path.mkdir(parents=True)
     for folder in ("candidates", "decisions"):
@@ -164,9 +174,10 @@ def status(path: Path) -> dict:
     state = gen.read_json(path / "state.json")
     return {"status": state["status"], "attempted": state["nextIndex"],
         "configuredCandidateCap": manifest["candidateCap"],
-        "candidateCap": manifest["candidateCap"] if state.get("operationalLimitsEnabled", True) else 0,
+        "candidateCap": manifest["candidateCap"] if not manifest.get("diagnosticOnly") or state.get("operationalLimitsEnabled", True) else 0,
         "approvedTasks": sum(counts.values()),
         "counts": {split: {level: counts[split, level] for level in LEVELS} for split in TARGETS},
+        "retryAt": state.get("retryAt"), "stopReason": state.get("stopReason"),
         "pending": pending, "complete": all(counts[split, level] == target
             for split, target in TARGETS.items() for level in LEVELS), "trainingReady": False}
 
@@ -196,9 +207,13 @@ def reject(path: Path, row: dict, reason: str, *, reviewer: str = "automatic-har
         usage=row.get("usage"), sent=bool(row.get("sent")), time=run._now())
     # Retain controlled provider codes, never exception dumps containing rejected text.
     compact["errorType"] = row.get("errorType")
+    compact["providerHttpStatus"] = row.get("providerHttpStatus")
+    compact["webAttempts"] = [{"hash": gen.digest(attempt), "accountId": attempt.get("accountId"),
+        "outcome": attempt.get("outcome"), "httpStatus": attempt.get("httpStatus")}
+        for attempt in run.web_accounts.attempts(folder, ident)]
     compact["errorCodes"] = re.findall(
         r"\bdeepseek:teacher_batch:(?:schema_mismatch|invalid_json|response_not_object|"
-        r"output_truncated|http_or_parse_error|timeout|client_error:(?:400|401|403|422))\b",
+        r"output_truncated|http_or_parse_error|timeout|client_error:(?:400|401|402|403|422|429))\b",
         row.get("error", ""))
     compact["validationCodes"] = re.findall(
         r"(?:utteranceEn:word_count=\d+,min=\d+,max=\d+|"
@@ -238,9 +253,26 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
         raise DatasetError("collect limit must be positive")
     with run._campaign_lock(path):
         current = status(path)
-        if current["pending"] or current["complete"]:
-            return current
         state = gen.read_json(path / "state.json")
+        if state["status"] == "WAITING_WEB_QUOTA":
+            ident = state["currentId"]
+            folder = path / "candidates"
+            row = gen.read_json(folder / f"{ident}.teacher-result.json")
+            try:
+                await run._judge_one(path, manifest, row, ident, ident, settings, folder=folder)
+            except run.web_accounts.WebQuotaWait as error:
+                state["retryAt"] = error.retry_at
+                run._atomic_json(path / "state.json", state)
+                return status(path)
+            except Exception as error:
+                state.update(status="BLOCKED", errorType=type(error).__name__)
+                run._atomic_json(path / "state.json", state)
+                raise
+            state.update(status="AWAITING_CODEX_REVIEW")
+            run._atomic_json(path / "state.json", state)
+            return status(path)
+        if current["pending"] or current["complete"] or state["status"] == "WAITING_DEEPSEEK_QUOTA":
+            return current
         if state["status"] in {"RUNNING", "BLOCKED"}:
             raise DatasetError("unresolved worker/request outcome; inspect checkpoint before continuing")
         state["operationalLimitsEnabled"] = getattr(settings, "operational_limits_enabled", True)
@@ -252,7 +284,7 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
             corpus.append(normalized(gen.read_json(path / "candidates" / f"{item['id']}.teacher-result.json")["task"]["utteranceEn"]))
         for _ in range(limit):
             current = status(path)
-            if (getattr(settings, "operational_limits_enabled", True) and
+            if ((not manifest.get("diagnosticOnly") or getattr(settings, "operational_limits_enabled", True)) and
                     manifest["candidateCap"] and current["attempted"] >= manifest["candidateCap"]) or current["complete"]:
                 state["status"] = "COMPLETE" if current["complete"] else "CANDIDATE_CAP"
                 break
@@ -297,6 +329,9 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                 row = await run._teacher_one(path, manifest, entry, group, artifact, folder, settings)
                 if not row["hardPass"]:
                     reject(path, row, "hard-validation-or-provider-error:" + row.get("errorType", "unknown"))
+                    if row.get("providerHttpStatus") in {402, 429} or row.get("errorType") == "QuotaUnavailable":
+                        state.update(status="WAITING_DEEPSEEK_QUOTA", stopReason="DeepSeek quota or balance exhausted")
+                        break
                 elif duplicate(row["task"]["utteranceEn"], corpus):
                     reject(path, row, "exact-or-near-duplicate")
                 else:
@@ -312,6 +347,9 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                 run._atomic_json(path / "state.json", state)
                 print(json.dumps({"candidate": ident, "level": level, "hardPass": row["hardPass"],
                                   "pendingIndependentReview": (folder / f"{ident}.teacher-result.json").exists()}), flush=True)
+            except run.web_accounts.WebQuotaWait as error:
+                state.update(status="WAITING_WEB_QUOTA", retryAt=error.retry_at)
+                break
             except run.QuotaUnavailable:
                 state.update(status="AWAITING_CODEX_REVIEW" if status(path)["pending"] else "WAITING_QUOTA")
                 break
@@ -369,7 +407,8 @@ def adjudicate(path: Path, verdict: dict) -> dict:
         else:
             raise DatasetError("verdict must be approved or rejected; uncertain items cannot enter SFT")
         state = gen.read_json(path / "state.json")
-        state["status"] = "AWAITING_CODEX_REVIEW" if status(path)["pending"] else "READY"
+        if state["status"] != "WAITING_DEEPSEEK_QUOTA":
+            state["status"] = "AWAITING_CODEX_REVIEW" if status(path)["pending"] else "READY"
         run._atomic_json(path / "state.json", state)
     return status(path)
 
@@ -409,6 +448,8 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=4)
     parser.add_argument("--decision-file", type=Path)
     parser.add_argument("--artifact", type=Path, help="freeze this candidate on prepare; default is the best measured baseline")
+    parser.add_argument("--web-account", action="append", default=[], metavar="ID=URL",
+                        help="repeat for independent local bridge accounts; switch only on explicit Web quota")
     parser.add_argument("--diagnostic", action="store_true", help="prepare an experiment excluded from SFT")
     parser.add_argument("--retain-diagnostic-evidence", action="store_true",
                         help="preserve rejected diagnostic requests and responses for owner review")
@@ -418,7 +459,8 @@ def main() -> int:
     path = run._private_path(args.campaign)
     if args.command == "prepare":
         result = prepare(path, diagnostic=args.diagnostic,
-                         retain_diagnostic_evidence=args.retain_diagnostic_evidence, artifact_path=args.artifact)
+                         retain_diagnostic_evidence=args.retain_diagnostic_evidence, artifact_path=args.artifact,
+                         web_accounts=[dict(zip(("id", "url"), item.split("=", 1))) for item in args.web_account] or None)
     elif args.command == "collect":
         result = asyncio.run(collect(path, limit=args.limit, shutdown_on_failure=args.shutdown_on_worker_failure))
     elif args.command == "adjudicate":
