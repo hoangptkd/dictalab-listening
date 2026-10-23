@@ -90,6 +90,51 @@ def test_request_settings_share_one_store():
     assert quota_store(cfg) is quota_store(cfg.model_copy(update={"timeout_seconds": 7, "temperature": 0.8}))
 
 
+def test_unrestricted_admission_counts_past_100_and_keeps_provider_cooldown():
+    cfg = settings(n=1, operational_limits_enabled=False, gemini_global_rpd_limit=100)
+    source = cfg.enabled_gemini_sources[0]
+    source.tpm_limit = 1
+    now = [1792670400]
+    store = QuotaStore(cfg, clock=lambda: now[0])
+    for _ in range(101):
+        assert store.select(cfg.gemini_model, 100) is source
+    assert store.execute(source, op="status")[:5] == [101, 10100, 101, 101, 101]
+    with pytest.raises(QuotaUnavailable):
+        store.select("unconfigured-model", 1)
+    store.report(source, "429", 60)
+    with pytest.raises(QuotaUnavailable):
+        store.select(cfg.gemini_model, 1)
+    now[0] += 61
+    assert store.select(cfg.gemini_model, 1) is source
+    assert store.execute(source, op="status")[2] == 102
+
+
+def test_unrestricted_redis_arguments_and_cache_do_not_restore_database_caps():
+    from types import SimpleNamespace
+    cfg = settings(n=1, operational_limits_enabled=False, gemini_quota_backend="redis")
+    source = cfg.enabled_gemini_sources[0]
+    cfg.registry_pools = {"gemini": {"global_rpm_limit": 1, "global_rpd_limit": 100}}
+    store = quota_store(cfg)
+    store.client = SimpleNamespace(time=lambda: (1792670400, 0))
+    _, args = store._keys_args(source, 500, "reserve", 0)
+    assert args[2:7] == [0] * 5
+    limited = quota_store(cfg.model_copy(update={"operational_limits_enabled": True}))
+    assert limited is not store
+    assert limited.settings.gemini_global_rpd_limit == 100
+
+
+def test_unrestricted_capacity_and_explicit_zero_do_not_create_zero_permit_pools():
+    cfg = Settings(operational_limits_enabled=False)
+    assert cfg.effective_max_concurrency == 0
+    assert cfg.effective_http_max_connections is None
+    cfg = Settings(max_concurrency=0, http_max_connections=0)
+    assert cfg.effective_max_concurrency == 0
+    assert cfg.effective_http_max_connections is None
+    assert Settings(max_concurrency=1000, http_max_connections=1000).effective_max_concurrency == 1000
+    with pytest.raises(ValueError):
+        Settings(max_concurrency=-1)
+
+
 @pytest.mark.parametrize("missing_source,missing_requested,expected", [(None, False, 200), (1, False, 503), (None, True, 503)])
 def test_pool_readiness_checks_every_source_and_requested_model(monkeypatch, missing_source, missing_requested, expected):
     from app import main

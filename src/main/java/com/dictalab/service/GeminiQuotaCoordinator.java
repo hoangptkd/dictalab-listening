@@ -28,11 +28,15 @@ public final class GeminiQuotaCoordinator {
     private final Map<String, State> states = new HashMap<>();
     private final Window global = new Window();
     private String platform = "gemini";
+    private boolean operationalLimitsEnabled = true;
     private AiProviderRegistry registry;
     private final Map<String, GeminiQuotaCoordinator> platformCoordinators = new HashMap<>();
 
     @org.springframework.beans.factory.annotation.Autowired
     void configureRegistry(AiProviderRegistry registry) { this.registry = registry; }
+
+    @org.springframework.beans.factory.annotation.Value("${dictalab.operational-limits-enabled:true}")
+    void configureOperationalLimits(boolean enabled) { this.operationalLimitsEnabled = enabled; }
 
     private synchronized GeminiQuotaCoordinator forPlatform(String selected) {
         if (registry == null || !registry.databaseEnabled()) {
@@ -42,6 +46,7 @@ public final class GeminiQuotaCoordinator {
         return platformCoordinators.computeIfAbsent(selected, name -> {
             var coordinator = new GeminiQuotaCoordinator(registry.properties(name), metrics, redis, clock);
             coordinator.platform = name;
+            coordinator.operationalLimitsEnabled = operationalLimitsEnabled;
             return coordinator;
         });
     }
@@ -113,8 +118,8 @@ public final class GeminiQuotaCoordinator {
             String prefix = root + provider.projectId() + ":" + model;
             List<?> result = redis.execute(SCRIPT, List.of(prefix + ":requests", prefix + ":tokens", prefix + ":day:" + day,
                             root + "global:requests", root + "global:day:" + day, prefix + ":state", prefix + ":metrics"),
-                    operation, Integer.toString(tokens), Integer.toString(provider.effectiveRpm()), Integer.toString(provider.tpmLimit()),
-                    Integer.toString(provider.rpdLimit()), Integer.toString(properties.globalRpmLimit()), Integer.toString(properties.globalRpdLimit()),
+                    operation, Integer.toString(tokens), limit(provider.effectiveRpm()), limit(provider.tpmLimit()),
+                    limit(provider.rpdLimit()), limit(properties.globalRpmLimit()), limit(properties.globalRpdLimit()),
                     UUID.randomUUID().toString(), Long.toString(start), Long.toString(end), "5", "30000", Long.toString(delay));
             if (result == null) throw new IllegalStateException("Missing quota result");
             return result;
@@ -132,11 +137,11 @@ public final class GeminiQuotaCoordinator {
         window.clean(now, day); global.clean(now, day);
         var state = states.get(key);
         long wait = state == null ? 0 : Math.max(0, state.until - now);
-        if (window.requests.size() >= provider.effectiveRpm()) wait = Math.max(wait, window.waitMs(now));
-        if (provider.tpmLimit() > 0 && window.tokens() + tokens > provider.tpmLimit()) wait = Math.max(wait, 60000);
-        if (properties.globalRpmLimit() > 0 && global.requests.size() >= properties.globalRpmLimit()) wait = Math.max(wait, global.waitMs(now));
-        if (provider.rpdLimit() > 0 && window.daily >= provider.rpdLimit()
-                || properties.globalRpdLimit() > 0 && global.daily >= properties.globalRpdLimit())
+        if (operationalLimitsEnabled && window.requests.size() >= provider.effectiveRpm()) wait = Math.max(wait, window.waitMs(now));
+        if (operationalLimitsEnabled && provider.tpmLimit() > 0 && window.tokens() + tokens > provider.tpmLimit()) wait = Math.max(wait, 60000);
+        if (operationalLimitsEnabled && properties.globalRpmLimit() > 0 && global.requests.size() >= properties.globalRpmLimit()) wait = Math.max(wait, global.waitMs(now));
+        if (operationalLimitsEnabled && (provider.rpdLimit() > 0 && window.daily >= provider.rpdLimit()
+                || properties.globalRpdLimit() > 0 && global.daily >= properties.globalRpdLimit()))
             wait = Math.max(wait, day.plusDays(1).atStartOfDay(PACIFIC).toInstant().toEpochMilli() - now);
         if (wait > 0) return new Admission(false, wait);
         window.add(now, tokens); global.add(now, tokens);
@@ -144,6 +149,7 @@ public final class GeminiQuotaCoordinator {
     }
 
     private static String normalize(String model) { return model.replaceFirst("^models/", ""); }
+    private String limit(int configured) { return operationalLimitsEnabled ? Integer.toString(configured) : "0"; }
     public record Admission(boolean allowed, long retryAfterMs) {}
     private record Request(long time, int tokens) {}
     private static final class State { private long until; private int failures; }

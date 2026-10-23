@@ -111,7 +111,46 @@ bằng `{"thinking":{"type":"disabled"}}` cho tác vụ này.
 DeepSeek tính phí theo token và công bố concurrency theo tài khoản, không phải RPD miễn phí.
 13 RPM/100 RPD trong registry là trần vận hành nội bộ ban đầu, không phải quota DeepSeek
 hay giới hạn chi tiêu theo USD. Output/input token và các client ngoài hệ thống vẫn ảnh hưởng
-chi phí; không tự nạp tiền, không tăng cap, không chạy batch trả phí nền.
+chi phí; không tự nạp tiền hoặc chạy batch trả phí nền khi chưa được yêu cầu.
+
+### Local: bỏ trần vận hành (2026-10-23)
+
+Chủ dự án yêu cầu bỏ các trần nội bộ trong giai đoạn phát triển. `.env` local và
+`.env.example` đặt `DICTALAB_OPERATIONAL_LIMITS_ENABLED=false`,
+`AI_BUDGET_ENABLED=false`, `RATE_LIMIT_ENABLED=false`, `AI_CONCURRENCY=0`,
+`TTS_CONCURRENCY=0`. Compose chuyển cờ vận hành vào cả AI service và worker;
+Java nhận cấu hình qua launcher đang có. Khi chạy Python trực tiếp phải nạp env;
+runner teacher đã đọc cờ này từ `.env`.
+
+- Provider vẫn chọn account/model từ registry; không tắt routing để bỏ quota.
+  Các trần RPM/TPM/RPD của account và pool không chặn admission khi cờ là `false`.
+  Redis/memory vẫn ghi usage; HTTP 429 và cooldown thực tế của provider vẫn áp dụng.
+- Báo cáo quota giữ `configuredRpdLimit`/`configuredGlobalRpdLimit`, nhưng trần
+  có hiệu lực là `0` và `availableCalls=null` nghĩa là không có trần nội bộ.
+  Đây không phải bằng chứng tài khoản còn quota từ nhà cung cấp.
+- Bộ thu thập bỏ trần 1.500 ứng viên trong chế độ này, không sửa manifest cũ.
+  Báo cáo giữ `configuredCandidateCap`; `candidateCap=0` nghĩa là không giới hạn.
+  Bỏ trần batch 20 ứng viên và trần cấu hình 10 vòng; `max_rounds=0` cũng cho phép
+  không giới hạn khi bật lại cờ. Mục tiêu dataset và duyệt độc lập vẫn giữ nguyên.
+- Bỏ trần daily budget cho cloud và local; công tắc dừng khẩn cấp vẫn có hiệu lực.
+  Tắt HTTP rate limiter local bằng cấu hình hiện có, giữ xác thực và CSRF.
+- AI service hỗ trợ concurrency/HTTP connections bằng `0` (không giới hạn);
+  cờ `false` cũng bỏ cả hai trần này. Java provider hỗ trợ concurrency `0`;
+  các client conversation/coach không còn trần cố định một request.
+  Worker audio/coach giữ số worker cấu hình nhưng không còn trần 8/4 worker.
+- Batch eval mặc định `--max-calls 0 --max-seconds 0`; vẫn hỗ trợ trần tường minh
+  nếu người chạy truyền số dương. Bỏ trần concurrency 5 của batch.
+- SQLite job admission bỏ trần 1.000 job khi cờ là `false`. Compose bỏ memory
+  limit của Redis/RabbitMQ và đặt Redis `maxmemory=0`; giữ persistence/noeviction.
+
+Giữ các ràng buộc schema/Unicode, rubric, dedup/leakage, idempotency, bảo vệ dữ liệu,
+request deadline, circuit sau lỗi và cấu hình queue RabbitMQ hiện hữu. Đổi queue
+durable tại chỗ có thể gây lỗi khai báo; việc này cần migration riêng để không mất job.
+Các benchmark lịch sử giữ kích thước mẫu đã khóa, không biến thành batch vô hạn.
+Giới hạn thật từ API, context của model và tài nguyên máy không thể gỡ bằng cờ local.
+
+Thay đổi áp dụng khi tiến trình nạp lại cấu hình/code; container cần rebuild/recreate.
+Task này không restart dịch vụ đang chạy, không sinh dữ liệu, không train và không tắt máy.
 
 Nguồn: [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/),
 [JSON Output](https://api-docs.deepseek.com/guides/json_mode/),

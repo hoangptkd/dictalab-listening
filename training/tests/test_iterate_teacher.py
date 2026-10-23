@@ -495,6 +495,20 @@ def test_quota_reads_each_provider_store_without_mixing_counters(monkeypatch):
     assert snapshot["gemini"]["availableCalls"] == 954
 
 
+def test_unrestricted_quota_reports_usage_without_false_daily_exhaustion(monkeypatch):
+    settings = SimpleNamespace(operational_limits_enabled=False,
+        sources_for=lambda _: [SimpleNamespace(id="d", rpd_limit=100)],
+        registry_pools={"deepseek": {"global_rpd_limit": 100}})
+    monkeypatch.setattr(run, "quota_store", lambda *a, **k: SimpleNamespace(
+        execute=lambda *a, **k: [0, 0, 101, 0, 101, 0]))
+    quota = run.quota_snapshot(settings, platforms=("deepseek",))["deepseek"]
+    assert quota["availableCalls"] is None
+    assert quota["globalRpdLimit"] == 0
+    assert quota["configuredGlobalRpdLimit"] == 100
+    assert quota["globalUsedRpd"] == 101
+    assert quota["accounts"][0]["remainingRpd"] is None
+
+
 @pytest.mark.asyncio
 async def test_calibration_uses_72_distinct_first_pass_calls_and_caches(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())

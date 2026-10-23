@@ -72,12 +72,13 @@ class CoachLocalClientTest {
         assertTrue(client.completeJson("{}").isObject());
     }
 
-    @Test void timesOutStalledBodyRejectsConcurrentRequestAndRecoversSlot() throws Exception {
+    @Test void admitsConcurrentRequestsKeepsBodyDeadlinesAndRecovers() throws Exception {
         bodyGate.set(new CountDownLatch(1));
         Future<?> first = pool.submit(() -> assertThrows(IllegalStateException.class, () -> client.completeJson("{}")));
         assertTrue(entered.get().await(3, TimeUnit.SECONDS));
-        assertThrows(ProviderGuard.Unavailable.class, () -> client.completeJson("{}"));
-        assertEquals(1, requests.get());
+        assertFalse(first.isDone());
+        assertThrowsExactly(IllegalStateException.class, () -> client.completeJson("{}"));
+        assertEquals(2, requests.get());
         first.get(3, TimeUnit.SECONDS);
         bodyGate.get().countDown();
         assertTrue(client.completeJson("{}").isObject());

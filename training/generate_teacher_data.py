@@ -307,6 +307,7 @@ class Gemini:
             from app.config import Settings
             from app.gemini_pool import quota_store
             pool_settings = Settings(primary_provider="gemini", gemini_quota_enabled=True,
+                operational_limits_enabled=env_value("DICTALAB_OPERATIONAL_LIMITS_ENABLED", "true"),
                 ai_provider_config_source=env_value("AI_PROVIDER_CONFIG_SOURCE","env"),
                 ai_provider_database_url=env_value("AI_PROVIDER_DATABASE_URL",""),
                 ai_provider_encryption_key=env_value("AI_PROVIDER_ENCRYPTION_KEY",""),

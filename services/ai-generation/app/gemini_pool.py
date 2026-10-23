@@ -59,8 +59,11 @@ class QuotaStore:
         prefix = root + source.project_id + ":" + source.model
         keys = [prefix + ":requests", prefix + ":tokens", prefix + ":day:" + day,
             root + "global:requests", root + "global:day:" + day, prefix + ":state", prefix + ":metrics"]
-        args = [op, tokens, source.effective_rpm, source.tpm_limit, source.rpd_limit,
-            self.settings.gemini_global_rpm_limit, self.settings.gemini_global_rpd_limit,
+        limits = [source.effective_rpm, source.tpm_limit, source.rpd_limit,
+            self.settings.gemini_global_rpm_limit, self.settings.gemini_global_rpd_limit]
+        if not self.settings.operational_limits_enabled:
+            limits = [0] * 5
+        args = [op, tokens, *limits,
             str(uuid.uuid4()), start, end, 5, 30000, delay * 1000]
         return keys, args
 
@@ -108,13 +111,14 @@ class QuotaStore:
             if op == "status":
                 return [rpm, tpm, rpd, len(global_queue), global_rpd, max(0, state["until"] - now) * 1000]
             wait = max(0, state["until"] - now)
-            if rpm >= source.effective_rpm:
+            limited = self.settings.operational_limits_enabled
+            if limited and rpm >= source.effective_rpm:
                 wait = max(wait, queue[0][0] + 60 - now)
-            if source.tpm_limit and tpm + tokens > source.tpm_limit:
+            if limited and source.tpm_limit and tpm + tokens > source.tpm_limit:
                 wait = max(wait, 60)
-            if self.settings.gemini_global_rpm_limit and len(global_queue) >= self.settings.gemini_global_rpm_limit:
+            if limited and self.settings.gemini_global_rpm_limit and len(global_queue) >= self.settings.gemini_global_rpm_limit:
                 wait = max(wait, global_queue[0][0] + 60 - now)
-            if ((source.rpd_limit and rpd >= source.rpd_limit) or
+            if limited and ((source.rpd_limit and rpd >= source.rpd_limit) or
                     (self.settings.gemini_global_rpd_limit and global_rpd >= self.settings.gemini_global_rpd_limit)):
                 wait = max(wait, end / 1000 - now)
             stats["rejected" if wait else "allowed"] = stats.get("rejected" if wait else "allowed", 0) + 1
@@ -157,7 +161,7 @@ class QuotaStore:
             label = f'provider="{source.id}",model="{source.model}"'
             for name, value in zip(("rpm_used", "tpm_reserved", "rpd_used", "global_rpm_used", "global_rpd_used", "cooldown_ms"), values):
                 lines.append(f"dictalab_gemini_{name}{{{label}}} {value}")
-            if source.rpd_limit:
+            if self.settings.operational_limits_enabled and source.rpd_limit:
                 lines.append(f"dictalab_gemini_rpd_remaining_ratio{{{label}}} {max(0, 1 - values[2]/source.rpd_limit)}")
             if self.settings.gemini_quota_backend == "redis":
                 keys, _ = self._keys_args(source, 1, "status", 0)
@@ -180,7 +184,7 @@ def _cached_store(config):
 def quota_store(settings, platform=None):
     # Request deadlines/temperatures must not create independent admission budgets.
     values = {name: getattr(settings, name) for name in ("gemini_quota_backend", "gemini_quota_redis_url",
-        "gemini_global_rpm_limit", "gemini_global_rpd_limit")}
+        "gemini_global_rpm_limit", "gemini_global_rpd_limit", "operational_limits_enabled")}
     platform = platform or (settings.selected_provider if settings.selected_provider != "ollama" else "gemini")
     values["quota_platform"] = platform
     if platform in settings.registry_pools:

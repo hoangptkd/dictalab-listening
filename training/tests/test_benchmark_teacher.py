@@ -46,6 +46,12 @@ def test_plan_freezes_identical_contexts_and_refuses_quota_overrun(tmp_path, mon
     assert not output.exists()
 
 
+def test_unrestricted_plan_does_not_treat_internal_100_cap_as_provider_exhaustion(tmp_path, monkeypatch):
+    output, settings = frozen(tmp_path, monkeypatch, used=100)
+    settings.operational_limits_enabled = False
+    assert bench.prepare(output, settings)["httpCap"] == 78
+
+
 def test_review_is_bound_to_task_context_and_identity():
     row = {"id": "blind-1", "context": {"turnNumber": 2}, "task": {"utteranceEn": "test"}, "hardPass": True}
     review = {"reviewer": "AI:Codex", "taskHash": bench.gen.digest(row["task"]),

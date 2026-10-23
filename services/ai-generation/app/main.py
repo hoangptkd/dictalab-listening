@@ -5,7 +5,7 @@ import logging
 import time
 import uuid
 import secrets
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager, nullcontext, suppress
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -70,7 +70,7 @@ cache: dict[str, CachedResult] = {}
 _key_locks: dict[str, asyncio.Lock] = {}
 _key_locks_mu: asyncio.Lock = asyncio.Lock()
 
-semaphore = asyncio.Semaphore(settings.max_concurrency)
+semaphore = asyncio.Semaphore(settings.effective_max_concurrency) if settings.effective_max_concurrency else None
 
 
 @app.middleware("http")
@@ -250,19 +250,19 @@ async def create_task(payload: ConversationTaskRequest, request: Request,
         if cached:
             cache.pop(key, None)
 
-        if semaphore.locked():
+        if semaphore is not None and semaphore.locked():
             raise HTTPException(status_code=429, detail="generation capacity exhausted")
 
         started = time.monotonic()
         runtime_seconds = min(settings.timeout_seconds, x_ai_timeout_ms / 1000) if x_ai_timeout_ms is not None else settings.timeout_seconds
-        async with semaphore:
+        async with semaphore if semaphore is not None else nullcontext():
             telemetry.active += 1
             calls = []
             call_token = provider_calls.set(calls)
             artifact_token = selected_artifact.set(artifact)
             try:
                 timeout = httpx.Timeout(runtime_seconds)
-                async with httpx.AsyncClient(timeout=timeout, limits=httpx.Limits(max_connections=settings.http_max_connections)) as client:
+                async with httpx.AsyncClient(timeout=timeout, limits=httpx.Limits(max_connections=settings.effective_http_max_connections)) as client:
                     server_payload = payload.model_copy(update={"promptVersion": version,
                                                                "instruction": artifact["instruction"]})
                     runtime_settings = settings.model_copy(update={"timeout_seconds": runtime_seconds})

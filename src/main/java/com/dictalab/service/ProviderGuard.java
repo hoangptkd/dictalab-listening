@@ -5,7 +5,7 @@ import java.time.Duration;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Bounded provider concurrency and one recovery probe, without an unbounded waiting queue. */
+/** Optional provider concurrency limit (zero means unlimited) and one recovery probe. */
 public final class ProviderGuard {
     private final Semaphore permits;
     private final AtomicInteger active=new AtomicInteger();
@@ -23,9 +23,9 @@ public final class ProviderGuard {
     }
     public ProviderGuard(String provider,int concurrency,MeterRegistry metrics,
             io.micrometer.observation.ObservationRegistry observations,int failureThreshold,Duration recoveryDelay){
-        if(concurrency<1 || concurrency>128) throw new IllegalArgumentException("Invalid provider concurrency");
+        if(concurrency<0) throw new IllegalArgumentException("Invalid provider concurrency");
         if(failureThreshold<1 || recoveryDelay.isNegative() || recoveryDelay.isZero())throw new IllegalArgumentException("Invalid circuit settings");
-        this.provider=provider; this.metrics=metrics; this.permits=new Semaphore(concurrency);
+        this.provider=provider; this.metrics=metrics; this.permits=concurrency==0?null:new Semaphore(concurrency);
         this.observations=observations;this.failureThreshold=failureThreshold;this.recoveryDelay=recoveryDelay;
         metrics.gauge("dictalab.provider.inflight",java.util.List.of(io.micrometer.core.instrument.Tag.of("provider",provider)),active);
         metrics.gauge("dictalab.provider.circuit",java.util.List.of(io.micrometer.core.instrument.Tag.of("provider",provider)),
@@ -35,7 +35,7 @@ public final class ProviderGuard {
 
     public synchronized Permit enter(){
         long now=System.nanoTime();
-        if(openUntil>now || probe || !permits.tryAcquire()){
+        if(openUntil>now || probe || permits!=null && !permits.tryAcquire()){
             metrics.counter("dictalab.provider.rejected","provider",provider).increment();
             throw new Unavailable("Dịch vụ đang bận. Vui lòng thử lại sau.",5,true);
         }
@@ -69,7 +69,7 @@ public final class ProviderGuard {
                 }
                 else if(recovery)openUntil=System.nanoTime()+recoveryDelay.toNanos();
                 if(recovery)probe=false;
-                active.decrementAndGet();permits.release();
+                active.decrementAndGet();if(permits!=null)permits.release();
             }
             metrics.timer("dictalab.provider.duration","provider",provider,"outcome",successful?"success":"error")
                     .record(System.nanoTime()-started,java.util.concurrent.TimeUnit.NANOSECONDS);

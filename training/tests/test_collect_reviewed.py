@@ -199,6 +199,27 @@ async def test_collection_stays_running_until_entire_batch_finishes(campaign, mo
 
 
 @pytest.mark.asyncio
+async def test_unrestricted_collection_passes_frozen_candidate_and_batch_caps(campaign, monkeypatch):
+    path, settings = campaign
+    settings.operational_limits_enabled = False
+    state = gen.read_json(path / "state.json")
+    state["nextIndex"] = 1500
+    run._atomic_json(path / "state.json", state)
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, **k: {"deepseek": {"availableCalls": None}})
+    async def teacher(path, manifest, entry, group, artifact, folder, settings):
+        row = {**entry, "hardPass": False, "sent": True}
+        gen.write_json(folder / f"{entry['id']}.teacher-result.json", row)
+        return row
+    monkeypatch.setattr(run, "_teacher_one", teacher)
+    result = await collect.collect(path, settings=settings, limit=21)
+    assert result["attempted"] == 1521
+    assert result["candidateCap"] == 0
+    assert result["configuredCandidateCap"] == 1500
+    assert result["status"] == "AWAITING_CODEX_REVIEW"
+    assert len(collect.decisions(path)) == 21
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("fault", [None, "unsupported", "quote", "index"])
 async def test_web_positive_fact_audit_is_grounded_and_consistent(campaign, monkeypatch, fault):
     path, _ = campaign

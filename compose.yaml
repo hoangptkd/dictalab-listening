@@ -22,8 +22,7 @@ services:
     image: redis:8.10.2-alpine
     container_name: dictalab-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
-    mem_limit: 256m
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "0", "--maxmemory-policy", "noeviction"]
     ports:
       - "127.0.0.1:${REDIS_PORT:-16379}:6379"
     volumes:
@@ -39,7 +38,6 @@ services:
     image: rabbitmq:4.3.6-management-alpine
     container_name: dictalab-rabbitmq
     restart: unless-stopped
-    mem_limit: 512m
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-dictalab}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-change-this-local-rabbit-password}
@@ -62,6 +60,7 @@ services:
     container_name: dictalab-ai-generation
     restart: unless-stopped
     environment: &ai-environment
+      DICTALAB_OPERATIONAL_LIMITS_ENABLED: ${DICTALAB_OPERATIONAL_LIMITS_ENABLED:-false}
       DICTALAB_AI_OLLAMA_URL: ${DICTALAB_AI_OLLAMA_URL:-http://host.docker.internal:11434}
       DICTALAB_AI_OLLAMA_SERVICE_TOKEN: ${DICTALAB_AI_OLLAMA_SERVICE_TOKEN:-}
       DICTALAB_AI_PRIMARY_PROVIDER: ${DICTALAB_AI_PRIMARY_PROVIDER:-auto}

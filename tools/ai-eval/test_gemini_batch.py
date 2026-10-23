@@ -24,6 +24,23 @@ def jobs(count=3):
 
 
 @pytest.mark.asyncio
+async def test_unlimited_batch_defaults_allow_more_than_100_calls(tmp_path):
+    calls = []
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"ok":true}'}}]})
+    cfg = settings().model_copy(update={"operational_limits_enabled": False})
+    ledger = batch.BatchLedger(tmp_path / "unlimited.sqlite3")
+    try:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            assert await batch.run_batch(jobs(101), cfg, ledger, concurrency=8, client=client) == {"DONE": 101}
+            await batch.run_batch(jobs(101), cfg, ledger, client=client)
+        assert len(calls) == 101
+    finally:
+        ledger.close()
+
+
+@pytest.mark.asyncio
 async def test_checkpoint_duplicate_and_run_call_cap(tmp_path):
     calls = []
     def handler(request):

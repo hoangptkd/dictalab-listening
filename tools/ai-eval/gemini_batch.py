@@ -97,7 +97,7 @@ class BatchLedger:
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
             used = self.db.execute("SELECT COUNT(*) FROM batch_jobs WHERE owner=? AND status IN ('RUNNING','DONE','FAILED','UNKNOWN')", (owner,)).fetchone()[0]
-            if used >= max_calls:
+            if max_calls and used >= max_calls:
                 return False
             return self.db.execute("UPDATE batch_jobs SET status='RUNNING',owner=?,updated=? WHERE id=? AND status='PENDING'",
                 (owner, time.time(), ident)).rowcount == 1
@@ -114,16 +114,16 @@ class BatchLedger:
         self.db.close()
 
 
-async def run_batch(rows, settings, ledger, *, concurrency=3, max_calls=100, max_seconds=3600, client=None):
+async def run_batch(rows, settings, ledger, *, concurrency=3, max_calls=0, max_seconds=0, client=None):
     import uuid
     if not settings.gemini_quota_enabled or settings.selected_provider not in CLOUD_PROVIDERS:
         raise ValueError("batch runner requires an enabled Gemini pool")
-    if not 1 <= concurrency <= 5 or max_calls < 1 or max_seconds < 1:
+    if concurrency < 1 or max_calls < 0 or max_seconds < 0:
         raise ValueError("invalid batch execution bounds")
     ledger.register(rows, settings)
     ledger.recover()
     owner = str(uuid.uuid4())
-    deadline = time.monotonic() + max_seconds
+    deadline = time.monotonic() + max_seconds if max_seconds else float("inf")
     semaphore = asyncio.Semaphore(concurrency)
     own_client = client is None
     client = client or httpx.AsyncClient(follow_redirects=False)
@@ -177,8 +177,8 @@ def main():
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--ledger", type=Path, required=True)
     parser.add_argument("--concurrency", type=int, default=3)
-    parser.add_argument("--max-calls", type=int, default=100)
-    parser.add_argument("--max-seconds", type=int, default=3600)
+    parser.add_argument("--max-calls", type=int, default=0, help="Total calls; 0 means unlimited")
+    parser.add_argument("--max-seconds", type=int, default=0, help="Session duration; 0 means unlimited")
     parser.add_argument("--provider", choices=CLOUD_PROVIDERS, default="gemini")
     args = parser.parse_args()
     ledger = None

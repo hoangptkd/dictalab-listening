@@ -168,14 +168,17 @@ class ConversationLocalClientTest {
         assertTrue(call().isObject());
     }
 
-    @Test void honorsRemainingDeadlineAcrossBodyAndReleasesSlot() throws Exception {
+    @Test void admitsConcurrentRequestsAndHonorsEachRemainingDeadline() throws Exception {
         gate.set(new CountDownLatch(1));
         Future<?> first = pool.submit(() -> assertThrows(IllegalStateException.class,
                 () -> client.completeJson("A1", "{}", Duration.ofMillis(500))));
         assertTrue(entered.await(3, TimeUnit.SECONDS));
-        assertThrows(ProviderGuard.Unavailable.class, this::call);
+        assertFalse(first.isDone());
+        assertThrowsExactly(IllegalStateException.class, this::call);
+        assertEquals(2, requests.get());
         first.get(2, TimeUnit.SECONDS);
         gate.get().countDown();
+        requests.set(0);
         assertTrue(call().isObject());
     }
 

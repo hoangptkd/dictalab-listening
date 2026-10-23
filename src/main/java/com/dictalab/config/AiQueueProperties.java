@@ -11,7 +11,7 @@ public record AiQueueProperties(boolean enabled, String exchange, String audioQu
         if (coachQueue == null || coachQueue.isBlank()) coachQueue = "dictalab.coach.reports";
         if (audioWorkers == 0) audioWorkers = 2;
         if (coachWorkers == 0) coachWorkers = 1;
-        if (audioWorkers < 1 || audioWorkers > 8 || coachWorkers < 1 || coachWorkers > 4)
+        if (audioWorkers < 1 || coachWorkers < 1)
             throw new IllegalArgumentException("Invalid AI queue worker limits");
         if (audioQueue.equals(coachQueue)) throw new IllegalArgumentException("AI queues must be distinct");
     }

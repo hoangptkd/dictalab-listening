@@ -49,7 +49,7 @@ public final class ConversationPythonClient implements ConversationAiClient {
         this.json = json;
         this.config = config;
         this.metrics = metrics;
-        this.guard = new ProviderGuard("conversation-python", 1, metrics, observations, 5, Duration.ofSeconds(30));
+        this.guard = new ProviderGuard("conversation-python", 0, metrics, observations, 5, Duration.ofSeconds(30));
     }
 
     @Override public boolean enabled() { return config.python(); }

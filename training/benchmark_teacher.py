@@ -36,6 +36,7 @@ BASELINE = gen.ROOT / "artifacts/prompts/conversation-cefr-b1-v7-20261021.json"
 def settings_from_registry():
     env = dict(dotenv_values(gen.ROOT / ".env")) | dict(os.environ)
     return Settings(primary_provider="deepseek", ai_provider_config_source="database",
+        operational_limits_enabled=env.get("DICTALAB_OPERATIONAL_LIMITS_ENABLED", "true"),
         ai_provider_database_url=env["AI_PROVIDER_DATABASE_URL"],
         ai_provider_encryption_key=env["AI_PROVIDER_ENCRYPTION_KEY"],
         gemini_quota_backend="redis",
@@ -70,8 +71,8 @@ def prepare(output: Path, settings, *, baseline: Path = BASELINE, candidate: Pat
     pool = quota_store(settings)
     status = pool.execute(source, op="status")
     policy = settings.registry_pools["deepseek"]
-    if source.rpd_limit and source.rpd_limit - status[2] < cap or (
-            policy["global_rpd_limit"] and policy["global_rpd_limit"] - status[4] < cap):
+    if getattr(settings, "operational_limits_enabled", True) and (source.rpd_limit and source.rpd_limit - status[2] < cap or (
+            policy["global_rpd_limit"] and policy["global_rpd_limit"] - status[4] < cap)):
         raise gen.DatasetError(f"insufficient remaining quota for the bounded {cap}-call plan; no requests sent")
     entries = [{"id": f"sample-{i:03}", "arm": arm, "group": row["group"],
                 "context": copy.deepcopy(row["context"])}

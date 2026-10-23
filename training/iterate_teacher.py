@@ -285,8 +285,8 @@ def prepare(path: Path, *, artifact_path: Path = DEFAULT_ARTIFACT, gold_path: Pa
     path = _private_path(path)
     if path.exists():
         raise gen.DatasetError("refusing to overwrite an existing campaign")
-    if not 1 <= max_rounds <= 10:
-        raise gen.DatasetError("each session allows 1-10 candidate rounds")
+    if max_rounds < 0:
+        raise gen.DatasetError("max rounds must be nonnegative; zero means unlimited")
     artifact = _checked_artifact(artifact_path)
     settings = settings or settings_from_registry()
     teacher_sources = settings.sources_for("deepseek")
@@ -1124,8 +1124,8 @@ async def resume(path: Path, *, new_session: bool = False, max_rounds: int = 10,
     path = _private_path(path)
     _, state = load(path)
     if new_session:
-        if state["status"] != "STOPPED_MAX_ROUNDS" or not 1 <= max_rounds <= 10:
-            raise gen.DatasetError("new session requires STOPPED_MAX_ROUNDS and a 1-10 round cap")
+        if state["status"] != "STOPPED_MAX_ROUNDS" or max_rounds < 0:
+            raise gen.DatasetError("new session requires STOPPED_MAX_ROUNDS and nonnegative max rounds")
         with _campaign_lock(path):
             state.update(sessionId=state["sessionId"] + 1, roundInSession=0,
                          maxRounds=max_rounds, status="CALIBRATED", updatedAt=_now())
@@ -1190,7 +1190,8 @@ async def evaluate(path: Path, candidate_path: Path | None = None, settings=None
                 raise gen.DatasetError("baseline must finish before candidate evaluation")
             if name == "current" and not (folder / "summary.json").exists() and \
                     state.get("candidateHash") is None:
-                if state["roundInSession"] >= state["maxRounds"]:
+                if (getattr(settings, "operational_limits_enabled", True) and state["maxRounds"] and
+                        state["roundInSession"] >= state["maxRounds"]):
                     state.update(status="STOPPED_MAX_ROUNDS", updatedAt=_now())
                     _atomic_json(path / "state.json", state)
                     return {"status": "STOPPED_MAX_ROUNDS"}
@@ -1427,6 +1428,7 @@ async def final(path: Path, settings=None, *, direct: bool = False) -> dict:
 def quota_snapshot(settings=None, *, platforms=("deepseek", "gemini")) -> dict:
     settings = settings or settings_from_registry()
     snapshot = {}
+    limited = getattr(settings, "operational_limits_enabled", True)
     for platform in platforms:
         pool = quota_store(settings, platform=platform)
         sources = settings.sources_for(platform)
@@ -1435,16 +1437,19 @@ def quota_snapshot(settings=None, *, platforms=("deepseek", "gemini")) -> dict:
         for source in sources:
             counters = pool.execute(source, op="status")
             global_used = int(counters[4])
+            effective_limit = source.rpd_limit if limited else 0
             account.append({"sourceId": source.id, "usedRpd": int(counters[2]),
-                "rpdLimit": source.rpd_limit,
-                "remainingRpd": max(0, source.rpd_limit - int(counters[2])) if source.rpd_limit else None})
-        global_limit = settings.registry_pools[platform]["global_rpd_limit"]
+                "configuredRpdLimit": source.rpd_limit, "rpdLimit": effective_limit,
+                "remainingRpd": max(0, effective_limit - int(counters[2])) if effective_limit else None})
+        configured_global = settings.registry_pools[platform]["global_rpd_limit"]
+        global_limit = configured_global if limited else 0
         global_remaining = max(0, global_limit - global_used) if global_limit else None
         account_remaining = sum(row["remainingRpd"] for row in account) if all(
             row["remainingRpd"] is not None for row in account) else None
         available = min(x for x in (global_remaining, account_remaining) if x is not None) \
             if global_remaining is not None or account_remaining is not None else None
         snapshot[platform] = {"accounts": account, "globalUsedRpd": global_used,
+            "operationalLimitsEnabled": limited, "configuredGlobalRpdLimit": configured_global,
             "globalRpdLimit": global_limit, "availableCalls": available}
     return snapshot
 

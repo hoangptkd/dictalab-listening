@@ -56,7 +56,7 @@ public class CoachLocalClient {
         this.json = json;
         this.config = config;
         this.metrics = metrics;
-        guard = new ProviderGuard("coach-local", 1, metrics, observations, 5, Duration.ofSeconds(30));
+        guard = new ProviderGuard("coach-local", 0, metrics, observations, 5, Duration.ofSeconds(30));
     }
 
     public JsonNode completeJson(String input) {

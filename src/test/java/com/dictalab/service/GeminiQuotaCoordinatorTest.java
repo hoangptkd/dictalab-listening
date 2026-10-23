@@ -13,6 +13,32 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class GeminiQuotaCoordinatorTest {
+    @Test
+    void unrestrictedAdmissionPasses100CallsAndStillHonorsProviderCooldownAndIdentity() {
+        var properties = new GeminiProviderProperties(List.of(provider("a", 1, 100)), 1, 100, true, "memory");
+        var metrics = new SimpleMeterRegistry();
+        var quota = new GeminiQuotaCoordinator(properties, metrics, null, Clock.systemUTC());
+        quota.configureOperationalLimits(false);
+        for (int i = 0; i < 101; i++) assertThat(quota.tryReserve("a", "gemini-3.5-flash-lite", 500)).isTrue();
+        assertThat(metrics.get("dictalab.gemini.quota.reservations").tag("outcome", "allowed").counter().count()).isEqualTo(101);
+        assertThat(quota.tryReserve("missing", "gemini-3.5-flash-lite", 1)).isFalse();
+        assertThat(quota.tryReserve("a", "wrong-model", 1)).isFalse();
+        quota.outcome("a", "gemini-3.5-flash-lite", "429", 600);
+        assertThat(quota.reserve("a", "gemini-3.5-flash-lite", 1).retryAfterMs()).isGreaterThan(590000);
+    }
+
+    @Test
+    void databasePlatformCoordinatorInheritsUnrestrictedMode() {
+        var properties = new GeminiProviderProperties(List.of(provider("a", 1, 1)), 1, 1, true, "memory");
+        var registry = org.mockito.Mockito.mock(AiProviderRegistry.class);
+        org.mockito.Mockito.when(registry.databaseEnabled()).thenReturn(true);
+        org.mockito.Mockito.when(registry.properties("deepseek")).thenReturn(properties);
+        var quota = new GeminiQuotaCoordinator(properties, new SimpleMeterRegistry(), null, Clock.systemUTC());
+        quota.configureRegistry(registry);
+        quota.configureOperationalLimits(false);
+        for (int i = 0; i < 101; i++) assertThat(quota.reserve("deepseek", "a", "gemini-3.5-flash-lite", 1).allowed()).isTrue();
+    }
+
     private static GeminiProviderProperties.Provider provider(String id, int rpm, int rpd) {
         return new GeminiProviderProperties.Provider(id, "project-" + id, "key-" + id,
                 "gemini-3.5-flash-lite", "https://example.test/chat", rpm, 100, rpd, rpm, true, 0);

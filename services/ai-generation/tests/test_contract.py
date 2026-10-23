@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock, patch
+import pytest
 
 from app.config import Settings
 from app.main import app, cache
@@ -21,7 +22,12 @@ def test_live_and_invalid_request_contract():
     assert response.json()["error"] == "invalid conversation request"
 
 
-def test_idempotency_replay_does_not_call_generate_twice():
+@pytest.mark.parametrize("unrestricted", [False, True])
+def test_idempotency_replay_does_not_call_generate_twice(monkeypatch, unrestricted):
+    from app import main
+    monkeypatch.setattr(main, "settings", main.settings.model_copy(update={"operational_limits_enabled": not unrestricted}))
+    if unrestricted:
+        monkeypatch.setattr(main, "semaphore", None)
     cache.clear()
     task = {"slots": [], "utteranceEn": "u", "facts": [{"textVi": "x", "evidenceEn": "e"}],
             "questionVi": "q", "translationVi": "d", "taskVi": "t", "skill": "s"}

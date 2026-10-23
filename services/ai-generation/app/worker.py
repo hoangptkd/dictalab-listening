@@ -25,7 +25,7 @@ async def execute(event, settings):
         raise TimeoutError("job expired")
     deadline = time.monotonic() + remaining
     metadata = capability_metadata(event.payload, settings)
-    async with httpx.AsyncClient(timeout=remaining, limits=httpx.Limits(max_connections=settings.http_max_connections)) as client:
+    async with httpx.AsyncClient(timeout=remaining, limits=httpx.Limits(max_connections=settings.effective_http_max_connections)) as client:
         if event.payload.kind == "tts":
             task = await asyncio.wait_for(tts.synthesize(event.payload, settings, client, deadline), remaining)
         else:

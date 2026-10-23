@@ -22,6 +22,7 @@ async def probe(config, platform, generate=False):
     from app.config import Settings
     from app.model_gateway import ModelGateway
     settings = Settings(primary_provider=platform,ai_provider_config_source="database",
+        operational_limits_enabled=config.get("DICTALAB_OPERATIONAL_LIMITS_ENABLED", "true"),
         ai_provider_database_url=config["AI_PROVIDER_DATABASE_URL"],
         ai_provider_encryption_key=config["AI_PROVIDER_ENCRYPTION_KEY"],
         gemini_quota_backend="redis",gemini_quota_redis_url=config.get("GEMINI_QUOTA_REDIS_URL","redis://127.0.0.1:16379/0"),

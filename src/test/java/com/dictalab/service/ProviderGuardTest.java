@@ -5,6 +5,19 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
 class ProviderGuardTest {
+    @Test void zeroConcurrencyIsUnlimitedButCircuitRemainsActive(){
+        var metrics=new SimpleMeterRegistry();
+        var guard=new ProviderGuard("unlimited",0,metrics);
+        var permits=new java.util.ArrayList<ProviderGuard.Permit>();
+        try{
+            for(int i=0;i<150;i++)permits.add(guard.enter());
+            assertThat(metrics.get("dictalab.provider.inflight").gauge().value()).isEqualTo(150);
+            permits.forEach(ProviderGuard.Permit::success);
+        }finally{permits.forEach(ProviderGuard.Permit::close);}
+        assertThat(metrics.get("dictalab.provider.inflight").gauge().value()).isZero();
+        for(int i=0;i<5;i++)try(var permit=guard.enter()){permit.failure();}
+        assertThatThrownBy(guard::enter).isInstanceOf(ProviderGuard.Unavailable.class);
+    }
     @Test void retryAfterHonorsProviderFloorWithoutShorteningOutOfBudgetOrInvalidValues(){
         var now=java.time.Instant.parse("2026-10-03T00:00:00Z");
         assertThat(ProviderGuard.retryAfterSeconds("120",now)).isEqualTo(120);

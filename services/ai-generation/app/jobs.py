@@ -119,7 +119,8 @@ class JobStore:
                 if row["fingerprint"] != fingerprint:
                     raise Conflict("idempotency key was reused")
                 return row["id"]
-            if db.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('PENDING','RUNNING')").fetchone()[0] >= 1000:
+            if settings.operational_limits_enabled and db.execute(
+                    "SELECT COUNT(*) FROM jobs WHERE status IN ('PENDING','RUNNING')").fetchone()[0] >= 1000:
                 raise OverflowError("job capacity exhausted")
             try:
                 db.execute("INSERT INTO jobs(id,scope,idem,fingerprint,event,status,deadline,updated) VALUES (?,?,?,?,?,'PENDING',?,?)",

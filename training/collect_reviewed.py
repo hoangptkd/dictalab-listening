@@ -109,7 +109,9 @@ def prepare(path: Path, settings=None) -> dict:
                     "sourceIds": [source.id for source in sources]},
         "judge": {"provider": "chatgpt-web", "model": "chatgpt-web",
                   "url": "http://127.0.0.1:3000/v1/chat/completions"},
-        "requireFactAudit": True, "candidateCap": 1500, "targetsPerLevel": TARGETS,
+        "requireFactAudit": True,
+        "candidateCap": 1500 if getattr(settings, "operational_limits_enabled", True) else 0,
+        "targetsPerLevel": TARGETS,
         "groups": groups, "holdouts": sorted(set(holdouts)), "priorCorpusHash": gen.digest(corpus),
         "approvalAuthority": "delegated AI:Codex; independent per-item review, no automatic approval"}
     manifest["hash"] = gen.digest(manifest)
@@ -150,7 +152,9 @@ def status(path: Path) -> dict:
                if not (path / "decisions" / (file.stem.removesuffix(".teacher-result") + ".json")).exists()]
     state = gen.read_json(path / "state.json")
     return {"status": state["status"], "attempted": state["nextIndex"],
-        "candidateCap": manifest["candidateCap"], "approvedTasks": sum(counts.values()),
+        "configuredCandidateCap": manifest["candidateCap"],
+        "candidateCap": manifest["candidateCap"] if state.get("operationalLimitsEnabled", True) else 0,
+        "approvedTasks": sum(counts.values()),
         "counts": {split: {level: counts[split, level] for level in LEVELS} for split in TARGETS},
         "pending": pending, "complete": all(counts[split, level] == target
             for split, target in TARGETS.items() for level in LEVELS), "trainingReady": False}
@@ -207,8 +211,8 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
     if (settings.registry_pools["deepseek"]["default_model"] != manifest["teacher"]["model"] or
         [source.id for source in settings.sources_for("deepseek")] != manifest["teacher"]["sourceIds"]):
         raise DatasetError("teacher registry changed; create a new frozen collection")
-    if not 1 <= limit <= 20:
-        raise DatasetError("collect limit must be 1..20 before independent review")
+    if limit < 1:
+        raise DatasetError("collect limit must be positive")
     with run._campaign_lock(path):
         current = status(path)
         if current["pending"] or current["complete"]:
@@ -216,6 +220,7 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
         state = gen.read_json(path / "state.json")
         if state["status"] in {"RUNNING", "BLOCKED"}:
             raise DatasetError("unresolved worker/request outcome; inspect checkpoint before continuing")
+        state["operationalLimitsEnabled"] = getattr(settings, "operational_limits_enabled", True)
         corpus = gen.read_json(path / "prior-corpus.json")
         if gen.digest(corpus) != manifest["priorCorpusHash"]:
             raise DatasetError("prior corpus changed after collection began")
@@ -224,7 +229,8 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
             corpus.append(normalized(gen.read_json(path / "candidates" / f"{item['id']}.teacher-result.json")["task"]["utteranceEn"]))
         for _ in range(limit):
             current = status(path)
-            if current["attempted"] >= manifest["candidateCap"] or current["complete"]:
+            if (getattr(settings, "operational_limits_enabled", True) and
+                    manifest["candidateCap"] and current["attempted"] >= manifest["candidateCap"]) or current["complete"]:
                 state["status"] = "COMPLETE" if current["complete"] else "CANDIDATE_CAP"
                 break
             quota = run.quota_snapshot(settings, platforms=("deepseek",))

@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     artifact_version: str = "conversation-cefr-b1-v7-20261021"
     artifact_sha256: str = ""
     max_concurrency: int = 1
+    operational_limits_enabled: bool = Field(default=True,
+        validation_alias="DICTALAB_OPERATIONAL_LIMITS_ENABLED")
     primary_provider: str = "auto"
     conversation_enabled: bool = True
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
@@ -153,7 +155,7 @@ class Settings(BaseSettings):
             raise ValueError("non-Gemini cloud providers require database configuration")
         if not 60 <= self.job_retention_seconds <= 86400:
             raise ValueError("job retention must be between 60 and 86400 seconds")
-        if not 1 <= self.http_max_connections <= 100:
+        if self.http_max_connections < 0:
             raise ValueError("invalid HTTP pool limit")
         for value, active in ((self.gemini_base_url, self.selected_provider == "gemini"),
                 (self.ollama_url, self.selected_provider == "ollama"),
@@ -175,8 +177,8 @@ class Settings(BaseSettings):
             raise ValueError("invalid Ollama context or output limit")
         if self.timeout_seconds <= 0 or self.timeout_seconds > 600:
             raise ValueError("timeout_seconds must be between 0 and 600")
-        if self.max_concurrency < 1 or self.max_concurrency > 5:
-            raise ValueError("max_concurrency must be between 1 and 5")
+        if self.max_concurrency < 0:
+            raise ValueError("max_concurrency must be nonnegative; zero means unlimited")
         if "\n" in self.service_token or "\r" in self.service_token:
             raise ValueError("service_token must not contain newline or carriage return")
         if self.production_mode and not self.service_token:
@@ -186,6 +188,14 @@ class Settings(BaseSettings):
             )
         if self.cache_ttl_seconds <= 0 or self.cache_ttl_seconds > 86400:
             raise ValueError("cache_ttl_seconds must be between 1 and 86400")
+
+    @property
+    def effective_max_concurrency(self):
+        return self.max_concurrency if self.operational_limits_enabled else 0
+
+    @property
+    def effective_http_max_connections(self):
+        return (self.http_max_connections or None) if self.operational_limits_enabled else None
 
     @property
     def enabled_gemini_sources(self):

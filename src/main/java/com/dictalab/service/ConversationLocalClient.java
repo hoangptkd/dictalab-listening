@@ -143,7 +143,7 @@ public class ConversationLocalClient implements ConversationAiClient {
     public ConversationLocalClient(ObjectMapper json, ConversationGenerationProperties config, MeterRegistry metrics,
                                    io.micrometer.observation.ObservationRegistry observations) {
         this.json = json; this.config = config; this.metrics = metrics;
-        guard = new ProviderGuard("conversation-local", 1, metrics, observations, 5, Duration.ofSeconds(30));
+        guard = new ProviderGuard("conversation-local", 0, metrics, observations, 5, Duration.ofSeconds(30));
     }
 
     public boolean enabled() { return config.local(); }
