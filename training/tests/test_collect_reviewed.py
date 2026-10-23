@@ -318,7 +318,7 @@ async def test_semantic_audit_accepts_grounded_repetition_or_missing_history(cam
              "attributesSupported": True, "historyQuote": "opens at ten" if has_history else None,
              "basis": "Opening time was already asked." if has_history else "Earlier tested meanings are unavailable."}
     verdict = {"id": row["id"], **dict.fromkeys(collect.CHECKS, True), "newMeanings": audit["newMeaningSupported"],
-        "issues": [{"check": "newMeanings", "sourceQuote": "opens at ten",
+        "issues": [{"check": "newMeanings", "sourceRef": "/task/utteranceEn",
                     "severity": "major" if has_history else "uncertain", "explanation": audit["basis"]}], "factAudit": [audit]}
     original = httpx.AsyncClient
     monkeypatch.setattr(run.httpx, "AsyncClient", lambda **kwargs: original(
@@ -348,3 +348,92 @@ def test_collection_v2_preserves_frozen_contract_and_supplies_b2_demand(tmp_path
     assert payload["items"][0]["context"]["levelDemand"] == context["levelDemand"]
     with pytest.raises(FileExistsError):
         freeze_collection_v2(tmp_path / "v2.json")
+
+
+def test_collection_v3_keeps_contract_and_adds_valid_b2_example(tmp_path):
+    from jsonschema import Draft202012Validator
+    from training.freeze_candidate import freeze_collection_v3
+    old_path = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v2-20261023.json"
+    old_bytes = old_path.read_bytes()
+    old = gen.read_json(old_path)
+    new = freeze_collection_v3(tmp_path / "v3.json")
+    assert old_path.read_bytes() == old_bytes
+    assert new["sha256"] == gen.digest({k: v for k, v in new.items() if k != "sha256"})
+    for key in ("contentSchemas", "contentSchema", "translationSchema", "levelProfiles",
+                "semanticRubric", "collectionPolicy"):
+        assert new[key] == old[key]
+    assert new["fewShotExamples"][:-2] == old["fewShotExamples"]
+    example = new["fewShotExamples"][-1]
+    assert example["input"]["difficulty"] == "B2"
+    Draft202012Validator(new["contentSchemas"]["B2"]).validate(example["output"])
+    task = {**example["output"], "translationVi": "Bản dịch kiểm tra hợp đồng.",
+            "facts": [{**fact, "textVi": "Đáp án kiểm tra."} for fact in example["output"]["facts"]]}
+    assert not validate_training_task(task, "B2", new, example["input"]["levelProfile"])
+    for turn in (2, 3, 4):
+        context = {**example["input"], "turnNumber": turn}
+        messages = gen.production_messages(new, context, "content")
+        assert example["output"]["utteranceEn"] in messages[0]["content"]
+    assert not new["metricReport"]["gate"]["releaseAllowed"]
+    with pytest.raises(FileExistsError):
+        freeze_collection_v3(tmp_path / "v3.json")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", [None, "unknown-ref", "legacy-quote", "false-type", "false-novelty"])
+async def test_web_issue_reference_preserves_original_and_rejects_false_audit(campaign, monkeypatch, fault):
+    path, _ = campaign
+    manifest, _ = collect.load(path)
+    assert manifest["useIssueReferences"]
+    row, _, _ = review_fixture(path)
+    row["task"]["questionVi"] = "Khách đến khi nào, và khách hỏi điều kiện gì?"
+    audit = {"index": 0, "sourceQuote": "opens at ten", "claimSupported": True,
+        "translationSupported": True, "basis": "Inspect all requested meanings independently.",
+        "expectedTaskType": "direct_detail", "answerScopeSupported": False,
+        "newMeaningSupported": True, "attributesSupported": True, "historyQuote": None}
+    check = {"false-type": "taskTypeAccurate", "false-novelty": "newMeanings"}.get(fault, "questionFactsAligned")
+    if fault in ("false-type", "false-novelty"):
+        audit["answerScopeSupported"] = True
+    issue = {"check": check, "sourceRef": "/task/questionVi", "severity": "major",
+             "explanation": "The additional asked prerequisite has no matching answer."}
+    if fault == "unknown-ref":
+        issue["sourceRef"] = "/rubric/example"
+    if fault == "legacy-quote":
+        issue.pop("sourceRef")
+        issue["sourceQuote"] = "Khách hỏi điều kiện gì?"
+    verdict = {"id": row["id"], **dict.fromkeys(collect.CHECKS, True), check: False,
+               "issues": [issue], "factAudit": [audit]}
+    original = httpx.AsyncClient
+    calls = []
+    def respond(request):
+        calls.append(request)
+        prompt = json.loads(request.content)["messages"][0]["content"]
+        schema = json.loads(prompt.split("\nOUTPUT_SCHEMA:\n", 1)[1].split("\nAUDIT_INPUT:\n", 1)[0])
+        properties = schema["properties"]["items"]["items"]["properties"]
+        assert list(properties)[:2] == ["id", "factAudit"]
+        assert "/task/questionVi" in properties["issues"]["items"]["properties"]["sourceRef"]["enum"]
+        return httpx.Response(200, json={"choices": [{"finish_reason": "stop",
+            "message": {"content": json.dumps({"items": [verdict]}, ensure_ascii=False)}}]})
+    monkeypatch.setattr(run.httpx, "AsyncClient", lambda **kwargs: original(
+        transport=httpx.MockTransport(respond), **kwargs))
+    if fault:
+        with pytest.raises(DatasetError):
+            await run._judge_one(path, manifest, row, row["id"], row["id"], None, folder=path / "candidates")
+        assert not (path / "candidates" / f'{row["id"]}.result.json').exists()
+    else:
+        result = await run._judge_one(path, manifest, row, row["id"], row["id"], None, folder=path / "candidates")
+        assert result["issues"][0]["sourceQuote"] == row["task"]["questionVi"]
+        assert result["issueReferences"] == ["/task/questionVi"]
+        assert run._review_integrity(row, result, manifest)
+    envelope = gen.read_json(path / "candidates" / f'{row["id"]}.envelope.json')
+    assert json.loads(envelope["choices"][0]["message"]["content"])["items"][0] == verdict
+    assert len(calls) == 1
+
+
+def test_judge_source_paths_only_address_original_values():
+    case = {"task": {"utteranceEn": "Original text", "slots": [{"askVi": "Câu hỏi"}]},
+            "context": {"a/b~c": "Giữ NGUYÊN", "short": "x", "number": 12}}
+    original = copy.deepcopy(case)
+    fields = run.judge_source_fields(case)
+    assert fields == {"/context/a~1b~0c": "Giữ NGUYÊN", "/task/slots/0/askVi": "Câu hỏi",
+                      "/task/utteranceEn": "Original text"}
+    assert case == original

@@ -104,6 +104,15 @@ changed names/numbers and renamed slots. Choose a genuinely untested property or
 Keep an opinion answer to object + evaluation; ask why in a separate existing slot if testing its reason.
 Do not turn a question about permission into an answer stating that permission is granted.
 Translate unknown people with neutral references in BOTH full translation and fact answers.
+Complete every content object with slots, utteranceEn, facts, questionVi, taskVi and skill BEFORE
+closing it. Each reasoningEvidence object must close inside its own fact before the next fact.
+Translate from the FINAL English answer, not from a remembered earlier draft or its evidence quote.
+For each slot silently align: asked object/property -> minimal answer -> taskType -> same question.
+Which street/time/item remains direct_detail even in an imperative. What action/task asks for
+instruction_sequence; under what prerequisite asks for condition. A1 must ask an allowed detail,
+not disguise an action as direct_detail. A why-answer must contain the cause, not restate the choice.
+Check deadline phrases separately in the full translation and EVERY fact: by a deadline means
+chậm nhất vào that deadline, before means trước. Do not lose this distinction in a shorter answer.
 """
 JUDGE_SYSTEM += RULES + "\nReturn ALL these check keys, true/false/null: " + ", ".join(CHECKS) + "\n" + JSON_RULES
 

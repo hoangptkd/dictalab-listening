@@ -1,5 +1,6 @@
 """Freeze a development contract without changing a previous artifact."""
 import argparse
+import copy
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -130,6 +131,91 @@ def freeze_collection_v2(output: Path) -> dict:
     return artifact
 
 
+def freeze_collection_v3(output: Path) -> dict:
+    baseline = read_json(ROOT / "artifacts/prompts/conversation-reviewed-collection-v2-20261023.json")
+    if baseline["sha256"] != digest({k: v for k, v in baseline.items() if k != "sha256"}):
+        raise ValueError("collection v2 artifact hash mismatch")
+    instruction = COLLECTION_V2_INSTRUCTION + """
+AUTHORING ORDER: lock each requested meaning and minimal answer first, then draft its Vietnamese
+slot.askVi and the matching questionVi clause from that SAME meaning. After writing the transcript,
+read these four fields together: slot.askVi, questionVi clause, textEn, translated textVi. They must
+ask/answer the same object, property, comparison alternatives and speech-act status. A gate closing
+is not the whole building closing; comparing email with a portal is not comparing email with a visit.
+The question must be answerable by the answer as written, without borrowing a missing cause from
+evidenceEn. A why-answer contains its actual cause. A type-only question excludes quantity/destination.
+
+Classify after checking that alignment. Asking which street/when/how long is direct_detail even
+inside an instruction. Asking what action or task to perform is instruction_sequence, even under if.
+To test condition, ask which prerequisite must hold, and answer that prerequisite. For A1 choose a
+permitted detail instead of relabeling an action. For argument_relation ask how the supported claims
+relate and answer that relationship; merely calling a reason an argument does not increase its level.
+Make revisions unmistakable: state the old choice and explicitly change it to the new one. If no
+revision is intended, avoid presenting the tested direct detail as a contrasted replacement final value.
+Do not use ambiguous not-X phrasing whose classification depends on an unstated prior arrangement.
+
+For same-encounter novelty, compare the PROPERTY asked, not its new value. After a captured missing
+item and delivery location, choose different properties; changing either item or location repeats them.
+New information about the same object is allowed when its property really differs (unit number/floor).
+Use context to disambiguate a tested word before translating: specify workbench/seating bench when
+that distinction changes the answer. Keep simple natural wording; do not write ambiguous puzzles.
+
+Finish all six content fields: slots, utteranceEn, facts, questionVi, taskVi, skill. Then translate
+the final utterance and final fact answers. Verify complete nested JSON, counts and exact evidence.
+No drafting notes, extra fields, second attempt, repair or commentary in the returned object.
+"""
+    example_input = copy.deepcopy(baseline["fewShotExamples"][-1]["input"])
+    example_input.update(difficulty="B2", history=[], turnNumber=4, previouslyTestedDetails=[],
+        weakSkills=[], practiceFocus="Include one genuine condition target.",
+        allowedTaskTypes=baseline["levelProfiles"]["B2"]["taskTypes"],
+        levelDemand="At least one asked answer must process connected argument, contrast or qualified opinion.")
+    example_input["listeningSkills"]["argument"] = "Theo dõi lập luận và quan hệ ý"
+    argument = ("The reusable case costs more at first, but it protects fragile pieces for several trips, "
+                "whereas a paper sleeve must be replaced each time.")
+    conclusion = "That makes the case the better long-term choice for regular visitors."
+    example = {"input": example_input, "output": {
+        "utteranceEn": argument + " " + conclusion + " You can borrow one only if you leave a deposit. "
+            "Return it to the desk beside the lift when you finish.",
+        "slots": [
+            {"kind": "case_comparison", "askVi": "Lập luận so sánh hộp tái sử dụng với bao giấy"},
+            {"kind": "borrowing_prerequisite", "askVi": "Điều kiện để mượn hộp"},
+            {"kind": "return_place", "askVi": "Nơi trả hộp"}],
+        "facts": [
+            {"textEn": "The case costs more initially but lasts for several trips; sleeves need replacing, so the case is better for regular visitors.",
+             "taskType": "argument_relation", "evidenceEn": argument,
+             "reasoningEvidence": {"segmentsEn": [argument, conclusion],
+                "rationaleEn": "The higher initial cost is weighed against repeated use and replacement, supporting the long-term choice."}},
+            {"textEn": "Leave a deposit", "taskType": "condition", "evidenceEn": "only if you leave a deposit"},
+            {"textEn": "the desk beside the lift", "taskType": "direct_detail", "evidenceEn": "the desk beside the lift"}],
+        "questionVi": "Người hướng dẫn so sánh hộp với bao giấy thế nào, cần đáp ứng điều kiện gì để mượn hộp và trả hộp ở đâu?",
+        "taskVi": "Nghe so sánh hai cách đựng sản phẩm và hướng dẫn mượn hộp.",
+        "skill": "Theo dõi lập luận và quan hệ ý"}}
+    Draft202012Validator(baseline["contentSchemas"]["B2"]).validate(example["output"])
+    continued_example = copy.deepcopy(example)
+    continued_example["input"].update(turnNumber=2, history=[{
+        "utteranceEn": "Our studio closes at six. Your bowl is ready for collection.",
+        "facts": [{"textVi": "Sáu giờ", "evidenceEn": "at six"},
+                  {"textVi": "Bát đã sẵn sàng để nhận", "evidenceEn": "Your bowl is ready for collection"}]}])
+    artifact = {**baseline, "version": "conversation-reviewed-collection-v3-20261023",
+        "instruction": instruction, "fewShotExamples": [*baseline["fewShotExamples"], continued_example, example],
+        "translationSystem": baseline["translationSystem"] + "\n"
+            "Translate FINAL fact.textEn, not its larger evidenceEn or a previous draft. For every temporal "
+            "deadline, preserve the inclusive/exclusive boundary in both translationVi and each textVi: "
+            "by Thursday morning -> chậm nhất vào sáng thứ Năm; before Thursday morning -> trước sáng thứ Năm. "
+            "Do not shorten an inclusive deadline into trước. Resolve a tested polysemous noun using its "
+            "context, not the first dictionary sense; a workshop workbench is a bàn thao tác, not necessarily a băng ghế.\n",
+        "approvalStatus": "development", "createdAt": datetime.now(timezone.utc).isoformat(),
+        "baselineArtifactHash": baseline["sha256"],
+        "clientAliases": ["CONVERSATION_REVIEWED_COLLECTION_V3_OFFLINE"],
+        "modelNote": "Fixes from 30-call v2 diagnostics; no live v3 evaluation yet.",
+        "experiment": "Aligned answer planning, complete JSON, deadline translation and a grounded B2 example; unchanged rubric and schemas.",
+        "metricReport": {"status": "not_evaluated", "releaseAllowed": False,
+            "gate": {"releaseAllowed": False, "reasons": ["requires_fresh_live_evaluation"]}}}
+    artifact.pop("sha256")
+    artifact["sha256"] = digest(artifact)
+    write_json(output, artifact)
+    return artifact
+
+
 def freeze_v9(output: Path) -> dict:
     baseline = read_json(ROOT / "artifacts/prompts/conversation-cefr-v8-20261022.json")
     if baseline["sha256"] != digest({k: v for k, v in baseline.items() if k != "sha256"}):
@@ -179,12 +265,13 @@ def freeze(contract_path: Path, output: Path) -> dict:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", choices=("v8", "v9", "collection-v2"), default="v8")
+    parser.add_argument("--version", choices=("v8", "v9", "collection-v2", "collection-v3"), default="v8")
     parser.add_argument("--contract", type=Path, default=ROOT / "target/conversation-cefr-java-contract.json")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    output = args.output or ROOT / ("artifacts/prompts/conversation-reviewed-collection-v2-20261023.json"
-        if args.version == "collection-v2" else f"artifacts/prompts/conversation-cefr-{args.version}-20261022.json")
-    artifact = (freeze_collection_v2(output) if args.version == "collection-v2" else
+    output = args.output or ROOT / (f"artifacts/prompts/conversation-reviewed-{args.version}-20261023.json"
+        if args.version.startswith("collection-") else f"artifacts/prompts/conversation-cefr-{args.version}-20261022.json")
+    artifact = (freeze_collection_v3(output) if args.version == "collection-v3" else
+                freeze_collection_v2(output) if args.version == "collection-v2" else
                 freeze_v9(output) if args.version == "v9" else freeze(args.contract, output))
     print(json.dumps({"version": artifact["version"], "sha256": artifact["sha256"]}))

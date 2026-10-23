@@ -79,6 +79,15 @@ GENERAL METHOD: scope -> source meaning -> tested claim -> evidence -> verdict.
    the rubric's change_revision precedence. Then check whether a correctly classified fact fulfills focus.
    Separate an opinion's object/evaluation from its causal explanation: under this rubric, an independent
    reason in the answer needs a why question. A true source statement can still exceed the question.
+   Compare slot.askVi, the matching clause of questionVi, textEn and textVi separately: the same
+   referent and alternatives must be tested in all four. Evidence may quote a larger context;
+   extra dates/places in evidenceEn are NOT extra required answers unless also in textEn/textVi.
+   A why-answer must supply a cause, not merely repeat a preference despite a drawback. A type-only
+   question does not request the order's quantity or destination. A time/street/item answer stays
+   direct_detail even when introduced by an imperative. An action asked as a task is still action.
+   Test novelty against captured properties, not lexical overlap: changing the missing item or its
+   delivery location still repeats those properties in one encounter. Do not confuse a new property
+   of the same object (for example its floor versus its unit number) with a repeated property.
    Check full translation AND English/Vietnamese fact answers for added gender, age, deadlines and
    certainty. First-person I alone supports neither he/she nor anh ấy/cô ấy; fluency is not evidence.
 4. For a potential defect identify the actual claim, its source evidence, the applicable rubric rule
@@ -103,9 +112,20 @@ GENERAL METHOD: scope -> source meaning -> tested claim -> evidence -> verdict.
    a policy question was promoted to permission in questionVi or in the answer's must/is allowed wording.
    Apply context.levelDemand when supplied. B2 relationship processing must be needed by an asked answer,
    not merely present in untested background. Do not infer audio properties from text.
-6. For each false/null check provide exactly one issue with check, sourceQuote, explanation, severity.
-   Copy sourceQuote as a verbatim 4+ character substring of an actual string VALUE in context/task;
-   preserve language, punctuation and Unicode. Never translate, reconstruct or quote JSON field names.
+   Keep check scopes separate: a wrong taskType alone is not an alignment or translation failure.
+   A failed answer does not erase another correctly tested focus. An exclusive source restriction
+   can support an exclusive eligibility paraphrase; that does not invent an agreement or policy.
+   Do not require an unasked deadline or a redundant negative alternative in an otherwise complete answer.
+   Only diagnose deadline translation when the source actually uses a temporal deadline: by includes
+   its endpoint, before excludes it. Inspect the full translation AND each translated fact.
+6. For each false/null check provide exactly one issue with check, the schema's citation field,
+   explanation and severity.
+   Follow OUTPUT_SCHEMA for citations. If it requires sourceRef, select the exact path of the offending
+   string from its enum; the runner will copy that field verbatim. Cite task/context values, never rubric
+   examples or instructions as evidence of task content. For a missing required focus, cite practiceFocus.
+   Paths are relative to the audited item, for example /task/questionVi; do not prefix /items/0.
+   Legacy sourceQuote must be a verbatim 4+ character substring of an actual string VALUE in context/task;
+   preserve case, language, punctuation and Unicode. Never translate, reconstruct or quote field names.
    In explanation name the relevant field/claim, evidence and rule, and explain the consequence;
    for null explain the unresolved alternatives. Do not give speculative improvement advice as an issue.
    null requires severity=uncertain; false requires critical/major/minor according to the rubric.
@@ -488,7 +508,24 @@ def judge_payload(case: dict, wire_id: str, manifest: dict) -> dict:
         "items": [{"id": wire_id, "context": case["context"], "task": case["task"]}]}
 
 
-def judge_schema(wire_id: str, *, fact_count: int | None = None, semantic_audit: bool = False) -> dict:
+def judge_source_fields(case: dict) -> dict[str, str]:
+    """Address original string values; never reconstruct or normalize quoted evidence."""
+    fields = {}
+    pending = [("/task", case["task"]), ("/context", case["context"])]
+    while pending:
+        path, value = pending.pop()
+        if isinstance(value, str) and len(value) >= 4:
+            fields[path] = value
+        elif isinstance(value, dict):
+            pending.extend((path + "/" + str(key).replace("~", "~0").replace("/", "~1"), item)
+                           for key, item in value.items())
+        elif isinstance(value, list):
+            pending.extend((path + "/" + str(index), item) for index, item in enumerate(value))
+    return dict(sorted(fields.items()))
+
+
+def judge_schema(wire_id: str, *, fact_count: int | None = None, semantic_audit: bool = False,
+                 source_refs: list[str] | None = None) -> dict:
     if semantic_audit and fact_count is None:
         raise gen.DatasetError("semantic audit requires fact audit")
     issue = {"type": "object", "properties": {
@@ -498,6 +535,12 @@ def judge_schema(wire_id: str, *, fact_count: int | None = None, semantic_audit:
         "severity": {"type": "string", "enum": ["critical", "major", "minor", "uncertain"]}},
         "required": ["check", "sourceQuote", "explanation", "severity"],
         "additionalProperties": False}
+    if source_refs is not None:
+        if not source_refs:
+            raise gen.DatasetError("judge issue references require source fields")
+        issue["properties"].pop("sourceQuote")
+        issue["properties"]["sourceRef"] = {"type": "string", "enum": source_refs}
+        issue["required"] = ["check", "sourceRef", "explanation", "severity"]
     properties = {"id": {"type": "string", "enum": [wire_id]},
         **{key: {"type": ["boolean", "null"]} for key in CHECKS},
         "issues": {"type": "array", "items": issue}}
@@ -519,6 +562,9 @@ def judge_schema(wire_id: str, *, fact_count: int | None = None, semantic_audit:
         properties["factAudit"] = {"type": "array", "minItems": fact_count, "maxItems": fact_count,
             "items": {"type": "object", "properties": audit, "required": list(audit),
                       "additionalProperties": False}}
+        if source_refs is not None:
+            properties = {"id": properties["id"], "factAudit": properties["factAudit"],
+                          **{key: properties[key] for key in CHECKS}, "issues": properties["issues"]}
     item = {"type": "object", "properties": properties, "required": list(properties),
             "additionalProperties": False}
     return {"type": "object", "properties": {"items": {"type": "array", "items": item,
@@ -571,7 +617,9 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
         raise gen.DatasetError(f"{stem}: sent/partial result exists; refusing replay")
     fact_count = len(case["task"]["facts"]) if manifest.get("requireFactAudit") else None
     semantic_audit = manifest.get("requireSemanticAudit", False)
-    schema = judge_schema(wire_id, fact_count=fact_count, semantic_audit=semantic_audit)
+    source_fields = judge_source_fields(case) if manifest.get("useIssueReferences") else None
+    schema = judge_schema(wire_id, fact_count=fact_count, semantic_audit=semantic_audit,
+                          source_refs=list(source_fields) if source_fields is not None else None)
     payload = judge_payload(case, wire_id, manifest)
     body = {"model": "chatgpt-web", "stream": False, "messages": [{"role": "user",
         "content": JUDGE_SYSTEM + ("\nFor each factAudit entry give brief observable evidence, not hidden reasoning. "
@@ -591,6 +639,12 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
                    "including gender/age/modality, against the source. In basis briefly identify the requested "
                    "meaning, historical comparison when applicable, and any unsupported additions. "
                    "A source quote alone does not establish alignment, novelty or faithful translation. "
+                   "For each index read slot.askVi AND its questionVi clause, then compare textEn/textVi. "
+                   "Do not compare evidenceEn's extra context as though it were the answer key. "
+                   "Finish factAudit before assigning top-level checks. taskTypeAccurate must agree "
+                   "with ALL expectedTaskType values; newMeanings must agree with ALL newMeaningSupported "
+                   "values (false if any false; otherwise null if any null; otherwise true). "
+                   "A translation audit checks translation meaning, not whether the question is well aligned. "
                    "Reconcile these fields with the corresponding top-level checks.\n"
                    if semantic_audit else "") + "\nOUTPUT_SCHEMA:\n" + json.dumps(schema, ensure_ascii=False) +
                    "\nAUDIT_INPUT:\n" + json.dumps(payload, ensure_ascii=False)}]}
@@ -612,13 +666,21 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
     strict = gen.strict_json(choice["message"]["content"])
     Draft202012Validator(schema).validate(strict)
     verdict = gen.unpack_batch(strict, [wire_id])[wire_id]
+    issues = verdict["issues"]
+    if source_fields is not None:
+        # This is the wire protocol, not repair: the immutable response selects a source field.
+        issues = [{"check": issue["check"], "sourceQuote": source_fields[issue["sourceRef"]],
+                   "explanation": issue["explanation"], "severity": issue["severity"]}
+                  for issue in issues]
     review = {"reviewer": "AI:chatgpt-web", "rubricVersion": manifest["rubricVersion"],
         "rubricHash": manifest["rubricHash"], "taskHash": gen.digest(case["task"]),
         "contextHash": gen.digest(case["context"]), "requestHash": gen.digest(body),
         "responseHash": gen.digest(strict), "checks": {key: verdict[key] for key in CHECKS},
-        "issues": verdict["issues"], "sourceId": "local-chatgpt-bridge",
+        "issues": issues, "sourceId": "local-chatgpt-bridge",
         "modelIdentity": "unverified-web-alias", "returnedModel": envelope.get("model"),
         "usage": envelope.get("usage")}
+    if source_fields is not None:
+        review["issueReferences"] = [issue["sourceRef"] for issue in verdict["issues"]]
     if not _review_integrity(case, review, manifest):
         raise gen.DatasetError("judge verdict missing valid checks, issues or exact citations")
     if fact_count is not None:
@@ -632,6 +694,15 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
             raise gen.DatasetError("judge fact audit is incomplete, ungrounded or inconsistent")
         review["factAudit"] = audit
         if semantic_audit:
+            if source_fields is not None:
+                # These two checks cover exactly the per-fact claims; reject both directions of mismatch.
+                type_values = [None if item["expectedTaskType"] is None else
+                    item["expectedTaskType"] == case["task"]["facts"][item["index"]]["taskType"] for item in audit]
+                for check, values in (("taskTypeAccurate", type_values),
+                                      ("newMeanings", [item["newMeaningSupported"] for item in audit])):
+                    expected = False if False in values else None if None in values else True
+                    if review["checks"][check] is not expected:
+                        raise gen.DatasetError("judge semantic audit contradicts " + check)
             history = [turn.get("utteranceEn", "") for turn in case["context"].get("history", [])]
             history += [turn.get("utteranceEn", "") for turn in
                         case["context"].get("encounterState", {}).get("sourceTurns", [])]

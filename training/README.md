@@ -427,11 +427,11 @@ offline tab lifecycle check. The first live collection on 2026-10-23 confirmed o
 tab after restart and across three independent Web reviews, with a fresh chat each time.
 
 ```powershell
-python -m training.collect_reviewed prepare --campaign data/fine-tuning/reviewed-500-v2
-python -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v2 --limit 4
-python -m training.collect_reviewed status --campaign data/fine-tuning/reviewed-500-v2
-python -m training.collect_reviewed adjudicate --campaign data/fine-tuning/reviewed-500-v2 --decision-file <private-decision.json>
-python -m training.collect_reviewed export --campaign data/fine-tuning/reviewed-500-v2
+python -m training.collect_reviewed prepare --campaign data/fine-tuning/reviewed-500-v3
+python -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v3 --limit 4
+python -m training.collect_reviewed status --campaign data/fine-tuning/reviewed-500-v3
+python -m training.collect_reviewed adjudicate --campaign data/fine-tuning/reviewed-500-v3 --decision-file <private-decision.json>
+python -m training.collect_reviewed export --campaign data/fine-tuning/reviewed-500-v3
 ```
 
 Each approval binds the exact task, context and Web verdict hashes and needs independent
@@ -441,12 +441,19 @@ Source families are split before generation, across all four levels. Export requ
 700 approved tasks; the existing integrity, coverage, loss-mask and holdout audits still apply.
 Generated artifacts, decisions and API evidence stay in the ignored private campaign folder.
 
-New collections use `conversation-reviewed-collection-v2-20261023.json` and a structured semantic
+New collections use `conversation-reviewed-collection-v3-20261023.json` and a structured semantic
 fact audit. Each fact reports independently derived taskType, answer scope, novelty/history quote
-and attribute support. Contradictory PASS fields fail the judge contract; they never auto-approve.
+and attribute support. New Web issue objects select `sourceRef` from allowed task/context string
+paths. The runner validates that path and copies the original value into the stored `sourceQuote`;
+the raw response and its hash remain unchanged. This is a versioned wire format, not response repair.
+Invalid references and contradictory audit/check values fail closed. taskTypeAccurate and newMeanings
+must match their per-fact audit in both directions; full-utterance translation findings remain separate.
+The schema presents factAudit before global checks. B2 now has a grounded example for both continuation
+and new encounters; examples remain excluded from collection through the existing prior-corpus scan.
 The rubric, hard validators and first-attempt/no-repair policy are unchanged. Changed prompt hashes
 require a fresh campaign; do not edit old manifests to resume them with new code.
-The owner deferred live calls; see [the test handoff](../docs/conversation-prompt-judge-v2-handoff.md).
+The v2 live run received 12/30 final approvals; see [the report](../docs/conversation-diagnostic-v2-30-20261023.md).
+V3 has only offline verification so far; see [the test handoff](../docs/conversation-prompt-judge-v3-handoff.md).
 
 For owner-requested diagnostic review, prepare with `--diagnostic --retain-diagnostic-evidence`.
 Rejected requests, responses and teacher results are then copied to `rejected-evidence/<id>/`

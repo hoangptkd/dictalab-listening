@@ -23,7 +23,7 @@ from training.semantic_rubric import CHECKS, VERSION_V3, rules_for
 
 LEVELS = ("A1", "A2", "B1", "B2")
 TARGETS = {"train": 125, "validation": 25, "test": 25}
-ARTIFACT = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v2-20261023.json"
+ARTIFACT = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v3-20261023.json"
 
 
 def normalized(text: str) -> str:
@@ -117,6 +117,7 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
                   "url": "http://127.0.0.1:3000/v1/chat/completions"},
         "requireFactAudit": True,
         "requireSemanticAudit": True,
+        "useIssueReferences": True,
         "candidateCap": 1500 if getattr(settings, "operational_limits_enabled", True) else 0,
         "targetsPerLevel": TARGETS,
         "groups": groups, "holdouts": sorted(set(holdouts)), "priorCorpusHash": gen.digest(corpus),
