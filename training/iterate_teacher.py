@@ -134,6 +134,26 @@ GENERAL METHOD: scope -> source meaning -> tested claim -> evidence -> verdict.
 
 Apply the versioned rubric supplied alongside items. These method instructions explain how to
 apply it; they do not add quality requirements or change decision thresholds.
+
+CONTRASTIVE CHECKS: apply these general boundaries to the actual submitted task, not these examples.
+- 'If X, what should they DO?' + action answer -> instruction_sequence, even if labelled condition.
+  'What prerequisite permits Y?' + X answer -> condition. 'When does Y work?' + hour -> direct_detail.
+- 'What is your TASK?' + count boxes -> instruction_sequence; A1 cannot relabel an action direct_detail.
+- 'Why prefer A?' + reasons -> reason_purpose, not opinion_attitude. The evaluation slot and why-clause
+  must request the SAME meaning. B2 needs a genuinely asked connected argument, not just two simple causes.
+- 'Where submit?' cannot match a source about collecting; 'waiting time' cannot match time until departure.
+  'At what clock time?' cannot be answered only by an early-arrival offset. Check slot.askVi as well as questionVi.
+- 'I can collect it' does not support a question asserting 'will collect'. A plain proposal does not
+  need mutual acknowledgement, but a possibility must not be upgraded to a definite plan.
+- 'I would rather dip it later' states the intended action: it is not inference. Mask the author's
+  taskType/rationale mentally, derive the question's type, then compare. Do not justify a label after reading it.
+- A because-clause explains its attached EVENT, not an unrelated change earlier in the transcript.
+- 'Now X, not old Y' is a revised final value. Without an established old value, apply the supplied
+  boundary carefully; do not automatically certify a direct_detail when a material classification remains unresolved.
+- A fresh requested object does not always make its delivery location a fresh property in the same order.
+Before global checks, state the actual requested property, actual answer property and comparison in each
+factAudit.basis, naming a mismatch when present. Do not merely assert that all fields align. If false,
+identify the exact conflicting meanings; if true, explain the preserved meaning without inventing details.
 """ + gen.JSON_RULES
 
 
@@ -342,7 +362,7 @@ def prepare(path: Path, *, artifact_path: Path = DEFAULT_ARTIFACT, gold_path: Pa
         "validatorHash": validator_hash(), "rubricVersion": VERSION_V3,
         "sourcePlanHashes": [gen.digest(gen.read_json(source)) for source in SOURCE_PLANS],
         "rubricHash": gen.digest(rules_for(VERSION_V3)),
-        "teacherWrapperHash": gen.digest(gen.TEACHER_BATCH),
+        "teacherWrapperHash": gen.digest(gen.teacher_batch_system(artifact)),
         "judgeSystemHash": gen.digest(JUDGE_SYSTEM),
         "teacher": {"provider": "deepseek", "model": teacher_model,
                     "sourceIds": [s.id for s in teacher_sources], "temperature": 0.2, "maxOutputTokens": 8192},
@@ -373,7 +393,8 @@ def load(path: Path) -> tuple[dict, dict]:
     if manifest.get("groupAllocation") != "development-only-before-candidate-freeze" or \
             manifest["rubricHash"] != gen.digest(rules_for(manifest["rubricVersion"])) or \
             manifest["validatorHash"] != validator_hash() or \
-            manifest["teacherWrapperHash"] != gen.digest(gen.TEACHER_BATCH) or \
+            manifest["teacherWrapperHash"] != gen.digest(gen.teacher_batch_system(
+                _checked_artifact(Path(manifest["artifactPath"])))) or \
             manifest.get("judgeSystemHash") != gen.digest(JUDGE_SYSTEM) or \
             manifest["catalogueHash"] != gen.digest(gen.read_json(gen.CATALOGUE)) or \
             manifest.get("sourcePlanHashes") != [gen.digest(gen.read_json(source)) for source in SOURCE_PLANS] or \
@@ -817,13 +838,16 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
             _sent_before(path, "teacher", folder.name, ident):
         raise gen.DatasetError(f"{ident}: teacher attempt already exists; refusing replay")
     context = entry["context"]
-    schema = artifact["contentSchemas"][entry["level"]]
+    schema = artifact.get("teacherContentSchemas", artifact["contentSchemas"])[entry["level"]]
     full_schema = gen.batch_schema([ident], schema, artifact["translationSchema"])
     payload = {"contentSystem": gen.production_messages(artifact, context, "content")[0]["content"],
         "contentSchema": schema, "translationSystem": artifact["translationSystem"],
         "translationSchema": artifact["translationSchema"],
         "items": [{"id": ident, "context": context,
                    "authoringRules": gen.authoring_rules(context)}]}
+    if artifact.get("teacherWireFormat") == "aligned-targets-v1":
+        payload["contentSystem"] = artifact["teacherInstruction"] + "\n" + json.dumps(
+            artifact["typeCards"], ensure_ascii=False)
     if gen._contains_secret(payload):
         raise gen.DatasetError("possible sensitive data in teacher input")
     run_settings = settings.model_copy(update={"primary_provider": "deepseek", "temperature": 0.2,
@@ -862,7 +886,7 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
                 event_hooks={"request": [on_request], "response": [on_response]}) as client:
             gateway = ModelGateway(run_settings, client)
             result, provider = await gateway.complete([
-                {"role": "system", "content": gen.TEACHER_BATCH},
+                {"role": "system", "content": gen.teacher_batch_system(artifact)},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
                 full_schema, time.monotonic() + run_settings.timeout_seconds, "teacher_batch")
         if (provider != "deepseek" or gateway.last_model != manifest["teacher"]["model"] or
@@ -876,12 +900,16 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
         if strict != result:
             raise gen.DatasetError("teacher provider parser changed strict target")
         Draft202012Validator(full_schema).validate(strict)
-        item = gen.unpack_batch(strict, [ident])[ident]
+        item = gen.assemble_teacher_item(gen.unpack_batch(strict, [ident])[ident], artifact)
         if len(item["content"]["slots"]) != gen.authoring_rules(context)["slotCount"]:
             raise gen.DatasetError("teacher slot count differs from authoringRules")
         task, records = gen.build_records(item, context, group, artifact,
             f"{ident}.result.json" if collection else f"{ident}.judge-result.json", teacher=manifest["teacher"]["model"],
             judge=manifest["judge"]["model"], request_reference=request_path.name)
+        if artifact.get("teacherWireFormat") == "aligned-targets-v1":
+            for record in records:
+                record["teacherProvenance"]["wireFormat"] = "aligned-targets-v1"
+                record["teacherProvenance"]["projection"] = "targets->slots/facts; questionVi=join(askVi)"
         errors = validate_training_task(task, entry["level"], artifact, context["levelProfile"])
         if errors:
             raise gen.DatasetError("production hard validation failed: " + ", ".join(map(str, errors))[:1000])

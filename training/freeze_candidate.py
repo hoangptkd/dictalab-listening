@@ -216,6 +216,204 @@ No drafting notes, extra fields, second attempt, repair or commentary in the ret
     return artifact
 
 
+def freeze_collection_v4(output: Path) -> dict:
+    baseline = read_json(ROOT / "artifacts/prompts/conversation-reviewed-collection-v3-20261023.json")
+    if baseline["sha256"] != digest({k: v for k, v in baseline.items() if k != "sha256"}):
+        raise ValueError("collection v3 artifact hash mismatch")
+    cards = {
+        "direct_detail": {"questionForm": "Vật gì / ở đâu / khi nào / bao lâu? NEVER hỏi việc cần làm.",
+            "example": "Source: Bring the permit to the desk. Ask: Giấy tờ gì? Answer: the permit. Not bring the permit."},
+        "instruction_sequence": {"questionForm": "Cần làm gì / theo các bước nào?",
+            "example": "If the light is red, press the button. Ask: Nếu đèn đỏ thì cần làm gì? Answer: press the button; action, not condition."},
+        "condition": {"questionForm": "Phải đáp ứng ĐIỀU KIỆN gì để ...? NEVER cần làm gì/khi nào.",
+            "example": "Only registered guests can use it. Ask: Điều kiện nào để sử dụng? Answer: being registered. A customer may state their own prerequisite, not invent policy."},
+        "reason_purpose": {"questionForm": "Vì sao [đúng sự kiện được giải thích] / để làm gì?",
+            "example": "I moved the meeting because the room is full. Ask why MEETING MOVED, not why date changed if no date cause is given."},
+        "opinion_attitude": {"questionForm": "Người nói đánh giá / có cảm nhận gì về ...? NEVER vì sao.",
+            "example": "I think it is useful because it saves paper. Answer: The speaker thinks it is useful. Do not include the independent because-clause."},
+        "change_revision": {"questionForm": "Thông tin [X] được đổi từ gì sang gì / giờ là gì?",
+            "example": "The original plan was Tuesday; I am changing it to Friday. Answer: Friday. Explicitly establish old and revised values."},
+        "gist": {"questionForm": "Thông điệp chính / mục đích chung của lời nhắn là gì?",
+            "example": "Summarize the whole communicative purpose, not a list copying the other two answers. Other slots ask distinct supporting properties."},
+        "inference_prediction": {"questionForm": "Từ các dấu hiệu, người nói có khả năng ... gì?",
+            "example": "My car will not start. The last bus has gone. A taxi is waiting outside and I must reach the station. Likely next transport: taxi. NEVER explicitly say I will take the taxi or equivalent."},
+        "argument_relation": {"questionForm": "Người nói cân nhắc / lập luận so sánh A với B thế nào?",
+            "example": "A is cheaper initially; B lasts longer, so frequent users favor B. Answer connects the cost/use tradeoff and conclusion; it does not just list prices."}}
+    instruction = """Create a new, natural listening task using context.authoringPlan as the exact slot order.
+One authored speaker, correct roles, same encounter for turns 1-3; turn 4 resets the encounter.
+Read practiceFocus, history and levelDemand. Use only allowedTaskTypes and supplied word bounds.
+Plan two distinct meanings at A1 and three at A2/B1/B2. Background stays untested. NEVER add a slot.
+Each authoringPlan entry gives taskType and the Vietnamese question form that actually tests it.
+
+For EACH index, settle ONE requested property and minimal answer; write slot.askVi and the matching
+questionVi clause from that same property. Keep subject, alternatives, modality and causal event identical.
+Submission place is not collection place; waiting duration is not time until leaving; clock time is not
+an early-arrival offset. Ask 'đến sớm bao lâu' for 'fifteen minutes early', not 'lúc mấy giờ'.
+Can/may collect is tested as 'có thể nhận', never 'sẽ nhận'. Reasons answer why the stated event happened,
+not a nearby unrelated event. Do not attach causes or unasked quantities/destinations to another answer.
+
+Keep every tested property NEW in the same encounter. CAPTURED dietary restrictions, missing items,
+delivery places and other old properties cannot be asked again under new names/values or with a new
+object in the same order. Preserve old arrangements in background. For new targets, prefer genuinely
+different properties: material, size, payment method, recipient, storage, route accessibility, preparation,
+handling, contact method, duration or purpose, whichever fits the scenario and level. Follow diversityBrief.
+Never turn an old tested target into a new one merely by changing an adjective, number, or slot name.
+
+Unless the planned target is change_revision, avoid not-X/instead-of/replacement contrasts on a tested
+direct detail. Say the positive value plainly. For actual revision, establish old and new values explicitly.
+Argument comparisons may contrast alternatives as arguments, not relabel a replaced final value as a detail.
+At B2, first slot is argument_relation: require processing a real connected tradeoff and conclusion.
+The second slot still fulfills the original practiceFocus. All three must pass, including any inference.
+An inference answer is NOT stated or paraphrased in the source. Use linked cues with one clear outcome.
+Do not hide the answer in 'I'd rather', 'I plan', 'so I will', or another explicit preference/action.
+
+Output the six fields slots, utteranceEn, facts, questionVi, taskVi, skill. Return exactly the planned
+number of facts in the same order. evidenceEn is a verbatim transcript substring. For reasoning types,
+first COPY evidenceEn as one whole segmentsEn element, then add needed exact cues (1-4 elements total).
+All words in each segment must occur together in the source. No extra planning fields or commentary.
+Translate the final full utterance AND every final answer faithfully. Neutral unknown gender/age,
+inclusive by=chậm nhất vào, before=trước. A market hall is a building, not a fair/event. Use clear,
+familiar unambiguous referents and natural Vietnamese. UI prompts do not reveal the answers.
+Check each slot-question-answer-type-source chain before submitting the single complete JSON response.
+"""
+    artifact = {**baseline, "version": "conversation-reviewed-collection-v4-20261023",
+        "instruction": instruction, "slotPlanningVersion": 1, "typeCards": cards,
+        "diversityBriefs": [
+            "Develop practical packaging or material details if relevant; otherwise preparation and handling.",
+            "Develop contact, communication or payment details if relevant; otherwise equipment and storage.",
+            "Develop accessibility or comfort details if relevant; otherwise assistance and practical preparation.",
+            "Develop service options or usage details if relevant; otherwise duration and organization.",
+            "Develop safety or carrying details if relevant; otherwise labels, containers and return procedures.",
+            "Develop practical location modifiers or identification details if relevant; otherwise materials and size."],
+        "approvalStatus": "development", "createdAt": datetime.now(timezone.utc).isoformat(),
+        "baselineArtifactHash": baseline["sha256"],
+        "clientAliases": ["CONVERSATION_REVIEWED_COLLECTION_V4_OFFLINE"],
+        "modelNote": "Slot planning from v3 loop diagnostics; requires fresh evaluation.",
+        "metricReport": {"status": "not_evaluated", "releaseAllowed": False,
+            "gate": {"releaseAllowed": False, "reasons": ["requires_fresh_live_evaluation"]}}}
+    artifact.pop("sha256")
+    artifact["sha256"] = digest(artifact)
+    write_json(output, artifact)
+    return artifact
+
+
+def freeze_collection_v5(output: Path) -> dict:
+    baseline = read_json(ROOT / "artifacts/prompts/conversation-reviewed-collection-v4-20261023.json")
+    if baseline["sha256"] != digest({k: v for k, v in baseline.items() if k != "sha256"}):
+        raise ValueError("collection v4 artifact hash mismatch")
+    schemas = {}
+    for level, final in baseline["contentSchemas"].items():
+        fact = final["properties"]["facts"]["items"]
+        target = copy.deepcopy(fact)
+        target["properties"] = {"kind": copy.deepcopy(final["properties"]["slots"]["items"]["properties"]["kind"]),
+            "askVi": {"type": "string", "minLength": 5, "maxLength": 55}, **target["properties"]}
+        target["required"] = ["kind", "askVi", *target["required"]]
+        count = 2 if level == "A1" else 3
+        schemas[level] = {"type": "object", "properties": {
+            "utteranceEn": copy.deepcopy(final["properties"]["utteranceEn"]),
+            "targets": {"type": "array", "minItems": count, "maxItems": count, "items": target},
+            "taskVi": copy.deepcopy(final["properties"]["taskVi"]),
+            "skill": copy.deepcopy(final["properties"]["skill"])},
+            "required": ["utteranceEn", "targets", "taskVi", "skill"], "additionalProperties": False}
+    teacher_instruction = """Author NEW content within the supplied encounter, roles, CEFR and word bounds.
+Follow context.authoringPlan in EXACT order and authoringRules.slotCount. Write utteranceEn first.
+Then write targets, one complete question-answer-evidence object at a time:
+kind, askVi (a specific complete Vietnamese question, 5-55 characters), textEn (only its answer),
+taskType, evidenceEn, reasoningEvidence only for reasoning types. No slots/facts/questionVi in content.
+The runner concatenates target.askVi unchanged to produce the final joint question, and projects the
+same objects into slots and facts. Thus each askVi MUST be a real question about that answer, never
+a generic heading or the copied questionForm template. Ask only what the English source supports.
+
+Keep source, question and answer on the SAME referent/property: gate is not ticket machine; waiting
+duration is not time until leaving; submit is not collect. A clock-time question needs a clock-time
+answer; ask 'đến sớm bao lâu' for an offset. Include the tested referent in textEn when pronouns could
+hide a mismatch. Ask only the NEW changed value when answering only that value, not both old and new.
+Action questions require instruction_sequence; direct_detail asks a noun/place/time, never a task.
+For condition use 'Điều kiện gì để ...?', not what action/when. For opinion ask evaluation, not why.
+A why-answer gives the cause of that exact asked EVENT. Do not attach an unrelated nearby because.
+The minimum answer may include an identifying modifier, but no unasked quantities, destinations or causes.
+
+SOURCE DESIGN: For targets that are not change_revision, write only their positive values. Never use
+'not X', 'rather than X' or 'instead of X' to contrast those tested final values. For change_revision,
+explicitly establish old value, change it and ask the new value. Argument_relation may weigh two options
+with but/whereas; keep the comparison and conclusion inside that target rather than a mislabeled detail.
+Do not restate tested history properties with new numbers/names. Preserve old arrangements in background;
+choose new properties such as material, handling, accessibility, storage or payment appropriate to the role.
+Apply diversityBrief if relevant, without moving to a new encounter on turns 1-3.
+
+Customer speech: author your own wishes, constraints or requests. Never ask a policy question in the
+source and then claim its unknown answer as a true prerequisite. You can state a personal prerequisite
+(I can travel only if ...). Keep can/may in the question; never promote availability into will/confirmed.
+B2 requires the planned connected tradeoff AND any separate practiceFocus. Inference must be genuinely
+unstated: provide two linked cues with one conclusion; never explicitly announce the predicted action.
+reasoningEvidence.rationaleEn connects ONLY stated cues; do not invent duration, motives or circumstances.
+
+evidenceEn is an exact transcript substring, <=300 characters. For each reasoning target copy the WHOLE
+evidenceEn as one identical segmentsEn entry, plus other needed exact segments (1-4 total, <=300 each).
+Keep textEn <=160 characters; no made-up codes, labels or implicit external knowledge. Translate final
+source and final answers faithfully; by=chậm nhất vào, before=trước. Neutral unknown gender/age.
+All targets, full translation and answer translations must agree. Close every nested JSON object correctly.
+"""
+    artifact = {**baseline, "version": "conversation-reviewed-collection-v5-20261023",
+        "teacherWireFormat": "aligned-targets-v1", "teacherContentSchemas": schemas,
+        "teacherInstruction": teacher_instruction,
+        "approvalStatus": "development", "createdAt": datetime.now(timezone.utc).isoformat(),
+        "baselineArtifactHash": baseline["sha256"],
+        "clientAliases": ["CONVERSATION_REVIEWED_COLLECTION_V5_OFFLINE"],
+        "modelNote": "Adjacent question-answer targets; fresh live evaluation required.",
+        "metricReport": {"status": "not_evaluated", "releaseAllowed": False,
+            "gate": {"releaseAllowed": False, "reasons": ["requires_fresh_live_evaluation"]}}}
+    artifact.pop("sha256")
+    artifact["sha256"] = digest(artifact)
+    write_json(output, artifact)
+    return artifact
+
+
+def freeze_collection_v6(output: Path) -> dict:
+    baseline = read_json(ROOT / "artifacts/prompts/conversation-reviewed-collection-v5-20261023.json")
+    if baseline["sha256"] != digest({k: v for k, v in baseline.items() if k != "sha256"}):
+        raise ValueError("collection v5 artifact hash mismatch")
+    guards = """
+Before writing the source, choose the requested PROPERTY for every planned target. Compare those
+properties with history AND previouslyTestedDetails. A new value of the same property is still old.
+For example, where an item is stored remains its storage location even if the locker becomes a
+cabinet. A2+ may test a genuine revision, but A1 must preserve old values and choose another property.
+For change_revision, record an actual OLD -> DIFFERENT NEW value in the source. 'Still', 'now' or
+'but' alone cannot turn an unchanged responsibility into a revision. Do not ask that old responsibility.
+
+Use short natural askVi questions, preferably 20-40 characters and always <=55. Do not copy the
+verbose questionForm or name both options if their identities are already clear. A B2 question can
+ask 'Hai lựa chọn được cân nhắc thế nào?'; its answer must still connect the tradeoff and conclusion.
+For each target independently derive the type from its FINAL question and minimal answer; it must
+match the planned type. 'Điều kiện gì để mượn?' is condition, regardless of its slot kind. If a direct
+detail is planned, ask a separate supported item/place/time instead of disguising a prerequisite.
+
+Opinion answers contain only the evaluation and its object; put because-clauses only in why answers.
+An inference cannot repeat an explicit choice, desire, intention or stated future action. Its linked
+cues must support one unstated conclusion; another target must not ask that same conclusion directly.
+For B2, an old reason for an old instruction is not a new tradeoff. State two competing considerations
+and the resulting qualified choice, within one argument target, distinct from any separate focus.
+Use explicit nouns wherever two prior objects could be the antecedent of it/there. Translate concrete
+objects using their physical context: a folder on a shelf is a hồ sơ/bìa đựng tài liệu, not a computer
+thư mục. Preserve source meanings in the entire translation and every answer, without adding policy.
+"""
+    cards = copy.deepcopy(baseline["typeCards"])
+    cards["argument_relation"]["questionForm"] = "Hai lựa chọn được cân nhắc thế nào?"
+    artifact = {**baseline, "version": "conversation-reviewed-collection-v6-20261023",
+        "instruction": baseline["instruction"] + guards,
+        "teacherInstruction": baseline["teacherInstruction"] + guards,
+        "typeCards": cards, "baselineArtifactHash": baseline["sha256"],
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "clientAliases": ["CONVERSATION_REVIEWED_COLLECTION_V6_OFFLINE"],
+        "modelNote": "Development candidate after partial v5 diagnostics; not live evaluated.",
+        "metricReport": {"status": "not_evaluated", "releaseAllowed": False,
+            "gate": {"releaseAllowed": False, "reasons": ["requires_fresh_live_evaluation"]}}}
+    artifact.pop("sha256")
+    artifact["sha256"] = digest(artifact)
+    write_json(output, artifact)
+    return artifact
+
+
 def freeze_v9(output: Path) -> dict:
     baseline = read_json(ROOT / "artifacts/prompts/conversation-cefr-v8-20261022.json")
     if baseline["sha256"] != digest({k: v for k, v in baseline.items() if k != "sha256"}):
@@ -265,13 +463,16 @@ def freeze(contract_path: Path, output: Path) -> dict:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", choices=("v8", "v9", "collection-v2", "collection-v3"), default="v8")
+    parser.add_argument("--version", choices=("v8", "v9", "collection-v2", "collection-v3", "collection-v4", "collection-v5", "collection-v6"), default="v8")
     parser.add_argument("--contract", type=Path, default=ROOT / "target/conversation-cefr-java-contract.json")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     output = args.output or ROOT / (f"artifacts/prompts/conversation-reviewed-{args.version}-20261023.json"
         if args.version.startswith("collection-") else f"artifacts/prompts/conversation-cefr-{args.version}-20261022.json")
-    artifact = (freeze_collection_v3(output) if args.version == "collection-v3" else
+    artifact = (freeze_collection_v6(output) if args.version == "collection-v6" else
+                freeze_collection_v5(output) if args.version == "collection-v5" else
+                freeze_collection_v4(output) if args.version == "collection-v4" else
+                freeze_collection_v3(output) if args.version == "collection-v3" else
                 freeze_collection_v2(output) if args.version == "collection-v2" else
                 freeze_v9(output) if args.version == "v9" else freeze(args.contract, output))
     print(json.dumps({"version": artifact["version"], "sha256": artifact["sha256"]}))

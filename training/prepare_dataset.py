@@ -202,6 +202,16 @@ def validate_training_task(task: dict, level: str, artifact: dict, profile: dict
     return _validation.validate_task(task, level=level, level_profile=profile, shadow_profile=shadow)
 
 
+def content_system(artifact: dict, level: str, turn: int) -> str:
+    system = artifact["instruction"] + "\n" + artifact["contentSystem"]
+    if artifact.get("slotPlanningVersion") == 1:
+        return system + "\nQuestion/answer type cards (invent different content): " + json.dumps(
+            artifact["typeCards"], ensure_ascii=False)
+    examples = [e for e in artifact["fewShotExamples"] if e.get("input", {}).get("difficulty") == level
+                and e.get("input", {}).get("turnNumber") == (4 if turn == 4 else 2)]
+    return system + "\nExamples are format only: " + json.dumps(examples, ensure_ascii=False)
+
+
 def _contract(row: dict[str, Any], artifact: dict[str, Any]) -> None:
     if row.get("developmentOnly") is True:
         raise DatasetError("development calibration/benchmark records cannot enter SFT")
@@ -220,9 +230,7 @@ def _contract(row: dict[str, Any], artifact: dict[str, Any]) -> None:
               if purpose == "content" else artifact["translationSchema"])
     system = artifact["contentSystem" if purpose == "content" else "translationSystem"]
     if purpose == "content":
-        examples = [e for e in artifact["fewShotExamples"] if e.get("input", {}).get("difficulty") == level
-                    and e.get("input", {}).get("turnNumber") == (4 if row["turnNumber"] == 4 else 2)]
-        system = artifact["instruction"] + "\n" + system + "\nExamples are format only: " + json.dumps(examples, ensure_ascii=False)
+        system = content_system(artifact, level, row["turnNumber"])
     messages = row["messages"]
     if row.get("artifactVersion") != artifact["version"] or messages[0]["content"] != system:
         raise DatasetError("artifact/system prompt mismatch")

@@ -18,7 +18,7 @@ from jsonschema import Draft202012Validator
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from training.prepare_dataset import ROOT, DatasetError, _contract, _contains_secret, digest, validator_hash
+from training.prepare_dataset import ROOT, DatasetError, _contract, _contains_secret, content_system, digest, validator_hash
 from training.semantic_rubric import (CHECKS, RULES, VERSION as REVIEW_VERSION,
                                      calibration_cases, decision, severity)
 sys.path.insert(0, str(ROOT / "services" / "ai-generation"))
@@ -239,13 +239,39 @@ def authoring_rules(context: dict) -> dict:
             "slotCount": 2 if context["difficulty"] == "A1" else 3}
 
 
+def teacher_batch_system(artifact: dict) -> str:
+    if artifact.get("teacherWireFormat") != "aligned-targets-v1":
+        return TEACHER_BATCH
+    return """Create one first-attempt listening task and its Vietnamese translation per input item.
+Follow contentSystem, context.authoringPlan, authoringRules and the supplied schemas. Return only
+{items:[{id,content,translation}]}. The content wire uses ONE targets array. Each target contains
+its complete Vietnamese question askVi, the minimal textEn answer, taskType and exact evidenceEn
+together. Write the source first, then each complete question-answer-evidence target. Do not generate
+separate slots, facts or questionVi in content: the runner derives them verbatim from targets.
+Translation.facts follows targets in identical order. Translate the final source and answers only.
+Return exactly authoringRules.slotCount targets; keep all six required target fields when applicable.
+Use no outside assumptions in answers or rationaleEn. Respect role, modality, novelty and word limits.
+No extra fields, repair, retries, commentary or hidden reasoning.
+""" + JSON_RULES
+
+
+def assemble_teacher_item(item: dict, artifact: dict) -> dict:
+    """Versioned wire projection; original JSON must already validate, never repair it."""
+    if artifact.get("teacherWireFormat") != "aligned-targets-v1":
+        return item
+    content = item["content"]
+    targets = content["targets"]
+    return {**item, "content": {"slots": [{"kind": t["kind"], "askVi": t["askVi"]} for t in targets],
+        "utteranceEn": content["utteranceEn"],
+        "facts": [{k: v for k, v in t.items() if k not in {"kind", "askVi"}} for t in targets],
+        "questionVi": " ".join(t["askVi"] for t in targets),
+        "taskVi": content["taskVi"], "skill": content["skill"]}}
+
+
 def production_messages(artifact: dict, context: dict, purpose: str) -> list[dict]:
     system = artifact["translationSystem"]
     if purpose == "content":
-        examples = [e for e in artifact["fewShotExamples"] if e["input"]["difficulty"] == context["difficulty"]
-                    and e["input"]["turnNumber"] == (4 if context["turnNumber"] == 4 else 2)]
-        system = artifact["instruction"] + "\n" + artifact["contentSystem"]
-        system += "\nExamples are format only: " + json.dumps(examples, ensure_ascii=False)
+        system = content_system(artifact, context["difficulty"], context["turnNumber"])
     return [{"role": "system", "content": system},
             {"role": "user", "content": json.dumps(context, ensure_ascii=False)}]
 
@@ -271,6 +297,13 @@ def make_context(group: dict, turn: int, prior: list[dict], artifact: dict, inde
         if context["partnerRole"] in {"customer", "guest", "passenger", "traveller", "parcel recipient"}
         else "Use speech within the authored speaker's role and established encounter.")
     context["practiceFocus"] = f"Include one genuine {desired} target, with new requested meanings. {perspective}"
+    if artifact.get("slotPlanningVersion") == 1:
+        planned = (["argument_relation", desired if desired != "argument_relation" else "condition", "direct_detail"]
+                   if level == "B2" else [desired] + ["direct_detail"] * (1 if level == "A1" else 2))
+        context["authoringPlan"] = [{"index": i, "taskType": kind,
+            "questionForm": artifact["typeCards"][kind]["questionForm"]} for i, kind in enumerate(planned)]
+        context["diversityBrief"] = artifact["diversityBriefs"][
+            int(digest([group["groupId"], context.get("variationSeed", 17)])[:8], 16) % len(artifact["diversityBriefs"])]
     context.setdefault("history", [])
     for row in prior:
         task = row["task"]

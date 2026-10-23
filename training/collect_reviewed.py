@@ -23,7 +23,7 @@ from training.semantic_rubric import CHECKS, VERSION_V3, rules_for
 
 LEVELS = ("A1", "A2", "B1", "B2")
 TARGETS = {"train": 125, "validation": 25, "test": 25}
-ARTIFACT = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v3-20261023.json"
+ARTIFACT = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v4-20261023.json"
 
 
 def normalized(text: str) -> str:
@@ -61,14 +61,15 @@ def prior_corpus() -> list[str]:
 
 
 def prepare(path: Path, settings=None, *, diagnostic: bool = False,
-            retain_diagnostic_evidence: bool = False) -> dict:
+            retain_diagnostic_evidence: bool = False, artifact_path: Path | None = None) -> dict:
     if retain_diagnostic_evidence and not diagnostic:
         raise DatasetError("full rejection evidence retention requires a diagnostic campaign")
     path = run._private_path(path)
     if path.exists():
         raise DatasetError("collection directory already exists")
     settings = settings or run.settings_from_registry()
-    artifact = gen.read_json(ARTIFACT)
+    selected_artifact = (artifact_path or ARTIFACT).resolve()
+    artifact = gen.read_json(selected_artifact)
     if artifact.get("collectionPolicy") != COLLECTION_POLICY:
         raise DatasetError("collection artifact policy mismatch")
     sources = settings.sources_for("deepseek")
@@ -107,9 +108,9 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
     manifest = {"policy": COLLECTION_POLICY, "createdAt": run._now(), "seed": 17,
         "diagnosticOnly": diagnostic,
         "retainDiagnosticEvidence": retain_diagnostic_evidence,
-        "artifactPath": str(ARTIFACT), "artifactHash": artifact["sha256"],
+        "artifactPath": str(selected_artifact), "artifactHash": artifact["sha256"],
         "validatorHash": run.validator_hash(), "judgeSystemHash": gen.digest(run.JUDGE_SYSTEM),
-        "teacherWrapperHash": gen.digest(gen.TEACHER_BATCH),
+        "teacherWrapperHash": gen.digest(gen.teacher_batch_system(artifact)),
         "rubricVersion": VERSION_V3, "rubricHash": gen.digest(rules_for(VERSION_V3)),
         "teacher": {"provider": "deepseek", "model": settings.registry_pools["deepseek"]["default_model"],
                     "sourceIds": [source.id for source in sources]},
@@ -138,10 +139,11 @@ def load(path: Path) -> tuple[dict, dict]:
     if (manifest.get("policy") != COLLECTION_POLICY or
         manifest.get("hash") != gen.digest({k: v for k, v in manifest.items() if k != "hash"}) or
         manifest["validatorHash"] != run.validator_hash() or
-        manifest["judgeSystemHash"] != gen.digest(run.JUDGE_SYSTEM) or
-        manifest["teacherWrapperHash"] != gen.digest(gen.TEACHER_BATCH)):
+        manifest["judgeSystemHash"] != gen.digest(run.JUDGE_SYSTEM)):
         raise DatasetError("frozen collection contract changed")
     artifact = gen.read_json(Path(manifest["artifactPath"]))
+    if manifest["teacherWrapperHash"] != gen.digest(gen.teacher_batch_system(artifact)):
+        raise DatasetError("frozen teacher wrapper changed")
     if artifact["sha256"] != manifest["artifactHash"] or artifact["sha256"] != gen.digest(
             {k: v for k, v in artifact.items() if k != "sha256"}):
         raise DatasetError("frozen artifact changed")
@@ -405,6 +407,7 @@ def main() -> int:
     parser.add_argument("--campaign", required=True, type=Path)
     parser.add_argument("--limit", type=int, default=4)
     parser.add_argument("--decision-file", type=Path)
+    parser.add_argument("--artifact", type=Path, help="freeze this candidate on prepare; default is the best measured baseline")
     parser.add_argument("--diagnostic", action="store_true", help="prepare an experiment excluded from SFT")
     parser.add_argument("--retain-diagnostic-evidence", action="store_true",
                         help="preserve rejected diagnostic requests and responses for owner review")
@@ -414,7 +417,7 @@ def main() -> int:
     path = run._private_path(args.campaign)
     if args.command == "prepare":
         result = prepare(path, diagnostic=args.diagnostic,
-                         retain_diagnostic_evidence=args.retain_diagnostic_evidence)
+                         retain_diagnostic_evidence=args.retain_diagnostic_evidence, artifact_path=args.artifact)
     elif args.command == "collect":
         result = asyncio.run(collect(path, limit=args.limit, shutdown_on_failure=args.shutdown_on_worker_failure))
     elif args.command == "adjudicate":

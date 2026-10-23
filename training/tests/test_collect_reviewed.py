@@ -437,3 +437,87 @@ def test_judge_source_paths_only_address_original_values():
     assert fields == {"/context/a~1b~0c": "Giữ NGUYÊN", "/task/slots/0/askVi": "Câu hỏi",
                       "/task/utteranceEn": "Original text"}
     assert case == original
+
+
+def test_collection_v4_plans_questions_without_changing_contract(tmp_path):
+    from training.freeze_candidate import freeze_collection_v4
+    old = gen.read_json(gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v3-20261023.json")
+    new = freeze_collection_v4(tmp_path / "v4.json")
+    for key in ("contentSchemas", "translationSchema", "levelProfiles", "semanticRubric", "collectionPolicy"):
+        assert new[key] == old[key]
+    group = {"level": "B2", "scenarioId": "requirements", "branchId": "standard",
+             "groupId": "new/requirements/standard", "input": {"history": [], "scenario": "Buổi thực hành"}}
+    context = gen.make_context(group, 4, [], new, 0)
+    plan = context["authoringPlan"]
+    assert len(plan) == 3 and plan[0]["taskType"] == "argument_relation"
+    assert len({item["index"] for item in plan}) == 3
+    assert all(item["taskType"] in context["allowedTaskTypes"] for item in plan)
+    assert all(item["questionForm"] for item in plan)
+    assert context["diversityBrief"] in new["diversityBriefs"]
+    assert context == gen.make_context(group, 4, [], new, 999)
+    assert "Question/answer type cards" in gen.production_messages(new, context, "content")[0]["content"]
+    group["level"] = "A1"
+    context = gen.make_context(group, 4, [], new, 0)
+    assert [item["taskType"] for item in context["authoringPlan"]] == ["direct_detail"] * 2
+    assert not new["metricReport"]["gate"]["releaseAllowed"]
+    example = new["fewShotExamples"][0]["output"]
+    item = {"id": "planned-record", "content": example,
+            "translation": {"translationVi": "Bản dịch thử nghiệm.",
+                "facts": [{"textVi": "Đáp án thử nghiệm."} for _ in example["facts"]]}}
+    task, records = gen.build_records(item, context,
+        {**group, "scenario": "Buổi thực hành"}, new, "planned-review.json")
+    assert len(records) == 2 and task["facts"]
+
+
+def test_aligned_target_wire_projects_verbatim_before_full_contract_validation(tmp_path):
+    from jsonschema import Draft202012Validator, ValidationError
+    from training.freeze_candidate import freeze_collection_v5
+    artifact = freeze_collection_v5(tmp_path / "v5.json")
+    example = artifact["fewShotExamples"][0]["output"]
+    content = {"utteranceEn": example["utteranceEn"], "taskVi": example["taskVi"], "skill": example["skill"],
+        "targets": [{**slot, **fact} for slot, fact in zip(example["slots"], example["facts"])]}
+    # The new protocol explicitly authors complete questions, not semantic headings.
+    for target, question in zip(content["targets"], ("Khách nhận đồ uống ở đâu?", "Khách cần mang theo gì?")):
+        target["askVi"] = question
+    item = {"id": "aligned-example", "content": content,
+        "translation": {"translationVi": "Bản dịch kiểm tra.",
+            "facts": [{"textVi": "Đáp án kiểm tra."} for _ in content["targets"]]}}
+    original = copy.deepcopy(item)
+    Draft202012Validator(artifact["teacherContentSchemas"]["A1"]).validate(content)
+    projected = gen.assemble_teacher_item(item, artifact)
+    assert item == original
+    assert projected["content"]["questionVi"] == " ".join(t["askVi"] for t in content["targets"])
+    assert projected["content"]["facts"] == example["facts"]
+    group = {"level": "A1", "scenarioId": "requirements", "branchId": "standard",
+             "groupId": "aligned/requirements/standard", "input": {"history": [], "scenario": "Thực hành"}}
+    context = gen.make_context(group, 4, [], artifact, 0)
+    task, records = gen.build_records(projected, context, group, artifact, "review.json")
+    assert len(records) == 2 and task["questionVi"] == projected["content"]["questionVi"]
+    with pytest.raises(ValidationError):
+        Draft202012Validator(artifact["teacherContentSchemas"]["A1"]).validate(
+            {**content, "questionVi": "Unexpected second authored question"})
+    assert gen.teacher_batch_system(artifact) != gen.TEACHER_BATCH
+    assert gen.teacher_batch_system({}) == gen.TEACHER_BATCH
+
+
+def test_v6_candidate_keeps_contract_and_requires_explicit_selection(tmp_path, monkeypatch, campaign):
+    from training.freeze_candidate import freeze_collection_v6
+    old_path = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v5-20261023.json"
+    original = old_path.read_bytes()
+    old = gen.read_json(old_path)
+    artifact_path = tmp_path / "v6.json"
+    new = freeze_collection_v6(artifact_path)
+    assert old_path.read_bytes() == original
+    for key in ("contentSchemas", "teacherContentSchemas", "teacherWireFormat", "translationSchema",
+                "levelProfiles", "semanticRubric", "collectionPolicy"):
+        assert new[key] == old[key]
+    assert new["sha256"] == gen.digest({k: v for k, v in new.items() if k != "sha256"})
+    assert not new["metricReport"]["gate"]["releaseAllowed"]
+    assert collect.ARTIFACT.name == "conversation-reviewed-collection-v4-20261023.json"
+    monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path)
+    monkeypatch.setattr(collect, "prior_corpus", lambda: [])
+    path = tmp_path / "explicit-candidate"
+    collect.prepare(path, campaign[1], diagnostic=True, artifact_path=artifact_path)
+    manifest, loaded = collect.load(path)
+    assert loaded == new and manifest["artifactPath"] == str(artifact_path.resolve())
+    assert manifest["teacherWrapperHash"] == gen.digest(gen.teacher_batch_system(new))

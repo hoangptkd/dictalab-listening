@@ -441,7 +441,8 @@ Source families are split before generation, across all four levels. Export requ
 700 approved tasks; the existing integrity, coverage, loss-mask and holdout audits still apply.
 Generated artifacts, decisions and API evidence stay in the ignored private campaign folder.
 
-New collections use `conversation-reviewed-collection-v3-20261023.json` and a structured semantic
+New collections default to the best measured development baseline,
+`conversation-reviewed-collection-v4-20261023.json` (15/30, not release approved), and a structured semantic
 fact audit. Each fact reports independently derived taskType, answer scope, novelty/history quote
 and attribute support. New Web issue objects select `sourceRef` from allowed task/context string
 paths. The runner validates that path and copies the original value into the stored `sourceQuote`;
@@ -453,7 +454,12 @@ and new encounters; examples remain excluded from collection through the existin
 The rubric, hard validators and first-attempt/no-repair policy are unchanged. Changed prompt hashes
 require a fresh campaign; do not edit old manifests to resume them with new code.
 The v2 live run received 12/30 final approvals; see [the report](../docs/conversation-diagnostic-v2-30-20261023.md).
-V3 has only offline verification so far; see [the test handoff](../docs/conversation-prompt-judge-v3-handoff.md).
+The subsequent loop has not reached the owner's 80% target; Web quota interrupted v5 at 24 items.
+See [the live loop report](../docs/conversation-test-fix-loop-20261023.md) for evidence and resume commands.
+V6 is an unmeasured candidate selected explicitly with `prepare --artifact PATH`; it is not promoted.
+V5/V6 use `aligned-targets-v1` only on the teacher wire: validate the raw response first, then project
+targets into the unchanged final slots/facts and concatenate askVi verbatim. Original envelopes remain
+unchanged; SFT still uses the final content contract. Generation and SFT share the system-prompt builder.
 
 For owner-requested diagnostic review, prepare with `--diagnostic --retain-diagnostic-evidence`.
 Rejected requests, responses and teacher results are then copied to `rejected-evidence/<id>/`

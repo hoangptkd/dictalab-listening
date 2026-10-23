@@ -388,7 +388,8 @@ def test_calibration_provenance_rejects_changed_gold(tmp_path):
 
 
 @pytest.mark.parametrize("judge_provider", ["gemini", "chatgpt-web"])
-def test_prepare_freezes_private_campaign_without_credentials(tmp_path, monkeypatch, judge_provider):
+@pytest.mark.parametrize("wire_format", [None, "aligned-targets-v1"])
+def test_prepare_freezes_private_campaign_without_credentials(tmp_path, monkeypatch, judge_provider, wire_format):
     monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path.resolve())
     monkeypatch.setattr(run, "_plan_groups", lambda: {"development": [], "unseenCapacityByLevel": {}})
     monkeypatch.setattr(run, "development_cases", lambda groups, artifact: [])
@@ -398,6 +399,8 @@ def test_prepare_freezes_private_campaign_without_credentials(tmp_path, monkeypa
     monkeypatch.setattr(run, "SOURCE_PLANS", source_plans)
     artifact_path = tmp_path / "candidate.json"
     artifact = {"approvalStatus": "development", "version": "test"}
+    if wire_format:
+        artifact["teacherWireFormat"] = wire_format
     artifact["sha256"] = run.gen.digest(artifact)
     run.gen.write_json(artifact_path, artifact)
     sources = {name: [SimpleNamespace(id=name + "-a", model=model, api_key="private-key")]
@@ -410,6 +413,7 @@ def test_prepare_freezes_private_campaign_without_credentials(tmp_path, monkeypa
     manifest = run.prepare(campaign, artifact_path=artifact_path, settings=settings, judge_provider=judge_provider)
     assert manifest["policy"] == run.POLICY
     assert manifest["judge"]["provider"] == judge_provider
+    assert manifest["teacherWrapperHash"] == run.gen.digest(run.gen.teacher_batch_system(artifact))
     assert run.load(campaign)[1]["status"] == "JUDGE_BLOCKED"
     assert "private-key" not in (campaign / "campaign.json").read_text(encoding="utf-8")
     with pytest.raises(ValueError, match="overwrite"):
