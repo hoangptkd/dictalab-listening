@@ -776,6 +776,8 @@ public class ConversationService {
                     future.complete(null);
                 } catch (RuntimeException error) {
                     job.error(new IllegalStateException("Audio task failed"));
+                    // A caller may retry as soon as it observes this failure.
+                    audioJobs.remove(key, future);
                     future.completeExceptionally(error);
                 } finally {audioJobs.remove(key, future); job.stop();}
             });
