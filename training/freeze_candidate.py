@@ -414,6 +414,61 @@ thư mục. Preserve source meanings in the entire translation and every answer,
     return artifact
 
 
+def freeze_collection_v7(output: Path) -> dict:
+    baseline = read_json(ROOT / "artifacts/prompts/conversation-reviewed-collection-v6-20261023.json")
+    if baseline["sha256"] != digest({k: v for k, v in baseline.items() if k != "sha256"}):
+        raise ValueError("collection v6 artifact hash mismatch")
+    # One-variable experiment: same prompt, schemas and model; opt into teacher thinking only.
+    artifact = {**baseline, "version": "conversation-reviewed-collection-v7-20261023",
+        "teacherThinkingMode": "enabled", "baselineArtifactHash": baseline["sha256"],
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "clientAliases": ["CONVERSATION_REVIEWED_COLLECTION_V7_OFFLINE"],
+        "modelNote": "Teacher-only DeepSeek thinking experiment; fresh live evaluation required.",
+        "metricReport": {"status": "not_evaluated", "releaseAllowed": False,
+            "gate": {"releaseAllowed": False, "reasons": ["requires_fresh_live_evaluation"]}}}
+    artifact.pop("sha256")
+    artifact["sha256"] = digest(artifact)
+    write_json(output, artifact)
+    return artifact
+
+
+def freeze_collection_v8(output: Path) -> dict:
+    baseline = read_json(ROOT / "artifacts/prompts/conversation-reviewed-collection-v7-20261023.json")
+    if baseline["sha256"] != digest({k: v for k, v in baseline.items() if k != "sha256"}):
+        raise ValueError("collection v7 artifact hash mismatch")
+    guard = """
+On turn 4, previouslyTestedDetails contains PREVIOUS-ENCOUNTER source quotes for interpreting what
+was tested. Those sources are not current arrangements; do not carry their bookings or people into
+the new encounter. Use them to identify tested meanings, not merely avoid the old answer words.
+For each new target choose a different requested property, or a clearly different entity/relation.
+Changing the value of the same tested property is not novelty. Keep the object and relation explicit.
+Ask for a request as a request: 'Khách muốn phòng có gì?', not 'Phòng có gì?' when only a wish is stated.
+Only include a count in an answer if its question requests the count. 'Vật gì?' asks the item;
+use a separate quantity target for 'Mấy cái?'. Do not append an independent unasked count.
+Every answer in BOTH English and Vietnamese must fit 160 characters, including spaces. Aim <=120.
+Design a short tradeoff with two competing considerations and one compact conclusion; translate
+that relationship concisely without losing any consideration or the conclusion.
+Review ALL learner-visible fields (taskVi, questionVi and every askVi) against source meaning and roles.
+Interpret role names and ambiguous words in the scenario; a restaurant server serves customers.
+Do not describe a proposal in taskVi as a mutually agreed plan unless the source establishes agreement.
+Read all questions together: no question may reveal another target's answer, even using a shorter
+paraphrase than its full textEn/textVi. Choose independent properties that can be asked without
+giving away each other's tested meanings. Naming an untested referent is fine.
+"""
+    artifact = {**baseline, "version": "conversation-reviewed-collection-v8-20261023",
+        "previousDetailsVersion": 2, "instruction": baseline["instruction"] + guard,
+        "teacherInstruction": baseline["teacherInstruction"] + guard,
+        "baselineArtifactHash": baseline["sha256"], "createdAt": datetime.now(timezone.utc).isoformat(),
+        "clientAliases": ["CONVERSATION_REVIEWED_COLLECTION_V8_OFFLINE"],
+        "modelNote": "Previous tested source semantics retained for new encounters; requires fresh evaluation.",
+        "metricReport": {"status": "not_evaluated", "releaseAllowed": False,
+            "gate": {"releaseAllowed": False, "reasons": ["requires_fresh_live_evaluation"]}}}
+    artifact.pop("sha256")
+    artifact["sha256"] = digest(artifact)
+    write_json(output, artifact)
+    return artifact
+
+
 def freeze_v9(output: Path) -> dict:
     baseline = read_json(ROOT / "artifacts/prompts/conversation-cefr-v8-20261022.json")
     if baseline["sha256"] != digest({k: v for k, v in baseline.items() if k != "sha256"}):
@@ -463,13 +518,15 @@ def freeze(contract_path: Path, output: Path) -> dict:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", choices=("v8", "v9", "collection-v2", "collection-v3", "collection-v4", "collection-v5", "collection-v6"), default="v8")
+    parser.add_argument("--version", choices=("v8", "v9", "collection-v2", "collection-v3", "collection-v4", "collection-v5", "collection-v6", "collection-v7", "collection-v8"), default="v8")
     parser.add_argument("--contract", type=Path, default=ROOT / "target/conversation-cefr-java-contract.json")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     output = args.output or ROOT / (f"artifacts/prompts/conversation-reviewed-{args.version}-20261023.json"
         if args.version.startswith("collection-") else f"artifacts/prompts/conversation-cefr-{args.version}-20261022.json")
-    artifact = (freeze_collection_v6(output) if args.version == "collection-v6" else
+    artifact = (freeze_collection_v8(output) if args.version == "collection-v8" else
+                freeze_collection_v7(output) if args.version == "collection-v7" else
+                freeze_collection_v6(output) if args.version == "collection-v6" else
                 freeze_collection_v5(output) if args.version == "collection-v5" else
                 freeze_collection_v4(output) if args.version == "collection-v4" else
                 freeze_collection_v3(output) if args.version == "collection-v3" else

@@ -90,6 +90,11 @@ GENERAL METHOD: scope -> source meaning -> tested claim -> evidence -> verdict.
    of the same object (for example its floor versus its unit number) with a repeated property.
    Check full translation AND English/Vietnamese fact answers for added gender, age, deadlines and
    certainty. First-person I alone supports neither he/she nor anh ấy/cô ấy; fluency is not evidence.
+   Audit ALL learner-visible fields, including taskVi, for correct speaker roles and speech-act status.
+   Resolve role labels and ambiguous vocabulary using the actual scenario, not an unrelated word sense.
+   Read taskVi and all questionVi/askVi clauses together for noAnswerLeak: a question must not give
+   away another target's required meaning, even if its wording differs from the expanded fact answer.
+   Naming an untested referent is fine; leaking a separately tested answer is not.
 4. For a potential defect identify the actual claim, its source evidence, the applicable rubric rule
    and the concrete semantic/task consequence. Check the strongest context-supported reading before
    reporting it. Do not assume extra facts to rescue a defect or extra requirements to invent one.
@@ -365,6 +370,7 @@ def prepare(path: Path, *, artifact_path: Path = DEFAULT_ARTIFACT, gold_path: Pa
         "teacherWrapperHash": gen.digest(gen.teacher_batch_system(artifact)),
         "judgeSystemHash": gen.digest(JUDGE_SYSTEM),
         "teacher": {"provider": "deepseek", "model": teacher_model,
+                    "thinkingMode": artifact.get("teacherThinkingMode", "disabled"),
                     "sourceIds": [s.id for s in teacher_sources], "temperature": 0.2, "maxOutputTokens": 8192},
         "judge": {"provider": judge_provider, "model": judge_model,
                   "sourceIds": [s.id for s in judge_sources] if judge_sources else ["local-chatgpt-bridge"],
@@ -727,6 +733,8 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
             history = [turn.get("utteranceEn", "") for turn in case["context"].get("history", [])]
             history += [turn.get("utteranceEn", "") for turn in
                         case["context"].get("encounterState", {}).get("sourceTurns", [])]
+            history += [detail.get("sourceUtteranceEn", "") for detail in
+                        case["context"].get("previouslyTestedDetails", [])]
             history = [text for text in history if text]
             for item in audit:
                 expected = item["expectedTaskType"]
@@ -838,6 +846,9 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
             _sent_before(path, "teacher", folder.name, ident):
         raise gen.DatasetError(f"{ident}: teacher attempt already exists; refusing replay")
     context = entry["context"]
+    thinking_mode = artifact.get("teacherThinkingMode", "disabled")
+    if thinking_mode not in {"enabled", "disabled"} or manifest["teacher"].get("thinkingMode", "disabled") != thinking_mode:
+        raise gen.DatasetError("teacher thinking mode differs from frozen artifact/campaign")
     schema = artifact.get("teacherContentSchemas", artifact["contentSchemas"])[entry["level"]]
     full_schema = gen.batch_schema([ident], schema, artifact["translationSchema"])
     payload = {"contentSystem": gen.production_messages(artifact, context, "content")[0]["content"],
@@ -858,7 +869,7 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
         body = gen.strict_json(request.content.decode("utf-8"))
         if (body.get("model") != manifest["teacher"]["model"] or
             body.get("temperature") != 0.2 or body.get("max_tokens") != 8192 or
-            body.get("thinking") != {"type": "disabled"} or gen._contains_secret(body)):
+            body.get("thinking") != {"type": thinking_mode} or gen._contains_secret(body)):
             raise gen.DatasetError("teacher request differs from frozen model/decoding/privacy contract")
         _durable_exclusive_json(request_path, body)
         gen.append(path / "sent-index.jsonl", {"kind": "teacher", "phase": folder.name, "id": ident,
@@ -888,7 +899,8 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
             result, provider = await gateway.complete([
                 {"role": "system", "content": gen.teacher_batch_system(artifact)},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
-                full_schema, time.monotonic() + run_settings.timeout_seconds, "teacher_batch")
+                full_schema, time.monotonic() + run_settings.timeout_seconds, "teacher_batch",
+                deepseek_thinking=thinking_mode == "enabled")
         if (provider != "deepseek" or gateway.last_model != manifest["teacher"]["model"] or
                 gateway.last_source_id not in manifest["teacher"]["sourceIds"]):
             raise gen.DatasetError("teacher provider/model/account differs from campaign")

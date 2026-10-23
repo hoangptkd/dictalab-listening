@@ -61,6 +61,7 @@ class ModelGateway:
         purpose: str,
         *,
         temperature: float | None = None,
+        deepseek_thinking: bool = False,
     ) -> tuple[dict[str, Any], str]:
         """Call the selected provider.
 
@@ -70,6 +71,8 @@ class ModelGateway:
         """
         started = time.monotonic()
         provider = self._settings.selected_provider
+        if deepseek_thinking and (provider != "deepseek" or not self._settings.gemini_quota_enabled):
+            raise ValueError("thinking opt-in requires the DeepSeek registry provider")
         if provider in CLOUD_PROVIDERS:
             selected = self._primary_cloud
             source = None
@@ -83,7 +86,8 @@ class ModelGateway:
                 common = dict(base_url=source.url, api_key=source.api_key, model=source.model,
                     temperature=self._settings.temperature, client=self._client, max_tokens=self._settings.num_predict)
                 selected = GeminiProvider(**common) if source.platform == "gemini" else OpenAiCompatibleProvider(**common,
-                    provider_name=source.platform, extra_body={"thinking": {"type": "disabled"}} if source.platform == "deepseek" else {})
+                    provider_name=source.platform, extra_body={"thinking": {
+                        "type": "enabled" if deepseek_thinking else "disabled"}} if source.platform == "deepseek" else {})
                 self.last_model, self.last_source_id = source.model, source.id
             try:
                 result = await selected.complete(messages, schema, deadline, purpose, temperature=temperature)

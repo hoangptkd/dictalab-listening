@@ -263,6 +263,7 @@ async def test_web_positive_fact_audit_is_grounded_and_consistent(campaign, monk
     path, _ = campaign
     manifest, _ = collect.load(path)
     row, _, _ = review_fixture(path)
+    row["context"]["previouslyTestedDetails"] = [{"sourceUtteranceEn": "The shop opens at nine."}]
     audit = {"index": 0, "sourceQuote": "opens at ten", "claimSupported": True,
              "translationSupported": fault != "unsupported", "basis": "Direct source evidence.",
              "expectedTaskType": "direct_detail", "answerScopeSupported": True,
@@ -307,11 +308,14 @@ async def test_web_recheck_without_hard_validation_never_dispatches(campaign, mo
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("has_history", [True, False])
-async def test_semantic_audit_accepts_grounded_repetition_or_missing_history(campaign, monkeypatch, has_history):
+@pytest.mark.parametrize("history_source", ["history", "previouslyTestedDetails"])
+async def test_semantic_audit_accepts_grounded_repetition_or_missing_history(campaign, monkeypatch, has_history, history_source):
     path, _ = campaign
     manifest, _ = collect.load(path)
     row, _, _ = review_fixture(path)
-    row["context"]["history"] = [{"utteranceEn": "The shop opens at ten."}] if has_history else []
+    row["context"]["history"] = []
+    row["context"][history_source] = ([{"utteranceEn" if history_source == "history" else
+        "sourceUtteranceEn": "The shop opens at ten."}] if has_history else [])
     audit = {"index": 0, "sourceQuote": "opens at ten", "claimSupported": True,
              "translationSupported": True, "expectedTaskType": "direct_detail",
              "answerScopeSupported": True, "newMeaningSupported": False if has_history else None,
@@ -439,6 +443,34 @@ def test_judge_source_paths_only_address_original_values():
     assert case == original
 
 
+@pytest.mark.asyncio
+async def test_web_can_report_wrong_role_in_task_instruction(campaign, monkeypatch):
+    path, _ = campaign
+    manifest, _ = collect.load(path)
+    row, _, _ = review_fixture(path)
+    row["context"]["partnerRole"] = "server"
+    row["task"]["taskVi"] = "Nghe máy chủ giới thiệu món ăn."
+    audit = {"index": 0, "sourceQuote": "opens at ten", "claimSupported": True,
+        "translationSupported": True, "basis": "The fact is supported; the task instruction has a wrong role.",
+        "expectedTaskType": "direct_detail", "answerScopeSupported": True,
+        "newMeaningSupported": True, "attributesSupported": True, "historyQuote": None}
+    verdict = {"id": row["id"], **dict.fromkeys(collect.CHECKS, True), "rolesCorrect": False,
+        "factAudit": [audit], "issues": [{"check": "rolesCorrect", "severity": "critical",
+            "sourceRef": "/task/taskVi", "explanation": "A restaurant server is not a computer server."}]}
+    original = httpx.AsyncClient
+    def respond(request):
+        prompt = json.loads(request.content)["messages"][0]["content"]
+        payload = json.loads(prompt.split("\nAUDIT_INPUT:\n", 1)[1])
+        assert payload["items"][0]["task"]["taskVi"] == row["task"]["taskVi"]
+        return httpx.Response(200, json={"choices": [{"finish_reason": "stop",
+            "message": {"content": json.dumps({"items": [verdict]}, ensure_ascii=False)}}]})
+    monkeypatch.setattr(run.httpx, "AsyncClient", lambda **kwargs: original(
+        transport=httpx.MockTransport(respond), **kwargs))
+    result = await run._judge_one(path, manifest, row, row["id"], row["id"], None, folder=path / "candidates")
+    assert result["checks"]["rolesCorrect"] is False and result["issues"][0]["severity"] == "critical"
+    assert result["issues"][0]["sourceQuote"] == row["task"]["taskVi"]
+
+
 def test_collection_v4_plans_questions_without_changing_contract(tmp_path):
     from training.freeze_candidate import freeze_collection_v4
     old = gen.read_json(gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v3-20261023.json")
@@ -513,7 +545,7 @@ def test_v6_candidate_keeps_contract_and_requires_explicit_selection(tmp_path, m
         assert new[key] == old[key]
     assert new["sha256"] == gen.digest({k: v for k, v in new.items() if k != "sha256"})
     assert not new["metricReport"]["gate"]["releaseAllowed"]
-    assert collect.ARTIFACT.name == "conversation-reviewed-collection-v4-20261023.json"
+    assert collect.ARTIFACT.name == "conversation-reviewed-collection-v8-20261023.json"
     monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path)
     monkeypatch.setattr(collect, "prior_corpus", lambda: [])
     path = tmp_path / "explicit-candidate"
@@ -521,3 +553,58 @@ def test_v6_candidate_keeps_contract_and_requires_explicit_selection(tmp_path, m
     manifest, loaded = collect.load(path)
     assert loaded == new and manifest["artifactPath"] == str(artifact_path.resolve())
     assert manifest["teacherWrapperHash"] == gen.digest(gen.teacher_batch_system(new))
+
+
+def test_v7_changes_only_teacher_decoding_and_freezes_it(tmp_path, monkeypatch, campaign):
+    from training.freeze_candidate import freeze_collection_v7
+    old = gen.read_json(gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v6-20261023.json")
+    artifact_path = tmp_path / "v7.json"
+    new = freeze_collection_v7(artifact_path)
+    for key in ("instruction", "teacherInstruction", "contentSchemas", "teacherContentSchemas",
+                "translationSchema", "levelProfiles", "semanticRubric", "collectionPolicy"):
+        assert new[key] == old[key]
+    assert new["teacherThinkingMode"] == "enabled"
+    assert new["sha256"] == gen.digest({k: v for k, v in new.items() if k != "sha256"})
+    assert not new["metricReport"]["releaseAllowed"]
+    monkeypatch.setattr(collect, "prior_corpus", lambda: [])
+    path = tmp_path / "thinking-candidate"
+    collect.prepare(path, campaign[1], diagnostic=True, artifact_path=artifact_path)
+    manifest, _ = collect.load(path)
+    assert manifest["teacher"]["thinkingMode"] == "enabled"
+
+
+@pytest.mark.asyncio
+async def test_teacher_thinking_must_match_manifest_before_sending(tmp_path):
+    artifact = {"teacherThinkingMode": "enabled"}
+    manifest = {"teacher": {"thinkingMode": "disabled"}}
+    with pytest.raises(DatasetError, match="thinking mode"):
+        await run._teacher_one(tmp_path, manifest, {"id": "new", "context": {}}, {}, artifact, tmp_path, None)
+    assert not (tmp_path / "sent-index.jsonl").exists()
+
+
+def test_previous_sources_remain_interpretable_without_carrying_encounter_forward(tmp_path):
+    from training.freeze_candidate import freeze_collection_v8
+    artifact = freeze_collection_v8(tmp_path / "v8.json")
+    prior = gen.read_json(gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v7-20261023.json")
+    for key in ("contentSchemas", "teacherContentSchemas", "translationSchema", "levelProfiles", "semanticRubric"):
+        assert artifact[key] == prior[key]
+    group = {"level": "A1", "scenarioId": "requirements", "branchId": "standard",
+        "groupId": "old/requirements/standard", "input": {"scenario": "Buổi thực hành", "history": [{
+            "utteranceEn": "Bring a notebook. Ask Ms Green for help.",
+            "questionVi": "Cần mang gì và hỏi ai?",
+            "facts": [{"textVi": "Sổ ghi chép", "evidenceEn": "Bring a notebook", "taskType": "direct_detail"}]}]}}
+    original = copy.deepcopy(group)
+    context = gen.make_context(group, 4, [], artifact, 0)
+    assert not context["history"] and context["encounterState"]["encounterRule"] == "new"
+    detail = context["previouslyTestedDetails"][0]
+    assert detail["sourceUtteranceEn"] == group["input"]["history"][0]["utteranceEn"]
+    assert detail["sourceQuestionVi"] == "Cần mang gì và hỏi ai?"
+    assert detail["evidenceEn"] == "Bring a notebook" and detail["taskType"] == "direct_detail"
+    assert group == original
+    assert gen.make_context(group, 4, [], prior, 0)["previouslyTestedDetails"] == [{"textVi": "Sổ ghi chép"}]
+    example = artifact["fewShotExamples"][0]["output"]
+    task, records = gen.build_records({"id": "rich-context", "content": example,
+        "translation": {"translationVi": "Bản dịch kiểm tra.",
+            "facts": [{"textVi": "Đáp án kiểm tra."} for _ in example["facts"]]}},
+        context, group, artifact, "review.json")
+    assert len(records) == 2 and task["facts"]

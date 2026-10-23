@@ -320,6 +320,11 @@ def make_context(group: dict, turn: int, prior: list[dict], artifact: dict, inde
             "facts": facts, "semanticApproval": "diagnostic-pending" if row.get("eligible") is not True else "PASS"})
     if turn == 4:
         old_answers = [{"textVi": f["textVi"]} for h in context["history"] for f in h["facts"]]
+        if artifact.get("previousDetailsVersion") == 2:
+            # Keep old tested meaning interpretable without making it the new encounter's history.
+            old_answers = [{**copy.deepcopy(f), "sourceUtteranceEn": h["utteranceEn"],
+                **({"sourceQuestionVi": h["questionVi"]} if h.get("questionVi") else {})}
+                for h in context["history"] for f in h["facts"]]
         for key in ("scenarioJourney", "sessionBlueprint", "recentPractice"):
             context.pop(key, None)
         context["history"] = []

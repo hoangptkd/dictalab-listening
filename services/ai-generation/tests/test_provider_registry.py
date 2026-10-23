@@ -59,10 +59,11 @@ def test_vendor_quota_isolation_and_preserved_gemini_namespace():
 
 
 @pytest.mark.asyncio
-async def test_deepseek_wire_and_no_cross_platform_fallback():
+@pytest.mark.parametrize("thinking", [False, True])
+async def test_deepseek_wire_and_no_cross_platform_fallback(thinking):
     cfg = registry_settings()
     # Independent fake account avoids sharing the memory counters with the isolation check.
-    cfg.cloud_providers[1].project_id = "wire-test"
+    cfg.cloud_providers[1].project_id = "wire-test-" + str(thinking)
     cfg.registry_pools["deepseek"]["global_rpm_limit"] = 2
     calls = []
     def handler(request):
@@ -70,17 +71,27 @@ async def test_deepseek_wire_and_no_cross_platform_fallback():
         assert request.url.host == "api.deepseek.com"
         assert request.headers["Authorization"] == "Bearer fake-deepseek"
         body = json.loads(request.content)
-        assert body["thinking"] == {"type":"disabled"}
+        assert body["thinking"] == {"type": "enabled" if thinking else "disabled"}
         assert body["response_format"] == {"type":"json_object"}
         assert "JSON" in body["messages"][0]["content"]
         return httpx.Response(200,json={"choices":[{"finish_reason":"stop","message":{"content":'{"ok":true}'}}]})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         gateway = ModelGateway(cfg,client)
-        result,platform = await gateway.complete([], {"type":"object"},time.monotonic()+10,"check")
+        result,platform = await gateway.complete([], {"type":"object"},time.monotonic()+10,"check",
+                                                deepseek_thinking=thinking)
         assert result == {"ok":True} and platform == "deepseek"
         with pytest.raises(QuotaUnavailable):
             await gateway.complete([], {"type":"object"},time.monotonic()+10,"check")
     assert len(calls)==1
+
+
+@pytest.mark.asyncio
+async def test_thinking_opt_in_cannot_silently_use_another_provider():
+    cfg = registry_settings("gemini")
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: pytest.fail("invalid opt-in must not send a request"))) as client:
+        with pytest.raises(ValueError, match="DeepSeek registry"):
+            await ModelGateway(cfg, client).complete([], {}, time.monotonic()+10, "check", deepseek_thinking=True)
 
 
 def test_database_mode_fails_closed_without_env_fallback():

@@ -23,7 +23,7 @@ from training.semantic_rubric import CHECKS, VERSION_V3, rules_for
 
 LEVELS = ("A1", "A2", "B1", "B2")
 TARGETS = {"train": 125, "validation": 25, "test": 25}
-ARTIFACT = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v4-20261023.json"
+ARTIFACT = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v8-20261023.json"
 
 
 def normalized(text: str) -> str:
@@ -113,6 +113,7 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
         "teacherWrapperHash": gen.digest(gen.teacher_batch_system(artifact)),
         "rubricVersion": VERSION_V3, "rubricHash": gen.digest(rules_for(VERSION_V3)),
         "teacher": {"provider": "deepseek", "model": settings.registry_pools["deepseek"]["default_model"],
+                    "thinkingMode": artifact.get("teacherThinkingMode", "disabled"),
                     "sourceIds": [source.id for source in sources]},
         "judge": {"provider": "chatgpt-web", "model": "chatgpt-web",
                   "url": "http://127.0.0.1:3000/v1/chat/completions"},

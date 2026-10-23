@@ -442,7 +442,7 @@ Source families are split before generation, across all four levels. Export requ
 Generated artifacts, decisions and API evidence stay in the ignored private campaign folder.
 
 New collections default to the best measured development baseline,
-`conversation-reviewed-collection-v4-20261023.json` (15/30, not release approved), and a structured semantic
+`conversation-reviewed-collection-v8-20261023.json` (24/30 independently approved, not release approved), and a structured semantic
 fact audit. Each fact reports independently derived taskType, answer scope, novelty/history quote
 and attribute support. New Web issue objects select `sourceRef` from allowed task/context string
 paths. The runner validates that path and copies the original value into the stored `sourceQuote`;
@@ -454,10 +454,19 @@ and new encounters; examples remain excluded from collection through the existin
 The rubric, hard validators and first-attempt/no-repair policy are unchanged. Changed prompt hashes
 require a fresh campaign; do not edit old manifests to resume them with new code.
 The v2 live run received 12/30 final approvals; see [the report](../docs/conversation-diagnostic-v2-30-20261023.md).
-The subsequent loop has not reached the owner's 80% target; Web quota interrupted v5 at 24 items.
+The subsequent loop reached the owner's overall 80% target at round 7: 24/30 fresh tasks;
+A1/A2/B1/B2 approvals were 8/8, 7/8, 4/7 and 5/7. Individual B1/B2 rates remain below 80%.
 See [the live loop report](../docs/conversation-test-fix-loop-20261023.md) for evidence and resume commands.
-V6 is an unmeasured candidate selected explicitly with `prepare --artifact PATH`; it is not promoted.
-V5/V6 use `aligned-targets-v1` only on the teacher wire: validate the raw response first, then project
+V6 measured 16/30, V7 measured 23/30, and V8 is now the collection development default.
+V7 enables DeepSeek thinking only for teacher requests; V8 also retains exact prior-encounter
+source utterances with tested facts on turn 4, adds answer/role/UI guards, and uses the expanded
+judge instructions. Historical sources inform novelty without restoring old arrangements.
+Thinking mode is frozen in each campaign and validated before dispatch; the provider's ordinary
+production default remains disabled. The 8192-token cap still applies and truncation is a failure.
+The judge audits all learner-visible fields and cross-question answer leakage. Independent review
+may override an unsupported Web finding only with explicit check-specific evidence; three such
+items were accepted in round 7, while two Web PASS items were independently rejected.
+V5–V8 use `aligned-targets-v1` only on the teacher wire: validate the raw response first, then project
 targets into the unchanged final slots/facts and concatenate askVi verbatim. Original envelopes remain
 unchanged; SFT still uses the final content contract. Generation and SFT share the system-prompt builder.
 
