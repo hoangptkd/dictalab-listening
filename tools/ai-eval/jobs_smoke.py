@@ -82,7 +82,7 @@ def main():
                 self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
 
             def do_GET(self):
-                if self.path == "/v1/models":
+                if self.path in ("/models", "/v1/models"):
                     self.send({"data": [{"id": "test-cloud"}]})
                 else:
                     self.send({"models": [{"name": "qwen3.5:9b", "digest": "a" * 64}]})
