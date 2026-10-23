@@ -211,4 +211,3 @@ mà vẫn coi số đếm pool là tổng usage.
 
 Hướng dẫn chạy từng lệnh, secret runtime, URL Redis host/container và recovery:
 [`ai-platform-runbook.md`](ai-platform-runbook.md), mục “Shared Gemini project quotas and offline batch”.
-
