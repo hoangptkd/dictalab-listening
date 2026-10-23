@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import copy
 import json
 from pathlib import Path
 
@@ -97,6 +98,57 @@ def test_multitask_split_is_deterministic_and_keeps_group_together(tmp_path):
     assert saved["reviewerReference"] == "fixture-reviewer"
     with pytest.raises(DatasetError, match="refusing to overwrite"):
         _prepare(source, review, tmp_path / "out")
+
+
+def test_mixed_frozen_artifacts_preserve_original_prompts_and_validate_each_row(tmp_path):
+    from training.prepare_dataset import content_system
+    new = copy.deepcopy(ARTIFACT)
+    new.update(version="collection-continuation-fixture", instruction=new["instruction"] + "\nNew frozen instructions.")
+    new["sha256"] = digest({k: v for k, v in new.items() if k != "sha256"})
+    artifact_path = tmp_path / "new.json"
+    artifact_path.write_text(json.dumps(new, ensure_ascii=False), encoding="utf-8")
+    rows = [_row(i) for i in range(30)]
+    for row in rows[::2]:
+        system = content_system(new, row["level"], row["turnNumber"])
+        row["artifactVersion"] = new["version"]
+        row["messages"][0]["content"] = system
+        row["promptHash"] = digest(system)
+        row["inputHash"] = digest(row["messages"][:-1])
+    original = copy.deepcopy(rows)
+    source, review = _write(tmp_path, rows)
+    with pytest.raises(DatasetError, match="artifact/system prompt mismatch"):
+        prepare([source], review, tmp_path / "without-parent", artifact_path=artifact_path)
+    result = prepare([source], review, tmp_path / "mixed", artifact_path=artifact_path,
+                     extra_artifact_paths=(ARTIFACT_PATH,))
+    assert result["contract"]["artifacts"] == {new["version"]: new["sha256"], ARTIFACT["version"]: ARTIFACT["sha256"]}
+    saved = [json.loads(line) for split in ("train", "validation", "test")
+             for line in (tmp_path / "mixed" / f"{split}.jsonl").read_text(encoding="utf-8").splitlines()]
+    expected = {row["id"]: row for row in original}
+    assert len(saved) == 30
+    for row in saved:
+        assert row["messages"] == expected[row["id"]]["messages"]
+        assert row["inputHash"] == expected[row["id"]]["inputHash"]
+    rows[0]["messages"][0]["content"] += "Corrupted."
+    source, review = _write(tmp_path, rows)
+    with pytest.raises(DatasetError, match="artifact/system prompt mismatch"):
+        prepare([source], review, tmp_path / "corrupt", artifact_path=artifact_path,
+                extra_artifact_paths=(ARTIFACT_PATH,))
+
+
+@pytest.mark.parametrize("fault", ["hash", "schema", "shadow"])
+def test_inherited_artifact_never_relaxes_contract(tmp_path, fault):
+    old = copy.deepcopy(ARTIFACT)
+    old["version"] = "incompatible-parent"
+    if fault == "schema":
+        old["contentSchema"]["additionalProperties"] = True
+    if fault == "shadow":
+        old["evaluationOnly"] = True
+    old["sha256"] = "invalid" if fault == "hash" else digest({k: v for k, v in old.items() if k != "sha256"})
+    parent_path = tmp_path / "parent.json"
+    parent_path.write_text(json.dumps(old, ensure_ascii=False), encoding="utf-8")
+    source, review = _write(tmp_path, [_row(i) for i in range(30)])
+    with pytest.raises(DatasetError, match="inherited artifact"):
+        _prepare(source, review, tmp_path / "out", extra_artifact_paths=(parent_path,))
 
 
 def test_delegated_ai_is_explicit_and_never_reported_as_human(tmp_path):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -769,3 +770,153 @@ async def test_unknown_transport_stops_new_candidates_without_replay(campaign, m
     with pytest.raises(DatasetError, match="unresolved"):
         await collect.collect(path, settings=settings, limit=8)
     assert len(calls) == 1
+
+
+def test_continuation_preserves_decisions_attempt_cap_and_original_bytes(campaign):
+    path, settings = campaign
+    row, review, verdict = review_fixture(path)
+    gen.write_json(path / "candidates/candidate-0001.teacher-result.json", row)
+    gen.write_json(path / "candidates/candidate-0001.result.json", review)
+    collect.adjudicate(path, verdict)
+    rejected = {**row, "id": "candidate-0002", "sent": True}
+    collect.reject(path, rejected, "fixture-rejected")
+    gen.append(path / "sent-index.jsonl", {"id": "candidate-0001", "kind": "teacher"})
+    gen.write_json(path / "web-account-state.json", {"activeAccount": "account-2", "cooldowns": {"account-1": 9999999999}})
+    run._atomic_json(path / "state.json", {"status": "READY", "nextIndex": 2})
+    before = {f.relative_to(path).as_posix(): f.read_bytes() for f in path.rglob("*") if f.is_file()}
+    child = path.parent / "continuation"
+    result = collect.prepare(child, settings, continue_from=path)
+    assert result["attempted"] == 2 and result["approvedTasks"] == 1 and result["candidateCap"] == 1500
+    manifest, _ = collect.load(child)
+    assert manifest["continuation"]["parentManifest"] == collect.load(path)[0]
+    for relative, digest in manifest["continuation"]["files"].items():
+        assert (child / relative).read_bytes() == before[relative]
+        assert run.hashlib.sha256((child / relative).read_bytes()).hexdigest() == digest
+    assert not list((child / "candidates").glob("candidate-0002.*"))
+    assert before == {f.relative_to(path).as_posix(): f.read_bytes() for f in path.rglob("*") if f.is_file()}
+    assert (child / "web-account-state.json").read_bytes() == (path / "web-account-state.json").read_bytes()
+    gen.append(child / "sent-index.jsonl", {"id": "candidate-0003", "kind": "teacher"})
+    collect.verify_inherited(child, manifest)
+    (child / "sent-index.jsonl").write_text("Changed prefix\n", encoding="utf-8")
+    with pytest.raises(DatasetError, match="prefix changed"):
+        collect.verify_inherited(child, manifest)
+
+
+@pytest.mark.parametrize("fault", ["diagnostic", "pending", "blocked", "missing-attempt", "stale-approval"])
+def test_continuation_refuses_unresolved_or_diagnostic_evidence(campaign, fault):
+    path, settings = campaign
+    if fault == "diagnostic":
+        source = path.parent / "diagnostic"
+        collect.prepare(source, settings, diagnostic=True)
+    else:
+        source = path
+        row, review, verdict = review_fixture(path)
+        if fault in {"pending", "stale-approval"}:
+            gen.write_json(path / "candidates/candidate-0001.teacher-result.json", row)
+            gen.write_json(path / "candidates/candidate-0001.result.json", review)
+        if fault == "stale-approval":
+            collect.adjudicate(path, verdict)
+            row["task"]["utteranceEn"] = "Changed after review."
+            run._atomic_json(path / "candidates/candidate-0001.teacher-result.json", row)
+        run._atomic_json(path / "state.json", {"status": "BLOCKED" if fault == "blocked" else "READY", "nextIndex": 1})
+    with pytest.raises(DatasetError):
+        collect.prepare(path.parent / "child", settings, continue_from=source)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("web_failure", [None, "quota", "unknown"])
+@pytest.mark.parametrize("second_duplicate", [False, True])
+async def test_overlap_has_one_web_and_teacher_inflight_and_preserves_unsent_rows(campaign, monkeypatch, web_failure, second_duplicate):
+    path, settings = campaign
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, **k: {"deepseek": {"availableCalls": None}})
+    monkeypatch.setattr(collect, "duplicate", lambda text, corpus: second_duplicate and text.endswith("candidate-0002"))
+    web_started, next_teacher = asyncio.Event(), asyncio.Event()
+    teacher_calls, web_calls, events = [], [], []
+    async def teacher(path, manifest, entry, group, artifact, folder, settings):
+        ident = entry["id"]
+        teacher_calls.append(ident)
+        if ident == "candidate-0002":
+            assert web_started.is_set()
+            events.append("teacher2-start")
+            next_teacher.set()
+        row = {**entry, "hardPass": True, "task": {"utteranceEn": f"Distinct source {ident}"}}
+        gen.write_json(folder / f"{ident}.teacher-result.json", row)
+        await asyncio.sleep(0)
+        return row
+    async def judge(path, manifest, row, wire, stem, settings, *, folder):
+        web_calls.append(stem)
+        if stem == "candidate-0001" and not web_started.is_set():
+            web_started.set()
+            await asyncio.wait_for(next_teacher.wait(), timeout=2)
+            events.append("web1-finish")
+            if web_failure == "quota":
+                raise run.web_accounts.WebQuotaWait(999)
+            if web_failure == "unknown":
+                raise RuntimeError("Unknown Web outcome")
+        gen.write_json(folder / f"{stem}.result.json", {"fixture": True})
+    monkeypatch.setattr(run, "_teacher_one", teacher)
+    monkeypatch.setattr(run, "_judge_one", judge)
+    if web_failure == "unknown":
+        with pytest.raises(RuntimeError):
+            await collect.collect(path, settings=settings, limit=8, overlap_web=True)
+        assert collect.status(path)["status"] == "BLOCKED"
+    else:
+        result = await collect.collect(path, settings=settings, limit=2, overlap_web=True)
+        assert result["attempted"] == 2 and len(result["pending"]) == 2 - int(second_duplicate)
+        if web_failure == "quota":
+            assert result["status"] == "WAITING_WEB_QUOTA"
+            assert gen.read_json(path / "state.json")["currentId"] == "candidate-0001"
+            # Resume Web on saved originals only; never generate either article again.
+            await collect.collect(path, settings=settings, overlap_web=True)
+            await collect.collect(path, settings=settings, overlap_web=True)
+        assert all((path / "candidates" / f"{ident}.result.json").exists()
+                   for ident in teacher_calls if not (second_duplicate and ident == "candidate-0002"))
+        if second_duplicate:
+            assert "candidate-0002" not in web_calls
+            assert collect.decisions(path)[0]["reason"] == "exact-or-near-duplicate"
+    assert teacher_calls == ["candidate-0001", "candidate-0002"]
+    assert events.index("teacher2-start") < events.index("web1-finish")
+    if web_failure == "unknown":
+        await collect.collect(path, settings=settings, overlap_web=True)
+        assert web_calls == ["candidate-0001"]  # BLOCKED never resends even an unsent sibling.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["teacher-exception", "teacher-unknown", "teacher-quota"])
+@pytest.mark.parametrize("web_quota", [False, True])
+async def test_overlap_drains_web_on_teacher_failure_without_new_dispatch(campaign, monkeypatch, failure, web_quota):
+    path, settings = campaign
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, **k: {"deepseek": {"availableCalls": None}})
+    web_started, teacher_failed = asyncio.Event(), asyncio.Event()
+    calls = []
+    async def teacher(path, manifest, entry, group, artifact, folder, settings):
+        calls.append(entry["id"])
+        if len(calls) == 2:
+            assert web_started.is_set()
+            teacher_failed.set()
+            if failure == "teacher-exception":
+                raise ValueError("Setup failure")
+            row = {**entry, "hardPass": False, "sent": True,
+                "transportOutcomeUnknown": failure == "teacher-unknown",
+                "providerHttpStatus": 402 if failure == "teacher-quota" else None}
+        else:
+            row = {**entry, "hardPass": True, "task": {"utteranceEn": "Original first source"}}
+        gen.write_json(folder / f"{entry['id']}.teacher-result.json", row)
+        return row
+    async def judge(path, manifest, row, wire, stem, settings, *, folder):
+        web_started.set()
+        await asyncio.wait_for(teacher_failed.wait(), timeout=2)
+        if web_quota:
+            raise run.web_accounts.WebQuotaWait(999)
+        gen.write_json(folder / f"{stem}.result.json", {"fixture": True})
+    monkeypatch.setattr(run, "_teacher_one", teacher)
+    monkeypatch.setattr(run, "_judge_one", judge)
+    if failure == "teacher-exception":
+        with pytest.raises(ValueError):
+            await collect.collect(path, settings=settings, limit=8, overlap_web=True)
+    else:
+        result = await collect.collect(path, settings=settings, limit=8, overlap_web=True)
+        assert result["status"] == ("WAITING_DEEPSEEK_QUOTA" if failure == "teacher-quota" else "BLOCKED")
+    assert calls == ["candidate-0001", "candidate-0002"]
+    assert (path / "candidates/candidate-0001.result.json").exists() is not web_quota
+    assert collect.status(path)["status"] == ("WAITING_DEEPSEEK_QUOTA" if failure == "teacher-quota" else "BLOCKED")

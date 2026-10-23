@@ -300,7 +300,8 @@ def _split(group: str, seed: int, validation_percent: int, test_percent: int,
 
 def prepare(source_paths: list[Path], decisions_path: Path, output_dir: Path, *, artifact_path: Path, seed: int = 17,
             validation_percent: int = 15, test_percent: int = 15,
-            forced_test_groups: set[str] | None = None, review_policy: str = "human") -> dict[str, Any]:
+            forced_test_groups: set[str] | None = None, review_policy: str = "human",
+            extra_artifact_paths: tuple[Path, ...] = ()) -> dict[str, Any]:
     if review_policy not in ("human", "delegated-ai"):
         raise DatasetError("unsupported review policy")
     if validation_percent <= 0 or test_percent < 0 or validation_percent + test_percent >= 100:
@@ -310,6 +311,19 @@ def prepare(source_paths: list[Path], decisions_path: Path, output_dir: Path, *,
         raise DatasetError("artifact hash mismatch")
     if artifact.get("evaluationOnly") is True:
         raise DatasetError("shadow artifacts are not allowed in P0")
+    artifacts = {artifact["version"]: artifact}
+    for path in extra_artifact_paths:
+        inherited = json.loads(path.read_text(encoding="utf-8"))
+        if (not isinstance(inherited, dict) or inherited.get("sha256") != digest(
+                {k: v for k, v in inherited.items() if k != "sha256"}) or inherited.get("evaluationOnly") is True):
+            raise DatasetError("inherited artifact hash/policy mismatch")
+        if (training_levels(inherited) != training_levels(artifact) or
+                any(inherited.get(key) != artifact.get(key) for key in
+                    ("collectionPolicy", "contentSchema", "contentSchemas", "translationSchema", "levelProfiles"))):
+            raise DatasetError("inherited artifact training contract differs")
+        existing = artifacts.setdefault(inherited["version"], inherited)
+        if existing["sha256"] != inherited["sha256"]:
+            raise DatasetError("same artifact version has conflicting hashes")
     decisions = read_decisions(decisions_path)
     source_rows = [row for path in source_paths for row in read_jsonl(path)]
     if not source_rows:
@@ -332,7 +346,7 @@ def prepare(source_paths: list[Path], decisions_path: Path, output_dir: Path, *,
                 rejected_ids.append(key)
                 rejected_groups.add(_group(row))
                 continue
-            _contract(row, artifact)
+            _contract(row, artifacts.get(row.get("artifactVersion"), artifact))
             _group(row)
             if _contains_secret(row):
                 raise DatasetError("possible credential or personal secret in messages")
@@ -442,6 +456,8 @@ def prepare(source_paths: list[Path], decisions_path: Path, output_dir: Path, *,
         "groups": {name: sorted(groups) for name, groups in groups_by_split.items()},
         "datasetHash": digest({name: splits[name] for name in ("train", "validation", "test")}),
     }
+    if extra_artifact_paths:
+        manifest["contract"]["artifacts"] = {version: value["sha256"] for version, value in artifacts.items()}
     (output_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
                                                 encoding="utf-8", newline="\n")
     return manifest
