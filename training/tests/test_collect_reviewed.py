@@ -44,6 +44,14 @@ def test_plan_has_all_four_levels_and_no_cross_level_family_leak(campaign):
         collect.export(path)
 
 
+def test_diagnostic_experiment_cannot_export_sft(campaign):
+    path, settings = campaign
+    diagnostic = path.parent / "diagnostic"
+    collect.prepare(diagnostic, settings, diagnostic=True)
+    with pytest.raises(DatasetError, match="diagnostic"):
+        collect.export(diagnostic)
+
+
 def test_existing_gold_source_families_cannot_enter_collection(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "PRIVATE_ROOT", tmp_path)
     monkeypatch.setattr(run, "SOURCE_PLANS", ())

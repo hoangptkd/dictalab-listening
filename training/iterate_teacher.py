@@ -721,7 +721,8 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
         gen.write_json(envelope_path, envelope)
         captured["envelope"] = envelope
 
-    collection = manifest.get("policy") == artifact.get("collectionPolicy") == COLLECTION_POLICY
+    collection = (manifest.get("policy") == artifact.get("collectionPolicy") == COLLECTION_POLICY
+                  and not manifest.get("diagnosticOnly"))
     row = {**entry, "hardPass": False, "attempt": 1, "developmentOnly": not collection,
            "trainingReady": False, "decision": "FAIL"}
     try:

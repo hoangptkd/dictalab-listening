@@ -59,7 +59,7 @@ def prior_corpus() -> list[str]:
     return sorted(texts - {""})
 
 
-def prepare(path: Path, settings=None) -> dict:
+def prepare(path: Path, settings=None, *, diagnostic: bool = False) -> dict:
     path = run._private_path(path)
     if path.exists():
         raise DatasetError("collection directory already exists")
@@ -101,6 +101,7 @@ def prepare(path: Path, settings=None) -> dict:
             raise DatasetError("source allocation has an empty level/split cell")
     corpus = sorted(set(prior_corpus()) | set(_texts(artifact)))
     manifest = {"policy": COLLECTION_POLICY, "createdAt": run._now(), "seed": 17,
+        "diagnosticOnly": diagnostic,
         "artifactPath": str(ARTIFACT), "artifactHash": artifact["sha256"],
         "validatorHash": run.validator_hash(), "judgeSystemHash": gen.digest(run.JUDGE_SYSTEM),
         "teacherWrapperHash": gen.digest(gen.TEACHER_BATCH),
@@ -353,6 +354,8 @@ def adjudicate(path: Path, verdict: dict) -> dict:
 
 def export(path: Path) -> dict:
     manifest, _ = load(path)
+    if manifest.get("diagnosticOnly"):
+        raise DatasetError("diagnostic experiments cannot be exported for SFT")
     if not status(path)["complete"] or status(path)["pending"]:
         raise DatasetError("all 700 independently approved tasks are required before dataset export")
     output = path / "export"
@@ -383,12 +386,13 @@ def main() -> int:
     parser.add_argument("--campaign", required=True, type=Path)
     parser.add_argument("--limit", type=int, default=4)
     parser.add_argument("--decision-file", type=Path)
+    parser.add_argument("--diagnostic", action="store_true", help="prepare an experiment excluded from SFT")
     parser.add_argument("--shutdown-on-worker-failure", action="store_true",
                         help="arm an external watchdog with the owner's forced shutdown authorization")
     args = parser.parse_args()
     path = run._private_path(args.campaign)
     if args.command == "prepare":
-        result = prepare(path)
+        result = prepare(path, diagnostic=args.diagnostic)
     elif args.command == "collect":
         result = asyncio.run(collect(path, limit=args.limit, shutdown_on_failure=args.shutdown_on_worker_failure))
     elif args.command == "adjudicate":
