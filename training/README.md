@@ -266,6 +266,20 @@ CUDA supports LoRA or QLoRA with explicit bf16/fp16 capability checks.
 The adapter preflight uses the longest training sequence with checkpointing
 enabled when configured, before starting the optimizer loop.
 
+For long CPU runs, set `training.checkpoint_steps: 1` to save recovery checkpoints
+after each optimizer update, including optimizer, scheduler and RNG state. Epoch
+evaluation and validation-only best-checkpoint selection remain enabled; the
+trainer retains at most two checkpoints (including the best one when available).
+Each recovery save ends with a file-hash integrity marker. Resume only a complete
+checkpoint from the same output directory and unchanged config/data/review/lock:
+
+```powershell
+data/fine-tuning/.venv-cpu/Scripts/python.exe -m training.train_sft_lora --config <campaign>/training-config.yaml --attempt-below-memory-estimate --resume-from-checkpoint <output>/checkpoints/checkpoint-3
+```
+
+A run without a saved checkpoint starts again from the pinned base model in a
+new output directory. Preserve failed run logs and directories.
+
 Loss labels are computed before TRL: system/user tokens are `-100`, final target
 and its template terminator are supervised, padding stays `-100` even if pad
 equals EOS. Template/prefix ambiguity, inserted hidden reasoning and overlength

@@ -7,7 +7,7 @@ import pytest
 
 from training.prepare_dataset import DatasetError
 from training.tests.test_prepare_dataset import _prepare, _row, _write
-from training.train_sft_lora import check_cpu_memory, checked_inputs, file_hash, load_bundle, pad_batch, tokenize_target, validate_review, verify_environment
+from training.train_sft_lora import check_cpu_memory, check_resume_checkpoint, checked_inputs, file_hash, load_bundle, pad_batch, tokenize_target, validate_review, verify_environment
 
 
 class CharacterTokenizer:
@@ -128,6 +128,7 @@ def test_real_cpu_sft_and_adapter_round_trip(tmp_path):
     assert report["preflight"]["finiteGradients"]
     assert report["optimizerUpdatedAdapter"] and report["freshModelAdapterReload"]
     assert report["gradientCheckpointing"]
+    assert report["recoveryCheckpointVerified"] and report["resumedOptimizerState"]
     assert not report["trainingReady"] and not report["realCheckpointLoaded"]
 
 
@@ -182,7 +183,8 @@ def test_cpu_memory_guard_stops_before_weights_and_requires_inspected_count():
         check_cpu_memory({}, 32 * gib)
 
 
-@pytest.mark.parametrize("field,value", [("epochs", 0), ("learning_rate", -1), ("use_cache", True)])
+@pytest.mark.parametrize("field,value", [("epochs", 0), ("learning_rate", -1), ("use_cache", True),
+                                        ("checkpoint_steps", 0), ("checkpoint_steps", True)])
 def test_invalid_training_settings_fail_before_reading_data(tmp_path, field, value):
     import yaml
     from training.prepare_dataset import ROOT
@@ -205,6 +207,36 @@ def test_environment_lock_is_exact_and_does_not_accept_arbitrary_urls(tmp_path, 
     path.write_text("torch @ https://untrusted.invalid/package.whl", encoding="utf-8")
     with pytest.raises(DatasetError, match="exact package pins"):
         verify_environment(path)
+
+
+@pytest.mark.parametrize("fault", [None, "changed-data", "partial", "corrupt-optimizer", "wrong-step", "outside-run"])
+def test_resume_requires_bound_complete_checkpoint(tmp_path, fault):
+    output = tmp_path / "run"
+    checkpoint = output / "checkpoints/checkpoint-3"
+    checkpoint.mkdir(parents=True)
+    inputs = {"configHash": "frozen-config", "datasetHash": "approved-data"}
+    (output / "run-inputs.json").write_text(json.dumps(inputs), encoding="utf-8")
+    names = ("adapter_model.safetensors", "adapter_config.json", "optimizer.pt", "scheduler.pt", "rng_state.pth")
+    for name in names:
+        (checkpoint / name).write_bytes(b"checkpoint-fixture")
+    (checkpoint / "trainer_state.json").write_text(json.dumps({"global_step": 3}), encoding="utf-8")
+    integrity = {"step": 3, "files": {f.name: file_hash(f) for f in checkpoint.iterdir()}}
+    if fault == "wrong-step":
+        integrity["step"] = 2
+    (checkpoint / "resume-integrity.json").write_text(json.dumps(integrity), encoding="utf-8")
+    if fault == "changed-data":
+        inputs = {**inputs, "datasetHash": "other-data"}
+    elif fault == "partial":
+        (checkpoint / "scheduler.pt").unlink()
+    elif fault == "corrupt-optimizer":
+        (checkpoint / "optimizer.pt").write_bytes(b"damaged")
+    elif fault == "outside-run":
+        output = tmp_path / "other-run"
+    if fault:
+        with pytest.raises(DatasetError, match="resume"):
+            check_resume_checkpoint(output, checkpoint, inputs)
+    else:
+        assert check_resume_checkpoint(output, checkpoint, inputs) == checkpoint.resolve()
 
 
 def test_validator_hash_survives_windows_linux_checkout_line_endings(tmp_path, monkeypatch):

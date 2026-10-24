@@ -11,7 +11,7 @@ import sys
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from training.train_sft_lora import adapter_preflight, file_hash, make_trainer, tokenize_target, write_report
+from training.train_sft_lora import adapter_preflight, check_resume_checkpoint, file_hash, make_trainer, tokenize_target, write_report
 
 
 def run_smoke(output: Path) -> dict:
@@ -21,7 +21,7 @@ def run_smoke(output: Path) -> dict:
     import torch
     from peft import LoraConfig, PeftModel, get_peft_model
     from tokenizers import Tokenizer, models
-    from transformers import PreTrainedTokenizerFast, Qwen3_5ForCausalLM, Qwen3_5TextConfig, set_seed
+    from transformers import PreTrainedTokenizerFast, Qwen3_5ForCausalLM, Qwen3_5TextConfig, TrainerCallback, set_seed
 
     output.mkdir(parents=True, exist_ok=False)
     set_seed(17)
@@ -68,8 +68,29 @@ def run_smoke(output: Path) -> dict:
     for name, tensor in restored.named_parameters():
         if name in initial and not torch.equal(tensor, model.get_parameter(name)):
             raise RuntimeError("saved adapter failed to reload on a fresh base model")
-    epoch_trainer = make_trainer(model, tokenizer, features, features, config, output / "epoch-loop", smoke=False)
-    epoch_result = epoch_trainer.train()
+    config["training"]["checkpoint_steps"] = 1
+    epoch_output = output / "epoch-loop"
+    epoch_trainer = make_trainer(model, tokenizer, features, features, config, epoch_output / "checkpoints", smoke=False)
+
+    class StopAfterFirstStep(TrainerCallback):
+        def on_step_end(self, args, state, control, **kwargs):
+            control.should_training_stop = state.global_step == 1
+            return control
+
+    epoch_trainer.add_callback(StopAfterFirstStep())
+    first_result = epoch_trainer.train()
+    if first_result.global_step != 1:
+        raise RuntimeError("recovery fixture did not stop after its first optimizer step")
+    run_inputs = {"fixture": "tiny-random-cpu", "seed": 17}
+    (epoch_output / "run-inputs.json").write_text(json.dumps(run_inputs), encoding="utf-8")
+    checkpoint = check_resume_checkpoint(epoch_output, epoch_output / "checkpoints/checkpoint-1", run_inputs)
+    epoch_trainer = make_trainer(model, tokenizer, features, features, config, epoch_output / "checkpoints", smoke=False)
+    epoch_result = epoch_trainer.train(resume_from_checkpoint=str(checkpoint))
+    if epoch_result.global_step != 2:
+        raise RuntimeError("recovery did not continue from the saved optimizer step")
+    optimizer_steps = {int(value["step"].item()) for value in epoch_trainer.optimizer.state.values() if "step" in value}
+    if optimizer_steps != {2}:
+        raise RuntimeError("recovery reset the optimizer instead of restoring its state")
     metrics = epoch_trainer.evaluate()
     if not epoch_trainer.state.best_model_checkpoint or not math.isfinite(metrics["eval_loss"]):
         raise RuntimeError("epoch evaluation or best-checkpoint reload failed")
@@ -81,6 +102,7 @@ def run_smoke(output: Path) -> dict:
               "gradientCheckpointing": True,
               "optimizerUpdatedAdapter": True, "freshModelAdapterReload": True,
               "epochLoopSteps": epoch_result.global_step, "bestCheckpointReload": True,
+              "recoveryCheckpointVerified": True, "resumedOptimizerState": True,
               "adapterHash": file_hash(output / "adapter/adapter_model.safetensors")}
     write_report(output, report)
     return report
