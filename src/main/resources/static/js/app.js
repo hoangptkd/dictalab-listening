@@ -2099,7 +2099,7 @@
     }
 
     function savePracticeDraft() {
-        if (state.practiceSync?.sessionId === state.session?.sessionId
+        if (state.practiceSync && state.practiceSync.sessionId === state.session?.sessionId
             && state.practiceSync.view()?.sentenceId === state.sentence?.sentenceId) {
             state.practiceSync.saveDraft({drafts: [...state.wordDrafts], elapsedSeconds: practiceElapsedSeconds()}).catch(() => {});
         }
