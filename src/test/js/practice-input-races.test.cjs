@@ -90,6 +90,35 @@ function harness(storage = new Map()) {
     };
 }
 
+test('catalog startup and page lifecycle work without a practice session', () => {
+    for (const sync of [undefined, null]) {
+        const h = harness();
+        h.state.practiceSync = sync;
+        h.state.session = null;
+        h.state.sentence = null;
+        assert.doesNotThrow(() => h.context.savePracticeDraft());
+        assert.doesNotThrow(() => h.context.resetPracticeInput());
+        assert.doesNotThrow(() => h.context.restorePracticeDraft());
+    }
+});
+
+test('draft persistence still saves only the matching practice session and sentence', async () => {
+    const h = harness(), saved = [];
+    h.state.wordDrafts.set(0, 'ca');
+    h.state.practiceSync = {sessionId: 'session-a', view: () => ({sentenceId: 10}),
+        saveDraft: async draft => { saved.push(draft); }};
+    h.context.savePracticeDraft();
+    await h.flush();
+    assert.equal(saved.length, 1);
+    assert.equal(JSON.stringify(saved[0].drafts), JSON.stringify([[0, 'ca']]));
+    h.state.practiceSync.sessionId = 'other-session';
+    h.context.savePracticeDraft();
+    h.state.practiceSync.sessionId = 'session-a';
+    h.state.practiceSync.view = () => ({sentenceId: 99});
+    h.context.savePracticeDraft();
+    assert.equal(saved.length, 1);
+});
+
 test('compact checks merge only the graded word and retain static sentence metadata', async () => {
     const h = harness(); Object.assign(h.state.sentence, {audioUrl: '/test.mp3', position: 2, totalSentences: 5});
     const untouched = h.state.sentence.words[2];
