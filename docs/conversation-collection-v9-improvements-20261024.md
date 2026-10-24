@@ -1,5 +1,58 @@
 # Cải thiện thu thập v9 — 24/10/2026
 
+## Mới nhất: giữ prefix ổn định để hưởng giá cache DeepSeek
+
+DeepSeek [bật context cache tự động](https://api-docs.deepseek.com/guides/kv_cache/),
+không cần header hoặc API tạo cache. Prefix phải khớp chính xác phần đã lưu;
+cache cần thời gian tạo và chỉ best effort. Không gửi lại/warm-up bài cũ.
+
+Lô trước 0420–0427 có **0/42.088 input token cache hit**, đủ usage 8/8 lượt.
+Nguyên nhân: provider đặt schema lên đầu messages; enum ID thay đổi theo bài
+nằm trước phần hướng dẫn chung dài, làm prefix thay đổi sớm. Opt-in mới
+`cacheStablePrefix=true` đặt hướng dẫn và payload trước, schema đầy đủ sau;
+giữ nguyên schema, enum ID, validation, JSON mode và durable sent log trước HTTP.
+Mọi caller không opt-in giữ layout cũ. Cache chỉ giảm tiền input; không tái dùng
+đáp án, không thay đổi output/reasoning budget hoặc quy trình duyệt.
+
+Artifact mới bất biến:
+`artifacts/prompts/conversation-reviewed-collection-v11-cache-low-20261024.json`.
+Tiếp nối `data/fine-tuning/reviewed-500-v12-cache-web-20261024` từ v11-low-web,
+giữ **254 bài đạt/427 ứng viên**, toàn bộ quyết định, hash và lịch sử gửi cũ.
+Không prepare lại thư mục có sẵn hoặc sửa manifest cũ. Báo cáo riêng
+`cache-audit.json` đo usage hit/miss, thiếu usage, request hash và chi phí ước tính;
+không lưu nội dung bài loại. Đo bằng các ứng viên mới 0428–0435.
+
+Đo thật đủ 8 lượt mới: **6/8 có hit**, **15.872/40.104 input token được cache
+(39,58%)**; usage đủ 8/8 và hit + miss khớp prompt tokens từng lượt. So với
+chính lượng token này nếu toàn bộ input là cache miss, tiền input ước giảm
+**38,79%**, tổng DeepSeek input + output giảm **9,74%**. Ước tính cuối tuần:
+**0,021612216 USD**, thay vì 0,0239454 USD; tiết kiệm 0,002333184 USD. Không lấy
+chênh lệch tổng tiền giữa hai lô để quy hết cho cache vì độ dài output khác nhau.
+Đây là lô nhỏ chứng minh cache đã hit, chưa chứng minh tỷ lệ hit dài hạn.
+
+Lô 0428–0435 có 5 bài được Web chốt đạt, 3 bài bị hard checks loại;
+checkpoint **259 đạt/435 ứng viên**, READY, không pending. A1/A2 low đạt 4/4
+trong lô này; mẫu nhỏ không chứng minh chất lượng tương đương cấu hình khác.
+Kiểm tra training + gateway + registry: **342 passed, 1 skipped**; UTF-8,
+compile và diff checks đạt. Bằng chứng riêng giữ đủ usage cả ba bài loại,
+không giữ target hoặc raw Web chứa bài loại, không có dispatch trùng.
+
+Theo [giá chính thức](https://api-docs.deepseek.com/quick_start/pricing/)
+kiểm tra 24/10/2026, `deepseek-flash` off peak có giá USD/triệu token:
+hit **0,003**, miss **0,15**, output **0,60**; peak gấp đôi. Cuối tuần off peak.
+Token input được hit rẻ hơn 98%; đây không phải mức giảm tổng hóa đơn vì output
+vẫn tính riêng. Chi phí báo cáo là ước tính từ usage đã biết, không phải hóa đơn.
+
+```powershell
+python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v12-cache-web-20261024 --limit 8 --deepseek-only --teacher-concurrency 2 --web-batch-size 2 --overlap-web
+```
+
+Giữ low A1/A2, mặc định high B1/B2, thinking bật, hai teacher, Web cặp nối tiếp
+trong hội thoại mới, kiểm tra cứng + Web PASS đầy đủ tự chốt. Không Codex duyệt
+từng bài, không Gemini mới, không shutdown/watchdog. UNKNOWN không replay;
+quota không reset. Tổng 400/48/52 và trần 1.500 cộng dồn; đủ 500 rồi audit/export
+thật trước SFT, giữ data/loss-mask gates. Mục này thay đường dẫn chiến dịch cũ.
+
 ## Mới nhất: áp dụng low cho A1/A2
 
 Chủ dự án yêu cầu áp dụng `low` sau pilot. Bài A1/A2 mới gửi

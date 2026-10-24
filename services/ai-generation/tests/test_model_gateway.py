@@ -109,6 +109,35 @@ class TestOllamaProvider:
 
 class TestOpenAiCompatibleProvider:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("cache_prefix", [False, True])
+    async def test_cache_layout_preserves_schema_validation_and_common_prefix(self, cache_prefix):
+        requests = []
+        def reply(request):
+            requests.append(json.loads(request.content))
+            return httpx.Response(200, json={"choices":[{"finish_reason":"stop",
+                "message":{"content":'{"id":"item-1"}'}}]})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as client:
+            provider = OpenAiCompatibleProvider(base_url="https://api.deepseek.com",api_key="test",
+                model="deepseek-flash",client=client,provider_name="deepseek",cache_stable_prefix=cache_prefix)
+            for ident in ("item-1", "item-2"):
+                messages = [{"role":"system","content":"Stable instructions "*100},
+                    {"role":"user","content":"Shared context "*200+ident}]
+                original = list(messages)
+                schema = {"type":"object","properties":{"id":{"enum":[ident]}},"required":["id"]}
+                if ident == "item-1":
+                    assert await provider.complete(messages,schema,time.monotonic()+10,"test") == {"id":"item-1"}
+                else:
+                    with pytest.raises(ProviderError,match="schema_mismatch"):
+                        await provider.complete(messages,schema,time.monotonic()+10,"test")
+                assert messages == original
+                assert json.loads(requests[-1]["messages"][-1 if cache_prefix else 0]["content"].split(": ",1)[1]) == schema
+        import os
+        serialized = [json.dumps(r["messages"]) for r in requests]
+        common = len(os.path.commonprefix(serialized))
+        assert common > 4000 if cache_prefix else common < 500
+        assert all(r["response_format"] == {"type":"json_object"} for r in requests)
+
+    @pytest.mark.asyncio
     async def test_success_returns_parsed_dict(self):
         mock_response = MagicMock()
         mock_response.status_code = 200

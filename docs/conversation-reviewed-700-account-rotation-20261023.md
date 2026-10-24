@@ -1,5 +1,14 @@
 # Thu thập 700 bài với hai tài khoản Web
 
+**Mới nhất 24/10: prefix cache DeepSeek.** Dùng chiến dịch tiếp nối
+`data/fine-tuning/reviewed-500-v12-cache-web-20261024`, giữ 254 bài/427 ứng viên,
+hash, quyết định và trạng thái quota. Cache tự động, schema có ID đặt cuối khi
+artifact opt-in; kiểm chứng bằng usage thật, không warm-up hoặc gửi lại.
+Giữ low A1/A2, hai teacher, một Web request theo cặp mỗi lúc; đổi Web account chỉ
+khi quota rõ. UNKNOWN không replay, không Codex duyệt từng bài, không Gemini mới,
+không shutdown/watchdog. Mục tiêu vẫn tổng 500 rồi audit/export/SFT. Xem
+[cấu hình cache](conversation-collection-v9-improvements-20261024.md).
+
 **Mới nhất 24/10: áp dụng low A1/A2 theo yêu cầu chủ dự án**, B1/B2 high mặc định.
 Chiến dịch tiếp nối `data/fine-tuning/reviewed-500-v11-low-web-20261024` giữ
 249 bài đạt/419 ứng viên, quota, lịch sử gửi và quyết định cũ. Các quy tắc Web

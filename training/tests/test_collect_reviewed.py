@@ -142,11 +142,14 @@ def test_rejection_compacts_evidence_and_preserves_other_candidates(campaign):
            "error": "deepseek:teacher_batch:schema_mismatch source body", "errorType": "ProviderError"}
     gen.write_json(path / "candidates/candidate-0001.teacher-result.json", row)
     gen.write_json(path / "candidates/candidate-0001.teacher-request.json", {"body": "details"})
+    usage = {"prompt_tokens": 1000, "prompt_cache_hit_tokens": 800, "prompt_cache_miss_tokens": 200}
+    gen.write_json(path / "candidates/candidate-0001.teacher-envelope.json", {"usage": usage})
     gen.write_json(path / "candidates/candidate-0002.teacher-request.json", {"body": "keep"})
     collect.reject(path, row, "ambiguous-required-answer")
     compact = gen.read_json(path / "decisions/candidate-0001.json")
     assert compact["taskHash"] == gen.digest(row["task"])
     assert compact["teacher-requestHash"]
+    assert compact["allUsage"]["teacher-envelope"] == usage
     assert compact["errorCodes"] == ["deepseek:teacher_batch:schema_mismatch"]
     assert "source body" not in json.dumps(compact) and "context" not in compact
     assert not list((path / "candidates").glob("candidate-0001.*"))
@@ -888,15 +891,18 @@ def test_v9_wire_constraints_and_frozen_configuration_preserve_v8(tmp_path, monk
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("cache_prefix", [False, True])
 @pytest.mark.parametrize("version,max_tokens,timeout", [("v8-20261023", 8192, 120), ("v9-20261024", 16384, 240)])
 @pytest.mark.parametrize("failure", ["truncated", "transport"])
 @pytest.mark.parametrize("effort,level,wire_effort", [(None, "A1", None), ("low", "A1", "low"),
     ("low", "A2", "low"), ("low", "B1", None), ("low", "B2", None)])
 async def test_teacher_dispatch_uses_frozen_budget_and_marks_unknown_transport(
-        tmp_path, monkeypatch, version, max_tokens, timeout, failure, effort, level, wire_effort):
+        tmp_path, monkeypatch, version, max_tokens, timeout, failure, effort, level, wire_effort, cache_prefix):
     import time
     from app.providers.base import ProviderError
     artifact = gen.read_json(gen.ROOT / f"artifacts/prompts/conversation-reviewed-collection-{version}.json")
+    if cache_prefix:
+        artifact.setdefault("teacherGenerationConfig", {})['cacheStablePrefix'] = True
     if effort:
         artifact.setdefault("teacherGenerationConfig", {}).update(
             reasoningEffortByLevel={"A1": effort, "A2": effort})
@@ -915,9 +921,12 @@ async def test_teacher_dispatch_uses_frozen_budget_and_marks_unknown_transport(
             assert self.config.num_predict == max_tokens and self.config.timeout_seconds == timeout
             assert timeout - 2 < deadline - time.monotonic() <= timeout
             assert kwargs.get("deepseek_reasoning_effort") == wire_effort
+            assert kwargs.get("deepseek_cache_prefix") is (True if cache_prefix else None)
+            schema_message = {"role":"system", "content":"Return one JSON object matching this JSON schema: " + json.dumps(schema)}
             await self.client.post("https://teacher.invalid/v1/chat/completions", json={
                 "model": "deepseek-test", "temperature": 0.2, "max_tokens": self.config.num_predict,
                 "thinking": {"type": "enabled"},
+                "messages": [*messages, schema_message] if cache_prefix else [schema_message, *messages],
                 **({"reasoning_effort": wire_effort} if wire_effort else {})})
             raise ProviderError("deepseek:teacher_batch:output_truncated")
     def respond(request):

@@ -63,6 +63,7 @@ class ModelGateway:
         temperature: float | None = None,
         deepseek_thinking: bool = False,
         deepseek_reasoning_effort: str | None = None,
+        deepseek_cache_prefix: bool = False,
     ) -> tuple[dict[str, Any], str]:
         """Call the selected provider.
 
@@ -74,6 +75,9 @@ class ModelGateway:
         provider = self._settings.selected_provider
         if deepseek_thinking and (provider != "deepseek" or not self._settings.gemini_quota_enabled):
             raise ValueError("thinking opt-in requires the DeepSeek registry provider")
+        if (type(deepseek_cache_prefix) is not bool or deepseek_cache_prefix and
+                (provider != "deepseek" or not self._settings.gemini_quota_enabled)):
+            raise ValueError("cache prefix layout requires the DeepSeek registry provider")
         if deepseek_reasoning_effort is not None and (
                 not deepseek_thinking or deepseek_reasoning_effort not in {"low", "high", "max"}):
             raise ValueError("reasoning effort requires DeepSeek thinking and low/high/max")
@@ -95,7 +99,7 @@ class ModelGateway:
                         raise ValueError("reasoning effort requires a DeepSeek source")
                     extra["reasoning_effort"] = deepseek_reasoning_effort
                 selected = GeminiProvider(**common) if source.platform == "gemini" else OpenAiCompatibleProvider(**common,
-                    provider_name=source.platform, extra_body=extra)
+                    provider_name=source.platform, extra_body=extra, cache_stable_prefix=deepseek_cache_prefix)
                 self.last_model, self.last_source_id = source.model, source.id
             try:
                 result = await selected.complete(messages, schema, deadline, purpose, temperature=temperature)

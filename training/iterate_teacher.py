@@ -993,6 +993,9 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
             (efforts and (teacher_provider != "deepseek" or thinking_mode != "enabled"))):
         raise gen.DatasetError("invalid frozen teacher reasoning effort")
     reasoning_effort = efforts.get(entry["level"])
+    cache_prefix = generation.get("cacheStablePrefix", False)
+    if type(cache_prefix) is not bool or cache_prefix and teacher_provider != "deepseek":
+        raise gen.DatasetError("cache prefix layout requires a frozen DeepSeek contract")
     max_tokens = generation.get("maxTokens", 8192)
     timeout_seconds = generation.get("timeoutSeconds", settings.timeout_seconds)
     if (type(max_tokens) is not int or not 1 <= max_tokens <= 32768 or
@@ -1010,6 +1013,11 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
             (body.get("thinking") != {"type": thinking_mode} if teacher_provider == "deepseek"
              else "thinking" in body) or gen._contains_secret(body)):
             raise gen.DatasetError("teacher request differs from frozen model/decoding/privacy contract")
+        if cache_prefix and body.get("messages") != [
+                {"role": "system", "content": gen.teacher_batch_system(artifact)},
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+                {"role": "system", "content": "Return one JSON object matching this JSON schema: " + json.dumps(full_schema)}]:
+            raise gen.DatasetError("teacher request differs from frozen cache prefix layout")
         _durable_exclusive_json(request_path, body)
         gen.append(path / "sent-index.jsonl", {"kind": "teacher", "phase": folder.name, "id": ident,
             "requestHash": gen.digest(body), "time": time.time()})
@@ -1042,6 +1050,7 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
                 full_schema, time.monotonic() + run_settings.timeout_seconds, "teacher_batch",
                 deepseek_thinking=teacher_provider == "deepseek" and thinking_mode == "enabled",
+                **({"deepseek_cache_prefix": True} if cache_prefix else {}),
                 **({"deepseek_reasoning_effort": reasoning_effort} if reasoning_effort is not None else {}))
         row["teacherSourceId"] = gateway.last_source_id
         if (provider != teacher_provider or gateway.last_model != manifest["teacher"]["model"] or

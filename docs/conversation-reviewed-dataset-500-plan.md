@@ -1,5 +1,13 @@
 # Thu thập dữ liệu đã duyệt và train Qwen3.5-4B
 
+**Mới nhất 24/10: tối ưu prefix cache DeepSeek.** Chiến dịch tiếp nối
+`data/fine-tuning/reviewed-500-v12-cache-web-20261024` giữ 254 bài/427 ứng viên;
+artifact cache v11 đặt schema có ID sau hướng dẫn/payload để prefix chung ổn định,
+không đổi validation hoặc manifest cũ. Đo cache hit/miss bằng usage thật, không
+warm-up/replay. Giữ low A1/A2, hai teacher, Web chốt, 400/48/52, audit trước SFT,
+không Gemini/Codex duyệt riêng/shutdown. Xem
+[cache và giá hiện tại](conversation-collection-v9-improvements-20261024.md).
+
 **Mới nhất 24/10: chủ dự án áp dụng low cho A1/A2.** B1/B2 giữ high mặc định.
 Chiến dịch `data/fine-tuning/reviewed-500-v11-low-web-20261024` tiếp nối 249 bài
 đạt/419 ứng viên từ v10-web, không sửa hash hoặc quyết định cũ. Giữ kiểm tra
