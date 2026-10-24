@@ -2,6 +2,13 @@
 
 Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các báo cáo benchmark cũ giữ nguyên.
 
+**Cập nhật sau pilot 24/10/2026:** chủ dự án đã hủy tắt máy; không shutdown hoặc
+arm watchdog khi quota/lỗi. Bộ chính giữ thinking mặc định high, thêm
+`--teacher-concurrency 2`; low A1/A2 đạt 7/8 so với high 8/8 trong pilot riêng,
+chưa áp dụng. Web theo cặp vẫn nối tiếp, Codex duyệt độc lập. Mục tiêu 400/48/52
+và audit trước SFT giữ nguyên. Các quyền tắt máy bên dưới là lịch sử đã bị thay thế.
+Chi tiết tại [kết quả pilot](conversation-collection-v9-improvements-20261024.md).
+
 **Quyết định mới nhất 24/10/2026:** tổng **500 bài**, gồm **400 train + 48 validation
 + 52 test**, mỗi mức A1–B2 là 100/12/13. Dừng gọi Gemini mới; giữ dữ liệu đã duyệt.
 Chiến dịch hiện tại: `data/fine-tuning/reviewed-500-v9-deepseek-20261024`, snapshot

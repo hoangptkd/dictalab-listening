@@ -1,5 +1,72 @@
 # Cải thiện thu thập v9 — 24/10/2026
 
+## Mới nhất: pilot effort A1/A2 và hai lời gọi DeepSeek
+
+Đã thử thật 16 ứng viên diagnostic, ngoài SFT và ngoài trần ứng viên của bộ chính:
+8 cấu hình thinking mặc định (`high`) và 8 `reasoning_effort=low`, mỗi cấu hình có
+4 A1 và 4 A2. Tám cặp dùng cùng context, wrapper, model `deepseek-flash`, schema,
+trần 16.384 token, timeout 240 giây và rubric. Hai nửa dùng các biến thể context
+khác nhau; thứ tự cohort là high/1, low/2, high/2, low/1. Chỉ thay effort trong
+từng cặp, không dùng cắt trần token để ép suy nghĩ ngắn. Bốn ô nguồn/mức thuộc ba
+họ kịch bản, tám context, đều train; không dùng nội dung holdout để chọn cấu hình.
+Không thử Gemini.
+
+Codex đọc nguồn, vai, lịch sử và toàn bộ trường song ngữ trước khi đọc verdict Web,
+ghi căn cứ riêng và quote mỗi fact rồi chạy `apply-independent-notes.py`. Web cho
+PASS cả 16; Codex loại một bài A2 low do câu hỏi khác tiết lộ một waypoint bắt
+buộc trong đáp án lộ trình. Đã xóa chi tiết bài loại và raw nhóm dùng chung;
+giữ hash, loại lỗi, usage và bằng chứng gửi, không sửa hoặc đưa bài diagnostic vào SFT.
+
+| Effort | Codex đạt | A1 | A2 | Completion token | Reasoning token | Sinh trung bình/bài |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Mặc định high | 8/8 | 4/4 | 4/4 | 33.817 | 31.175 | 22,32 giây |
+| Low | 7/8 | 4/4 | 3/4 | 22.480 | 19.857 | 15,97 giây |
+
+Low giảm 33,5% completion token, 36,3% reasoning token và 28,4% thời gian gọi
+trung bình trong mẫu này. **Chưa áp dụng low vào bộ chính**: chưa giữ được tỷ lệ
+đạt quan sát. Mẫu 8 bài/mỗi effort nhỏ, không chứng minh khác biệt dài hạn hay
+quan hệ nhân quả của một lỗi đơn lẻ. Không đổi artifact/manifest/hash của chiến dịch.
+
+| Cohort 4 bài | In-flight tối đa | Sinh + Web, chưa gồm Codex |
+| --- | ---: | ---: |
+| High tuần tự | 1 | 123,20 giây |
+| High song song | 2 | 76,18 giây |
+| Low tuần tự | 1 | 109,63 giây |
+| Low song song | 2 | 57,90 giây |
+
+Đây là thời gian mô tả: cohort 1/2 khác biến thể/focus và output, còn cache/tải API
+cũng thay đổi. Không coi chênh lệch high 38,2% là cam kết tăng tốc; không hứa gấp đôi.
+Tất cả 16 lượt DeepSeek HTTP 200, đủ usage, không 402/429/UNKNOWN. Hai cohort song
+song ghi nhận peak=2; request được lưu trước HTTP, mỗi ID chỉ gửi một lần. Tám nhóm
+Web dùng tám hội thoại mới của account-1, model UI chưa xác minh; token Web không có.
+Web vẫn một request mỗi lúc, Codex duyệt từng bài. Tổng teacher usage pilot:
+76.468 input + 56.297 output = 132.765 token, gồm 51.032 reasoning token trong output.
+
+Đã thêm tùy chọn **`--teacher-concurrency 2`** và giữ mặc định cũ nếu không truyền.
+Tái sử dụng reserve ID/ô đích, quota admission atomic, kiểm tra trùng nối tiếp,
+guard chống replay và drain mọi sibling/Web đang gửi khi lỗi. Kiểm tra mock gồm
+sibling lỗi trả trước, quota, UNKNOWN, exception, trùng, trần 1.500 và ô cuối cùng.
+Kiểm tra hoàn tất: 298 test đạt, 1 bỏ qua; UTF-8, compile và `git diff --check` đạt.
+Theo [DeepSeek Thinking Mode](https://api-docs.deepseek.com/guides/thinking_mode/),
+effort low được hỗ trợ và mặc định là high; [giới hạn API công bố](https://api-docs.deepseek.com/quick_start/rate_limit/)
+cho `deepseek-flash` là 2.500 đồng thời/tài khoản. Đây không bảo đảm số dư hoặc
+khả năng nhận request thực tế; giữ quota pool/cooldown, dừng trên quota hoặc lỗi chưa rõ.
+
+Quyết định vận hành: **high như cũ + DeepSeek song song 2**, Web theo cặp và Codex
+độc lập. Lịch 15 phút được tạm dừng khi test, bật lại sau kiểm tra và delivery.
+Checkpoint bộ chính vẫn **244/500 duyệt, 411/1.500 ứng viên**, không còn pending.
+Không prepare lại, không tính 15 bài diagnostic đạt vào bộ chính. Không shutdown
+hoặc arm watchdog. Đủ 500 và audit thật đạt mới SFT; không deploy.
+
+```powershell
+python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v9-deepseek-20261024 --limit 8 --deepseek-only --teacher-concurrency 2 --web-batch-size 2 --overlap-web
+```
+
+Bằng chứng riêng local: `data/fine-tuning/diagnostic-speed-20261024/results.json`,
+timing, notes và quyết định trong từng cohort. Cấu hình low chỉ nằm trong artifact
+diagnostic; `teacherGenerationConfig.reasoningEffortByLevel` được khóa cùng manifest
+và kiểm tra cả body HTTP. Chưa có thay đổi cấu hình sinh cho B1/B2.
+
 ## Cập nhật mới nhất: hủy tắt máy và tiếp tục thu thập
 
 Chủ dự án yêu cầu hủy tắt máy và tiếp tục tạo bài. Lệnh đang chờ đã được hủy

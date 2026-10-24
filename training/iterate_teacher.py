@@ -987,6 +987,12 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
     generation = artifact.get("teacherGenerationConfig", {})
     if manifest["teacher"].get("generationConfig", {}) != generation:
         raise gen.DatasetError("teacher generation configuration differs from frozen artifact")
+    efforts = generation.get("reasoningEffortByLevel", {})
+    if (not isinstance(efforts, dict) or any(level not in {"A1", "A2", "B1", "B2"} or
+            effort not in {"low", "high", "max"} for level, effort in efforts.items()) or
+            (efforts and (teacher_provider != "deepseek" or thinking_mode != "enabled"))):
+        raise gen.DatasetError("invalid frozen teacher reasoning effort")
+    reasoning_effort = efforts.get(entry["level"])
     max_tokens = generation.get("maxTokens", 8192)
     timeout_seconds = generation.get("timeoutSeconds", settings.timeout_seconds)
     if (type(max_tokens) is not int or not 1 <= max_tokens <= 32768 or
@@ -1000,6 +1006,7 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
         body = gen.strict_json(request.content.decode("utf-8"))
         if (body.get("model") != manifest["teacher"]["model"] or
             body.get("temperature") != 0.2 or body.get("max_tokens") != max_tokens or
+            body.get("reasoning_effort") != reasoning_effort or
             (body.get("thinking") != {"type": thinking_mode} if teacher_provider == "deepseek"
              else "thinking" in body) or gen._contains_secret(body)):
             raise gen.DatasetError("teacher request differs from frozen model/decoding/privacy contract")
@@ -1034,7 +1041,8 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
                 {"role": "system", "content": gen.teacher_batch_system(artifact)},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
                 full_schema, time.monotonic() + run_settings.timeout_seconds, "teacher_batch",
-                deepseek_thinking=teacher_provider == "deepseek" and thinking_mode == "enabled")
+                deepseek_thinking=teacher_provider == "deepseek" and thinking_mode == "enabled",
+                **({"deepseek_reasoning_effort": reasoning_effort} if reasoning_effort is not None else {}))
         row["teacherSourceId"] = gateway.last_source_id
         if (provider != teacher_provider or gateway.last_model != manifest["teacher"]["model"] or
                 gateway.last_source_id not in manifest["teacher"]["sourceIds"]):

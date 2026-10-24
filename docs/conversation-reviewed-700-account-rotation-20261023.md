@@ -1,5 +1,11 @@
 # Thu thập 700 bài với hai tài khoản Web
 
+**Mới nhất 24/10 sau pilot:** tổng vẫn 500 bài; high mặc định + hai DeepSeek
+in-flight bằng `--teacher-concurrency 2`, Web theo cặp nối tiếp, không Gemini mới.
+Low A1/A2 chưa áp dụng vì pilot Codex đạt 7/8 so với high 8/8. Chủ dự án đã hủy
+tắt máy: không shutdown/watchdog khi quota hoặc lỗi; checkpoint và báo nguyên nhân.
+Các quyền shutdown bên dưới chỉ là lịch sử. Xem [báo cáo v9](conversation-collection-v9-improvements-20261024.md).
+
 **Thay thế ngày 24/10:** chủ dự án chốt tổng **500 bài: 400/48/52**, dừng Gemini,
 chấm Web theo cặp trong hội thoại mới sau phép thử thực tế. Chiến dịch hiện tại
 `data/fine-tuning/reviewed-500-v9-deepseek-20261024`; đủ dữ liệu/audit thì SFT.

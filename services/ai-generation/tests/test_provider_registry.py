@@ -59,11 +59,11 @@ def test_vendor_quota_isolation_and_preserved_gemini_namespace():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("thinking", [False, True])
-async def test_deepseek_wire_and_no_cross_platform_fallback(thinking):
+@pytest.mark.parametrize("thinking,effort", [(False, None), (True, None), (True, "low"), (True, "high")])
+async def test_deepseek_wire_and_no_cross_platform_fallback(thinking, effort):
     cfg = registry_settings()
     # Independent fake account avoids sharing the memory counters with the isolation check.
-    cfg.cloud_providers[1].project_id = "wire-test-" + str(thinking)
+    cfg.cloud_providers[1].project_id = "wire-test-" + str(thinking) + str(effort)
     cfg.registry_pools["deepseek"]["global_rpm_limit"] = 2
     calls = []
     def handler(request):
@@ -72,17 +72,28 @@ async def test_deepseek_wire_and_no_cross_platform_fallback(thinking):
         assert request.headers["Authorization"] == "Bearer fake-deepseek"
         body = json.loads(request.content)
         assert body["thinking"] == {"type": "enabled" if thinking else "disabled"}
+        assert body.get("reasoning_effort") == effort
         assert body["response_format"] == {"type":"json_object"}
         assert "JSON" in body["messages"][0]["content"]
         return httpx.Response(200,json={"choices":[{"finish_reason":"stop","message":{"content":'{"ok":true}'}}]})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         gateway = ModelGateway(cfg,client)
         result,platform = await gateway.complete([], {"type":"object"},time.monotonic()+10,"check",
-                                                deepseek_thinking=thinking)
+                                                deepseek_thinking=thinking, deepseek_reasoning_effort=effort)
         assert result == {"ok":True} and platform == "deepseek"
         with pytest.raises(QuotaUnavailable):
             await gateway.complete([], {"type":"object"},time.monotonic()+10,"check")
     assert len(calls)==1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("thinking,effort", [(False, "low"), (True, "medium")])
+async def test_invalid_reasoning_effort_never_sends(thinking, effort):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: pytest.fail("invalid effort must not send"))) as client:
+        with pytest.raises(ValueError, match="reasoning effort"):
+            await ModelGateway(registry_settings(), client).complete([], {}, time.monotonic()+10, "check",
+                deepseek_thinking=thinking, deepseek_reasoning_effort=effort)
 
 
 @pytest.mark.asyncio

@@ -746,16 +746,21 @@ def test_v9_wire_constraints_and_frozen_configuration_preserve_v8(tmp_path, monk
 @pytest.mark.asyncio
 @pytest.mark.parametrize("version,max_tokens,timeout", [("v8-20261023", 8192, 120), ("v9-20261024", 16384, 240)])
 @pytest.mark.parametrize("failure", ["truncated", "transport"])
+@pytest.mark.parametrize("effort,level,wire_effort", [(None, "A1", None), ("low", "A1", "low"),
+    ("low", "A2", "low"), ("low", "B1", None)])
 async def test_teacher_dispatch_uses_frozen_budget_and_marks_unknown_transport(
-        tmp_path, monkeypatch, version, max_tokens, timeout, failure):
+        tmp_path, monkeypatch, version, max_tokens, timeout, failure, effort, level, wire_effort):
     import time
     from app.providers.base import ProviderError
     artifact = gen.read_json(gen.ROOT / f"artifacts/prompts/conversation-reviewed-collection-{version}.json")
+    if effort:
+        artifact.setdefault("teacherGenerationConfig", {}).update(
+            reasoningEffortByLevel={"A1": effort, "A2": effort})
     manifest = {"teacher": {"model": "deepseek-test", "thinkingMode": "enabled"}}
     if "teacherGenerationConfig" in artifact:
         manifest["teacher"]["generationConfig"] = artifact["teacherGenerationConfig"]
-    context = {"difficulty": "A1", "turnNumber": 4, "levelProfile": {"minWords": 8, "maxWords": 35}}
-    entry = {"id": "new-item", "level": "A1", "context": context}
+    context = {"difficulty": level, "turnNumber": 4, "levelProfile": {"minWords": 8, "maxWords": 35}}
+    entry = {"id": "new-item", "level": level, "context": context}
     settings = SimpleNamespace(timeout_seconds=120, enabled_cloud_sources=(),
         model_copy=lambda *, update: SimpleNamespace(**update))
     calls = []
@@ -765,9 +770,11 @@ async def test_teacher_dispatch_uses_frozen_budget_and_marks_unknown_transport(
         async def complete(self, messages, schema, deadline, purpose, **kwargs):
             assert self.config.num_predict == max_tokens and self.config.timeout_seconds == timeout
             assert timeout - 2 < deadline - time.monotonic() <= timeout
+            assert kwargs.get("deepseek_reasoning_effort") == wire_effort
             await self.client.post("https://teacher.invalid/v1/chat/completions", json={
                 "model": "deepseek-test", "temperature": 0.2, "max_tokens": self.config.num_predict,
-                "thinking": {"type": "enabled"}})
+                "thinking": {"type": "enabled"},
+                **({"reasoning_effort": wire_effort} if wire_effort else {})})
             raise ProviderError("deepseek:teacher_batch:output_truncated")
     def respond(request):
         calls.append(json.loads(request.content))
@@ -970,8 +977,9 @@ def mixed_campaign(campaign):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("deepseek_only", [False, True])
 @pytest.mark.parametrize("failure", [None, "deepseek-quota", "gemini-unknown", "web-quota"])
-async def test_mixed_teachers_really_overlap_and_drain_on_failure(campaign, monkeypatch, failure):
+async def test_mixed_teachers_really_overlap_and_drain_on_failure(campaign, monkeypatch, failure, deepseek_only):
     path, settings = mixed_campaign(campaign)
     manifest, _ = collect.load(path)
     assert manifest["additionalTeachers"][0]["sourceIds"] == ["g1", "g2", "g3"]
@@ -984,15 +992,16 @@ async def test_mixed_teachers_really_overlap_and_drain_on_failure(campaign, monk
     async def teacher(path, contract, entry, group, artifact, folder, settings):
         provider = contract["teacher"]["provider"]
         calls.append(provider)
-        if len(calls) == 1:
+        ordinal = len(calls)
+        if ordinal == 1:
             first_started.set()
             await asyncio.wait_for(second_started.wait(), 2)
         else:
             assert first_started.is_set()
             second_started.set()
-        if failure == "deepseek-quota" and provider == "deepseek":
+        if failure == "deepseek-quota" and ordinal == 1:
             row = {**entry, "hardPass": False, "providerHttpStatus": 402, "sent": True}
-        elif failure == "gemini-unknown" and provider == "gemini":
+        elif failure == "gemini-unknown" and ordinal == 2:
             row = {**entry, "hardPass": False, "transportOutcomeUnknown": True, "sent": True}
         else:
             row = {**entry, "hardPass": True, "task": {"utteranceEn": "Original " + entry["id"]}}
@@ -1005,8 +1014,9 @@ async def test_mixed_teachers_really_overlap_and_drain_on_failure(campaign, monk
         gen.write_json(folder / f"{stem}.result.json", {"fixture": True})
     monkeypatch.setattr(run, "_teacher_one", teacher)
     monkeypatch.setattr(run, "_judge_one", judge)
-    result = await collect.collect(path, settings=settings, limit=2, overlap_web=True)
-    assert calls == ["deepseek", "gemini"] and result["attempted"] == 2
+    result = await collect.collect(path, settings=settings, limit=2, overlap_web=True,
+        deepseek_only=deepseek_only, teacher_concurrency=2)
+    assert calls == ["deepseek", "deepseek" if deepseek_only else "gemini"] and result["attempted"] == 2
     assert result["approvedTasks"] == 0  # Web never self-approves.
     if failure == "deepseek-quota":
         assert result["status"] == "WAITING_DEEPSEEK_QUOTA" and not web_calls
@@ -1036,29 +1046,42 @@ async def test_mixed_deepseek_zero_stops_both_providers_before_sending(campaign,
 
 
 @pytest.mark.asyncio
-async def test_deepseek_only_batches_and_flushes_tail_without_gemini(campaign, monkeypatch):
+@pytest.mark.parametrize("concurrency", [1, 2])
+async def test_deepseek_only_batches_and_flushes_tail_without_gemini(campaign, monkeypatch, concurrency):
     path, settings = mixed_campaign(campaign)
     original_manifest = (path / "manifest.json").read_bytes()
     monkeypatch.setattr(run, "quota_snapshot", lambda *a, platforms, **k:
                         {p: {"availableCalls": None} for p in platforms})
     monkeypatch.setattr(collect, "duplicate", lambda *a: False)
     teachers, groups = [], []
+    active, peak, web_active = 0, 0, 0
     async def teacher(path, contract, entry, group, artifact, folder, settings):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
         teachers.append(contract["teacher"]["provider"])
+        await asyncio.sleep(.01)
         row = {**entry, "hardPass": True, "task": {"utteranceEn": "Original " + entry["id"]}}
         gen.write_json(folder / f"{entry['id']}.teacher-result.json", row)
+        active -= 1
         return row
     async def batch(path, manifest, rows, *, folder):
+        nonlocal web_active
+        web_active += 1
+        assert web_active == 1
         groups.append([r["id"] for r in rows])
+        await asyncio.sleep(.01)
         for row in rows:
             gen.write_json(folder / f"{row['id']}.result.json", {"fixture": True})
+        web_active -= 1
     async def single(path, manifest, row, wire, stem, settings, *, folder):
         await batch(path, manifest, [row], folder=folder)
     monkeypatch.setattr(run, "_teacher_one", teacher)
     monkeypatch.setattr(run, "_judge_web_batch", batch)
     monkeypatch.setattr(run, "_judge_one", single)
     result = await collect.collect(path, settings=settings, limit=3, overlap_web=True,
-                                   deepseek_only=True, web_batch_size=2)
+                                   deepseek_only=True, web_batch_size=2, teacher_concurrency=concurrency)
+    assert peak == concurrency and active == web_active == 0
     assert teachers == ["deepseek"] * 3
     assert groups == [["candidate-0001", "candidate-0002"], ["candidate-0003"]]
     assert len(result["pending"]) == 3 and result["approvedTasks"] == 0
@@ -1137,7 +1160,8 @@ def test_rejected_batch_member_purges_shared_raw_but_keeps_hashes(campaign):
 
 
 @pytest.mark.asyncio
-async def test_mixed_cap_and_reserved_cells_bound_parallel_sends(campaign, monkeypatch):
+@pytest.mark.parametrize("deepseek_only", [False, True])
+async def test_mixed_cap_and_reserved_cells_bound_parallel_sends(campaign, monkeypatch, deepseek_only):
     path, settings = mixed_campaign(campaign)
     run._atomic_json(path / "state.json", {"status": "READY", "nextIndex": 1499})
     monkeypatch.setattr(run, "quota_snapshot", lambda *a, platforms, **k:
@@ -1147,12 +1171,14 @@ async def test_mixed_cap_and_reserved_cells_bound_parallel_sends(campaign, monke
         calls.append(entry["id"])
         return {**entry, "hardPass": False}
     monkeypatch.setattr(run, "_teacher_one", teacher)
-    result = await collect.collect(path, settings=settings, limit=8, overlap_web=True)
+    result = await collect.collect(path, settings=settings, limit=8, overlap_web=True,
+        deepseek_only=deepseek_only, teacher_concurrency=2)
     assert result["attempted"] == 1500 and calls == ["candidate-1500"]
 
 
 @pytest.mark.asyncio
-async def test_parallel_reservation_prevents_overfilling_the_last_cell(campaign, monkeypatch):
+@pytest.mark.parametrize("deepseek_only", [False, True])
+async def test_parallel_reservation_prevents_overfilling_the_last_cell(campaign, monkeypatch, deepseek_only):
     path, settings = mixed_campaign(campaign)
     original_status = collect.status
     def near_complete(path):
@@ -1174,7 +1200,8 @@ async def test_parallel_reservation_prevents_overfilling_the_last_cell(campaign,
         gen.write_json(folder / f"{stem}.result.json", {"fixture": True})
     monkeypatch.setattr(run, "_teacher_one", teacher)
     monkeypatch.setattr(run, "_judge_one", judge)
-    result = await collect.collect(path, settings=settings, limit=8, overlap_web=True)
+    result = await collect.collect(path, settings=settings, limit=8, overlap_web=True,
+        deepseek_only=deepseek_only, teacher_concurrency=2)
     assert calls == ["candidate-0001"] and result["pending"] == calls
 
 
@@ -1215,3 +1242,46 @@ async def test_teacher_wire_uses_exact_provider_model_and_thinking_contract(tmp_
     assert row["teacherProvider"] == provider and row["teacherSourceId"] == "account-test"
     with pytest.raises(DatasetError, match="refusing replay"):
         await run._teacher_one(tmp_path, manifest, entry, {}, artifact, tmp_path, settings)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["quota", "unknown", "exception", "duplicate"])
+async def test_two_deepseek_calls_observe_sibling_failure_before_refill(campaign, monkeypatch, failure):
+    path, settings = campaign
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, **k: {"deepseek": {"availableCalls": None}})
+    calls = []
+    sibling_done = asyncio.Event()
+    async def teacher(path, contract, entry, group, artifact, folder, settings):
+        calls.append(entry["id"])
+        if entry["id"] == "candidate-0001":
+            await asyncio.wait_for(sibling_done.wait(), 2)
+            await asyncio.sleep(.01)  # Failure completes out of order, before the head response.
+        else:
+            sibling_done.set()
+            if failure == "exception":
+                raise RuntimeError("Before-send setup failed")
+        row = {**entry, "hardPass": True, "task": {"utteranceEn": "Identical independently returned source text"}}
+        if entry["id"] == "candidate-0002" and failure != "duplicate":
+            row.update(hardPass=False, providerHttpStatus=429 if failure == "quota" else None,
+                       transportOutcomeUnknown=failure == "unknown", sent=True)
+        gen.write_json(folder / f"{entry['id']}.teacher-result.json", row)
+        return row
+    async def judge(path, manifest, row, wire, stem, settings, *, folder):
+        gen.write_json(folder / f"{stem}.result.json", {"fixture": True})
+    monkeypatch.setattr(run, "_teacher_one", teacher)
+    monkeypatch.setattr(run, "_judge_one", judge)
+    options = dict(settings=settings, limit=2 if failure == "duplicate" else 8,
+        teacher_concurrency=2, deepseek_only=True, overlap_web=True, web_batch_size=2)
+    if failure == "exception":
+        with pytest.raises(RuntimeError):
+            await collect.collect(path, **options)
+    else:
+        await collect.collect(path, **options)
+    state = collect.status(path)
+    assert calls == ["candidate-0001", "candidate-0002"]
+    assert (path / "candidates/candidate-0001.teacher-result.json").exists()
+    assert state["pending"] == ["candidate-0001"] and state["approvedTasks"] == 0
+    assert state["status"] == ("AWAITING_CODEX_REVIEW" if failure == "duplicate" else
+                               "WAITING_DEEPSEEK_QUOTA" if failure == "quota" else "BLOCKED")
+    if failure == "duplicate":
+        assert collect.decisions(path)[0]["reason"] == "exact-or-near-duplicate"

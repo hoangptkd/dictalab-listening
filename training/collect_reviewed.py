@@ -350,7 +350,8 @@ def reject(path: Path, row: dict, reason: str, *, reviewer: str = "automatic-har
 
 
 async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_failure: bool = False,
-                  overlap_web: bool = False, deepseek_only: bool = False, web_batch_size: int = 1) -> dict:
+                  overlap_web: bool = False, deepseek_only: bool = False, web_batch_size: int = 1,
+                  teacher_concurrency: int | None = None) -> dict:
     path = run._private_path(path)
     manifest, artifact = load(path)
     settings = settings or run.settings_from_registry()
@@ -366,6 +367,9 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
         raise DatasetError("collect limit must be positive")
     if web_batch_size not in (1, 2, 3):
         raise DatasetError("Web batch size must be one, two or three")
+    if teacher_concurrency is not None and (type(teacher_concurrency) is not int or teacher_concurrency not in (1, 2)):
+        raise DatasetError("teacher concurrency must be one or two")
+    concurrency = teacher_concurrency if teacher_concurrency is not None else len(teachers)
     with run._campaign_lock(path):
         verify_inherited(path, manifest)
         current = status(path)
@@ -550,7 +554,7 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                         elif result.get("providerHttpStatus") in {402, 429} or result.get("errorType") == "QuotaUnavailable":
                             provider = result.get("teacherProvider", "deepseek")
                             teacher_stop("WAITING_" + provider.upper() + "_QUOTA", provider + " quota or balance exhausted")
-                while scheduled < limit and len(teacher_jobs) < len(teachers) and not state.get("teacherStopStatus"):
+                while scheduled < limit and len(teacher_jobs) < concurrency and not state.get("teacherStopStatus"):
                     if not start_teacher():
                         break
                 if not teacher_jobs:
@@ -755,6 +759,8 @@ def main() -> int:
                         help="freeze Gemini 3.5 Flash-Lite accounts as parallel teachers on prepare")
     parser.add_argument("--overlap-web", action="store_true", help="overlap one teacher call with one Web review")
     parser.add_argument("--deepseek-only", action="store_true", help="disable additional teachers without changing frozen evidence")
+    parser.add_argument("--teacher-concurrency", type=int, choices=(1, 2),
+                        help="maximum in-flight teacher calls; default one per frozen provider")
     parser.add_argument("--web-batch-size", type=int, choices=(1, 2, 3), default=1,
                         help="independent articles per fresh Web conversation; default one")
     parser.add_argument("--retain-diagnostic-evidence", action="store_true",
@@ -772,7 +778,7 @@ def main() -> int:
     elif args.command == "collect":
         result = asyncio.run(collect(path, limit=args.limit, shutdown_on_failure=args.shutdown_on_worker_failure,
                                      overlap_web=args.overlap_web, deepseek_only=args.deepseek_only,
-                                     web_batch_size=args.web_batch_size))
+                                     web_batch_size=args.web_batch_size, teacher_concurrency=args.teacher_concurrency))
     elif args.command == "adjudicate":
         if not args.decision_file:
             parser.error("adjudicate requires --decision-file")
