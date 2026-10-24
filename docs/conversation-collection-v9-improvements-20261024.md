@@ -1,5 +1,29 @@
 # Cải thiện thu thập v9 — 24/10/2026
 
+## Mới nhất: áp dụng low cho A1/A2
+
+Chủ dự án yêu cầu áp dụng `low` sau pilot. Bài A1/A2 mới gửi
+`reasoning_effort=low`; B1/B2 giữ mặc định high của provider. Thinking vẫn bật,
+trần 16.384 token và timeout 240 giây giữ nguyên. Không đổi prompt, schema,
+rubric hoặc quyền duyệt Web; không thêm lại Codex duyệt độc lập.
+
+Artifact mới: `artifacts/prompts/conversation-reviewed-collection-v10-low-a1a2-20261024.json`.
+Chiến dịch tiếp nối: `data/fine-tuning/reviewed-500-v11-low-web-20261024`,
+snapshot **249 bài đạt / 419 ứng viên** từ v10-web. Giữ nguyên mọi quyết định,
+hash/manifest cũ, prefix gửi, quota/account state và trần 1.500 cộng dồn.
+Không prepare lại thư mục có sẵn, không reset quota hoặc hồi sinh bài loại.
+
+```powershell
+python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v11-low-web-20261024 --limit 8 --deepseek-only --teacher-concurrency 2 --web-batch-size 2 --overlap-web
+```
+
+Lịch tiếp tục dùng DeepSeek song song 2, Web theo cặp nối tiếp và tự chốt sau
+kiểm tra cứng + Web PASS. Tổng 400/48/52, audit trước SFT, không Gemini mới,
+không shutdown/watchdog. Low đã được chủ dự án chọn; pilot trước ghi nhận
+7/8 sau Codex so với high 8/8, chưa chứng minh chất lượng tương đương.
+Các quyết định giữ high/chưa áp dụng low trong phần lịch sử dưới đây hết hiệu lực
+đối với A1/A2 mới; quyết định loại mẫu diagnostic cũ vẫn giữ nguyên.
+
 ## Mới nhất: bỏ Codex duyệt từng bài theo yêu cầu chủ dự án
 
 Từ checkpoint **244 bài đạt / 411 ứng viên**, quyền quyết định bài mới chuyển

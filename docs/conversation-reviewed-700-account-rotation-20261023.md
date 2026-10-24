@@ -1,5 +1,12 @@
 # Thu thập 700 bài với hai tài khoản Web
 
+**Mới nhất 24/10: áp dụng low A1/A2 theo yêu cầu chủ dự án**, B1/B2 high mặc định.
+Chiến dịch tiếp nối `data/fine-tuning/reviewed-500-v11-low-web-20261024` giữ
+249 bài đạt/419 ứng viên, quota, lịch sử gửi và quyết định cũ. Các quy tắc Web
+theo cặp nối tiếp, đổi account chỉ khi quota rõ, chống replay, Web chốt sau
+kiểm tra cứng và không shutdown giữ nguyên. Xem
+[cấu hình hiện tại](conversation-collection-v9-improvements-20261024.md).
+
 **Mới nhất 24/10: chủ dự án bỏ Codex duyệt từng bài.** Chuyển sang bản tiếp nối
 `data/fine-tuning/reviewed-500-v10-web-20261024`, giữ 244 bài đạt/411 ứng viên và
 mọi quyết định cũ. Bài mới qua kiểm tra cứng + Web PASS đầy đủ thì tự chốt với

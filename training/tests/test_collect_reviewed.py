@@ -891,7 +891,7 @@ def test_v9_wire_constraints_and_frozen_configuration_preserve_v8(tmp_path, monk
 @pytest.mark.parametrize("version,max_tokens,timeout", [("v8-20261023", 8192, 120), ("v9-20261024", 16384, 240)])
 @pytest.mark.parametrize("failure", ["truncated", "transport"])
 @pytest.mark.parametrize("effort,level,wire_effort", [(None, "A1", None), ("low", "A1", "low"),
-    ("low", "A2", "low"), ("low", "B1", None)])
+    ("low", "A2", "low"), ("low", "B1", None), ("low", "B2", None)])
 async def test_teacher_dispatch_uses_frozen_budget_and_marks_unknown_transport(
         tmp_path, monkeypatch, version, max_tokens, timeout, failure, effort, level, wire_effort):
     import time

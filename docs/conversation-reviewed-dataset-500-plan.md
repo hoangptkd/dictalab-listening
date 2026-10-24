@@ -1,5 +1,12 @@
 # Thu thập dữ liệu đã duyệt và train Qwen3.5-4B
 
+**Mới nhất 24/10: chủ dự án áp dụng low cho A1/A2.** B1/B2 giữ high mặc định.
+Chiến dịch `data/fine-tuning/reviewed-500-v11-low-web-20261024` tiếp nối 249 bài
+đạt/419 ứng viên từ v10-web, không sửa hash hoặc quyết định cũ. Giữ kiểm tra
+cứng + Web chốt, DeepSeek song song 2, mục tiêu 400/48/52 và audit trước SFT;
+không Gemini mới, không Codex duyệt độc lập, không shutdown. Xem
+[cấu hình hiện tại](conversation-collection-v9-improvements-20261024.md).
+
 **Quyết định mới nhất 24/10: bỏ Codex duyệt từng bài.** Bài mới được nhận sau
 kiểm tra cứng và Web PASS có đủ bằng chứng; false/null loại, UNKNOWN chặn và
 không replay. Không viết independent notes hay override Web. Chiến dịch tiếp nối
