@@ -179,9 +179,11 @@ class QueryOptimizationIntegrationTest {
 
     @Test
     @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named="dictalab.testcontainers", matches="true")
+    @org.springframework.transaction.annotation.Transactional
     void listeningAggregateHandlesThousandUnitsAndHundredThousandSessions() {
+        // Roll back the scale fixture, including on failure, without 100,000 cascading deletes.
         assertThat(db.queryForObject("SELECT current_database()", String.class)).startsWith("dictalab_test");
-        AppUser owner = users.save(new AppUser("scale-query-" + UUID.randomUUID() + "@test.local", "Owner", "unused", Instant.now()));
+        AppUser owner = users.saveAndFlush(new AppUser("scale-query-" + UUID.randomUUID() + "@test.local", "Owner", "unused", Instant.now()));
         var source = db.queryForMap("SELECT id,lesson_id,audio_url FROM listening_units WHERE published=TRUE ORDER BY id LIMIT 1");
         String title = "scale-query-" + UUID.randomUUID();
         db.update("""
@@ -211,8 +213,5 @@ class QueryOptimizationIntegrationTest {
         var plan = db.queryForObject("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) " + queries.get(0), String.class,
                 owner.getId(),owner.getId(),owner.getId());
         System.out.println("QUERY_SCALE units=" + units.size() + " sessions=100000 plan=" + plan);
-        db.update("DELETE FROM practice_sessions WHERE user_id=?", owner.getId());
-        db.update("DELETE FROM listening_units WHERE title=?", title);
-        db.update("DELETE FROM lessons WHERE title=?", title);
     }
 }
