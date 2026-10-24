@@ -1,5 +1,14 @@
 # Thu thập 700 bài với hai tài khoản Web
 
+**Mới nhất 24/10: chủ dự án bỏ Codex duyệt từng bài.** Chuyển sang bản tiếp nối
+`data/fine-tuning/reviewed-500-v10-web-20261024`, giữ 244 bài đạt/411 ứng viên và
+mọi quyết định cũ. Bài mới qua kiểm tra cứng + Web PASS đầy đủ thì tự chốt với
+reviewer Web; false/null loại, thiếu bằng chứng/UNKNOWN chặn, không tự replay.
+Không cần independent notes hoặc override. Giữ Web theo cặp, hai DeepSeek đồng
+thời, high, không Gemini mới, không shutdown; tổng 500 = 400/48/52 rồi audit/SFT.
+Quy tắc chuyển tài khoản và chống gửi trùng giữ nguyên. Các yêu cầu Codex duyệt
+từng bài phía dưới là lịch sử. Xem [luồng hiện tại](conversation-collection-v9-improvements-20261024.md).
+
 **Mới nhất 24/10 sau pilot:** tổng vẫn 500 bài; high mặc định + hai DeepSeek
 in-flight bằng `--teacher-concurrency 2`, Web theo cặp nối tiếp, không Gemini mới.
 Low A1/A2 chưa áp dụng vì pilot Codex đạt 7/8 so với high 8/8. Chủ dự án đã hủy

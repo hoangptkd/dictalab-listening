@@ -1,6 +1,6 @@
-"""Fresh, quota-bound teacher collection with explicit delegated Codex approval.
+"""Fresh, quota-bound teacher collection with frozen delegated AI review authority.
 
-No benchmark score gate, repair, replay, automatic approval, or production release.
+No benchmark score gate, repair, replay, or production release.
 """
 from __future__ import annotations
 
@@ -19,12 +19,13 @@ import shutil
 from training import generate_teacher_data as gen
 from training import iterate_teacher as run
 from training.prepare_dataset import COLLECTION_POLICY, DatasetError, _split, prepare as prepare_dataset
-from training.semantic_rubric import CHECKS, VERSION_V3, rules_for
+from training.semantic_rubric import CHECKS, VERSION_V3, decision, rules_for
 
 LEVELS = ("A1", "A2", "B1", "B2")
 TARGETS = {"train": 125, "validation": 25, "test": 25}
 TARGETS_500 = {"train": 100, "validation": 12, "test": 13}
 ARTIFACT = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v9-20261024.json"
+WEB_AUTHORITY = "delegated AI:chatgpt-web; hard checks and complete Web PASS, no Codex adjudication"
 
 
 def normalized(text: str) -> str:
@@ -64,7 +65,8 @@ def prior_corpus() -> list[str]:
 def prepare(path: Path, settings=None, *, diagnostic: bool = False,
             retain_diagnostic_evidence: bool = False, artifact_path: Path | None = None,
             web_accounts: list[dict] | None = None, continue_from: Path | None = None,
-            gemini_teacher: bool = False, total_articles: int = 700) -> dict:
+            gemini_teacher: bool = False, total_articles: int = 700,
+            web_approval: bool = False) -> dict:
     if retain_diagnostic_evidence and not diagnostic:
         raise DatasetError("full rejection evidence retention requires a diagnostic campaign")
     path = run._private_path(path)
@@ -136,6 +138,8 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
         "targetsPerLevel": targets,
         "groups": groups, "holdouts": sorted(set(holdouts)), "priorCorpusHash": gen.digest(corpus),
         "approvalAuthority": "delegated AI:Codex; independent per-item review, no automatic approval"}
+    if web_approval:
+        manifest["approvalAuthority"] = WEB_AUTHORITY
     if web_accounts:
         manifest["judge"]["accounts"] = web_accounts
         manifest["judge"]["url"] = web_accounts[0]["url"]
@@ -349,11 +353,66 @@ def reject(path: Path, row: dict, reason: str, *, reviewer: str = "automatic-har
         file.unlink()
 
 
+def _validate_web_review(row: dict, review: dict, manifest: dict) -> None:
+    if not run._review_integrity(row, review, manifest):
+        raise DatasetError("Web approval evidence is invalid or changed")
+    if decision({**review["checks"], "issues": review["issues"]}) != "PASS":
+        raise DatasetError("Web approval requires every check to pass")
+    # Recheck persisted fact/semantic evidence even after shared rejected raw is purged.
+    verdict = {"id": row["id"], **review["checks"], "issues": [],
+               "factAudit": review.get("factAudit", [])}
+    _, schema = run._web_judge_body(row, row["id"], manifest)
+    strict = {"items": [verdict]}
+    run.Draft202012Validator(schema).validate(strict)
+    run._web_review(row, manifest, verdict, {}, strict, {}, review.get("webAccount"))
+
+
+def _finalize_web(path: Path, manifest: dict, state: dict) -> None:
+    if manifest.get("approvalAuthority") != WEB_AUTHORITY:
+        return
+    folder = path / "candidates"
+    try:
+        for ident in status(path)["pending"]:
+            review_file = folder / f"{ident}.result.json"
+            if not review_file.exists():
+                continue
+            row = gen.read_json(folder / f"{ident}.teacher-result.json")
+            review = gen.read_json(review_file)
+            if not run._review_integrity(row, review, manifest):
+                raise DatasetError("Web result has invalid evidence; inspect without replay")
+            if decision({**review["checks"], "issues": review["issues"]}) != "PASS":
+                failed = ",".join(key for key in CHECKS if review["checks"][key] is not True)
+                reject(path, row, "web-non-pass:" + failed, reviewer=review["reviewer"])
+                continue
+            _validate_web_review(row, review, manifest)
+            if status(path)["counts"][row["split"]][row["level"]] >= manifest["targetsPerLevel"][row["split"]]:
+                raise DatasetError("level/split target already full")
+            result = {key: row[key] for key in ("id", "groupId", "split", "level")}
+            result.update(verdict="approved", reviewer=review["reviewer"],
+                reason="Hard checks and complete grounded Web PASS; no independent Codex review.",
+                taskHash=gen.digest(row["task"]), contextHash=gen.digest(row["context"]),
+                webReviewHash=gen.digest(review), checks=review["checks"],
+                factEvidence=review["factAudit"], webAccount=review.get("webAccount"),
+                modelIdentity=review.get("modelIdentity", "unverified-web-alias"),
+                returnedModel=review.get("returnedModel"), time=run._now())
+            run._atomic_json(path / "decisions" / f"{ident}.json", result)
+        current = status(path)
+        if state["status"] in {"READY", "RUNNING", "AWAITING_CODEX_REVIEW", "AWAITING_WEB_REVIEW"}:
+            state["status"] = "AWAITING_WEB_REVIEW" if current["pending"] else "COMPLETE" if current["complete"] else "READY"
+    except Exception as error:
+        state.update(status="BLOCKED", errorType=type(error).__name__)
+        raise
+    finally:
+        run._atomic_json(path / "state.json", state)
+
+
 async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_failure: bool = False,
                   overlap_web: bool = False, deepseek_only: bool = False, web_batch_size: int = 1,
                   teacher_concurrency: int | None = None) -> dict:
     path = run._private_path(path)
     manifest, artifact = load(path)
+    web_approval = manifest.get("approvalAuthority") == WEB_AUTHORITY
+    review_state = "AWAITING_WEB_REVIEW" if web_approval else "AWAITING_CODEX_REVIEW"
     settings = settings or run.settings_from_registry()
     teachers = [manifest["teacher"], *manifest.get("additionalTeachers", [])]
     if deepseek_only:
@@ -375,6 +434,11 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
         current = status(path)
         state = gen.read_json(path / "state.json")
         folder = path / "candidates"
+        if state["status"] in {"RUNNING", "PREPARING"}:
+            raise DatasetError("unresolved worker/request outcome; inspect checkpoint before continuing")
+        had_pending = bool(current["pending"])
+        _finalize_web(path, manifest, state)
+        current = status(path)
         watchdog = None
         def arm_watchdog():
             nonlocal watchdog
@@ -393,7 +457,7 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
 
         if state["status"] == "WAITING_WEB_QUOTA":
             waiting = [state["currentId"]]
-        elif state["status"] == "AWAITING_CODEX_REVIEW":
+        elif state["status"] in {"AWAITING_CODEX_REVIEW", "AWAITING_WEB_REVIEW"}:
             # An overlapped teacher may finish while the previous Web call hits quota.
             # Only an unsent saved row can be dispatched here; _judge_one guards replay.
             waiting = [ident for ident in current["pending"]
@@ -419,10 +483,13 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                 state.update(status="BLOCKED", currentId=ident, errorType=type(error).__name__)
                 run._atomic_json(path / "state.json", state)
                 raise
-            state.update(status="AWAITING_CODEX_REVIEW")
+            state.update(status=review_state)
             run._atomic_json(path / "state.json", state)
         if waiting:
+            _finalize_web(path, manifest, state)
             return status(path)
+        if had_pending and not current["pending"]:
+            return current
         if current["pending"] or current["complete"] or state["status"] in {"WAITING_DEEPSEEK_QUOTA", "WAITING_GEMINI_QUOTA"}:
             return current
         if state["status"] in {"RUNNING", "BLOCKED", "PREPARING"}:
@@ -462,8 +529,8 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
             quota = run.quota_snapshot(settings, platforms=platforms)
             for provider in platforms:
                 if quota[provider]["availableCalls"] == 0:
-                    state.update(status=("WAITING_" + provider.upper() + "_QUOTA") if len(teachers) > 1
-                                 else "AWAITING_CODEX_REVIEW" if current["pending"] else "WAITING_QUOTA",
+                    state.update(status=("WAITING_" + provider.upper() + "_QUOTA") if len(teachers) > 1 or web_approval
+                                 else review_state if current["pending"] else "WAITING_QUOTA",
                                  quota=quota, stopReason=provider + " quota pool exhausted")
                     teacher_stop(state["status"], state["stopReason"])
                     return False
@@ -480,7 +547,7 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
             cells = [(s, level) for s, target in manifest["targetsPerLevel"].items() for level in LEVELS
                      if current["counts"][s][level] + reserved[s, level] < target]
             if not cells:
-                state["status"] = "AWAITING_CODEX_REVIEW"
+                state["status"] = review_state
                 return False
             split, level = (preferred_split, preferred_level) if (preferred_split, preferred_level) in cells else cells[0]
             choices = [g for g in manifest["groups"] if g["split"] == split and g["level"] == level]
@@ -585,15 +652,15 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                     state["status"] = "RUNNING"
                     run._atomic_json(path / "state.json", state)
                     print(json.dumps({"candidate": ident, "level": level, "hardPass": row["hardPass"],
-                                      "pendingIndependentReview": (folder / f"{ident}.teacher-result.json").exists()}), flush=True)
+                                      "pendingReview": (folder / f"{ident}.teacher-result.json").exists()}), flush=True)
                 except run.web_accounts.WebQuotaWait as error:
                     state.update(status=state.get("teacherStopStatus", "BLOCKED" if state["status"] == "BLOCKED"
                                                   else "WAITING_WEB_QUOTA"), retryAt=error.retry_at)
                     break
                 except run.QuotaUnavailable:
                     provider = entry["teacherProvider"]
-                    teacher_stop("WAITING_" + provider.upper() + "_QUOTA" if len(teachers) > 1 else
-                                 "AWAITING_CODEX_REVIEW" if status(path)["pending"] else "WAITING_QUOTA",
+                    teacher_stop("WAITING_" + provider.upper() + "_QUOTA" if len(teachers) > 1 or web_approval else
+                                 review_state if status(path)["pending"] else "WAITING_QUOTA",
                                  provider + " quota unavailable")
                     state["status"] = state["teacherStopStatus"]
                     break
@@ -629,7 +696,7 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                     state.update(status="BLOCKED", errorType=type(error).__name__)
                     run._atomic_json(path / "state.json", state)
                     raise
-            if web_buffer and state["status"] in {"RUNNING", "CANDIDATE_CAP", "AWAITING_CODEX_REVIEW"} and not state.get("teacherStopStatus"):
+            if web_buffer and state["status"] in {"RUNNING", "CANDIDATE_CAP", review_state} and not state.get("teacherStopStatus"):
                 state["currentId"] = web_buffer[0]["id"]
                 try:
                     if len(web_buffer) > 1:
@@ -642,9 +709,10 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
                     state.update(status="BLOCKED", errorType=type(error).__name__)
                     run._atomic_json(path / "state.json", state)
                     raise
+            _finalize_web(path, manifest, state)
             run._atomic_json(path / "state.json", state)
         if state["status"] == "RUNNING":
-            state["status"] = "AWAITING_CODEX_REVIEW"
+            state["status"] = review_state
         run._atomic_json(path / "state.json", state)
         if shutdown_on_failure and watchdog is None:
             from training.shutdown_watchdog import request_shutdown, shutdown_reason
@@ -656,6 +724,8 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
 
 def adjudicate(path: Path, verdict: dict) -> dict:
     manifest, _ = load(path)
+    if manifest.get("approvalAuthority") == WEB_AUTHORITY:
+        raise DatasetError("Web-authority collection does not accept Codex adjudication")
     ident = verdict["id"]
     if not re.fullmatch(r"candidate-\d{4}", ident):
         raise DatasetError("invalid candidate id")
@@ -709,7 +779,7 @@ def export(path: Path) -> dict:
         raise DatasetError("diagnostic experiments cannot be exported for SFT")
     if not status(path)["complete"] or status(path)["pending"]:
         total = sum(manifest["targetsPerLevel"].values()) * len(LEVELS)
-        raise DatasetError(f"all {total} independently approved tasks are required before dataset export")
+        raise DatasetError(f"all {total} approved tasks are required before dataset export")
     verify_inherited(path, manifest)
     extra_artifacts = []
     inherited = manifest
@@ -722,12 +792,21 @@ def export(path: Path) -> dict:
     output = path / "export"
     output.mkdir()
     rows = []
+    reviewers = {}
     for item in decisions(path):
         if item["verdict"] == "approved":
             row = gen.read_json(path / "candidates" / f"{item['id']}.teacher-result.json")
+            if item["reviewer"] == "AI:chatgpt-web":
+                review = gen.read_json(path / "candidates" / f"{item['id']}.result.json")
+                if (item["taskHash"] != gen.digest(row["task"]) or
+                        item["contextHash"] != gen.digest(row["context"]) or
+                        item["webReviewHash"] != gen.digest(review)):
+                    raise DatasetError("Web decision evidence changed before export")
+                _validate_web_review(row, review, manifest)
             for record in row["records"]:
                 record["semanticReviewReference"] = str(path / "decisions" / f"{item['id']}.json")
                 rows.append(record)
+                reviewers[record["id"]] = item["reviewer"]
     source = output / "approved.jsonl"
     source.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8", newline="\n")
     review_file = output / "decisions.csv"
@@ -735,7 +814,7 @@ def export(path: Path) -> dict:
         writer = csv.DictWriter(handle, fieldnames=["id", "decision", "reviewer", "inputHash", "outputHash"])
         writer.writeheader()
         for row in rows:
-            writer.writerow({"id": row["id"], "decision": "approved", "reviewer": "AI:Codex",
+            writer.writerow({"id": row["id"], "decision": "approved", "reviewer": reviewers[row["id"]],
                              "inputHash": row["inputHash"], "outputHash": row["outputHash"]})
     return prepare_dataset([source], review_file, output / "dataset", artifact_path=Path(manifest["artifactPath"]),
         forced_test_groups=set(manifest["holdouts"]), review_policy="delegated-ai",
@@ -754,6 +833,8 @@ def main() -> int:
     parser.add_argument("--web-account", action="append", default=[], metavar="ID=URL",
                         help="repeat for independent local bridge accounts; switch only on explicit Web quota")
     parser.add_argument("--diagnostic", action="store_true", help="prepare an experiment excluded from SFT")
+    parser.add_argument("--web-approval", action="store_true",
+                        help="freeze Web PASS as final approval authority on prepare; no Codex adjudication")
     parser.add_argument("--continue-from", type=Path, help="snapshot a fully decided main campaign on prepare")
     parser.add_argument("--gemini-teacher", action="store_true",
                         help="freeze Gemini 3.5 Flash-Lite accounts as parallel teachers on prepare")
@@ -774,7 +855,7 @@ def main() -> int:
                          retain_diagnostic_evidence=args.retain_diagnostic_evidence, artifact_path=args.artifact,
                          web_accounts=[dict(zip(("id", "url"), item.split("=", 1))) for item in args.web_account] or None,
                          continue_from=args.continue_from, gemini_teacher=args.gemini_teacher,
-                         total_articles=args.total_articles)
+                         total_articles=args.total_articles, web_approval=args.web_approval)
     elif args.command == "collect":
         result = asyncio.run(collect(path, limit=args.limit, shutdown_on_failure=args.shutdown_on_worker_failure,
                                      overlap_web=args.overlap_web, deepseek_only=args.deepseek_only,

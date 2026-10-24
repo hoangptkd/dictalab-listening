@@ -1,5 +1,14 @@
 # Thu thập dữ liệu đã duyệt và train Qwen3.5-4B
 
+**Quyết định mới nhất 24/10: bỏ Codex duyệt từng bài.** Bài mới được nhận sau
+kiểm tra cứng và Web PASS có đủ bằng chứng; false/null loại, UNKNOWN chặn và
+không replay. Không viết independent notes hay override Web. Chiến dịch tiếp nối
+`data/fine-tuning/reviewed-500-v10-web-20261024` giữ 244 bài/411 ứng viên cùng mọi
+quyết định cũ; manifest/hash cũ giữ nguyên. Export ghi đúng reviewer từng bài.
+Tổng 400/48/52, high, DeepSeek song song 2, Web theo cặp, audit trước SFT,
+không Gemini mới và không shutdown vẫn áp dụng. Các yêu cầu Codex duyệt bài
+bên dưới là lịch sử. Xem [luồng hiện tại](conversation-collection-v9-improvements-20261024.md).
+
 Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các báo cáo benchmark cũ giữ nguyên.
 
 **Cập nhật sau pilot 24/10/2026:** chủ dự án đã hủy tắt máy; không shutdown hoặc

@@ -1,5 +1,44 @@
 # Cải thiện thu thập v9 — 24/10/2026
 
+## Mới nhất: bỏ Codex duyệt từng bài theo yêu cầu chủ dự án
+
+Từ checkpoint **244 bài đạt / 411 ứng viên**, quyền quyết định bài mới chuyển
+sang **kiểm tra cứng + Web PASS đầy đủ**. Không cần `independent-notes.json`,
+`apply-independent-notes.py` hoặc Codex đối chiếu từng fact. Web false/null sẽ
+loại bài; không còn override lỗi giả. Lưu reviewer `AI:chatgpt-web`, hash nguồn,
+context và kết quả Web, audit từng fact, account và model đã biết/chưa xác minh.
+Kết quả thiếu/sai bằng chứng hoặc UNKNOWN không được nhận và không tự gửi lại.
+
+Manifest cũ khóa quyền Codex nên giữ nguyên, không sửa hash. Tạo **một bản tiếp
+nối** `data/fine-tuning/reviewed-500-v10-web-20261024` bằng `prepare --web-approval
+--continue-from data/fine-tuning/reviewed-500-v9-deepseek-20261024 --total-articles 500`
+với cùng artifact v9 và hai bridge cũ. Không chạy prepare lại vào thư mục đã có.
+Giữ nguyên toàn bộ 411 quyết định, 244 bài đạt, prefix gửi, quota/account state
+và trần 1.500 cộng dồn; bài đã loại không được hồi sinh. Export giữ đúng reviewer
+Codex của bài cũ và Web của bài mới, không đổi nhãn thành duyệt bởi con người.
+
+Luồng thu thập tự chốt kết quả đã lưu khi hết lô hoặc tiếp tục sau checkpoint:
+
+```powershell
+python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v10-web-20261024 --limit 8 --deepseek-only --teacher-concurrency 2 --web-batch-size 2 --overlap-web
+```
+
+Giữ thinking high, không Gemini mới, hai DeepSeek đồng thời, một Web request mỗi
+lúc theo cặp trong hội thoại mới. Không shutdown/watchdog. Tổng 500 = 400/48/52,
+mỗi mức 100/12/13; đủ bài và không pending mới audit provenance, phân bổ, hash,
+exact/near duplicate, holdout, schema/content/translation và export trước SFT.
+Audit không thêm lại bước Codex duyệt riêng từng bài. Data/loss-mask gates giữ nguyên.
+
+Kiểm tra thay đổi: 281 test training đạt, 1 bỏ qua; nhóm collection 132 đạt,
+UTF-8/compile/diff đạt. Có kiểm tra PASS/false/null, hash/fact sai, UNKNOWN không
+gửi lại, quota không mất trạng thái dừng, hai teacher và Web nối tiếp, kế thừa
+quyết định cũ và export đúng reviewer; bằng chứng Web bị sửa sau duyệt sẽ bị chặn.
+
+Đây là thay đổi quyền duyệt, không phải bằng chứng chất lượng tăng. Pilot trước
+đã có một bài Web PASS mà Codex loại; quyết định loại đó vẫn giữ nguyên ngoài
+bộ chính. Các yêu cầu Codex duyệt từng bài trong phần lịch sử dưới đây hết hiệu lực
+cho bài mới của chiến dịch tiếp nối.
+
 ## Mới nhất: pilot effort A1/A2 và hai lời gọi DeepSeek
 
 Đã thử thật 16 ứng viên diagnostic, ngoài SFT và ngoài trần ứng viên của bộ chính:

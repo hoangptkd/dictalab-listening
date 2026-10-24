@@ -230,6 +230,150 @@ def review_fixture(path):
     return row, review, verdict
 
 
+def web_campaign(campaign):
+    parent, settings = campaign
+    path = parent.parent / "web-authority"
+    collect.prepare(path, settings, continue_from=parent, total_articles=500, web_approval=True)
+    return path, settings
+
+
+def web_fixture(path):
+    row, review, _ = review_fixture(path)
+    review["factAudit"] = [{"index": 0, "sourceQuote": "opens at ten", "claimSupported": True,
+        "translationSupported": True, "basis": "Direct source evidence.",
+        "expectedTaskType": "direct_detail", "answerScopeSupported": True,
+        "newMeaningSupported": True, "attributesSupported": True, "historyQuote": None}]
+    review["webAccount"] = {"accountId": "account-1"}
+    return row, review
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", [None, "false", "null", "hash", "fact", "missing", "running", "blocked"])
+async def test_web_final_decisions_use_saved_evidence_without_calls(campaign, monkeypatch, fault):
+    parent, _ = campaign
+    original = (parent / "manifest.json").read_bytes()
+    path, settings = web_campaign(campaign)
+    row, review = web_fixture(path)
+    if fault in {"false", "null"}:
+        review["checks"]["translationFaithful"] = False if fault == "false" else None
+        review["issues"] = [{"check": "translationFaithful", "sourceQuote": "opens at ten",
+            "explanation": "Fixture defect.", "severity": "major" if fault == "false" else "uncertain"}]
+    elif fault == "hash":
+        review["taskHash"] = "c" * 64
+    elif fault == "fact":
+        review["factAudit"][0]["sourceQuote"] = "a foreign quote"
+    gen.write_json(path / "candidates/candidate-0001.teacher-result.json", row)
+    if fault != "missing":
+        gen.write_json(path / "candidates/candidate-0001.result.json", review)
+    run._atomic_json(path / "state.json", {"status": "RUNNING" if fault == "running" else
+        "BLOCKED" if fault in {"blocked", "missing"} else "AWAITING_WEB_REVIEW", "nextIndex": 1})
+    def unexpected(*args, **kwargs):
+        pytest.fail("saved/unknown outcomes must not send teacher or Web calls")
+    monkeypatch.setattr(run, "_teacher_one", unexpected)
+    monkeypatch.setattr(run, "_judge_one", unexpected)
+    if fault in {"hash", "fact", "running"}:
+        with pytest.raises(DatasetError):
+            await collect.collect(path, settings=settings)
+        assert collect.status(path)["approvedTasks"] == 0
+    else:
+        result = await collect.collect(path, settings=settings)
+        if fault in {"false", "null"}:
+            item = collect.decisions(path)[0]
+            assert item["verdict"] == "rejected" and item["reviewer"] == "AI:chatgpt-web"
+            assert item["reason"] == "web-non-pass:translationFaithful"
+            assert not list((path / "candidates").glob("candidate-0001.*"))
+        elif fault == "missing":
+            assert result["status"] == "BLOCKED" and result["pending"] == [row["id"]]
+        else:
+            item = collect.decisions(path)[0]
+            assert result["approvedTasks"] == 1 and not result["pending"]
+            assert result["status"] == ("BLOCKED" if fault == "blocked" else "READY")
+            assert item["reviewer"] == "AI:chatgpt-web" and item["webReviewHash"] == gen.digest(review)
+            assert item["webAccount"] == review["webAccount"] and "webOverrides" not in item
+    assert (parent / "manifest.json").read_bytes() == original
+    with pytest.raises(DatasetError, match="does not accept Codex"):
+        collect.adjudicate(path, {})
+
+
+@pytest.mark.asyncio
+async def test_web_authority_finalizes_parallel_teacher_serial_web_batch(campaign, monkeypatch):
+    path, settings = web_campaign(campaign)
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, **k: {"deepseek": {"availableCalls": None}})
+    monkeypatch.setattr(collect, "duplicate", lambda *a: False)
+    peak = active = 0
+    groups = []
+    async def teacher(path, contract, entry, group, artifact, folder, settings):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(.01)
+        row, _ = web_fixture(path)
+        row.update(entry)
+        gen.write_json(folder / f"{row['id']}.teacher-result.json", row)
+        active -= 1
+        return row
+    async def dispatch(path, folder, stem, body, accounts):
+        payload = json.loads(body["messages"][0]["content"].split("\nAUDIT_INPUT:\n")[1])
+        groups.append([item["id"] for item in payload["items"]])
+        _, review = web_fixture(path)
+        items = [{"id": item["id"], **review["checks"], "issues": [], "factAudit": review["factAudit"]}
+                 for item in payload["items"]]
+        envelope = {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps({"items": items})}}]}
+        return httpx.Response(200, request=httpx.Request("POST", "http://localhost/")), envelope, {"accountId": "a"}
+    monkeypatch.setattr(run, "_teacher_one", teacher)
+    monkeypatch.setattr(run.web_accounts, "dispatch", dispatch)
+    result = await collect.collect(path, settings=settings, limit=4, teacher_concurrency=2,
+                                   web_batch_size=2, overlap_web=True)
+    assert peak == 2 and active == 0
+    assert groups == [["candidate-0001", "candidate-0002"], ["candidate-0003", "candidate-0004"]]
+    assert result["approvedTasks"] == 4 and not result["pending"] and result["status"] == "READY"
+    assert {item["reviewer"] for item in collect.decisions(path)} == {"AI:chatgpt-web"}
+
+
+@pytest.mark.parametrize("tamper", [False, True])
+def test_export_preserves_mixed_reviewers_and_rechecks_web_evidence(campaign, monkeypatch, tamper):
+    parent, _ = campaign
+    row, review, verdict = review_fixture(parent)
+    row["records"] = [{"id": "old", "inputHash": "a", "outputHash": "b"}]
+    gen.write_json(parent / "candidates/candidate-0001.teacher-result.json", row)
+    gen.write_json(parent / "candidates/candidate-0001.result.json", review)
+    collect.adjudicate(parent, verdict)
+    run._atomic_json(parent / "state.json", {"status": "READY", "nextIndex": 1})
+    path, _ = web_campaign(campaign)
+    row, review = web_fixture(path)
+    row.update(id="candidate-0002", records=[{"id": "new", "inputHash": "c", "outputHash": "d"}])
+    gen.write_json(path / "candidates/candidate-0002.teacher-result.json", row)
+    gen.write_json(path / "candidates/candidate-0002.result.json", review)
+    state = {"status": "AWAITING_WEB_REVIEW", "nextIndex": 2}
+    run._atomic_json(path / "state.json", state)
+    manifest, _ = collect.load(path)
+    collect._finalize_web(path, manifest, state)
+    original_status = collect.status
+    monkeypatch.setattr(collect, "status", lambda p: {**original_status(p), "complete": True})
+    monkeypatch.setattr(collect, "prepare_dataset", lambda *a, **k: {})
+    if tamper:
+        review["factAudit"][0]["sourceQuote"] = "Changed after approval"
+        run._atomic_json(path / "candidates/candidate-0002.result.json", review)
+        with pytest.raises(DatasetError, match="evidence changed"):
+            collect.export(path)
+        return
+    collect.export(path)
+    import csv
+    with (path / "export/decisions.csv").open(encoding="utf-8") as handle:
+        assert {r["id"]: r["reviewer"] for r in csv.DictReader(handle)} == {
+            "old": "AI:Codex", "new": "AI:chatgpt-web"}
+
+
+@pytest.mark.asyncio
+async def test_web_authority_quota_never_clears_stop_or_sends(campaign, monkeypatch):
+    path, settings = web_campaign(campaign)
+    monkeypatch.setattr(run, "quota_snapshot", lambda *a, **k: {"deepseek": {"availableCalls": 0}})
+    for _ in range(2):
+        result = await collect.collect(path, settings=settings, teacher_concurrency=2)
+        assert result["status"] == "WAITING_DEEPSEEK_QUOTA" and result["attempted"] == 0
+    assert not (path / "sent-index.jsonl").exists()
+
+
 @pytest.mark.parametrize("fault", [None, "stale-hash", "missing-evidence", "unsupported-override"])
 def test_adjudication_requires_hash_bound_independent_evidence(campaign, fault):
     path, _ = campaign
