@@ -14,7 +14,9 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
@@ -148,7 +150,8 @@ class SpaRoutingTest {
     @Test
     void adminPagesAndDocumentRequireAdminRole() throws Exception {
         for (String path : new String[]{"/admin", "/admin/", "/admin.html", "/admin/lessons",
-                "/admin/lessons/new", "/admin/lessons/1", "/admin/users", "/admin/support", "/admin/listening"}) {
+                "/admin/lessons/new", "/admin/lessons/1", "/admin/users", "/admin/support", "/admin/listening",
+                "/admin/training", "/admin/training/", "/admin/training.html"}) {
             mockMvc.perform(get(path)).andExpect(status().isFound())
                     .andExpect(redirectedUrl("/login?next=" + java.net.URLEncoder.encode(
                             path, java.nio.charset.StandardCharsets.UTF_8)));
@@ -157,6 +160,37 @@ class SpaRoutingTest {
         }
         mockMvc.perform(get("/admin/lessons/42?page=3"))
                 .andExpect(redirectedUrl("/login?next=%2Fadmin%2Flessons%2F42%3Fpage%3D3"));
+    }
+
+    @Test
+    void trainingDocumentAndRouteAreAdminOnlyAndRuntimeIsExplicitlyDisabled() throws Exception {
+        var admin = user(DictaLabPrincipal.from(adminUser));
+        mockMvc.perform(get("/admin/training").with(admin))
+                .andExpect(status().isOk()).andExpect(forwardedUrl("/admin/training.html"));
+        mockMvc.perform(get("/admin/training.html").with(admin))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("id=\"studio-main\"")));
+        mockMvc.perform(get("/api/admin/training")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/admin/training").with(user(DictaLabPrincipal.from(user))))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/admin/training").with(admin))
+                .andExpect(status().isServiceUnavailable()).andExpect(header().string("Cache-Control", "no-store"));
+    }
+
+    @Test
+    void trainingCommandsRequireAdminAndCsrfBeforeReachingRuntime() throws Exception {
+        for (String path : new String[]{"/api/admin/training/runs", "/api/admin/training/runs/abc/start",
+                "/api/admin/training/runs/abc/resume", "/api/admin/training/runs/abc/pause", "/api/admin/training/runs/abc/stop"}) {
+            mockMvc.perform(post(path).with(user(DictaLabPrincipal.from(adminUser)))
+                            .contentType("application/json").content("{}"))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(post(path).with(user(DictaLabPrincipal.from(user))).with(csrf())
+                            .contentType("application/json").content("{}"))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(post(path).with(user(DictaLabPrincipal.from(adminUser))).with(csrf())
+                            .contentType("application/json").content("{}"))
+                    .andExpect(status().isServiceUnavailable());
+        }
     }
 
     @Test

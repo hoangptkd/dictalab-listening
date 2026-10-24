@@ -107,6 +107,9 @@ public class SpaController {
         return ADMIN;
     }
 
+    @GetMapping({"/admin/training", "/admin/training/"})
+    public String trainingStudio() { return "forward:/admin/training.html"; }
+
     @GetMapping("/admin/lessons")
     public String adminLessons() {
         return ADMIN;

@@ -73,17 +73,22 @@ def run_smoke(output: Path) -> dict:
     epoch_trainer = make_trainer(model, tokenizer, features, features, config, epoch_output / "checkpoints", smoke=False)
 
     class StopAfterFirstStep(TrainerCallback):
-        def on_step_end(self, args, state, control, **kwargs):
-            control.should_training_stop = state.global_step == 1
+        def on_step_begin(self, args, state, control, **kwargs):
+            if state.global_step == 0:
+                (epoch_output / "control-request.json").write_text(json.dumps({"action": "pause"}), encoding="utf-8")
             return control
 
     epoch_trainer.add_callback(StopAfterFirstStep())
     first_result = epoch_trainer.train()
     if first_result.global_step != 1:
         raise RuntimeError("recovery fixture did not stop after its first optimizer step")
+    progress = json.loads((epoch_output / "training-progress.json").read_text(encoding="utf-8"))
+    if progress["step"] != 1 or any("eval_loss" in row for row in progress["history"]):
+        raise RuntimeError("pause did not preserve step progress or evaluated a partial epoch")
     run_inputs = {"fixture": "tiny-random-cpu", "seed": 17}
     (epoch_output / "run-inputs.json").write_text(json.dumps(run_inputs), encoding="utf-8")
     checkpoint = check_resume_checkpoint(epoch_output, epoch_output / "checkpoints/checkpoint-1", run_inputs)
+    (epoch_output / "control-request.json").rename(epoch_output / "control-request.paused.json")
     epoch_trainer = make_trainer(model, tokenizer, features, features, config, epoch_output / "checkpoints", smoke=False)
     epoch_result = epoch_trainer.train(resume_from_checkpoint=str(checkpoint))
     if epoch_result.global_step != 2:
@@ -103,6 +108,7 @@ def run_smoke(output: Path) -> dict:
               "optimizerUpdatedAdapter": True, "freshModelAdapterReload": True,
               "epochLoopSteps": epoch_result.global_step, "bestCheckpointReload": True,
               "recoveryCheckpointVerified": True, "resumedOptimizerState": True,
+              "pauseFinishedStepAndSavedState": True, "pauseSkippedPartialEpochEvaluation": True,
               "adapterHash": file_hash(output / "adapter/adapter_model.safetensors")}
     write_report(output, report)
     return report

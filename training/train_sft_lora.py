@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -252,8 +253,17 @@ def make_trainer(model, tokenizer, train_rows, validation_rows, config: dict, ou
         class RecoveryCheckpoint(TrainerCallback):
             def on_step_end(self, args, state, control, **kwargs):
                 # Extra recovery saves preserve epoch evaluation and validation-only best selection.
-                if state.global_step % settings["checkpoint_steps"] == 0:
+                if state.global_step % settings["checkpoint_steps"] == 0 or pause_requested(output.parent):
                     control.should_save = True
+                return control
+
+            def on_log(self, args, state, control, **kwargs):
+                write_progress(output.parent, state)
+
+            def on_epoch_end(self, args, state, control, **kwargs):
+                if pause_requested(output.parent):
+                    control.should_evaluate = False
+                    control.should_save = False
                 return control
 
             def on_save(self, args, state, control, **kwargs):
@@ -261,9 +271,39 @@ def make_trainer(model, tokenizer, train_rows, validation_rows, config: dict, ou
                 files = {f.name: file_hash(f) for f in folder.iterdir() if f.is_file() and f.name != "resume-integrity.json"}
                 (folder / "resume-integrity.json").write_text(
                     json.dumps({"step": state.global_step, "files": files}, indent=2) + "\n", encoding="utf-8")
+                # Stop only after the native optimizer/scheduler/RNG save is complete.
+                if pause_requested(output.parent):
+                    control.should_training_stop = True
+                write_progress(output.parent, state)
+                return control
 
         trainer.add_callback(RecoveryCheckpoint())
     return trainer
+
+
+def pause_requested(output: Path) -> bool:
+    request = output / "control-request.json"
+    return request.is_file() and read_object(request).get("action") in ("pause", "stop")
+
+
+def write_progress(output: Path, state) -> None:
+    payload = {"step": state.global_step, "maxSteps": state.max_steps, "epoch": state.epoch,
+               "history": state.log_history[-500:]}
+    temporary = output / "training-progress.json.tmp"
+    temporary.write_text(json.dumps(payload, allow_nan=False) + "\n", encoding="utf-8")
+    replace_runtime_file(temporary, output / "training-progress.json")
+
+
+def replace_runtime_file(temporary: Path, target: Path) -> None:
+    # Windows readers/scanners can briefly hold a handle without delete sharing.
+    for attempt in range(20):
+        try:
+            temporary.replace(target)
+            return
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(0.05)
 
 
 def check_resume_checkpoint(output: Path, checkpoint: Path, inputs: dict) -> Path:
@@ -416,6 +456,15 @@ def run(config_path: Path, *, check_only: bool = False, smoke: bool = False,
     set_seed(config["seed"])
     trainer = make_trainer(model, tokenizer, tokenized["train"], tokenized["validation"], config, output / "checkpoints", smoke=smoke)
     result = trainer.train(resume_from_checkpoint=str(resume_from_checkpoint) if resume_from_checkpoint else None)
+    if pause_requested(output):
+        checkpoint = output / "checkpoints" / f"checkpoint-{trainer.state.global_step}"
+        check_resume_checkpoint(output, checkpoint, run_inputs)
+        request = read_object(output / "control-request.json")
+        report = {"status": "PAUSED_BY_USER" if request["action"] == "pause" else "STOPPED_BY_USER",
+                  "steps": trainer.state.global_step, "checkpoint": checkpoint.name,
+                  "trainingReady": False, "datasetHash": manifest["datasetHash"]}
+        (output / "pause-result.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        return report
     if result.global_step < 1 or not math.isfinite(result.training_loss):
         raise DatasetError("training did not perform a finite optimizer step")
     trainer.save_model(str(output / "adapter"))
