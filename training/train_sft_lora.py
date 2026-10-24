@@ -336,7 +336,12 @@ def adapter_preflight(model, feature: dict, tokenizer, output: Path) -> dict:
         raise DatasetError("adapter has zero trainable parameters or trains base weights")
     model.train()
     batch = {k: v.to(model.device) for k, v in TargetCollator(tokenizer.pad_token_id)([feature]).items()}
-    loss = model(**batch).loss
+    # Score the longest reviewed record through TRL's tiled head: materialising the full
+    # (sequence, vocabulary) logits exceeds a T4. The head is added before SFTTrainer so the
+    # preflight exercises the same loss path as training; adding it twice is harmless.
+    from trl.trainer.utils import add_fused_lm_head
+    add_fused_lm_head(model.get_base_model())
+    loss = model(**batch, fused_lm_head=True).loss
     if not torch.isfinite(loss):
         raise DatasetError("non-finite preflight loss")
     loss.backward()
@@ -354,6 +359,51 @@ def adapter_preflight(model, feature: dict, tokenizer, output: Path) -> dict:
         raise DatasetError("adapter reload returned unexpected parameters")
     return {"loss": loss.item(), "trainableParameters": sum(p.numel() for _, p in trainable),
             "finiteGradients": True, "adapterRoundTrip": True}
+
+
+class UpdateGate:
+    """Count real optimizer updates and fail on silent AMP skips or non-finite logs.
+
+    A plain object is enough: Trainer.add_callback only needs the callback methods, so the
+    CPU test suite does not import transformers just to build a gate.
+    """
+
+    def __init__(self, trainer, *, smoke: bool):
+        self.trainer = trainer
+        self.smoke = smoke
+        self.updates = 0
+        self.skipped = 0
+        self.start_step = 0
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        self.updates = 0
+        self.skipped = 0
+        self.start_step = state.global_step
+        return control
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if self.trainer.accelerator.optimizer_step_was_skipped:
+            self.skipped += 1
+            if self.smoke:
+                raise DatasetError("AMP skipped the optimizer update; GPU qualification failed")
+        else:
+            self.updates += 1
+        return control
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        for key in ("loss", "grad_norm"):
+            value = (logs or {}).get(key)
+            if value is not None and not math.isfinite(float(value)):
+                raise DatasetError(f"Non-finite {key}; GPU qualification failed")
+        return control
+
+
+def write_optimizer_evidence(output: Path, gate, *, changed_tensors, initial_scale) -> None:
+    payload = {"actualOptimizerUpdates": gate.updates, "skippedOptimizerSteps": gate.skipped,
+               "startStep": gate.start_step, "changedAdapterTensors": changed_tensors,
+               "initialAmpScale": initial_scale, "finiteLoggedGradients": True}
+    (output / "optimizer-evidence.json").write_text(
+        json.dumps(payload, indent=2, allow_nan=False) + "\n", encoding="utf-8")
 
 
 def write_report(output: Path, report: dict) -> None:
@@ -455,6 +505,13 @@ def run(config_path: Path, *, check_only: bool = False, smoke: bool = False,
                                    tokenizer, output / "preflight-adapter"))
     set_seed(config["seed"])
     trainer = make_trainer(model, tokenizer, tokenized["train"], tokenized["validation"], config, output / "checkpoints", smoke=smoke)
+    # T4 FP16: the default loss scale of 65536 overflowed and silently skipped the update.
+    if dtype_name == "float16":
+        if trainer.accelerator.scaler is None or trainer.accelerator._optimizers:
+            raise DatasetError("AMP scaler must be configured before optimizer preparation")
+        trainer.accelerator.scaler = torch.amp.GradScaler("cuda", init_scale=1.0)
+    update_gate = UpdateGate(trainer, smoke=smoke)
+    trainer.add_callback(update_gate)
     result = trainer.train(resume_from_checkpoint=str(resume_from_checkpoint) if resume_from_checkpoint else None)
     if pause_requested(output):
         checkpoint = output / "checkpoints" / f"checkpoint-{trainer.state.global_step}"
@@ -467,8 +524,23 @@ def run(config_path: Path, *, check_only: bool = False, smoke: bool = False,
         return report
     if result.global_step < 1 or not math.isfinite(result.training_loss):
         raise DatasetError("training did not perform a finite optimizer step")
+    steps_done = result.global_step - update_gate.start_step
+    if update_gate.updates + update_gate.skipped != steps_done or update_gate.updates < 1:
+        raise DatasetError("optimizer update count does not match completed steps")
     trainer.save_model(str(output / "adapter"))
     tokenizer.save_pretrained(output / "adapter")
+    changed_tensors = None
+    if smoke and preflight.get("adapterRoundTrip"):
+        from safetensors.torch import load_file
+        initial_adapter = load_file(str(output / "preflight-adapter/adapter_model.safetensors"))
+        final_adapter = load_file(str(output / "adapter/adapter_model.safetensors"))
+        if initial_adapter.keys() != final_adapter.keys():
+            raise DatasetError("Adapter tensor keys changed")
+        changed_tensors = sum(not torch.equal(initial_adapter[k], final_adapter[k]) for k in initial_adapter)
+        if changed_tensors == 0:
+            raise DatasetError("No adapter tensors changed after optimizer update")
+    write_optimizer_evidence(output, update_gate, changed_tensors=changed_tensors,
+                             initial_scale=1.0 if dtype_name == "float16" else None)
     trainer.save_state()
     trainer.save_metrics("train", result.metrics)
     validation_metrics = {} if smoke else trainer.evaluate()

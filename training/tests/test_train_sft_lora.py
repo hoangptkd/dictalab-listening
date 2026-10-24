@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import types
 
 import pytest
 
 from training.prepare_dataset import DatasetError
 from training.tests.test_prepare_dataset import _prepare, _row, _write
-from training.train_sft_lora import check_cpu_memory, check_resume_checkpoint, checked_inputs, file_hash, load_bundle, pad_batch, tokenize_target, validate_review, verify_environment
+from training.train_sft_lora import UpdateGate, check_cpu_memory, check_resume_checkpoint, checked_inputs, file_hash, load_bundle, pad_batch, tokenize_target, validate_review, verify_environment, write_optimizer_evidence
 
 
 class CharacterTokenizer:
@@ -238,6 +239,39 @@ def test_resume_requires_bound_complete_checkpoint(tmp_path, fault):
             check_resume_checkpoint(output, checkpoint, inputs)
     else:
         assert check_resume_checkpoint(output, checkpoint, inputs) == checkpoint.resolve()
+
+
+def test_update_gate_rejects_skipped_smoke_and_non_finite_metrics():
+    class FakeTrainer:
+        class accelerator:
+            optimizer_step_was_skipped = False
+
+    gate = UpdateGate(FakeTrainer(), smoke=True)
+    gate.on_train_begin(None, types.SimpleNamespace(global_step=0), None)
+    gate.on_step_end(None, None, None)
+    assert gate.updates == 1 and gate.skipped == 0 and gate.start_step == 0
+    FakeTrainer.accelerator.optimizer_step_was_skipped = True
+    with pytest.raises(DatasetError, match="skipped the optimizer update"):
+        gate.on_step_end(None, None, None)
+    with pytest.raises(DatasetError, match="Non-finite loss"):
+        gate.on_log(None, None, None, logs={"loss": float("nan")})
+    with pytest.raises(DatasetError, match="Non-finite grad_norm"):
+        gate.on_log(None, None, None, logs={"grad_norm": float("inf")})
+
+
+def test_update_gate_records_skips_and_evidence_during_full_training(tmp_path):
+    class FakeTrainer:
+        class accelerator:
+            optimizer_step_was_skipped = True
+
+    gate = UpdateGate(FakeTrainer(), smoke=False)
+    gate.on_train_begin(None, types.SimpleNamespace(global_step=10), None)
+    gate.on_step_end(None, None, None)
+    assert (gate.updates, gate.skipped, gate.start_step) == (0, 1, 10)
+    write_optimizer_evidence(tmp_path, gate, changed_tensors=None, initial_scale=None)
+    assert json.loads((tmp_path / "optimizer-evidence.json").read_text(encoding="utf-8")) == {
+        "actualOptimizerUpdates": 0, "skippedOptimizerSteps": 1, "startStep": 10,
+        "changedAdapterTensors": None, "initialAmpScale": None, "finiteLoggedGradients": True}
 
 
 def test_validator_hash_survives_windows_linux_checkout_line_endings(tmp_path, monkeypatch):
