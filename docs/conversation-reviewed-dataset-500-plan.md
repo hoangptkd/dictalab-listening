@@ -1,5 +1,14 @@
 # Thu thập dữ liệu đã duyệt và train Qwen3.5-4B
 
+**Mới nhất 24/10: chủ dự án áp dụng low B1.** A1/A2/B1 low, B2 high mặc định;
+thinking/cache/16.384 token/240 giây giữ nguyên. Tiếp nối tại
+`data/fine-tuning/reviewed-500-v14-low-b1-20261024`, snapshot 337 bài đạt/537
+ứng viên từ v13, không đổi hash hoặc quyết định/quota cũ. Artifact cache v12
+khóa cấu hình mới. Tổng 150/150/150/50, 400/48/52, Web chốt và audit trước
+SFT giữ nguyên; không Gemini/Codex duyệt riêng/shutdown/deploy. Các quyết định
+giữ B1 high bên dưới là lịch sử. Xem
+[cấu hình hiện tại](conversation-collection-v9-improvements-20261024.md).
+
 **Mới nhất 24/10: A1/A2/B1 mỗi mức 150 bài, B2 50 bài.** Vẫn tổng
 400 train / 48 validation / 52 test; từng tập lần lượt A1/A2/B1/B2 là
 122/121/121/36, 14/15/13/6, 14/14/16/8. Giữ cả 297 bài đạt/489 ứng viên

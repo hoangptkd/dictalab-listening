@@ -1,5 +1,34 @@
 # Cải thiện thu thập v9 — 24/10/2026
 
+## Mới nhất: chủ dự án áp dụng low cho B1
+
+Chủ dự án xác nhận áp dụng sau pilot B1 high 8/8 và low 8/8. Artifact mới
+`artifacts/prompts/conversation-reviewed-collection-v12-cache-low-b1-20261024.json`
+khóa `reasoningEffortByLevel={A1:low,A2:low,B1:low}`; B2 vẫn mặc định high.
+Thinking bật, cache prefix ổn định, maxTokens 16.384 và timeout 240 giây giữ
+nguyên. Không đổi nội dung prompt/schema/rubric hoặc quyền duyệt Web. Pilot
+8 cặp train không chứng minh chất lượng tương đương dài hạn; không đưa vào SFT.
+
+Bản tiếp nối `data/fine-tuning/reviewed-500-v14-low-b1-20261024` snapshot
+**337 bài đạt/537 ứng viên** từ v13 sau khi lô cũ đã hết pending. Giữ toàn bộ
+quyết định/hash/manifest cũ, lịch sử gửi và trạng thái quota; không prepare lại
+thư mục đã có, reset quota hoặc hồi sinh reject. Bài mới bắt đầu từ 0538.
+Tổng 500, A1/A2/B1 mỗi mức 150 và B2 50; target train 122/121/121/36,
+validation 14/15/13/6, test 14/14/16/8 giữ nguyên. Đủ dữ liệu mới audit/export
+và SFT/LoRA thật với data/loss-mask gates. Không deploy/shutdown/Gemini.
+
+```powershell
+python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v14-low-b1-20261024 --limit 8 --deepseek-only --teacher-concurrency 2 --web-batch-size 2 --overlap-web
+```
+
+Giữ hai DeepSeek song song, một Web request theo cặp mỗi lúc trong hội thoại
+mới, hard checks + Web PASS đầy đủ tự chốt. Không Codex duyệt riêng; UNKNOWN
+không replay/split, quota rõ mới resume đúng request. Các quyết định giữ high
+hoặc chưa áp dụng low B1 bên dưới là lịch sử đã được thay thế.
+Đã xác minh 2.882 tệp kế thừa; request thật B1 `candidate-0539` gửi
+`reasoning_effort=low`, thinking enabled và max_tokens 16.384. Nhóm kiểm tra
+collection: **161 passed**; UTF-8 và diff checks đạt. Không deploy.
+
 ## Mới nhất: giảm B2 xuống 50 bài; thử B1 low riêng
 
 Chủ dự án chốt **A1/A2/B1 mỗi mức 150 bài, B2 50 bài**, vẫn tổng 500:

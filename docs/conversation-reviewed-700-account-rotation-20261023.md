@@ -1,5 +1,12 @@
 # Thu thập 700 bài với hai tài khoản Web
 
+**Mới nhất 24/10: áp dụng low B1 theo xác nhận chủ dự án.** Dùng chiến dịch
+`data/fine-tuning/reviewed-500-v14-low-b1-20261024`, tiếp nối 337 bài đạt/537
+ứng viên với artifact cache v12; A1/A2/B1 low, B2 high mặc định. Giữ nguyên
+quyết định, hash và quota cũ; Web theo cặp nối tiếp, chỉ đổi account khi quota
+rõ, không replay/split UNKNOWN. Tổng 150/150/150/50, không Codex duyệt riêng,
+Gemini hay shutdown. Xem [cấu hình mới](conversation-collection-v9-improvements-20261024.md).
+
 **Mới nhất 24/10: giảm B2 còn 50, A1/A2/B1 mỗi mức 150 bài.** Tổng vẫn
 400/48/52; tiếp nối `data/fine-tuning/reviewed-500-v13-reduced-b2-20261024`
 từ 297 bài đạt/489 ứng viên, giữ hash/quyết định/trạng thái quota và 8 test B2.
