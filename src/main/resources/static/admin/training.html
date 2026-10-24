@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#0d1117">
+    <title>Training Studio · DictaLab</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/css/fonts.css">
+    <link rel="stylesheet" href="/css/training.css">
+    <script src="/js/training.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#studio-main">Bỏ qua điều hướng</a>
+<aside id="studio-sidebar" class="studio-sidebar" aria-label="Quản trị DictaLab">
+    <a class="brand" href="/admin"><span class="brand-mark">D</span><span><strong>DictaLab</strong><small>Quản trị</small></span></a>
+    <a class="content-return" href="/admin/lessons">← Nội dung học tập</a>
+    <p class="nav-label">Training Studio</p>
+    <nav id="studio-nav" aria-label="Training Studio"></nav>
+    <div class="sidebar-bottom"><a href="/catalog">Về trang học tập ↗</a><a href="/account" id="studio-account">Quản trị viên</a></div>
+</aside>
+<div class="studio-shell">
+    <header class="topbar">
+        <button type="button" class="icon-button menu-toggle" id="menu-toggle" aria-label="Mở điều hướng" aria-controls="studio-sidebar" aria-expanded="false">☰</button>
+        <p><a href="/admin">Quản trị</a><span aria-hidden="true">/</span><strong>Training Studio</strong></p>
+        <div class="topbar-meta"><span id="connection" class="connection">Đang kết nối…</span><span class="timezone">UTC+7</span><button type="button" id="notifications-toggle" class="icon-button" aria-label="Thông báo trong dashboard" aria-expanded="false">♧<span id="notification-count" hidden></span></button></div>
+    </header>
+    <div id="notifications" class="notification-panel" hidden aria-label="Thông báo"><h2>Thông báo</h2><p class="muted">Chưa có sự kiện mới trong phiên xem này.</p></div>
+    <main id="studio-main" tabindex="-1" aria-busy="true"><div class="loading"><h1>Training Studio</h1><p>Đang đọc trạng thái train…</p><div class="skeleton"></div><div class="skeleton"></div></div></main>
+    <footer class="studio-footer"><span id="observed-at">Chưa có dữ liệu</span><span>Dữ liệu test được giữ riêng · Không triển khai model từ dashboard</span></footer>
+</div>
+<div id="toast" role="status" class="toast" hidden></div>
+<dialog id="studio-dialog" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
+<noscript>Cần bật JavaScript để đọc trạng thái và điều khiển train.</noscript>
+</body>
+</html>

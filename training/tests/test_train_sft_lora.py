@@ -129,6 +129,7 @@ def test_real_cpu_sft_and_adapter_round_trip(tmp_path):
     assert report["optimizerUpdatedAdapter"] and report["freshModelAdapterReload"]
     assert report["gradientCheckpointing"]
     assert report["recoveryCheckpointVerified"] and report["resumedOptimizerState"]
+    assert report["pauseFinishedStepAndSavedState"] and report["pauseSkippedPartialEpochEvaluation"]
     assert not report["trainingReady"] and not report["realCheckpointLoaded"]
 
 
