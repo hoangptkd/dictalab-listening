@@ -182,7 +182,15 @@ def _atomic_json(path: Path, value: dict) -> None:
         handle.write("\n")
         handle.flush()
         os.fsync(handle.fileno())
-    os.replace(temporary, path)
+    # Windows readers/antivirus can briefly hold a handle without delete sharing.
+    for attempt in range(6):
+        try:
+            os.replace(temporary, path)
+            break
+        except PermissionError as error:
+            if getattr(error, "winerror", None) not in (5, 32, 33) or attempt == 5:
+                raise
+            time.sleep(0.05 * 2 ** attempt)
 
 
 def _durable_exclusive_json(path: Path, value: dict) -> None:

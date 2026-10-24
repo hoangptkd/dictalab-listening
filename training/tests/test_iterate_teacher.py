@@ -12,6 +12,52 @@ from training import iterate_teacher as run
 from training.semantic_rubric import CHECKS, VERSION_V3, judge_generalization_cases, rules_for
 
 
+def test_atomic_checkpoint_retries_windows_sharing_error(tmp_path, monkeypatch):
+    target = tmp_path / "state.json"
+    target.write_text('{"status":"old"}', encoding="utf-8")
+    replace = run.os.replace
+    attempts = []
+    sleeps = []
+
+    def temporarily_locked(source, destination):
+        attempts.append(source)
+        if len(attempts) < 3:
+            assert json.loads(target.read_text(encoding="utf-8")) == {"status": "old"}
+            error = PermissionError("Windows reader holds checkpoint")
+            error.winerror = 5
+            raise error
+        replace(source, destination)
+
+    monkeypatch.setattr(run.os, "replace", temporarily_locked)
+    monkeypatch.setattr(run.time, "sleep", sleeps.append)
+    run._atomic_json(target, {"status": "new"})
+    assert json.loads(target.read_text(encoding="utf-8")) == {"status": "new"}
+    assert len(attempts) == 3 and sleeps == [0.05, 0.1]
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+@pytest.mark.parametrize("winerror,expected_attempts", [(5, 6), (None, 1)])
+def test_atomic_checkpoint_keeps_original_and_temp_on_permanent_error(tmp_path, monkeypatch, winerror, expected_attempts):
+    target = tmp_path / "state.json"
+    target.write_text('{"status":"old"}', encoding="utf-8")
+    attempts = []
+
+    def locked(source, destination):
+        attempts.append(source)
+        error = PermissionError("Access denied")
+        if winerror is not None:
+            error.winerror = winerror
+        raise error
+
+    monkeypatch.setattr(run.os, "replace", locked)
+    monkeypatch.setattr(run.time, "sleep", lambda _: None)
+    with pytest.raises(PermissionError):
+        run._atomic_json(target, {"status": "new"})
+    assert len(attempts) == expected_attempts
+    assert json.loads(target.read_text(encoding="utf-8")) == {"status": "old"}
+    assert json.loads(next(tmp_path.glob("*.tmp")).read_text(encoding="utf-8")) == {"status": "new"}
+
+
 def _items(per_level=(10, 10, 10)):
     items = []
     for level, passing in zip(run.LEVELS, per_level):

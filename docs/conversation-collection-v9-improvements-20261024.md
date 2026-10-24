@@ -1,5 +1,24 @@
 # Cải thiện thu thập v9 — 24/10/2026
 
+## Cập nhật mới nhất: hủy tắt máy và tiếp tục thu thập
+
+Chủ dự án yêu cầu hủy tắt máy và tiếp tục tạo bài. Lệnh đang chờ đã được hủy
+thành công bằng `shutdown.exe /a`. Từ đây không dùng
+`--shutdown-on-worker-failure`, không arm watchdog tắt máy và không tự gọi shutdown,
+kể cả khi quota hoặc lỗi chặn thu thập. Lưu checkpoint và báo lỗi khi không thể tiếp tục.
+Các quyền tắt máy trong phần lịch sử bên dưới đã bị thay thế.
+
+Checkpoint khôi phục có 236 bài duyệt/395 ứng viên. Hai bài cuối có lượt Web
+`UNKNOWN`, không có phản hồi lưu được; không gửi lại. Sau khi kiểm tra không còn
+worker hoặc bridge đang xử lý, có thể chốt loại vận hành cả nhóm: giữ hash,
+account, usage và trạng thái `UNKNOWN` cùng quyết định bỏ, xóa nội dung chi tiết.
+Không tạo Web PASS hoặc nhận bài chưa chấm để gỡ chặn. Tiếp tục bằng ID ứng viên mới,
+giữ nguyên manifest, trần ứng viên, quota và các bài đã duyệt.
+
+Lỗi checkpoint `WinError 5` được xử lý bằng retry ngắn, có giới hạn cho lỗi chia sẻ
+file Windows; giữ bản cũ và file tạm nếu lỗi vẫn còn. Không bỏ atomic replace.
+Mục tiêu 500 bài, DeepSeek-only, Web theo cặp và Codex duyệt độc lập vẫn giữ nguyên.
+
 ## Quyết định mới nhất: 500 bài, DeepSeek và chấm Web theo cặp
 
 Chủ dự án đã xác nhận **400 train + 48 validation + 52 test**, mỗi mức A1/A2/B1/B2
