@@ -75,6 +75,48 @@ def test_reduced_target_never_discards_existing_approved_cells(campaign):
         collect.prepare(parent.parent / "too-small", settings, continue_from=parent, total_articles=500)
 
 
+def test_reduced_b2_continuation_preserves_parent_and_split_totals(campaign):
+    parent, settings = campaign
+    original = (parent / "manifest.json").read_bytes()
+    path = parent.parent / "reduced-b2"
+    collect.prepare(path, settings, continue_from=parent, total_articles=500, reduced_b2=True)
+    manifest, _ = collect.load(path)
+    assert {s: sum(collect.target_for(manifest, s, level) for level in collect.LEVELS)
+            for s in collect.TARGETS} == {"train": 400, "validation": 48, "test": 52}
+    assert {level: sum(collect.target_for(manifest, s, level) for s in collect.TARGETS)
+            for level in collect.LEVELS} == {"A1": 150, "A2": 150, "B1": 150, "B2": 50}
+    assert not collect.status(path)["complete"]
+    assert (parent / "manifest.json").read_bytes() == original
+    with pytest.raises(DatasetError, match="500"):
+        collect.export(path)
+    with pytest.raises(DatasetError, match="requires total 500"):
+        collect.prepare(parent.parent / "wrong-total", settings, reduced_b2=True)
+
+
+def test_reduced_b2_preserves_existing_b2_test_approvals(campaign):
+    parent, settings = campaign
+    for i in range(9):
+        gen.write_json(parent / "decisions" / f"candidate-{i+1:04d}.json", {
+            "id": f"candidate-{i+1:04d}", "verdict": "approved", "split": "test", "level": "B2"})
+    with pytest.raises(DatasetError, match="exceeds"):
+        collect.prepare(parent.parent / "too-small-b2", settings, continue_from=parent,
+                        total_articles=500, reduced_b2=True)
+
+
+def test_reduced_b2_completion_requires_every_split_level_target(campaign, monkeypatch):
+    parent, settings = campaign
+    path = parent.parent / "reduced-b2-completion"
+    collect.prepare(path, settings, total_articles=500, reduced_b2=True)
+    manifest, _ = collect.load(path)
+    done = [{"split": split, "level": level, "verdict": "approved"}
+            for split in collect.TARGETS for level in collect.LEVELS
+            for _ in range(collect.target_for(manifest, split, level))]
+    monkeypatch.setattr(collect, "decisions", lambda _: done)
+    assert collect.status(path)["approvedTasks"] == 500 and collect.status(path)["complete"]
+    done[-1]["level"] = "B1"  # Same total, wrong allocation must not complete.
+    assert collect.status(path)["approvedTasks"] == 500 and not collect.status(path)["complete"]
+
+
 def test_requested_diagnostic_rejection_evidence_is_preserved(campaign):
     path, settings = campaign
     with pytest.raises(DatasetError, match="diagnostic"):
@@ -1331,13 +1373,19 @@ async def test_mixed_cap_and_reserved_cells_bound_parallel_sends(campaign, monke
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("deepseek_only", [False, True])
-async def test_parallel_reservation_prevents_overfilling_the_last_cell(campaign, monkeypatch, deepseek_only):
+@pytest.mark.parametrize("reduced_b2", [False, True])
+async def test_parallel_reservation_prevents_overfilling_the_last_cell(campaign, monkeypatch, deepseek_only, reduced_b2):
     path, settings = mixed_campaign(campaign)
+    if reduced_b2:
+        path = path.parent / "reduced-b2-parallel"
+        collect.prepare(path, settings, gemini_teacher=True, total_articles=500, reduced_b2=True)
+    manifest, _ = collect.load(path)
     original_status = collect.status
     def near_complete(path):
         value = original_status(path)
-        value["counts"] = {s: dict.fromkeys(collect.LEVELS, target) for s, target in collect.TARGETS.items()}
-        value["counts"]["train"]["A1"] -= 1
+        value["counts"] = {s: {level: collect.target_for(manifest, s, level) for level in collect.LEVELS}
+                           for s in collect.TARGETS}
+        value["counts"]["train"]["B2"] -= 1
         return value
     monkeypatch.setattr(collect, "status", near_complete)
     monkeypatch.setattr(run, "quota_snapshot", lambda *a, platforms, **k:

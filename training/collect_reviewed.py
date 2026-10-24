@@ -24,8 +24,19 @@ from training.semantic_rubric import CHECKS, VERSION_V3, decision, rules_for
 LEVELS = ("A1", "A2", "B1", "B2")
 TARGETS = {"train": 125, "validation": 25, "test": 25}
 TARGETS_500 = {"train": 100, "validation": 12, "test": 13}
+TARGETS_500_REDUCED_B2 = {
+    "train": {"A1": 122, "A2": 121, "B1": 121, "B2": 36},
+    "validation": {"A1": 14, "A2": 15, "B1": 13, "B2": 6},
+    "test": {"A1": 14, "A2": 14, "B1": 16, "B2": 8},
+}
 ARTIFACT = gen.ROOT / "artifacts/prompts/conversation-reviewed-collection-v9-20261024.json"
 WEB_AUTHORITY = "delegated AI:chatgpt-web; hard checks and complete Web PASS, no Codex adjudication"
+
+
+def target_for(manifest: dict, split: str, level: str) -> int:
+    """Read both frozen uniform targets and the reduced B2 allocation."""
+    target = manifest["targetsPerLevel"][split]
+    return target[level] if isinstance(target, dict) else target
 
 
 def normalized(text: str) -> str:
@@ -66,7 +77,7 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
             retain_diagnostic_evidence: bool = False, artifact_path: Path | None = None,
             web_accounts: list[dict] | None = None, continue_from: Path | None = None,
             gemini_teacher: bool = False, total_articles: int = 700,
-            web_approval: bool = False) -> dict:
+            web_approval: bool = False, reduced_b2: bool = False) -> dict:
     if retain_diagnostic_evidence and not diagnostic:
         raise DatasetError("full rejection evidence retention requires a diagnostic campaign")
     path = run._private_path(path)
@@ -76,6 +87,10 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
     if total_articles not in (500, 700):
         raise DatasetError("supported collection totals are 500 or 700")
     targets = TARGETS_500 if total_articles == 500 else TARGETS
+    if reduced_b2:
+        if total_articles != 500:
+            raise DatasetError("reduced B2 allocation requires total 500")
+        targets = TARGETS_500_REDUCED_B2
     selected_artifact = (artifact_path or ARTIFACT).resolve()
     artifact = gen.read_json(selected_artifact)
     if artifact.get("collectionPolicy") != COLLECTION_POLICY:
@@ -171,7 +186,8 @@ def prepare(path: Path, settings=None, *, diagnostic: bool = False,
                     old["candidateCap"] != manifest["candidateCap"] or
                     old["teacher"]["model"] != manifest["teacher"]["model"]):
                 raise DatasetError("continuation requires a fully decided READY non-diagnostic campaign with matching allocation")
-            if any(previous["counts"][split][level] > target for split, target in targets.items() for level in LEVELS):
+            if any(previous["counts"][split][level] > target_for(manifest, split, level)
+                   for split in targets for level in LEVELS):
                 raise DatasetError("approved inherited cell exceeds the requested target; never discard approvals")
             done = decisions(parent)
             next_index = previous["attempted"]
@@ -267,8 +283,8 @@ def status(path: Path) -> dict:
         "approvedTasks": sum(counts.values()),
         "counts": {split: {level: counts[split, level] for level in LEVELS} for split in TARGETS},
         "retryAt": state.get("retryAt"), "stopReason": state.get("stopReason"),
-        "pending": pending, "complete": all(counts[split, level] == target
-            for split, target in targets.items() for level in LEVELS), "trainingReady": False}
+        "pending": pending, "complete": all(counts[split, level] == target_for(manifest, split, level)
+            for split in targets for level in LEVELS), "trainingReady": False}
 
 
 def duplicate(text: str, corpus: list[str]) -> bool:
@@ -385,7 +401,7 @@ def _finalize_web(path: Path, manifest: dict, state: dict) -> None:
                 reject(path, row, "web-non-pass:" + failed, reviewer=review["reviewer"])
                 continue
             _validate_web_review(row, review, manifest)
-            if status(path)["counts"][row["split"]][row["level"]] >= manifest["targetsPerLevel"][row["split"]]:
+            if status(path)["counts"][row["split"]][row["level"]] >= target_for(manifest, row["split"], row["level"]):
                 raise DatasetError("level/split target already full")
             result = {key: row[key] for key in ("id", "groupId", "split", "level")}
             result.update(verdict="approved", reviewer=review["reviewer"],
@@ -544,8 +560,8 @@ async def collect(path: Path, *, limit: int = 4, settings=None, shutdown_on_fail
             for entry, _ in teacher_jobs:
                 if entry["id"] not in current["pending"]:
                     reserved[entry["split"], entry["level"]] += 1
-            cells = [(s, level) for s, target in manifest["targetsPerLevel"].items() for level in LEVELS
-                     if current["counts"][s][level] + reserved[s, level] < target]
+            cells = [(s, level) for s in manifest["targetsPerLevel"] for level in LEVELS
+                     if current["counts"][s][level] + reserved[s, level] < target_for(manifest, s, level)]
             if not cells:
                 state["status"] = review_state
                 return False
@@ -759,7 +775,7 @@ def adjudicate(path: Path, verdict: dict) -> dict:
                 any(not isinstance(item.get("basis"), str) or not item["basis"].strip() for item in overrides)):
                 raise DatasetError("every Web disagreement requires an explicit independent override basis")
             current = status(path)
-            if current["counts"][row["split"]][row["level"]] >= manifest["targetsPerLevel"][row["split"]]:
+            if current["counts"][row["split"]][row["level"]] >= target_for(manifest, row["split"], row["level"]):
                 raise DatasetError("level/split target already full")
             result = {**verdict, **{key: row[key] for key in ("groupId", "split", "level")},
                       "time": run._now()}
@@ -778,7 +794,7 @@ def export(path: Path) -> dict:
     if manifest.get("diagnosticOnly"):
         raise DatasetError("diagnostic experiments cannot be exported for SFT")
     if not status(path)["complete"] or status(path)["pending"]:
-        total = sum(manifest["targetsPerLevel"].values()) * len(LEVELS)
+        total = sum(target_for(manifest, split, level) for split in manifest["targetsPerLevel"] for level in LEVELS)
         raise DatasetError(f"all {total} approved tasks are required before dataset export")
     verify_inherited(path, manifest)
     extra_artifacts = []
@@ -828,6 +844,8 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=4)
     parser.add_argument("--total-articles", type=int, choices=(500, 700), default=700,
                         help="freeze total on prepare: 500 uses 400 train / 48 validation / 52 test")
+    parser.add_argument("--reduced-b2", action="store_true",
+                        help="prepare 500 with 150 each A1/A2/B1 and 50 B2, keeping 400/48/52")
     parser.add_argument("--decision-file", type=Path)
     parser.add_argument("--artifact", type=Path, help="freeze this candidate on prepare; default is the best measured baseline")
     parser.add_argument("--web-account", action="append", default=[], metavar="ID=URL",
@@ -855,7 +873,7 @@ def main() -> int:
                          retain_diagnostic_evidence=args.retain_diagnostic_evidence, artifact_path=args.artifact,
                          web_accounts=[dict(zip(("id", "url"), item.split("=", 1))) for item in args.web_account] or None,
                          continue_from=args.continue_from, gemini_teacher=args.gemini_teacher,
-                         total_articles=args.total_articles, web_approval=args.web_approval)
+                         total_articles=args.total_articles, web_approval=args.web_approval, reduced_b2=args.reduced_b2)
     elif args.command == "collect":
         result = asyncio.run(collect(path, limit=args.limit, shutdown_on_failure=args.shutdown_on_worker_failure,
                                      overlap_web=args.overlap_web, deepseek_only=args.deepseek_only,

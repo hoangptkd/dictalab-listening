@@ -1,5 +1,16 @@
 # Thu thập dữ liệu đã duyệt và train Qwen3.5-4B
 
+**Mới nhất 24/10: A1/A2/B1 mỗi mức 150 bài, B2 50 bài.** Vẫn tổng
+400 train / 48 validation / 52 test; từng tập lần lượt A1/A2/B1/B2 là
+122/121/121/36, 14/15/13/6, 14/14/16/8. Giữ cả 297 bài đạt/489 ứng viên
+và 8 bài test B2 đã có, không chuyển tập hoặc sửa manifest cũ. Tiếp nối tại
+`data/fine-tuning/reviewed-500-v13-reduced-b2-20261024` bằng preset
+`--total-articles 500 --reduced-b2`. Thử B1 low riêng trên 8 cặp train ngoài
+SFT; bộ chính vẫn A1/A2 low, B1/B2 high cho tới quyết định tiếp theo.
+Web chốt đầy đủ, cache và concurrency 2 giữ nguyên; không Gemini/shutdown.
+Phân bổ đều bên dưới hết hiệu lực. Xem
+[phân bổ và pilot B1](conversation-collection-v9-improvements-20261024.md).
+
 **Mới nhất 24/10: tối ưu prefix cache DeepSeek.** Chiến dịch tiếp nối
 `data/fine-tuning/reviewed-500-v12-cache-web-20261024` giữ 254 bài/427 ứng viên;
 artifact cache v11 đặt schema có ID sau hướng dẫn/payload để prefix chung ổn định,

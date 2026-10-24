@@ -28,8 +28,8 @@ def request_shutdown(reason: str, evidence: Path, *, execute=subprocess.run) -> 
         from training import collect_reviewed as collect
         manifest, _ = collect.load(campaign)
         report["checkpoint"] = collect.status(campaign)
-        report["missing"] = {split: {level: target - report["checkpoint"]["counts"][split][level]
-            for level in collect.LEVELS} for split, target in manifest["targetsPerLevel"].items()}
+        report["missing"] = {split: {level: collect.target_for(manifest, split, level) - report["checkpoint"]["counts"][split][level]
+            for level in collect.LEVELS} for split in manifest["targetsPerLevel"]}
         # Sum known teacher usage once per candidate, including purged rejections.
         known = {}
         rows = {row["id"]: row for row in collect.decisions(campaign)}

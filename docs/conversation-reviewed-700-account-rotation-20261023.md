@@ -1,5 +1,13 @@
 # Thu thập 700 bài với hai tài khoản Web
 
+**Mới nhất 24/10: giảm B2 còn 50, A1/A2/B1 mỗi mức 150 bài.** Tổng vẫn
+400/48/52; tiếp nối `data/fine-tuning/reviewed-500-v13-reduced-b2-20261024`
+từ 297 bài đạt/489 ứng viên, giữ hash/quyết định/trạng thái quota và 8 test B2.
+Pilot B1 low riêng chỉ dùng train, không bù SFT; bộ chính chưa đổi B1 high.
+Web theo cặp và một request mỗi lúc; chỉ đổi account khi quota rõ, không replay.
+Không Codex duyệt riêng/Gemini/shutdown. Các phân bổ đều cũ hết hiệu lực. Xem
+[phân bổ và pilot mới](conversation-collection-v9-improvements-20261024.md).
+
 **Mới nhất 24/10: prefix cache DeepSeek.** Dùng chiến dịch tiếp nối
 `data/fine-tuning/reviewed-500-v12-cache-web-20261024`, giữ 254 bài/427 ứng viên,
 hash, quyết định và trạng thái quota. Cache tự động, schema có ID đặt cuối khi

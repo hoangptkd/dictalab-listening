@@ -1,5 +1,57 @@
 # Cải thiện thu thập v9 — 24/10/2026
 
+## Mới nhất: giảm B2 xuống 50 bài; thử B1 low riêng
+
+Chủ dự án chốt **A1/A2/B1 mỗi mức 150 bài, B2 50 bài**, vẫn tổng 500:
+400 train + 48 validation + 52 test. Bản tiếp nối
+`data/fine-tuning/reviewed-500-v13-reduced-b2-20261024` giữ nguyên checkpoint
+297 bài đạt/489 ứng viên từ v12, mọi quyết định/hash/lịch sử gửi/quota cũ.
+Không prepare lại thư mục đã có hoặc sửa manifest cũ. Phân bổ không đồng đều
+trong từng tập để giữ đủ 8 bài test B2 đã đạt, không loại hay chuyển tập bài cũ.
+
+| Tập | A1 | A2 | B1 | B2 | Tổng |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Train | 122 | 121 | 121 | 36 | 400 |
+| Validation | 14 | 15 | 13 | 6 | 48 |
+| Test | 14 | 14 | 16 | 8 | 52 |
+| Tổng | 150 | 150 | 150 | 50 | 500 |
+
+Prepare lần đầu dùng `--total-articles 500 --reduced-b2 --web-approval
+--continue-from <v12>` cùng artifact cache v11 và hai Web account đã khóa.
+Mọi caller phân bổ, đặt chỗ in-flight, nhận bài, trạng thái và export đọc target
+theo cả tập/mức; manifest cũ với target đồng đều vẫn được đọc nguyên trạng.
+
+Pilot B1 riêng tại `data/fine-tuning/diagnostic-b1-low-20261024` gồm 8 cặp
+high/low, chỉ ngữ cảnh train, không đưa vào SFT hay bù bộ chính. Mỗi cặp giữ
+cùng context/prompt/schema/model, thinking bật, 16.384 token, timeout 240 giây,
+cache bật; thứ tự high/low đảo giữa hai nửa. Hai DeepSeek song song, Web chấm
+theo cặp nối tiếp; kiểm tra cứng + Web PASS đầy đủ, không Codex duyệt từng bài.
+Đo output/reasoning token, thời gian, cache, hard/Web reject và token trên bài
+được nhận. Mẫu nhỏ không chứng minh chất lượng tương đương dài hạn.
+Kết quả thật đủ 16 lượt, usage 16/16: **high 8/8, low 8/8** qua hard checks
+và Web PASS. Tám cặp context và body gửi thật khớp hoàn toàn ngoài effort;
+mỗi ID chỉ gửi một lần, không sửa/replay, peak teacher 2, không Web đồng thời.
+
+| B1 | Bài đạt | Output token | Reasoning token | Giây sinh trung bình | Output token/bài đạt |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| High mặc định | 8/8 | 27.120 | 23.351 | 19,84 | 3.390 |
+| Low | 8/8 | 20.440 | 16.829 | 15,37 | 2.555 |
+
+Low giảm **24,63% output**, **27,93% reasoning**, **22,52% thời gian gọi
+trung bình** và **24,63% output token/bài đạt** trong mẫu này. Input cùng
+42.278 token mỗi arm; cache hit lần lượt 24.576 high và 22.528 low. Không quy
+mọi chênh lệch thời gian cho effort hoặc coi mức giảm output là giảm toàn bill.
+Bằng chứng đầy đủ ở `diagnostic-b1-low-20261024/report.json`; không có mẫu
+diagnostic nào được đưa vào chiến dịch chính. Web model chưa xác minh,
+không có usage Web; không suy ra tương đương chất lượng dài hạn từ 8 cặp.
+**Chưa áp dụng low B1 vào bộ chính**; A1/A2 low, B1/B2 mặc định high giữ nguyên
+trong khi thử. Không gọi Gemini, không reset quota/replay, không shutdown.
+Kiểm tra thay đổi phân bổ: **310 passed, 1 skipped**; UTF-8, compile và diff
+đạt. Có kiểm tra tổng từng tập/mức, giữ manifest cha, từ chối target làm mất
+bài cũ, cùng tổng 500 nhưng sai phân bổ không hoàn tất, và hai teacher không
+đặt chỗ vượt ô cuối với cả target cũ/mới. Không deploy.
+Các đoạn phân bổ đều 100/12/13 bên dưới là lịch sử đã được thay thế.
+
 ## Mới nhất: giữ prefix ổn định để hưởng giá cache DeepSeek
 
 DeepSeek [bật context cache tự động](https://api-docs.deepseek.com/guides/kv_cache/),
