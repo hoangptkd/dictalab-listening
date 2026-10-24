@@ -131,6 +131,8 @@ def checked_inputs(config_path: Path) -> tuple[dict, dict, dict, dict]:
     for field in ("per_device_batch_size", "gradient_accumulation_steps"):
         if type(settings.get(field)) is not int or settings[field] < 1:
             raise DatasetError(f"{field} must be a positive integer")
+    if "checkpoint_steps" in settings and (type(settings["checkpoint_steps"]) is not int or settings["checkpoint_steps"] < 1):
+        raise DatasetError("checkpoint_steps must be a positive integer")
     for field in ("epochs", "learning_rate"):
         value = settings.get(field)
         if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
@@ -240,10 +242,48 @@ def make_trainer(model, tokenizer, train_rows, validation_rows, config: dict, ou
         assistant_only_loss=False, completion_only_loss=False,
         dataset_kwargs={"skip_prepare_dataset": True},
     )
-    return SFTTrainer(model=model, args=args, processing_class=tokenizer,
+    trainer = SFTTrainer(model=model, args=args, processing_class=tokenizer,
                       data_collator=TargetCollator(tokenizer.pad_token_id),
                       train_dataset=Dataset.from_list(train_rows),
                       eval_dataset=Dataset.from_list(validation_rows))
+    if not smoke and settings.get("checkpoint_steps"):
+        from transformers import TrainerCallback
+
+        class RecoveryCheckpoint(TrainerCallback):
+            def on_step_end(self, args, state, control, **kwargs):
+                # Extra recovery saves preserve epoch evaluation and validation-only best selection.
+                if state.global_step % settings["checkpoint_steps"] == 0:
+                    control.should_save = True
+                return control
+
+            def on_save(self, args, state, control, **kwargs):
+                folder = Path(args.output_dir) / f"checkpoint-{state.global_step}"
+                files = {f.name: file_hash(f) for f in folder.iterdir() if f.is_file() and f.name != "resume-integrity.json"}
+                (folder / "resume-integrity.json").write_text(
+                    json.dumps({"step": state.global_step, "files": files}, indent=2) + "\n", encoding="utf-8")
+
+        trainer.add_callback(RecoveryCheckpoint())
+    return trainer
+
+
+def check_resume_checkpoint(output: Path, checkpoint: Path, inputs: dict) -> Path:
+    checkpoint = checkpoint.resolve()
+    if (checkpoint.parent != (output / "checkpoints").resolve()
+            or not re.fullmatch(r"checkpoint-[1-9]\d*", checkpoint.name)):
+        raise DatasetError("resume checkpoint must belong to this run's checkpoints directory")
+    if read_object(output / "run-inputs.json") != inputs:
+        raise DatasetError("resume inputs differ from the original config/data/review/environment")
+    integrity = read_object(checkpoint / "resume-integrity.json")
+    files = integrity.get("files", {})
+    required = {"adapter_model.safetensors", "adapter_config.json", "optimizer.pt", "scheduler.pt", "rng_state.pth", "trainer_state.json"}
+    if (not isinstance(files, dict) or not required <= files.keys()
+            or any(Path(name).name != name or not (checkpoint / name).is_file()
+                   or file_hash(checkpoint / name) != value for name, value in files.items())):
+        raise DatasetError("resume checkpoint is incomplete or changed")
+    step = int(checkpoint.name.removeprefix("checkpoint-"))
+    if integrity.get("step") != step or read_object(checkpoint / "trainer_state.json").get("global_step") != step:
+        raise DatasetError("resume checkpoint step/state mismatch")
+    return checkpoint
 
 
 def adapter_preflight(model, feature: dict, tokenizer, output: Path) -> dict:
@@ -295,7 +335,7 @@ def check_cpu_memory(inspection: dict, available_bytes: int, *, authorized_attem
 
 
 def run(config_path: Path, *, check_only: bool = False, smoke: bool = False,
-        attempt_below_memory_estimate: bool = False) -> dict:
+        attempt_below_memory_estimate: bool = False, resume_from_checkpoint: Path | None = None) -> dict:
     config, manifest, splits, inspection = checked_inputs(config_path)
     versions = verify_environment(ROOT / config["environment_lock"])
     input_hashes = {"configHash": file_hash(config_path),
@@ -303,6 +343,14 @@ def run(config_path: Path, *, check_only: bool = False, smoke: bool = False,
                     "reviewHash": file_hash(ROOT / config["dataset_approval"]),
                     "environmentLockHash": file_hash(ROOT / config["environment_lock"]),
                     "inspectionHash": file_hash(ROOT / config["lora"]["target_modules_from"])}
+    output = ROOT / config["output_dir"]
+    run_inputs = {**input_hashes, "datasetHash": manifest["datasetHash"], "smoke": smoke}
+    if resume_from_checkpoint is not None:
+        if smoke:
+            raise DatasetError("resume is only supported for full training")
+        resume_from_checkpoint = check_resume_checkpoint(output, resume_from_checkpoint, run_inputs)
+        if (output / "run-manifest.json").exists():
+            raise DatasetError("run already completed; refusing to resume over its final adapter")
     if check_only:
         return {"offlineChecksPassed": True, "datasetHash": manifest["datasetHash"], "trainingReady": False}
     if int(os.environ.get("WORLD_SIZE", "1")) != 1:
@@ -333,8 +381,9 @@ def run(config_path: Path, *, check_only: bool = False, smoke: bool = False,
     # Test targets are integrity-checked above but never tokenized for training or model selection.
     tokenized = {s: [tokenize_target(tokenizer, row, config["max_seq_length"]) for row in splits[s]]
                  for s in ("train", "validation")}
-    output = ROOT / config["output_dir"]
-    output.mkdir(parents=True, exist_ok=False)
+    if resume_from_checkpoint is None:
+        output.mkdir(parents=True, exist_ok=False)
+        (output / "run-inputs.json").write_text(json.dumps(run_inputs, indent=2) + "\n", encoding="utf-8")
     kwargs = {"revision": config["base_revision"], "trust_remote_code": False,
               "dtype": getattr(torch, dtype_name), "device_map": {"": device}, "output_loading_info": True}
     method = config["lora"]["method"]
@@ -366,7 +415,7 @@ def run(config_path: Path, *, check_only: bool = False, smoke: bool = False,
                                    tokenizer, output / "preflight-adapter"))
     set_seed(config["seed"])
     trainer = make_trainer(model, tokenizer, tokenized["train"], tokenized["validation"], config, output / "checkpoints", smoke=smoke)
-    result = trainer.train()
+    result = trainer.train(resume_from_checkpoint=str(resume_from_checkpoint) if resume_from_checkpoint else None)
     if result.global_step < 1 or not math.isfinite(result.training_loss):
         raise DatasetError("training did not perform a finite optimizer step")
     trainer.save_model(str(output / "adapter"))
@@ -387,6 +436,7 @@ def run(config_path: Path, *, check_only: bool = False, smoke: bool = False,
               "gpu": torch.cuda.get_device_name(0) if device == "cuda" else None,
               "peakAllocatedBytes": torch.cuda.max_memory_allocated() if device == "cuda" else None,
               "maskPolicy": "last-assistant-only", "truncationCount": 0, "preflight": preflight,
+              "resumedFromCheckpoint": str(resume_from_checkpoint) if resume_from_checkpoint else None,
               "steps": result.global_step, "trainingLoss": result.training_loss,
               "validationMetrics": validation_metrics,
               "adapterHash": file_hash(output / "adapter/adapter_model.safetensors"),
@@ -400,12 +450,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--check", action="store_true", help="offline integrity/review/environment checks only")
     parser.add_argument("--smoke", action="store_true", help="one optimizer step, never a release candidate")
+    parser.add_argument("--resume-from-checkpoint", type=Path, help="resume this run's verified adapter/optimizer/scheduler/RNG state")
     parser.add_argument("--attempt-below-memory-estimate", action="store_true",
                         help="explicit owner-authorized attempt; skip RAM admission and separate adapter smoke")
     args = parser.parse_args(argv)
     try:
         report = run(args.config, check_only=args.check, smoke=args.smoke,
-                     attempt_below_memory_estimate=args.attempt_below_memory_estimate)
+                     attempt_below_memory_estimate=args.attempt_below_memory_estimate,
+                     resume_from_checkpoint=args.resume_from_checkpoint)
     except (OSError, ValueError, KeyError, ImportError) as exc:
         print(f"train_sft_lora: {exc}", file=sys.stderr)
         return 2
