@@ -135,4 +135,96 @@ public class ColabTelemetryTest {
         assertThat(row.path("canPause").asBoolean()).isFalse();
         assertThat(row.path("status").asText()).isEqualTo("PAUSED_BY_USER");
     }
+
+    ObjectNode fullReport(int step, long sequence, String attempt, int from) {
+        var r = report(json);
+        r.put("phase", "full").put("status", "RUNNING").put("plannedSteps", 200).put("step", step).put("sequence", sequence);
+        r.putArray("history").addObject().put("step", step).put("loss", .42);
+        if (attempt != null) r.putObject("attempt").put("id", "attempt-" + attempt.repeat(32)).put("fromStep", from);
+        return r;
+    }
+
+    @Test void resumesUsingTheSameKeyAndLinkOnlyAfterExactAdminApprovalAndPreservesOldEvidence() throws Exception {
+        var s = new ColabTelemetry(json, true, directory.toString(), "https://example.com");
+        var c = register(s); String id = c.get("id").toString(), auth = "Bearer " + c.get("token");
+        var first = fullReport(100, 1, null, 0); first.put("status", "FAILED").put("failure", "runtime");
+        s.receive(id, auth, json.writeValueAsBytes(first), true);
+        var resumed = fullReport(101, 2, "a", 100);
+        ((ObjectNode)resumed.path("bindings")).put("trainerHash", "e".repeat(64));
+        assertThat(s.receive(id, auth, json.writeValueAsBytes(resumed), true)).containsEntry("pendingApproval", true).containsEntry("accepted", false);
+        assertThat(s.detail(id).path("step").asInt()).isEqualTo(100);
+        assertThat(s.detail(id).path("status").asText()).isEqualTo("FAILED");
+        var fingerprint = s.detail(id).path("pendingAttempt").path("fingerprint").asText();
+        assertThatThrownBy(() -> s.approveAttempt(id, Map.of("fingerprint", "incorrect"), 1L)).isInstanceOf(ResponseStatusException.class);
+        s.approveAttempt(id, Map.of("fingerprint", fingerprint), 1L);
+        assertThat(s.detail(id).path("pendingAttempt").path("approved").asBoolean()).isTrue();
+        resumed.put("sequence", 3).put("step", 102);
+        s.receive(id, auth, json.writeValueAsBytes(resumed), true);
+        var detail = s.detail(id);
+        assertThat(detail.path("step").asInt()).isEqualTo(102);
+        assertThat(detail.path("id").asText()).isEqualTo(id);
+        assertThat(detail.path("expiresAt").asText()).isEqualTo(c.get("expiresAt"));
+        assertThat(detail.path("attempts").size()).isEqualTo(1);
+        assertThat(detail.has("pendingAttempt")).isFalse();
+        assertThat(s.attempt(id, "legacy")).isEqualTo(json.readTree(json.writeValueAsBytes(first)));
+        assertThat(new ColabTelemetry(json, true, directory.toString(), "https://example.com").detail(id)).isEqualTo(detail);
+        assertThat(detail.toString()).doesNotContain("tokenHash", c.get("token").toString());
+        first.put("sequence", 4);
+        assertThatThrownBy(() -> s.receive(id, auth, json.writeValueAsBytes(first), true)).isInstanceOf(ResponseStatusException.class);
+        assertThat(s.attempt(id, "legacy").path("sequence").asInt()).isEqualTo(1);
+    }
+
+    @Test void aNewAttemptMayRollBackToCheckpointButCannotChangeDatasetOrEditItsOwnBindings() throws Exception {
+        var s = new ColabTelemetry(json, true, directory.toString(), "https://example.com");
+        var c = register(s); String id = c.get("id").toString(), auth = "Bearer " + c.get("token");
+        s.receive(id, auth, json.writeValueAsBytes(fullReport(109, 1, "a", 0)), true);
+        var next = fullReport(100, 2, "b", 100);
+        s.receive(id, auth, json.writeValueAsBytes(next), true);
+        s.approveAttempt(id, Map.of("fingerprint", s.detail(id).path("pendingAttempt").path("fingerprint").asText()), 1L);
+        s.receive(id, auth, json.writeValueAsBytes(next), true);
+        assertThat(s.detail(id).path("step").asInt()).isEqualTo(100);
+        assertThat(s.detail(id).path("attempts").get(0).path("step").asInt()).isEqualTo(109);
+        for (String fault : new String[]{"binding", "dataset", "futureCheckpoint", "sameAttemptRollback"}) {
+            var bad = fullReport(110, 3, "c", 100);
+            switch (fault) {
+                case "binding" -> { bad.set("attempt", next.path("attempt").deepCopy()); ((ObjectNode)bad.path("bindings")).put("trainerHash", "f".repeat(64)); }
+                case "dataset" -> ((ObjectNode)bad.path("bindings")).put("datasetHash", "f".repeat(64));
+                case "futureCheckpoint" -> ((ObjectNode)bad.path("attempt")).put("fromStep", 101);
+                case "sameAttemptRollback" -> { bad.set("attempt", next.path("attempt").deepCopy()); bad.put("step", 99); ((ObjectNode)bad.path("attempt")).put("fromStep", 90); }
+            }
+            assertThatThrownBy(() -> s.receive(id, auth, json.writeValueAsBytes(bad), true)).as(fault).isInstanceOf(ResponseStatusException.class);
+        }
+        assertThat(s.detail(id).has("pendingAttempt")).isFalse();
+    }
+
+    @Test void approvalPinsConfigAndTrainerAndCannotBeReusedForDifferentCandidate() throws Exception {
+        var s = new ColabTelemetry(json, true, directory.toString(), "https://example.com");
+        var c = register(s); String id = c.get("id").toString(), auth = "Bearer " + c.get("token");
+        s.receive(id, auth, json.writeValueAsBytes(fullReport(100, 1, null, 0)), true);
+        var next = fullReport(101, 2, "a", 100);
+        s.receive(id, auth, json.writeValueAsBytes(next), true);
+        String fingerprint = s.detail(id).path("pendingAttempt").path("fingerprint").asText();
+        s.approveAttempt(id, Map.of("fingerprint", fingerprint), 1L);
+        ((ObjectNode)next.path("config").path("training")).put("learning_rate", .0002);
+        ((ObjectNode)next.path("bindings")).put("configHash", "f".repeat(64));
+        s.receive(id, auth, json.writeValueAsBytes(next), true);
+        assertThat(s.detail(id).path("pendingAttempt").path("approved").asBoolean()).isFalse();
+        assertThat(s.detail(id).path("step").asInt()).isEqualTo(100);
+        assertThatThrownBy(() -> s.approveAttempt(id, Map.of("fingerprint", fingerprint), 1L)).isInstanceOf(ResponseStatusException.class);
+        s.revoke(id);
+        assertThatThrownBy(() -> s.approveAttempt(id, Map.of("fingerprint", s.detail(id).path("pendingAttempt").path("fingerprint").asText()), 1L)).isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test void restoredStepsAndActualNewUpdatesRemainSeparateForCompletion() throws Exception {
+        var s = new ColabTelemetry(json, true, directory.toString(), "https://example.com");
+        var c = register(s); String id = c.get("id").toString(), auth = "Bearer " + c.get("token");
+        var r = fullReport(200, 1, "a", 100); r.put("status", "REPORTED_COMPLETE");
+        ((ObjectNode)r.path("validation")).put("eval_loss", .38);
+        ((ObjectNode)r.path("optimizerEvidence")).put("actualOptimizerUpdates", 100).put("restoredOptimizerSteps", 100);
+        s.receive(id, auth, json.writeValueAsBytes(r), true);
+        assertThat(s.detail(id).path("status").asText()).isEqualTo("REPORTED_COMPLETE");
+        ((ObjectNode)r.path("optimizerEvidence")).put("restoredOptimizerSteps", 99); r.put("sequence", 2);
+        assertThatThrownBy(() -> s.receive(id, auth, json.writeValueAsBytes(r), true)).isInstanceOf(ResponseStatusException.class);
+        assertThat(s.detail(id).path("completionVerified").asBoolean()).isFalse();
+    }
 }

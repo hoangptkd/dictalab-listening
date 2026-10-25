@@ -153,3 +153,98 @@ def test_csrf_and_snapshot_identify_the_client_without_exposing_token(fixture):
     assert not requests[0].has_header("Authorization")
     assert requests[1].get_header("Authorization") == "Bearer " + "x" * 43
     assert requests[1].get_header("X-xsrf-token") == "csrf-value"
+
+
+def test_attempt_identity_survives_reporter_restart_but_changes_with_marker_or_code(fixture):
+    save(fixture.root / "status.json", {"startedAt": "2026-10-26T00:00:00Z", "restoredCheckpointSteps": 0})
+    first = reporter.capture(**fixture.options)
+    assert first["attempt"]["fromStep"] == 0
+    assert reporter.capture(**fixture.options)["attempt"] == first["attempt"]
+    save(fixture.root / "training/train_sft_lora.py", {"patched": True})
+    changed = reporter.capture(**fixture.options)
+    assert changed["attempt"]["id"] != first["attempt"]["id"]
+    save(fixture.root / "status.json", {"startedAt": "2026-10-26T01:00:00Z", "restoredCheckpointSteps": 0})
+    assert reporter.capture(**fixture.options)["attempt"]["id"] != changed["attempt"]["id"]
+    assert str(fixture.root) not in json.dumps(changed)
+
+
+def test_resume_completion_counts_only_proven_restored_steps_and_new_updates(fixture):
+    completed(fixture, "full")
+    status = {"exitCode": 0, "startedAt": "2026-10-26T00:00:00Z", "restoredCheckpointSteps": 1,
+              "step": 2, "completedFullTraining": True}
+    updates = reporter.read(fixture.output / "optimizer-evidence.json")
+    updates.update(actualOptimizerUpdates=1, restoredCheckpointSteps=1, totalVerifiedSteps=2, tensorComparisonVerified=True)
+    save(fixture.output / "optimizer-evidence.json", updates)
+    save(fixture.root / "status.json", status)
+    value = reporter.capture(**fixture.options)
+    assert value["status"] == "REPORTED_COMPLETE"
+    assert value["optimizerEvidence"]["actualOptimizerUpdates"] == 1
+    assert value["optimizerEvidence"]["restoredOptimizerSteps"] == value["attempt"]["fromStep"] == 1
+    for missing in ("restoredCheckpointSteps", "totalVerifiedSteps", "tensorComparisonVerified"):
+        invalid = dict(updates); invalid.pop(missing)
+        save(fixture.output / "optimizer-evidence.json", invalid)
+        assert reporter.capture(**fixture.options)["status"] == "FAILED"
+    save(fixture.output / "optimizer-evidence.json", updates)
+    status["completedFullTraining"] = False
+    save(fixture.root / "status.json", status)
+    assert reporter.capture(**fixture.options)["status"] == "FAILED"
+
+
+def test_validation_metrics_can_be_displayed_before_final_manifest(fixture):
+    save(fixture.output / "training-progress.json", {"step": 1, "history": [{"step": 1, "eval_loss": .38, "epoch": 1}]})
+    assert reporter.capture(**fixture.options)["validation"] == {"eval_loss": .38, "epoch": 1}
+
+
+def test_resumed_history_never_attributes_restored_training_points_to_new_source(fixture):
+    fixture.options["phase"] = "full"
+    save(fixture.root / "status.json", {"startedAt": "2026-10-26T01:00:00Z", "restoredCheckpointSteps": 1})
+    save(fixture.output / "training-progress.json", {"step": 2, "history": [
+        {"step": 1, "loss": .5}, {"step": 1, "eval_loss": .4, "epoch": 1}, {"step": 2, "loss": .3}]})
+    value = reporter.capture(**fixture.options)
+    assert value["history"] == [{"step": 2, "loss": .3}]
+    assert value["validation"] == {"eval_loss": .4, "epoch": 1}
+
+
+def test_pending_approval_keeps_reporter_polling_without_claiming_connected(fixture):
+    from email.message import Message
+    from io import BytesIO
+    import urllib.request
+    import urllib.response
+
+    class Gateway(urllib.request.HTTPSHandler):
+        handler_order = 100
+
+        def https_open(self, request):
+            body = ({"headerName": "X-XSRF-TOKEN", "token": "csrf"} if request.get_method() == "GET"
+                    else {"accepted": False, "pendingApproval": True, "sequence": 123})
+            response = urllib.response.addinfourl(BytesIO(json.dumps(body).encode()), Message(), request.full_url, 200)
+            response.msg = "OK"
+            return response
+
+    client = reporter.Reporter("https://example.com/api/training/telemetry/colab-" + "a" * 32, "x" * 43,
+                               **{k: v for k, v in fixture.options.items() if k != "measure"}, capture_fn=lambda: {"sequence": 123})
+    client.opener.add_handler(Gateway())
+    try:
+        state = client.start()
+        assert not state["connected"] and state["pendingApproval"]
+        assert client.thread.is_alive() and not client.event.is_set()
+        assert "x" * 43 not in json.dumps(state)
+    finally:
+        client.stop()
+
+
+def test_follow_attempt_keeps_existing_credential_endpoint_and_never_controls_training(fixture, monkeypatch):
+    options = {k: v for k, v in fixture.options.items() if k != "measure"}
+    client = reporter.Reporter("https://example.com/api/training/telemetry/colab-" + "a" * 32, "x" * 43, **options)
+    marker = fixture.root / "resume-status.json"
+    save(marker, {"startedAt": "2026-10-26T01:00:00Z", "restoredCheckpointSteps": 0})
+    monkeypatch.setattr(reporter, "telemetry", lambda: ("Test GPU", {}))
+    monkeypatch.setattr(reporter.subprocess, "Popen", lambda *a, **kw: pytest.fail("Reporter controlled a process"))
+    previous = (client.endpoint, client._token)
+    result = client.follow_attempt(status_file=marker, log=fixture.root / "new-log")
+    assert result["id"].startswith("attempt-")
+    assert client.capture()["attempt"] == result
+    assert (client.endpoint, client._token) == previous
+    client.stop()
+    with pytest.raises(ValueError):
+        client.follow_attempt(status_file=marker, log=fixture.root / "new-log")

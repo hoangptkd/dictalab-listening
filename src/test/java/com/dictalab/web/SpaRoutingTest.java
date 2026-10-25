@@ -249,6 +249,16 @@ class SpaRoutingTest {
     }
 
     @Test
+    void attemptApprovalRequiresNamedAdminAndCsrfAndCannotUseTelemetryCredentials() throws Exception {
+        String path = "/api/admin/training/colab/colab-" + "0".repeat(32) + "/approve-attempt";
+        String body = "{\"fingerprint\":\"" + "a".repeat(64) + "\"}";
+        mockMvc.perform(post(path).with(csrf()).contentType("application/json").content(body)).andExpect(status().isUnauthorized());
+        mockMvc.perform(post(path).with(user(DictaLabPrincipal.from(user))).with(csrf()).contentType("application/json").content(body)).andExpect(status().isForbidden());
+        mockMvc.perform(post(path).with(user(DictaLabPrincipal.from(adminUser))).contentType("application/json").content(body)).andExpect(status().isForbidden());
+        mockMvc.perform(post(path).with(user(DictaLabPrincipal.from(adminUser))).with(csrf()).contentType("application/json").content(body)).andExpect(status().isNotFound());
+    }
+
+    @Test
     void adminCanLoadSeparateDocumentAndAccountRoutes() throws Exception {
         mockMvc.perform(get("/admin").with(user(DictaLabPrincipal.from(adminUser))))
                 .andExpect(redirectedUrl("/admin/lessons"));
