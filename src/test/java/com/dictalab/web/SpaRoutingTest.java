@@ -27,9 +27,51 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Content-Type header trong mock context (khác trình duyệt thật). Vì vậy chỉ
  * assert status cho SPA routes; Content-Type chỉ assert cho /api/** và static resources.
  */
-@SpringBootTest
+@SpringBootTest(properties = {"dictalab.training.colab.enabled=true", "dictalab.training.colab.directory=target/test-colab-security-${random.uuid}"})
 @AutoConfigureMockMvc
 class SpaRoutingTest {
+
+    @Test
+    void colabIngestionNeedsCsrfScopedKeyAndHttpsWhileAdminRemainsProtected() throws Exception {
+        String registration = "{\"name\":\"Security fixture\",\"notebookUrl\":\"https://colab.research.google.com/drive/abcdefghijklm\"}";
+        mockMvc.perform(post("/api/admin/training/colab").with(csrf()).contentType("application/json").content(registration))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/admin/training/colab").with(user(DictaLabPrincipal.from(user))).with(csrf()).contentType("application/json").content(registration))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/admin/training/colab").with(user(DictaLabPrincipal.from(adminUser))).contentType("application/json").content(registration))
+                .andExpect(status().isForbidden());
+        var response = mockMvc.perform(post("/api/admin/training/colab").with(user(DictaLabPrincipal.from(adminUser))).with(csrf()).contentType("application/json").content(registration))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store")).andReturn().getResponse();
+        var json = new tools.jackson.databind.ObjectMapper();
+        var connection = json.readTree(response.getContentAsString());
+        String id = connection.path("id").asText(), auth = "Bearer " + connection.path("token").asText();
+        String payload = json.writeValueAsString(com.dictalab.service.ColabTelemetryTest.report(json));
+        String endpoint = "/api/training/telemetry/" + id;
+        mockMvc.perform(post(endpoint).secure(true).header("Authorization", auth).contentType("application/json").content(payload))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post(endpoint).secure(true).with(csrf()).contentType("application/json").content(payload))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post(endpoint).with(csrf()).header("Authorization", auth).contentType("application/json").content(payload))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post(endpoint).secure(true).with(csrf()).header("Authorization", auth).contentType("application/json").content(payload))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.accepted").value(true));
+        mockMvc.perform(get("/api/admin/training/runs/" + id).header("Authorization", auth)).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/admin/training/runs/" + id).with(user(DictaLabPrincipal.from(adminUser))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("colab"))
+                .andExpect(jsonPath("$.completionVerified").value(false)).andExpect(jsonPath("$.canResume").value(false));
+        mockMvc.perform(get("/api/admin/training").with(user(DictaLabPrincipal.from(adminUser))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.datasets[0].records.train").value(800))
+                .andExpect(jsonPath("$.datasets[0].approved").value(false)).andExpect(jsonPath("$.datasets[0].reportedApproved").value(true));
+        mockMvc.perform(post("/api/admin/training/runs/" + id + "/start").with(user(DictaLabPrincipal.from(adminUser))).with(csrf()).contentType("application/json").content("{}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(get("/admin/colab_reporter.py")).andExpect(status().is3xxRedirection());
+        mockMvc.perform(get("/admin/colab_reporter.py").with(user(DictaLabPrincipal.from(adminUser))))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("Read-only Colab telemetry")));
+        mockMvc.perform(post("/api/admin/training/colab/" + id + "/revoke").with(user(DictaLabPrincipal.from(adminUser))).with(csrf()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(endpoint).secure(true).with(csrf()).header("Authorization", auth).contentType("application/json").content(payload))
+                .andExpect(status().isUnauthorized());
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -163,7 +205,7 @@ class SpaRoutingTest {
     }
 
     @Test
-    void trainingDocumentAndRouteAreAdminOnlyAndRuntimeIsExplicitlyDisabled() throws Exception {
+    void trainingDocumentAndRouteAreAdminOnlyAndColabWorksWithoutLocalRuntime() throws Exception {
         var admin = user(DictaLabPrincipal.from(adminUser));
         mockMvc.perform(get("/admin/training").with(admin))
                 .andExpect(status().isOk()).andExpect(forwardedUrl("/admin/training.html"));
@@ -174,7 +216,8 @@ class SpaRoutingTest {
         mockMvc.perform(get("/api/admin/training").with(user(DictaLabPrincipal.from(user))))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/admin/training").with(admin))
-                .andExpect(status().isServiceUnavailable()).andExpect(header().string("Cache-Control", "no-store"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.localConnected").value(false))
+                .andExpect(jsonPath("$.capabilities.create").value(false)).andExpect(header().string("Cache-Control", "no-store"));
     }
 
     @Test

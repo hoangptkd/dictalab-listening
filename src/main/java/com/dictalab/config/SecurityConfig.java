@@ -124,6 +124,8 @@ public class SecurityConfig {
                 .securityContext(context -> context.securityContextRepository(contextRepository))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST,"/api/billing/payos/webhook").permitAll()
+                        // Controller validates a scoped Colab token. CSRF remains required, including this route.
+                        .requestMatchers(HttpMethod.POST,"/api/training/telemetry/*").permitAll()
                         // Source files include answers/transcripts and must never be served by the static handler.
                         .requestMatchers(request -> {
                             String path = java.net.URLDecoder.decode(
