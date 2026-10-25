@@ -27,7 +27,7 @@ xcodebuild test \
   -project DictaLab.xcodeproj -scheme DictaLab \
   -configuration Debug -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
   -derivedDataPath build/DerivedData -resultBundlePath build/Tests.xcresult \
-  -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO \
+  -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
   2>&1 | tee build/test.log
 
 echo 'Building the arm64 iPhone application without signing credentials'

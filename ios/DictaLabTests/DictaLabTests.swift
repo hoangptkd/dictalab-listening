@@ -1,5 +1,28 @@
 import XCTest
+import Security
 @testable import DictaLab
+
+final class SessionVaultTests: XCTestCase {
+    func testSignedAppCanPersistAndClearSessionInKeychain() throws {
+        let origin = "https://keychain-test-\(UUID().uuidString).invalid/"
+        defer {
+            SecItemDelete([kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: "com.dictalab.ios.session",
+                kSecAttrAccount as String: origin] as CFDictionary)
+        }
+        XCTAssertTrue(try SessionVault.load(for: origin).isEmpty)
+        let cookie = try XCTUnwrap(HTTPCookie(properties: [
+            .name: "DICTALAB_ACCESS", .value: "test-session", .domain: "dictalab.example",
+            .path: "/", .expires: Date().addingTimeInterval(3600), .secure: "TRUE"]))
+        try SessionVault.save([cookie], for: origin)
+        let saved = try SessionVault.load(for: origin)
+        XCTAssertEqual(saved.count, 1)
+        XCTAssertEqual(saved.first?.value, "test-session")
+        XCTAssertEqual(saved.first?.cookie?.isSecure, true)
+        try SessionVault.save([], for: origin)
+        XCTAssertTrue(try SessionVault.load(for: origin).isEmpty)
+    }
+}
 
 final class AudioSegmentTests: XCTestCase {
     func testSentenceBoundariesAreClampedToFileEnd() throws {
