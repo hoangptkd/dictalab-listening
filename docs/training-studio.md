@@ -75,7 +75,7 @@ Kiểm tra có thể chạy lại, không chạy model 4B:
 
 ```text
 python -m pytest training/tests -q
-mvn -Dtest=ColabTelemetryTest,TrainingStudioTest,SpaRoutingTest,ColabCsrfProtocolTest,RequestRateLimitFilterTest test
+mvn -Dtest=ColabTelemetryTest,TrainingStudioTest,SpaRoutingTest,ColabCsrfProtocolIntegrationTest,RequestRateLimitFilterTest test
 node --check src/main/resources/static/js/training.js
 ```
 

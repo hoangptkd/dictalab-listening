@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Real cookie/XOR CSRF handshake, deliberately without the csrf() test repository override. */
 @SpringBootTest(properties = {"dictalab.training.colab.enabled=true", "dictalab.training.colab.directory=target/test-colab-csrf-protocol-${random.uuid}"})
 @AutoConfigureMockMvc
-class ColabCsrfProtocolTest {
+class ColabCsrfProtocolIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired AppUserRepository users;
     @Autowired ObjectMapper json;
