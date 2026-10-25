@@ -7,7 +7,9 @@ import pytest
 
 from training.prepare_dataset import DatasetError
 from training.tests.test_prepare_dataset import _prepare, _row, _write
-from training.train_sft_lora import check_cpu_memory, check_resume_checkpoint, checked_inputs, file_hash, load_bundle, pad_batch, tokenize_target, validate_review, verify_environment
+from training.train_sft_lora import (check_cpu_memory, check_resume_checkpoint, checked_inputs, file_hash,
+                                     load_bundle, mirror_checkpoint_to_drive, pad_batch, tokenize_target,
+                                     validate_review, verify_environment)
 
 
 class CharacterTokenizer:
@@ -238,6 +240,28 @@ def test_resume_requires_bound_complete_checkpoint(tmp_path, fault):
             check_resume_checkpoint(output, checkpoint, inputs)
     else:
         assert check_resume_checkpoint(output, checkpoint, inputs) == checkpoint.resolve()
+
+
+def test_drive_mirror_is_hash_verified_and_never_overwrites(tmp_path):
+    output = tmp_path / "run"
+    checkpoint = output / "checkpoints/checkpoint-10"
+    checkpoint.mkdir(parents=True)
+    inputs = output / "run-inputs.json"
+    inputs.write_text(json.dumps({"datasetHash": "approved-data"}), encoding="utf-8")
+    for name in ("adapter_model.safetensors", "adapter_config.json", "optimizer.pt", "scheduler.pt", "rng_state.pth"):
+        (checkpoint / name).write_bytes((name + " state").encode())
+    (checkpoint / "trainer_state.json").write_text(json.dumps({"global_step": 10}), encoding="utf-8")
+    (checkpoint / "resume-integrity.json").write_text(json.dumps({
+        "step": 10, "files": {item.name: file_hash(item) for item in checkpoint.iterdir()}
+    }), encoding="utf-8")
+
+    target = mirror_checkpoint_to_drive(tmp_path / "drive/DictaLab", checkpoint, inputs)
+
+    assert target == tmp_path / "drive/DictaLab/checkpoints/checkpoint-10"
+    assert file_hash(target / "optimizer.pt") == file_hash(checkpoint / "optimizer.pt")
+    assert (tmp_path / "drive/DictaLab/run-inputs.json").read_bytes() == inputs.read_bytes()
+    with pytest.raises(DatasetError, match="will not be overwritten"):
+        mirror_checkpoint_to_drive(tmp_path / "drive/DictaLab", checkpoint, inputs)
 
 
 def test_validator_hash_survives_windows_linux_checkout_line_endings(tmp_path, monkeypatch):

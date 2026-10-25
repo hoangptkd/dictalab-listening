@@ -20,6 +20,7 @@ import org.springframework.security.oauth2.server.resource.web.authentication.Be
 import com.dictalab.security.JwtTokenService;
 import com.dictalab.security.AccountStateFilter;
 import com.dictalab.security.RequestRateLimitFilter;
+import com.dictalab.security.DictaLabPrincipal;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
@@ -29,6 +30,7 @@ import org.springframework.security.config.ObjectPostProcessor;
 
 @Configuration
 public class SecurityConfig {
+    private static final String TRAINING_STUDIO_ADMIN = "hoangptkdhy@gmail.com";
     // A restored snapshot must not dispatch mail/jobs or reclaim leases while being verified.
     @Configuration(proxyBeanMethods = false)
     @Profile("!restore-smoke")
@@ -168,6 +170,11 @@ public class SecurityConfig {
                                 "/rooms", "/rooms/*", "/rooms/join/*"
                         ).permitAll()
                         .requestMatchers("/payments", "/payments.html", "/api/admin/payments/**").authenticated()
+                        // Training can expose run metadata and scoped connection keys. Keep it to the named owner.
+                        .requestMatchers("/admin/training", "/admin/training/", "/admin/training.html",
+                                "/admin/colab_reporter.py", "/api/admin/training/**")
+                        .access((authentication, context) -> new org.springframework.security.authorization.AuthorizationDecision(
+                                trainingStudioAdministrator(authentication.get())))
                         .requestMatchers("/admin", "/admin/**", "/admin.html").hasRole("ADMIN")
                         // Private media — chỉ ADMIN
                         .requestMatchers("/private-media/**").hasRole("ADMIN")
@@ -219,6 +226,11 @@ public class SecurityConfig {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         return "GET".equals(request.getMethod())
                 && (path.equals("/admin") || path.startsWith("/admin/") || path.equals("/admin.html"));
+    }
+
+    private static boolean trainingStudioAdministrator(org.springframework.security.core.Authentication authentication) {
+        if (!(authentication.getPrincipal() instanceof DictaLabPrincipal principal)) return false;
+        return "ADMIN".equals(principal.role()) && TRAINING_STUDIO_ADMIN.equalsIgnoreCase(principal.email());
     }
 
     private void writeError(HttpServletResponse response, int status, String message) throws java.io.IOException {

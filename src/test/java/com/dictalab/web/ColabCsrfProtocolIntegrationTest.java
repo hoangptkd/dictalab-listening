@@ -27,8 +27,10 @@ class ColabCsrfProtocolIntegrationTest {
     @Autowired ObjectMapper json;
 
     @Test void reporterCanUsePublicCsrfCookieWithScopedKeyWithoutAnAdminLoginCookie() throws Exception {
-        var admin = new AppUser("colab-csrf-" + UUID.randomUUID() + "@dictalab.local", "Test", "unused", Instant.now());
-        admin.promoteToAdmin(Instant.now()); admin = users.save(admin);
+        var admin = users.findByEmail("hoangptkdhy@gmail.com")
+                .orElseGet(() -> new AppUser("hoangptkdhy@gmail.com", "Test", "unused", Instant.now()));
+        if (!"ADMIN".equals(admin.getRole())) admin.promoteToAdmin(Instant.now());
+        admin = users.save(admin);
         var response = mvc.perform(get("/api/auth/csrf").secure(true)).andExpect(status().isOk()).andReturn().getResponse();
         var csrf = json.readTree(response.getContentAsString());
         org.assertj.core.api.Assertions.assertThat(response.getCookies()).isNotEmpty();
