@@ -322,8 +322,10 @@ def make_trainer(model, tokenizer, train_rows, validation_rows, config: dict, ou
 
         class RecoveryCheckpoint(TrainerCallback):
             def on_step_end(self, args, state, control, **kwargs):
-                # Extra recovery saves preserve epoch evaluation and validation-only best selection.
-                if state.global_step % settings["checkpoint_steps"] == 0 or pause_requested(output.parent):
+                # The epoch save must run once, after evaluation, including a fractional final epoch.
+                epoch_end = (state.epoch is not None and state.epoch % 1 == 0) or state.global_step == state.max_steps
+                if (pause_requested(output.parent)
+                        or (state.global_step % settings["checkpoint_steps"] == 0 and not epoch_end)):
                     control.should_save = True
                 return control
 

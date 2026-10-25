@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -132,7 +134,46 @@ def test_real_cpu_sft_and_adapter_round_trip(tmp_path):
     assert report["gradientCheckpointing"]
     assert report["recoveryCheckpointVerified"] and report["resumedOptimizerState"]
     assert report["pauseFinishedStepAndSavedState"] and report["pauseSkippedPartialEpochEvaluation"]
+    assert report["epochMirrorAfterEvaluation"] and report["driveRecoverySteps"] == [1, 2, 3, 4]
     assert not report["trainingReady"] and not report["realCheckpointLoaded"]
+
+
+@pytest.mark.parametrize("step,epoch,max_steps,paused,expected", [
+    (10, 0.1, 200, False, True),
+    (11, 0.11, 200, False, False),
+    (100, 1.0, 200, False, False),
+    (200, 2.0, 200, False, False),
+    (150, 1.5, 150, False, False),
+    (100, 1.0, 200, True, True),
+])
+def test_recovery_save_defers_epoch_boundary_until_evaluation(monkeypatch, tmp_path, step, epoch, max_steps, paused, expected):
+    from training.train_sft_lora import make_trainer
+
+    class FakeTrainer:
+        def __init__(self, **kwargs):
+            self.callbacks = []
+
+        def add_callback(self, callback):
+            self.callbacks.append(callback)
+
+    monkeypatch.setitem(sys.modules, "datasets", SimpleNamespace(Dataset=SimpleNamespace(from_list=lambda rows: rows)))
+    monkeypatch.setitem(sys.modules, "trl", SimpleNamespace(SFTConfig=lambda **kwargs: kwargs, SFTTrainer=FakeTrainer))
+    monkeypatch.setitem(sys.modules, "transformers", SimpleNamespace(TrainerCallback=object))
+    config = {"seed": 17, "device": "cpu", "quantization": {"compute_dtype": "float32"},
+              "training": {"per_device_batch_size": 1, "gradient_accumulation_steps": 1,
+                           "epochs": 2, "learning_rate": 0.001, "warmup_ratio": 0.0,
+                           "scheduler": "constant", "gradient_checkpointing": True, "checkpoint_steps": 10}}
+    trainer = make_trainer(None, SimpleNamespace(pad_token_id=0), [{}], [{}], config, tmp_path / "checkpoints", smoke=False)
+    if paused:
+        (tmp_path / "control-request.json").write_text('{"action":"pause"}', encoding="utf-8")
+    state = SimpleNamespace(global_step=step, epoch=epoch, max_steps=max_steps)
+    control = SimpleNamespace(should_save=False, should_evaluate=False)
+    callback = trainer.callbacks[0]
+    assert callback.on_step_end(None, state, control).should_save is expected
+    control.should_save = control.should_evaluate = True  # Native epoch scheduling follows the step hook.
+    callback.on_epoch_end(None, state, control)
+    assert control.should_save is (not paused)
+    assert control.should_evaluate is (not paused)
 
 
 def test_template_config_cannot_load_a_floating_checkpoint(tmp_path):

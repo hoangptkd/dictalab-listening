@@ -8,10 +8,12 @@ import os
 from pathlib import Path
 import string
 import sys
+from unittest.mock import patch
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from training.train_sft_lora import adapter_preflight, check_resume_checkpoint, file_hash, make_trainer, tokenize_target, write_report
+from training.train_sft_lora import (adapter_preflight, check_resume_checkpoint, file_hash, make_trainer,
+                                     tokenize_target, validate_checkpoint_integrity, write_report)
 
 
 def run_smoke(output: Path) -> dict:
@@ -69,8 +71,12 @@ def run_smoke(output: Path) -> dict:
         if name in initial and not torch.equal(tensor, model.get_parameter(name)):
             raise RuntimeError("saved adapter failed to reload on a fresh base model")
     config["training"]["checkpoint_steps"] = 1
+    config["training"]["epochs"] = 2
     epoch_output = output / "epoch-loop"
     epoch_trainer = make_trainer(model, tokenizer, features, features, config, epoch_output / "checkpoints", smoke=False)
+    run_inputs = {"fixture": "tiny-random-cpu", "seed": 17}
+    (epoch_output / "run-inputs.json").write_text(json.dumps(run_inputs), encoding="utf-8")
+    mirror = (output / "drive-mirror").resolve()
 
     class StopAfterFirstStep(TrainerCallback):
         def on_step_begin(self, args, state, control, **kwargs):
@@ -79,23 +85,31 @@ def run_smoke(output: Path) -> dict:
             return control
 
     epoch_trainer.add_callback(StopAfterFirstStep())
-    first_result = epoch_trainer.train()
+    with patch.dict(os.environ, {"DICTALAB_CHECKPOINT_MIRROR": str(mirror)}):
+        first_result = epoch_trainer.train()
     if first_result.global_step != 1:
         raise RuntimeError("recovery fixture did not stop after its first optimizer step")
     progress = json.loads((epoch_output / "training-progress.json").read_text(encoding="utf-8"))
     if progress["step"] != 1 or any("eval_loss" in row for row in progress["history"]):
         raise RuntimeError("pause did not preserve step progress or evaluated a partial epoch")
-    run_inputs = {"fixture": "tiny-random-cpu", "seed": 17}
-    (epoch_output / "run-inputs.json").write_text(json.dumps(run_inputs), encoding="utf-8")
     checkpoint = check_resume_checkpoint(epoch_output, epoch_output / "checkpoints/checkpoint-1", run_inputs)
     (epoch_output / "control-request.json").rename(epoch_output / "control-request.paused.json")
     epoch_trainer = make_trainer(model, tokenizer, features, features, config, epoch_output / "checkpoints", smoke=False)
-    epoch_result = epoch_trainer.train(resume_from_checkpoint=str(checkpoint))
-    if epoch_result.global_step != 2:
+    with patch.dict(os.environ, {"DICTALAB_CHECKPOINT_MIRROR": str(mirror)}):
+        epoch_result = epoch_trainer.train(resume_from_checkpoint=str(checkpoint))
+    if epoch_result.global_step != 4:
         raise RuntimeError("recovery did not continue from the saved optimizer step")
     optimizer_steps = {int(value["step"].item()) for value in epoch_trainer.optimizer.state.values() if "step" in value}
-    if optimizer_steps != {2}:
+    if optimizer_steps != {4}:
         raise RuntimeError("recovery reset the optimizer instead of restoring its state")
+    for step in (1, 2, 3, 4):
+        saved = check_resume_checkpoint(mirror, mirror / f"checkpoints/checkpoint-{step}", run_inputs)
+        state = json.loads((saved / "trainer_state.json").read_text(encoding="utf-8"))
+        if step % 2 == 0 and not any(row.get("step") == step and "eval_loss" in row for row in state["log_history"]):
+            raise RuntimeError("epoch checkpoint was mirrored before its validation")
+    final_checkpoint = epoch_output / "checkpoints/checkpoint-4"
+    if validate_checkpoint_integrity(final_checkpoint) != validate_checkpoint_integrity(mirror / "checkpoints/checkpoint-4"):
+        raise RuntimeError("final epoch checkpoint differs from its immutable mirror")
     metrics = epoch_trainer.evaluate()
     if not epoch_trainer.state.best_model_checkpoint or not math.isfinite(metrics["eval_loss"]):
         raise RuntimeError("epoch evaluation or best-checkpoint reload failed")
@@ -109,6 +123,7 @@ def run_smoke(output: Path) -> dict:
               "epochLoopSteps": epoch_result.global_step, "bestCheckpointReload": True,
               "recoveryCheckpointVerified": True, "resumedOptimizerState": True,
               "pauseFinishedStepAndSavedState": True, "pauseSkippedPartialEpochEvaluation": True,
+              "epochMirrorAfterEvaluation": True, "driveRecoverySteps": [1, 2, 3, 4],
               "adapterHash": file_hash(output / "adapter/adapter_model.safetensors")}
     write_report(output, report)
     return report
