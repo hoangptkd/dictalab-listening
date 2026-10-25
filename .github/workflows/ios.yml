@@ -1,0 +1,47 @@
+name: Build personal iOS app
+
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile SwiftUI, run simulator tests and package unsigned IPA
+        run: bash ios/scripts/build.sh
+      - name: Save personal iPhone package
+        uses: actions/upload-artifact@v4
+        with:
+          name: DictaLab-personal-iOS
+          path: |
+            ios/build/DictaLab-unsigned.ipa
+            ios/build/DictaLab-unsigned.ipa.sha256
+            ios/build/DictaLab-iPhone.png
+          if-no-files-found: error
+          retention-days: 3
+      - name: Save test and build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DictaLab-iOS-checks
+          path: |
+            ios/build/*.log
+            ios/build/Tests.xcresult
+          retention-days: 3
