@@ -118,3 +118,38 @@ def test_telemetry_failure_never_launches_or_terminates_trainer(fixture, monkeyp
     assert not r.once() and "private-secret" not in str(r.state)
     assert not r.thread
     r.stop()
+
+
+def test_csrf_and_snapshot_identify_the_client_without_exposing_token(fixture):
+    from email.message import Message
+    from io import BytesIO
+    import urllib.request
+    import urllib.response
+
+    requests = []
+
+    class Gateway(urllib.request.HTTPSHandler):
+        handler_order = 100
+
+        def https_open(self, request):
+            requests.append(request)
+            if request.get_method() == "GET":
+                body = {"headerName": "X-XSRF-TOKEN", "token": "csrf-value"}
+            else:
+                body = {"accepted": True, "sequence": 123}
+            response = urllib.response.addinfourl(BytesIO(json.dumps(body).encode()), Message(), request.full_url, 200)
+            response.msg = "OK"
+            return response
+
+    client = reporter.Reporter("https://example.com/api/training/telemetry/colab-" + "a" * 32, "x" * 43,
+                               **{k: v for k, v in fixture.options.items() if k != "measure"})
+    client.opener.add_handler(Gateway())
+    client.send({"sequence": 123})
+    assert len(requests) == 2
+    for request in requests:
+        assert request.get_header("User-agent") == "DictaLab-Training-Telemetry/1.0"
+        assert request.get_header("Accept") == "application/json"
+        assert "x" * 43 not in request.full_url
+    assert not requests[0].has_header("Authorization")
+    assert requests[1].get_header("Authorization") == "Bearer " + "x" * 43
+    assert requests[1].get_header("X-xsrf-token") == "csrf-value"

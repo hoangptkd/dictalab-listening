@@ -257,6 +257,8 @@ class Reporter:
         self.capture = capture_fn or (lambda: capture(**self.options))
         self.interval = max(15, interval)
         self.opener = urllib.request.build_opener(NoRedirect(), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        # Identify this client to the HTTPS gateway; urllib's default UA can be rejected before CSRF.
+        self.opener.addheaders = [("User-Agent", "DictaLab-Training-Telemetry/1.0"), ("Accept", "application/json")]
         self.event = threading.Event()
         self.state = {"connected": False, "lastAcceptedAt": None, "lastError": None}
         self.thread = None

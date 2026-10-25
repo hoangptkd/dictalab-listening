@@ -22,6 +22,14 @@ Thư mục metadata cần quyền ghi của tài khoản dịch vụ, ở vùng 
 
 Proxy HTTPS phải chuyển tiếp thông tin scheme theo cấu hình proxy tin cậy hiện có. Không mở origin trực tiếp hoặc mở rộng trusted proxies tùy tiện. Ingestion từ HTTP bị từ chối; reporter giữ TLS verification và không theo redirect.
 
+### Dashboard local nhận dữ liệu qua website HTTPS
+
+Khi backend mới chỉ chạy trên máy local, có thể chuyển tiếp **đúng một đường dẫn POST telemetry đã đăng ký** từ reverse proxy HTTPS của website tới Studio qua SSH reverse forwarding. Cổng phía VPS và backend local đều chỉ bind loopback. Các trang quản trị, đăng nhập và lệnh điều khiển local không nằm trong đường chuyển tiếp này. Giữ bản sao cấu hình proxy, kiểm tra cấu hình trước khi áp dụng và xác minh health website sau thay đổi.
+
+Reporter lấy cookie/header CSRF từ website HTTPS và gửi khóa riêng cùng snapshot qua đường chuyển tiếp; backend local vẫn kiểm tra HTTPS, CSRF, khóa, thời hạn và bindings như bình thường. Reporter nhận diện bằng User-Agent `DictaLab-Training-Telemetry/1.0`; một số gateway Cloudflare trả lỗi 1010 cho User-Agent mặc định của Python trước khi request tới backend. Không dùng User-Agent của trình duyệt hoặc tắt kiểm tra bảo mật để xử lý lỗi này.
+
+Máy local, SSH relay và reporter Colab phải cùng hoạt động. Khi máy local ngủ hoặc relay mất kết nối, dashboard giữ snapshot cũ và báo mất cập nhật; trainer Colab không bị dừng. Đường chuyển tiếp chỉ phục vụ phiên đã đăng ký, cần cập nhật hoặc gỡ khi đổi/thu hồi phiên. Notebook đang chạy có thể dùng reporter trong terminal độc lập; không ngắt ô train chỉ để gắn đồng bộ và không đưa khóa vào mã notebook, shell history hay process arguments.
+
 ### Đăng ký và khóa kết nối
 
 1. ADMIN mở `/admin/training?view=sources` → **Kết nối máy train** → chọn Colab hoặc Local.
