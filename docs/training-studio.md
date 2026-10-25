@@ -2,7 +2,86 @@
 
 Giao diện A đã duyệt từ Stitch, tích hợp tại `/admin/training` trong khu vực quản trị. Dùng HTML/CSS/JavaScript hiện có và Spring Security; không thêm frontend framework hay dependency train.
 
-## Chức năng
+## Local và Google Colab qua HTTPS · 25/10/2026
+
+Giữ giao diện A đã duyệt. Dashboard có trang **Local & Google Colab**, bộ lọc môi trường và các phiên tách biệt theo nguồn/phase. Smoke 1/1 không phải full SFT 200 bước. GPU/VRAM của Colab và RAM hệ thống được ghi riêng; snapshot mất cập nhật không được suy thành trainer thất bại.
+
+### Máy chủ nhận tiến độ
+
+Backend Java nhận metadata mà không cần Python, model, dataset hoặc GPU trên VPS. Local bridge bên dưới vẫn mặc định tắt và chỉ dùng để điều khiển runtime trên chính máy backend. Hai máy có thể đồng thời gửi tiến độ tới cùng dashboard HTTPS.
+
+Thiết lập trên backend đã triển khai, bằng runtime configuration ngoài Git:
+
+```text
+DICTALAB_TRAINING_COLAB_ENABLED=true
+DICTALAB_TRAINING_COLAB_DIRECTORY=/var/lib/dictalab/training-telemetry
+DICTALAB_TRAINING_COLAB_PUBLIC_URL=https://dictalab.hoangptkdhy.workers.dev
+```
+
+Thư mục metadata cần quyền ghi của tài khoản dịch vụ, ở vùng lưu trữ bền vững, không public và được sao lưu. Linux tạo directory/file với quyền 700/600; Windows kế thừa ACL của thư mục runtime riêng. File store này dùng **một JVM writer**; chưa hỗ trợ nhiều replica hoặc store chia sẻ qua network filesystem.
+
+Proxy HTTPS phải chuyển tiếp thông tin scheme theo cấu hình proxy tin cậy hiện có. Không mở origin trực tiếp hoặc mở rộng trusted proxies tùy tiện. Ingestion từ HTTP bị từ chối; reporter giữ TLS verification và không theo redirect.
+
+### Đăng ký và khóa kết nối
+
+1. ADMIN mở `/admin/training?view=sources` → **Kết nối máy train** → chọn Colab hoặc Local.
+2. Colab cần URL notebook Drive, không kèm query/fragment. Local để trống URL. Mỗi phiên train/phase có đăng ký riêng.
+3. Khóa ngẫu nhiên 256 bit chỉ hiện một lần, có hạn 7 ngày. Backend chỉ lưu SHA-256 của khóa. Không lưu khóa trong notebook, mã nguồn, process arguments, báo cáo hoặc Git.
+4. Khóa chỉ được POST metadata cho đúng ID; không đọc dashboard/dataset và không gọi start/resume/pause/stop. ADMIN có thể thu hồi; thu hồi không dừng trainer hoặc xóa bằng chứng.
+5. Reporter vẫn dùng GET `/api/auth/csrf` và cookie/header CSRF trước POST `/api/training/telemetry/{id}`. Không bỏ CSRF của ingestion hoặc các API quản trị. Rate limit dùng nhóm AI hiện có.
+
+Snapshot tối đa 32 KB, schema cho phép chỉ các trường metadata đã xác định; không nhận command/path/raw log/dataset text. Sequence phải tăng; retry có cùng bytes/sequence được nhận idempotent. Server kiểm tra timestamp trong 5 phút, số hữu hạn, hash đúng định dạng, step không lùi; bindings config/data/review/environment/inspection/trainer, phase, model, planned steps và cấu hình không được đổi sau snapshot đầu tiên. Thay môi trường/config cần phiên mới.
+
+### Colab
+
+Tải `/admin/colab_reporter.py` bằng phiên ADMIN, đưa file vào Colab. Ô kết nối do dashboard cung cấp dùng `getpass` để hỏi khóa. Ví dụ phần cấu hình (endpoint lấy đúng từ dashboard):
+
+```python
+import colab_reporter
+reporter = colab_reporter.connect(
+    endpoint=endpoint_from_dashboard,
+    root="/content/qwen-sft-env04",
+    config="/content/qwen-sft-env04/data/fine-tuning/reviewed-500-v14-low-b1-20261024/training-config-colab-04.yaml",
+    status_file="/content/sft-t4-full-04-status.json",
+    log="/content/sft-t4-full-04.log",
+    phase="full",
+)
+```
+
+Kiểm tra `reporter.state` có `connected=True` trước khi chạy ô train riêng. `reporter.stop()` chỉ dừng gửi tiến độ. Reporter không thực thi source trong backup, không sửa config/trainer, không cài gói, không chạy lại smoke hoặc khởi chạy train. Cần YAML/psutil đã có trong môi trường train; GPU đo bằng `nvidia-smi`, không import torch để đo.
+
+Để gửi bằng chứng smoke 04 có sẵn, đăng ký ID riêng, đổi config sang `training-config-colab-smoke-04.yaml`, status/log sang `sft-t4-smoke-04-status.json` / `sft-t4-smoke-04.log` và `phase="smoke"`. Không rerun smoke. Đồng bộ chạy mỗi 15 giây và chỉ gửi structured metrics; lỗi kết nối không ảnh hưởng trainer. Sau 90 giây không nhận snapshot, dashboard gắn mất cập nhật; trạng thái RUNNING cũ thành chưa xác minh, giữ trạng thái được máy gửi báo cáo.
+
+Smoke đạt cần manifest/config/hash adapter khớp trên máy gửi, optimizer update thật, tensor adapter thay đổi và gradient hữu hạn; exit 0 không đủ. Full được máy gửi báo hoàn tất cần đủ planned steps, validation loss hữu hạn, không truncate, đúng mask và manifest trainingReady. Máy chủ vẫn ghi rõ **báo cáo từ máy gửi**, không xem metadata là file checkpoint đã xác minh độc lập. `/content` là vùng tạm; notebook lưu trên Drive không tự sao lưu checkpoint/model.
+
+### Máy local gửi tới cùng website
+
+Đăng ký nguồn **Máy local · CPU**, lấy endpoint và chạy trong checkout đã cập nhật bằng venv CPU hiện có:
+
+```powershell
+& 'data/fine-tuning/.venv-cpu/Scripts/python.exe' -m training.studio_publisher --list
+& 'data/fine-tuning/.venv-cpu/Scripts/python.exe' -m training.studio_publisher --endpoint $endpointFromDashboard --run-id $localRunId
+```
+
+Publisher hỏi khóa bằng `getpass`. `--once` gửi một snapshot; mặc định gửi mỗi 15 giây. Ctrl+C chỉ dừng publisher. Dùng `studio.describe` và native checkpoint gate hiện có, không gửi raw log/path/dataset. Không start/resume/pause trainer và không đổi marker/config/dữ liệu. Các phiên HTTPS chỉ có quyền theo dõi; muốn điều khiển CPU phải vào backend đang truy cập runtime local.
+
+Không tự chuyển checkpoint CPU float32 ↔ CUDA FP16. Model/dataset giống nhau chưa đủ điều kiện resume: config, environment và source trainer đang khác. GPU checkpoint được máy gửi kiểm hash vẫn có `verified=false` trên máy chủ khi chưa truyền file/state để xác minh native.
+
+### Bằng chứng tích hợp
+
+Bản sao lưu Colab `qwen35-sft-evidence-20261024T195246Z.zip` được đọc tại máy local, kiểm SHA-256 `4041993305ad44d24fb598d8a7f8f648dd51ce6f3ea3228cec71d679288bab87`, inventory 119 file đều khớp; kiểm path/duplicate/symlink/giới hạn dung lượng trước khi đọc. Không thực thi mã trong ZIP. Smoke 01 lỗi runtime, smoke 02 OOM, smoke 03 gradient NaN không đạt, smoke 04 có 1 optimizer update / 32 adapter tensors đổi / gradient hữu hạn. Đây là bằng chứng của snapshot cũ, không phải kết nối Colab hiện tại.
+
+Kiểm tra có thể chạy lại, không chạy model 4B:
+
+```text
+python -m pytest training/tests -q
+mvn -Dtest=ColabTelemetryTest,TrainingStudioTest,SpaRoutingTest,ColabCsrfProtocolTest,RequestRateLimitFilterTest test
+node --check src/main/resources/static/js/training.js
+```
+
+Các bài kiểm tra gồm quyền ADMIN/CSRF thật, scope/expiry/revoke của khóa, HTTPS bắt buộc, replay/đổi bindings, NaN/thiếu update/adapter hỏng, phân biệt thanh tải weights với optimizer steps, snapshot cũ, cùng dashboard có nguồn CPU và GPU, publisher không gọi trainer. Xem thử UI dùng server fixture loopback với metadata thật đã lọc; thao tác đăng ký/thu hồi là fixture. Website production và kết nối tới notebook thật cần triển khai backend và đăng ký nguồn riêng; không được coi preview là đã đồng bộ trực tiếp.
+
+## Chức năng local
 
 - Tổng quan nhiều lần chạy: trạng thái, optimizer step, loss, learning rate, validation, thời gian bắt đầu và checkpoint.
 - Chi tiết metrics, cấu hình LoRA/train, dataset, log; tìm kiếm/lọc và so sánh tối đa 4 lần chạy.

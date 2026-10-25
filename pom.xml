@@ -139,6 +139,11 @@
         <resources>
             <resource><directory>src/main/resources</directory></resource>
             <resource>
+                <directory>training</directory>
+                <targetPath>static/admin</targetPath>
+                <includes><include>colab_reporter.py</include></includes>
+            </resource>
+            <resource>
                 <directory>services/ai-generation/app</directory>
                 <includes><include>gemini_quota.lua</include></includes>
             </resource>
