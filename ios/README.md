@@ -27,10 +27,12 @@ chạy khi push thay đổi trong `ios/`. Workflow dùng Xcode trên `macos-15` 
 3. Build Release cho iPhone arm64, đóng gói `DictaLab-unsigned.ipa` và SHA-256.
 4. Khởi chạy app trên simulator, lưu ảnh màn hình.
 
-Mở run tương ứng với commit của bạn, đợi thành công, tải artifact **DictaLab-personal-iOS** rồi giải nén.
+Mở run tương ứng với commit của bạn, đợi thành công, mở liên kết Release trong phần Summary và tải `DictaLab-unsigned.ipa`.
+Các bản build được lưu ở [Releases của repository](https://github.com/hoangptkd/dictalab-listening/releases).
+Repository đang riêng tư, nên chỉ tài khoản có quyền truy cập mới tải được.
 File `.ipa` chưa ký; không thể cài bằng cách bấm trực tiếp vào file trên iPhone.
 Build trên repository riêng sử dụng hạn mức GitHub Actions; kiểm tra ngân sách/hạn mức còn lại và không bật chi tiêu trả phí nếu cần giữ chi phí bằng 0.
-Artifacts tự hết hạn sau 3 ngày; tải bản `.ipa` về máy để giữ lại.
+IPA và bằng chứng kiểm thử dùng GitHub Releases, không dùng hạn mức Actions artifacts đang đầy trên tài khoản.
 
 Kiểm tra cấu trúc trên Windows:
 
