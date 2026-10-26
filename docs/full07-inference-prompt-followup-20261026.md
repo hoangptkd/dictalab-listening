@@ -94,3 +94,7 @@ Kiểm tra script trên máy này mà không nạp model hoặc chạy inference
 ```
 
 Giới hạn: phép thử dùng CPU và thư viện hiện có, không đối chiếu GPU và không dùng tập test. Chưa có đánh giá độc lập đủ lớn để chứng nhận chất lượng. Bằng chứng này chưa cho phép kết luận dataset huấn luyện sai hoặc quyết định huấn luyện lại; dataset không được mở để review trong công việc này.
+
+## Chẩn đoán tiếp theo
+
+Đã hoàn tất tám cặp probe ngắn và ba lượt control, đủ 19 đầu ra. Base nguyên gốc và nhánh tắt LoRA khớp; cache không đổi token trong câu dịch được đo. Base nguyên gốc vẫn dịch Wednesday thành thứ Ba, nên chưa có căn cứ quy lỗi riêng cho full07. Chi tiết và giới hạn tại `docs/full07-inference-diagnostics-20261026.md`; quyết định chưa chọn prompt v2 giữ nguyên.
