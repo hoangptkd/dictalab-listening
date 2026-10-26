@@ -322,3 +322,7 @@ Kiểm tra nhanh script mà không nạp model hoặc sinh lại:
 Script mặc định từ chối ghi đè `results.jsonl`; muốn làm lượt thử mới phải dùng thư mục riêng và giữ metadata tương ứng.
 
 **Kết luận:** việc huấn luyện và tính toàn vẹn sao lưu đã có bằng chứng riêng; phép thử câu trả lời cho thấy cải thiện cấu trúc nhưng còn lỗi nghĩa. Chưa triển khai model. Trước một lượt đánh giá rộng hơn cần thống nhất wire contract của prompt nội dung trong phiên bản mới, giữ nguyên artifact/dữ liệu đóng băng của full07, và kiểm tra các lỗi ngày, dịch câu hỏi, continuity và ý kiến B1. Tập test vẫn chưa được sử dụng; huấn luyện local vẫn `PAUSED_BY_USER`.
+
+## 13. Theo dõi thử nghiệm prompt tiếp theo
+
+Đã hoàn tất thử nghiệm prompt v2 trên sáu cặp (12 đầu ra có provenance, gồm 10 gốc và 2 bổ sung). Một số lỗi giảm nhưng có hồi quy về quan hệ anh/em và độ dài A1; chưa chọn prompt mới hoặc triển khai model. Chi tiết tại `docs/full07-inference-prompt-followup-20261026.md`. Kết quả ban đầu ở mục 12 được giữ nguyên; không sửa artifact/dataset đóng băng hoặc chạy lại training.
