@@ -130,3 +130,14 @@ Self-check không nạp model hoặc truy cập mạng:
 & 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/.venv-cpu/Scripts/python.exe' -X utf8 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/colab-transfer-20261025/inference-reference-20261026/verify_publisher.py' --self-check
 & 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/.venv-cpu/Scripts/python.exe' -X utf8 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/colab-transfer-20261025/inference-reference-20261026/reference_gpu.py' --self-check
 ```
+
+### Kết quả yêu cầu cấp T4 sau khi người dùng duyệt
+
+Người dùng đã đồng ý cấp T4 cho inference riêng. Đã bấm đúng `Connect T4` trong notebook full07 hiện có; Colab trả về hộp thoại **`Cannot connect to GPU backend`**, với lý do **`You cannot currently connect to a GPU due to usage limits in Colab.`** Đây là bằng chứng giới hạn cấp GPU ở lần thử này; không dùng nó để giải thích các lỗi hoặc lần ngắt runtime trước đó.
+
+- Chưa kết nối được GPU mới, chưa tải/chạy script hoặc tạo đầu ra GPU. Không có kết quả tham chiếu GPU để so với CPU.
+- Không bấm `Connect without GPU`, không cài dependency, không chạy lại training/cell cũ và không mua tài nguyên.
+- Đã giữ ảnh `colab-gpu-usage-limit.png`, sự kiện `gpu-allocation-attempt.json` và cập nhật riêng trường đối chiếu inference trong `full07-progress.json`; lịch sử huấn luyện và `PAUSED_BY_USER` giữ nguyên.
+- Bước còn lại cần một GPU khả dụng trong phạm vi tài nguyên được người dùng cho phép. Chưa xác minh được thời điểm Colab cấp lại quota; không tự ước đoán hoặc tạo lịch thử lại.
+
+Bằng chứng quota nằm cùng thư mục private `inference-reference-20261026/` đã nêu ở trên. Các tệp model, checkpoint và dataset không thay đổi. Xác minh 7/7 tệp với nguồn phát hành vẫn hoàn tất; phần GPU giữ trạng thái bị chặn bởi hạn mức, không đánh dấu đã kiểm tra thành công.
