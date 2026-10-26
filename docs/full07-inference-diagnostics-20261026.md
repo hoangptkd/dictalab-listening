@@ -141,3 +141,51 @@ Người dùng đã đồng ý cấp T4 cho inference riêng. Đã bấm đúng 
 - Bước còn lại cần một GPU khả dụng trong phạm vi tài nguyên được người dùng cho phép. Chưa xác minh được thời điểm Colab cấp lại quota; không tự ước đoán hoặc tạo lịch thử lại.
 
 Bằng chứng quota nằm cùng thư mục private `inference-reference-20261026/` đã nêu ở trên. Các tệp model, checkpoint và dataset không thay đổi. Xác minh 7/7 tệp với nguồn phát hành vẫn hoàn tất; phần GPU giữ trạng thái bị chặn bởi hạn mức, không đánh dấu đã kiểm tra thành công.
+
+## Đối chiếu lớp model đầy đủ trên CPU theo yêu cầu tiếp tục
+
+Lượt này hoàn tất lúc `2026-10-26T09:49:54Z` (16:49 UTC+7). Đã nạp đúng **`Qwen3_5ForConditionalGeneration`**, là architecture trong config phát hành, rồi chạy lại đúng 8 prompt trên CPU FP32. Đối chiếu với 16 đầu ra base/adapter của `Qwen3_5ForCausalLM` đã lưu trước đó; không sửa prompt hoặc sinh một bộ câu hỏi khác.
+
+| Hạng mục | Kết quả |
+|---|---|
+| Đầu ra mới | 8 base nguyên gốc + 1 control tắt LoRA + 8 adapter = **17** |
+| So với đường text-only | **16/16 đầu ra base/adapter khớp từng token** |
+| Giới hạn đầu ra | 0/17 bị cắt bởi giới hạn token |
+| Loading info của lớp đầy đủ | Không báo missing, unexpected, mismatched keys hoặc error |
+| Model đầu vào | Tính lại hash của 7/7 tệp theo metadata phát hành, đều khớp |
+| LoRA sau nạp | 64/64 tensor khớp chính xác; đủ 32 LoRA layers, chỉ nằm trong language model |
+| Tắt LoRA so với base nguyên gốc của lớp đầy đủ | Logit đầu khớp tuyệt đối trên 8/8 prompt, max abs delta đều `0.0` |
+| Control sinh khi tắt LoRA | Probe dịch Wednesday khớp từng token với base text-only |
+| Bật LoRA | Logit đầu đổi trên cả 8 prompt; max abs delta mỗi prompt từ `8.149991989135742` đến `10.267924308776855` |
+| Tắt lại sau adapter | Logit probe dịch Wednesday khớp base nguyên gốc của lớp đầy đủ |
+| Tệp adapter và artifact đóng băng | Hash giữ nguyên |
+
+### Cách nạp adapter vào architecture đầy đủ
+
+Adapter đã lưu dùng tên `base_model.model.model.layers.*`; lớp đầy đủ đặt các lớp văn bản tại `base_model.model.model.language_model.layers.*`. Script dùng API `key_mapping` có sẵn của PEFT, thay đúng tiền tố `model.layers.` thành `model.language_model.layers.` sau khi PEFT bỏ prefix của mình. Self-check kiểm tra ánh xạ một-một đủ 64 key, và sau khi nạp đối chiếu chính xác cả 64 tensor theo tên đã ánh xạ. Không sửa safetensors, adapter config hoặc checkpoint để đạt phép kiểm tra này.
+
+Các tham số đều đóng băng, model ở `eval()` và `inference_mode()`. Cùng revision, tokenizer, chat template, seed17, greedy, FP32 và môi trường Windows CPU đã dùng trước đó; không quantization, không cài dependency, không truy cập mạng. Chỉ dùng văn bản dù lớp đầy đủ có phần vision; lượt này không kiểm khả năng xử lý ảnh/video.
+
+### Ý nghĩa của kết quả
+
+Kết quả nghĩa giữ nguyên như bảng tám cặp ở trên: cả hai nhánh trả đúng Wednesday cho câu hỏi tiếng Anh, nhưng dịch Wednesday thành **“Thứ Ba”**; khi có ánh xạ thì trả đúng **“thứ Tư”**. Cả hai còn mất nghĩa hạn chót trong câu deadline và tự chọn “anh” dù tuổi chưa rõ. Hai câu hỏi điều kiện ngắn trả đúng No/Không; JSON sao chép giữ đúng key/value.
+
+Không phát hiện sai lệch do chọn lớp text-only thay lớp architecture đầy đủ hoặc do nạp LoRA ở các probe đã chạy. Tuy nhiên, hai đường vẫn dùng chung phiên bản torch/Transformers và các reference kernels CPU; **đây không phải một backend độc lập hoặc phép đối chiếu GPU**. Việc lặp lại cùng 8 probe không tạo thêm 8 trường hợp độc lập để tính tỷ lệ chất lượng tổng quát. Chưa có căn cứ sửa dataset hoặc huấn luyện lại; quyết định chưa đưa prompt v2/model vào sử dụng giữ nguyên.
+
+### Bằng chứng và kiểm tra lại
+
+Thư mục private: `C:/Users/HP/Desktop/English_dictition/data/fine-tuning/colab-transfer-20261025/inference-cpu-full-loader-20261026/`. Có script, prompt, raw results, metadata, controls, completion, verification và stdout/stderr; các lượt cũ được giữ nguyên.
+
+- SHA-256 `compare_full_loader.py`: `fd12d589e199868fff1bd88f211d348dfaa4092aa412aee4d10636d540ec89c0`.
+- SHA-256 `results.jsonl`: `8099a97c980d8f2a22055834249d7cffb4a302902d57c19efee2346145f069d0`.
+- SHA-256 `controls.json`: `9cc427af066d696d3687c7f3a1b04f70d35cc197db4c72474306d7fd1014f74c`.
+- Prompt SHA-256 vẫn là `9d0c91435275c929f9266a24e2e3ca2ed466bc455b2d874ced6d9d227d2c6d42`.
+
+Kiểm tra bằng chứng mà không nạp model hoặc sinh lại:
+
+```powershell
+& 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/.venv-cpu/Scripts/python.exe' -X utf8 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/colab-transfer-20261025/inference-cpu-full-loader-20261026/verify.py'
+& 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/.venv-cpu/Scripts/python.exe' -X utf8 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/colab-transfer-20261025/inference-cpu-full-loader-20261026/compare_full_loader.py' --self-check
+```
+
+Đã kiểm tra row count/uniqueness, so từng token với nguồn gốc, controls, tensor/hash, Python compile và UTF-8. Không còn tiến trình của lượt inference này sau khi hoàn tất. Local training vẫn `PAUSED_BY_USER`; dataset và tập test không được đọc/tokenize. Trạng thái GPU vẫn bị chặn bởi hạn mức Colab, không thử cấp lại trong lượt CPU này.
