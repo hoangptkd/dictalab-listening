@@ -94,3 +94,39 @@ Script inference từ chối ghi đè kết quả hiện có. `full07-progress.j
 Ưu tiên đối chiếu cùng probe trong một môi trường inference tham chiếu đã xác minh trọng số trước khi quyết định huấn luyện lại hoặc thêm luật prompt. Việc đó chưa được thực hiện trong lượt này. Không sửa dữ liệu đóng băng để phản ứng với tám câu nhỏ và không dùng ngày đúng khi có bảng ánh xạ để chứng nhận bản dịch tổng quát.
 
 Đã kiểm tra đủ row/uniqueness, completion, controls, hash, serializer self-check, Python compile và UTF-8. Chỉ bổ sung báo cáo trong Git; private script/model/raw output không được commit. Chưa đối chiếu GPU, chưa dùng tập test, chưa triển khai. CI GitHub phải báo theo trạng thái kiểm tra thực tế, không coi các phép kiểm tra local là CI đã chạy.
+
+## Bổ sung: đối chiếu nguồn phát hành lúc 16:30 ngày 26/10 (UTC+7)
+
+Đã lấy metadata công khai từ [repository Qwen tại đúng revision](https://huggingface.co/Qwen/Qwen3.5-4B/tree/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a), rồi tính lại hash trực tiếp trên các tệp local. **Cả 7/7 tệp cần cho đường text-only với fast tokenizer đều khớp**, không có mismatch. Kết quả này bổ sung bằng chứng nguồn phát hành còn thiếu ở lượt chẩn đoán phía trên; không sửa manifest lịch sử.
+
+| Tệp | Phép đối chiếu với metadata phát hành | Kết quả |
+|---|---|---|
+| Shard trọng số 1 | SHA-256 `26a93f066e1916adb13453dae5a0c707c0fbc71299ed98779571a907b8e74c61` và kích thước | Khớp |
+| Shard trọng số 2 | SHA-256 `cb544bd9bfae93dc59b0f22b292f5933573854a7f9b97835c67060d7d910e188` và kích thước | Khớp |
+| `tokenizer.json` | SHA-256 `5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42` và kích thước | Khớp |
+| `model.safetensors.index.json` | Git blob ID và kích thước | Khớp |
+| `config.json` | Git blob ID và kích thước | Khớp |
+| `tokenizer_config.json` | Git blob ID và kích thước | Khớp |
+| `chat_template.jinja` | Git blob ID và kích thước | Khớp |
+
+SHA trọng số cũng được kiểm trên trang [shard 1](https://huggingface.co/Qwen/Qwen3.5-4B/blob/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a/model.safetensors-00001-of-00002.safetensors) và [shard 2](https://huggingface.co/Qwen/Qwen3.5-4B/blob/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a/model.safetensors-00002-of-00002.safetensors). Metadata API cùng revision được lưu nguyên bản; `publisher-verification.json` ghi thuật toán, kích thước, digest local/phát hành của từng tệp. Bốn tệp tùy chọn không có trong cache là `merges.txt`, `vocab.json` và hai cấu hình ảnh/video; fast tokenizer đã chứa vocab/merges và phép thử chỉ dùng văn bản. Không tải thêm các tệp không được dùng.
+
+Do đó, không thấy bằng chứng cache trọng số/config/tokenizer local bị khác bản phát hành ở các tệp đã đối chiếu. Điều này không xác minh implementation thư viện hoặc chứng nhận câu trả lời đúng.
+
+### Chuẩn bị đối chiếu GPU
+
+- Chrome profile Văn Hoàng vẫn dùng trình duyệt hiện có. Đã mở lại đúng notebook full07; trang hiện `Connect T4 — Connect to a new runtime`, đồng thời có lỗi JavaScript output/auth-cookie. Các output cũ trong notebook không phải bằng chứng runtime hiện tại.
+- Local chỉ có AMD Radeon; Ubuntu WSL có Python nhưng chưa có torch/transformers/peft/safetensors. Không cài dependency hoặc khởi chạy inference trong WSL.
+- Đã chuẩn bị riêng `reference_gpu.py`, dùng đúng hash 8 prompt của lượt trước, revision và adapter checkpoint-200. Script chỉ inference; kiểm phiên bản trước khi tải model, xác minh cả 7 tệp theo metadata phát hành, đối chiếu 64 tensor adapter và logit base trước/sau tắt LoRA. Đây là kiểm tra sẽ chạy, chưa phải kết quả GPU.
+- Thiết kế dùng CUDA FP16 trên T4 so với Windows CPU FP32 trước đó; phải ghi rõ khác biệt thiết bị, dtype, torch và hệ điều hành. Nếu kết quả khác, chưa thể quy nguyên nhân riêng cho một khác biệt trong số đó.
+- Gói probe đã qua self-check, biên dịch và đối chiếu lại manifest ZIP. Chưa tải lên Colab, chưa cấp runtime mới, chưa tải thêm model trên Colab hoặc chạy 16 đầu ra GPU dự kiến.
+- Chỉ dẫn theo dõi trước đó cấm tạo runtime mới; đã gửi yêu cầu xác nhận cụ thể để cấp T4 cho inference riêng. Bước GPU giữ chờ quyết định này; local training vẫn `PAUSED_BY_USER`.
+
+Bằng chứng private: `C:/Users/HP/Desktop/English_dictition/data/fine-tuning/colab-transfer-20261025/inference-reference-20261026/`. Tệp metadata công khai `publisher-model-info.json` có SHA-256 `7a212d9b30b2c532e0680d7bb678fac2919ac17d534a70a66b308c8202af593f`; gói `full07-reference-probes.zip` có SHA-256 `bbb925ef72c887e1adfd6e3f4df1bbd509508e21781ede19acd59ce1fac013a4`. Gói chỉ gồm script, 8 prompt và metadata model công khai; không chứa dataset, credential hoặc trọng số. Không đưa các tệp private vào Git.
+
+Self-check không nạp model hoặc truy cập mạng:
+
+```powershell
+& 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/.venv-cpu/Scripts/python.exe' -X utf8 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/colab-transfer-20261025/inference-reference-20261026/verify_publisher.py' --self-check
+& 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/.venv-cpu/Scripts/python.exe' -X utf8 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/colab-transfer-20261025/inference-reference-20261026/reference_gpu.py' --self-check
+```
