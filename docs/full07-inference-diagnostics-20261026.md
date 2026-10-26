@@ -237,3 +237,7 @@ Kiểm tra bằng chứng đã lưu, không nạp model hoặc chạy sinh lại
 ```
 
 Verifier kiểm hash export, 16 row độc nhất, từng token/raw text với CPU, 8 control tắt LoRA, các delta hữu hạn, môi trường, hash adapter/prompt/script và giữ nguyên lỗi đầu tiên. Local training vẫn `PAUSED_BY_USER`; dataset/test không được đọc hoặc tokenize. Không deploy, mua tài nguyên hoặc shutdown runtime.
+
+## Bộ thử cải thiện tiếp theo
+
+Đã hoàn tất thêm 60 đầu ra phát triển trên T4 với prompt ngắn, ví dụ và bảng thuật ngữ. Chưa có ứng viên đạt đủ điều kiện cấu trúc/nghĩa để chọn hoặc chạy bốn tình huống riêng. Kết quả, lỗi thinking/raw evidence và giới hạn thiết kế ngữ cảnh nằm trong [báo cáo cải thiện GPU](full07-inference-improvement-gpu-20261026.md). Các trọng số và quyết định chưa triển khai giữ nguyên.
