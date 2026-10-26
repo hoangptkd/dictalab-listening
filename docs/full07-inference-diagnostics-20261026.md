@@ -189,3 +189,51 @@ Kiểm tra bằng chứng mà không nạp model hoặc sinh lại:
 ```
 
 Đã kiểm tra row count/uniqueness, so từng token với nguồn gốc, controls, tensor/hash, Python compile và UTF-8. Không còn tiến trình của lượt inference này sau khi hoàn tất. Local training vẫn `PAUSED_BY_USER`; dataset và tập test không được đọc/tokenize. Trạng thái GPU vẫn bị chặn bởi hạn mức Colab, không thử cấp lại trong lượt CPU này.
+
+## Đối chiếu GPU đã hoàn tất sau yêu cầu điều khiển Chrome
+
+Ngày 26/10, người dùng yêu cầu chạy GPU và đã duyệt tải adapter/tokenizer, 8 prompt riêng cùng script lên Colab đang mở trong Chrome. Runtime này cấp được **Tesla T4 15.360 MiB**. Kết quả cấp GPU mới không thay đổi bằng chứng quota bị từ chối ở lần thử trước.
+
+### Lỗi môi trường ban đầu và cách khôi phục
+
+Lần đầu sinh đủ 8 đầu ra base rồi dừng khi nạp PEFT: `torchao 0.10.0` không tương thích, PEFT yêu cầu bản trên `0.16.0`. Tiến trình kết thúc `exitCode=1`; chưa có đầu ra adapter ở lần này. Log, `failure.json`, metadata và 8 đầu ra được giữ riêng tại `inference-gpu-20261026/attempt01/`. Cả 8 đầu ra base của lần lỗi khớp từng token với CPU.
+
+Sau dry-run tìm được wheel phù hợp, người dùng duyệt nâng riêng `torchao==0.17.0`. Cài bằng `--no-deps --only-binary=:all: --require-hashes`, khóa SHA-256 wheel `87a418ce0ec064a821ceab83c921b501acef0ce9a6ccd1be358fcd16c3ae8c58`. Kiểm tra metadata trước/sau xác nhận giữ nguyên torch `2.11.0+cu130`, Transformers `5.20.2`, PEFT `0.21.2`, safetensors `0.8.0`, accelerate `1.15.0`, huggingface_hub `1.33.0`; torchao import, PEFT availability và CUDA đều PASS. Không cài causal-conv1d hoặc flash-linear-attention; model dùng reference PyTorch kernels trên CUDA.
+
+### Kết quả lần chạy mới
+
+Script `reference_gpu.py` giữ nguyên hash đã chuẩn bị; chạy vào thư mục mới, sử dụng cache offline và giữ lần lỗi. Lượt mới kết thúc lúc **`2026-10-26T10:43:17Z` (17:43 UTC+7)**, `exitCode=0`.
+
+| Phép kiểm tra | Kết quả |
+|---|---|
+| Môi trường | Linux Python 3.13.16, T4, base FP16; LoRA được PEFT giữ FP32 |
+| Cấu hình sinh | Seed17, greedy, không thinking, không quantization; cùng 8 prompt và giới hạn token |
+| Đầu vào | Hash 7/7 tệp base khớp metadata phát hành đúng revision; tokenizer/template của adapter khớp base |
+| Đầu ra | 8 base nguyên gốc + 8 adapter = **16**, không đầu ra nào chạm giới hạn token |
+| So với CPU FP32 | **16/16 đầu ra khớp từng token**, raw text và số token đầu vào cũng khớp |
+| Nạp LoRA | 64/64 tensor khớp tệp adapter; tất cả tham số đóng băng |
+| Tắt LoRA so với pristine GPU base | Logit đầu khớp tuyệt đối trên 8/8 prompt, delta đều `0.0` |
+| Bật LoRA | Logit đầu thay đổi trên cả 8 prompt, max abs delta từ `8.158203125` đến `10.2578125`; các giá trị đã đo hữu hạn |
+| Adapter sau chạy | SHA-256 giữ nguyên; không sửa checkpoint/config |
+| Tiến trình | Worker inference đã thoát; không có training được khởi chạy |
+
+Các kết quả nghĩa giữ nguyên như CPU: cả base và adapter dịch Wednesday thành **“Thứ Ba”**; có ánh xạ thì chép đúng **“thứ Tư”**. Câu deadline vẫn mất nghĩa hạn chót và sai ngày; câu brother vẫn tự chọn “anh” dù tuổi chưa rõ. Hai câu điều kiện trả đúng No/Không. JSON giữ key/value, có newline cuối nên không phải bản sao byte-exact của chuỗi yêu cầu.
+
+Như vậy, **các lỗi đã quan sát vẫn tái hiện trên GPU**, không chỉ trên Windows CPU. Tuy nhiên, đây là 8 probe lặp lại, dùng cùng Transformers và reference PyTorch implementations; khác biệt thiết bị, dtype, torch/Python/OS chưa được tách riêng. Không chứng nhận chất lượng tổng quát, không kết luận dataset sai hoặc cần train lại, không đưa model/prompt v2 vào production từ kết quả này.
+
+### Bằng chứng và kiểm tra lại
+
+Thư mục private: `C:/Users/HP/Desktop/English_dictition/data/fine-tuning/colab-transfer-20261025/inference-gpu-20261026/`. Có gói tải lên, attempt01, retry, script xác minh, raw outputs, environment, completion, exit code, console log, hash export và ảnh Colab. Do output iframe/download báo lỗi JavaScript, gói bằng chứng đã được đọc qua output văn bản của notebook, giải mã tại local và đối chiếu SHA-256 trước khi giải nén. Không xuất khóa hoặc dataset.
+
+- SHA-256 script nguyên gốc: `f5b574bf0489adeb8c46a7516661c8356c5921e4ebb6f95fb5abc44bb37c66ce`.
+- SHA-256 gói bằng chứng retry: `e80f9c2a9095268043d4faa582a7195414a5b547f61e99337003e2521a3e6fa2`.
+- SHA-256 `retry/results.jsonl`: `7b9483b21b8c3ffdba3d82726e904da695f02f33e8736d075f1a7965b87e9914`.
+- SHA-256 `retry/completion.json`: `1768954edafb0c3f06cb855525520170a30eda64d34da7ec1a87182f916353fd`.
+
+Kiểm tra bằng chứng đã lưu, không nạp model hoặc chạy sinh lại:
+
+```powershell
+& 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/.venv-cpu/Scripts/python.exe' -X utf8 'C:/Users/HP/Desktop/English_dictition/data/fine-tuning/colab-transfer-20261025/inference-gpu-20261026/verify_gpu.py'
+```
+
+Verifier kiểm hash export, 16 row độc nhất, từng token/raw text với CPU, 8 control tắt LoRA, các delta hữu hạn, môi trường, hash adapter/prompt/script và giữ nguyên lỗi đầu tiên. Local training vẫn `PAUSED_BY_USER`; dataset/test không được đọc hoặc tokenize. Không deploy, mua tài nguyên hoặc shutdown runtime.
