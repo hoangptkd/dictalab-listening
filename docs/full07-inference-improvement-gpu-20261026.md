@@ -1,5 +1,7 @@
 # Thử cải thiện inference full07 trên GPU — 26/10/2026
 
+> Cập nhật tiếp nối: xem [study pipeline có trợ giúp thuật ngữ](full07-inference-guided-pipeline-20261026.md), tổng 160 đầu ra hoàn tất đã lưu. Báo cáo dưới giữ kết luận tại mốc 60 đầu ra; ứng viên tiếp nối vẫn chưa vượt đầy đủ gate vì adapter bỏ màu vàng trong một câu xác nhận mới.
+
 ## Kết luận
 
 Đã hoàn tất ba lượt so sánh trên Tesla T4, lưu **60 đầu ra** từ sáu tình huống phát triển tự soạn. Không có ứng viên đạt đầy đủ điều kiện chọn: không giảm kiểm tra cấu trúc/nghĩa và phải tốt hơn prompt v2. **Chưa chọn prompt hoặc model để đưa vào ứng dụng.** Bốn tình huống riêng dành cho bước kiểm tra tiếp theo vẫn chưa chạy vì chưa có ứng viên vượt vòng phát triển.
