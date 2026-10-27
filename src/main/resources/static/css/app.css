@@ -4707,6 +4707,12 @@ summary:focus-visible {
 }
 
 .conversation-browser { max-width: 1120px; margin-inline: auto; }
+#model-demo-panel { margin-block: 1rem; overflow-wrap: anywhere; }
+#model-demo-form { display: grid; gap: .5rem; max-width: 40rem; }
+#model-demo-form fieldset { display: grid; gap: .5rem; min-width: 0; margin-block: .5rem; }
+#model-demo-form fieldset[hidden] { display: none; }
+#model-demo-result pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+#model-demo-history { display: grid; gap: .5rem; padding-left: 1.25rem; }
 .conversation-browser .section-index { color: var(--conversation-accent); }
 .conversation-intro { max-width: 620px; margin-bottom: 32px; }
 .conversation-setup, .conversation-workspace { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }

@@ -26,10 +26,10 @@ An unchecked entry is incomplete, even if supporting code exists.
       Core transactional outbox, account deletion propagation, and replay.
 - [ ] Backfill history and verify Core/Progress dashboard parity before cutover.
 - [ ] Separate provider registry ownership from Core database access.
-- [ ] Make AI conversation jobs durable and restart-safe.
+- [x] Make opt-in AI conversation demo jobs durable and restart-safe.
 - [ ] Serve the existing base and full07 adapter in a separate local process.
-- [ ] Integrate asynchronous conversation and the comparison UI.
-- [ ] Enforce budgeted fallback and report actual provider/model provenance.
+- [x] Integrate asynchronous conversation demo and the comparison UI.
+- [x] Enforce budgeted demo fallback and report actual provider/model provenance.
 - [ ] Run cross-service recovery, security, contract, and load checks.
 - [ ] Package local startup, diagrams, decisions, benchmark, and demo evidence.
 - [ ] Deploy all three business services to VPS and verify health and workflows.
@@ -88,3 +88,42 @@ VPS deployment, model quality, or full-system readiness.
 - Historical export/parity is proven on test fixtures. Export of the real learner
   history and production read cutover are still pending. Publishing and remote
   reads remain opt-in; this milestone does not change the running VPS.
+
+## Model demo milestone evidence (2026-10-27)
+
+- Separate loopback Model Serving process with pinned base/adapter/config hashes,
+  runtime versions, tokenizer parity, bounded requests, token authentication and
+  a free-memory guard. File/runtime verification passed against local files.
+  Actual inference through this new server is pending: only about 4.3 GiB RAM
+  was available, below the 20 GiB guard. No model quality claim follows.
+- Core's additive V43 ledger persists ownership, intent idempotency, deadlines,
+  short submit/poll leases and completed results. Existing conversation ownership,
+  quota, semantic review, answer hiding and optimistic session leases remain.
+- AI keeps jobs and two-call cloud reservations in its private SQLite ledger.
+  Comparison uses sequential base/full07 with identical context, never cloud
+  fallback. Unknown paid outcomes retain reservations rather than replay calls.
+- Latest targeted Java run: 60 tests, 0 failures/errors, 1 pre-existing opt-in
+  skip; includes 5 demo ledger/auth tests and 2 real conversation acceptance tests.
+  A separate earlier budget run passed 7 tests.
+- The 5 demo ledger/auth tests also passed against disposable PostgreSQL 18
+  with Flyway V43, without skips; packaged Core JAR build passed.
+- Python: 232 passed, 2 existing Redis-dependent skips in the local environment.
+  New coverage includes 9 demo cases and 3 Model Serving API/contract cases.
+- Real Java/AI API/RabbitMQ/worker smoke passed for both local and cloud routing
+  using synthetic provider fixtures. Each comparison made exactly four local
+  calls in base/base/full07/full07 order, reused the same inputs, and duplicate
+  submission retained the result without repeating inference. Existing 1/5/10/20
+  concurrency, provider-loss and worker-restart checks also passed. These are
+  transport/recovery evidence, not real-model throughput measurements.
+- Browser checks against the actual demo JavaScript with synthetic responses:
+  queued/completed states, updated history labels, both comparison arms, escaped
+  model output, disabled fallback for explicit cloud, hidden practice answers,
+  quota notice and keyboard acceptance callback. No real learner data was used.
+- Native local launcher and dotenv quoting checks added; JavaScript syntax,
+  UTF-8 and diff checks passed. See `services/model-serving/README.md`.
+- Progress workflow `40528616084` failed on GitHub artifact storage quota.
+  AI workflow `40528615640` also exposed a budget-disabled test fixture; that
+  fixture is corrected locally. CI must be rechecked after the next push.
+- Remaining: real-model inference/evaluation, resource baselines, independent AI
+  registry ownership, real history backfill/cutover, full-system runtime evidence
+  and the VPS rollout. All new demo flags default off; no VPS change is implied.

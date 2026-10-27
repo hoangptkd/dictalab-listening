@@ -56,6 +56,7 @@
     function stopAudio() { playbackRevision++; bridge().stopRecordedAudio(); }
 
     function leave() {
+        window.DictaLabModelDemo?.leave();
         if (session) saveDraft(root()?.querySelector("textarea")?.value ?? draft);
         revision++; busy = false;
         stopAudio();
@@ -76,6 +77,8 @@
                 if (!session.turnNumber && !session.completed) await action("next");
             }
             else { restoreSelection(); catalog = data; historyOffset = 0; recommendationSource = null; renderCatalog(data); }
+            if (token !== revision) return;
+            window.DictaLabModelDemo?.mount(document.querySelector("#model-demo-panel"), id || null, () => show(id));
         } catch (error) {
             if (token !== revision) return;
             root().innerHTML = `<p role="alert">${escape(error.message)}</p><button type="button" class="secondary-button">Thử tải lại</button>`;
@@ -187,6 +190,7 @@
             ${!session.completed ? `<h2 id="conversation-task">${escape(turn?.prompt.taskVi || "Đã tạo phiên luyện tập")}</h2>` : ""}</div></div>
             ${session.practiceFocus ? `<p class="conversation-focus">${escape(session.practiceFocus)}</p>` : ""}
             ${turn?.warmup ? '<p class="conversation-focus">Câu khởi động · Các câu sau theo mức đã chọn.</p>' : ""}
+            ${turn?.evaluationOnly ? `<p class="conversation-focus">Bài từ model thử nghiệm · ${escape((turn.modelGeneration || []).map(call => `${call.purpose}: ${call.provider} / ${call.model}${call.variant ? ` (${call.variant})` : ""}`).join(" · "))}</p>` : ""}
             <div class="conversation-progress" role="group" aria-label="Tiến độ phiên">${[1, 2, 3, 4].map(n => `<span ${n === session.turnNumber && !session.completed ? 'aria-current="step"' : ""} class="${n <= session.turnNumber ? "is-current" : ""}">${session.turns[n - 1]?.done ? "✓ " : ""}${n === 4 ? "Câu mới" : `Bước ${n}`}</span>`).join("")}</div>
             ${session.completed ? summary(session.summary) + reviewHistory() : `<div class="conversation-workspace">
                 <section class="conversation-card conversation-listen" aria-labelledby="conversation-task">

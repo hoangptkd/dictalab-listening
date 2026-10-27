@@ -35,6 +35,22 @@ public class AiPlatformClient {
     public boolean shadow(String kind) { return config.mode(kind).equals("shadow"); }
     public boolean local() { return config.textProvider().equals("ollama"); }
 
+    public JsonNode submitDemo(long user, String id, Instant deadline, JsonNode payload) {
+        String scope = AiBackgroundJobs.hash("ai-scope/" + config.serviceToken() + "/" + user);
+        String body = json.writeValueAsString(Map.of("schemaVersion", "1", "jobId", id, "requestId", id,
+                "userScope", scope, "idempotencyKey", "model-demo/" + id, "deadline", deadline.toString(),
+                "payload", redact(payload)));
+        if (body.getBytes(StandardCharsets.UTF_8).length > 64000) throw new IllegalArgumentException("AI job input exceeds limit");
+        return exchange("/v1/conversation/jobs", body, scope, id, "model-demo/" + id,
+                System.nanoTime() + TimeUnit.SECONDS.toNanos(10));
+    }
+
+    public JsonNode demoStatus(long user, String id) {
+        String scope = AiBackgroundJobs.hash("ai-scope/" + config.serviceToken() + "/" + user);
+        return exchange("/v1/jobs/" + UUID.fromString(id), null, scope, id, "model-demo/" + id,
+                System.nanoTime() + TimeUnit.SECONDS.toNanos(10));
+    }
+
     public void compare(String kind, long user, String key, Object payload, Runnable reserve) {
         if (!shadow(kind) || !config.canaryUsers().contains(user)) return;
         try {

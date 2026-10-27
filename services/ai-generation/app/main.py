@@ -75,7 +75,7 @@ semaphore = asyncio.Semaphore(settings.effective_max_concurrency) if settings.ef
 
 @app.middleware("http")
 async def bound_job_requests(request: Request, call_next):
-    if request.method == "POST" and request.url.path in ("/v1/tts/jobs", "/v1/coach/reports", "/v1/review/tasks"):
+    if request.method == "POST" and request.url.path in ("/v1/tts/jobs", "/v1/coach/reports", "/v1/review/tasks", "/v1/conversation/jobs"):
         if not _authorized(request.headers.get("X-Service-Token")):
             return JSONResponse(status_code=401, content={"error": "invalid service token"})
         body = bytearray()

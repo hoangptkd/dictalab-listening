@@ -147,6 +147,9 @@ management:
         include: health,info,prometheus,metrics
 
 dictalab:
+  model-demo:
+    enabled: ${DICTALAB_MODEL_DEMO_ENABLED:false}
+    poll-delay-ms: 2000
   progress:
     enabled: ${DICTALAB_PROGRESS_ENABLED:false}
     read-mode: ${DICTALAB_PROGRESS_READ_MODE:legacy}

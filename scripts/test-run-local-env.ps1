@@ -1,5 +1,6 @@
+param([string]$LauncherName = 'run-local.ps1')
 $ErrorActionPreference = 'Stop'
-$launcher = Join-Path $PSScriptRoot 'run-local.ps1'
+$launcher = Join-Path $PSScriptRoot $LauncherName
 $tree = [System.Management.Automation.Language.Parser]::ParseFile($launcher, [ref]$null, [ref]$null)
 $import = $tree.Find({ param($node)
     $node -is [System.Management.Automation.Language.PipelineAst] -and

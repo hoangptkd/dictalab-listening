@@ -538,6 +538,53 @@ public class ConversationService {
         return true;
     }
 
+    public JsonNode modelDemoContext(long user, String sessionId, String scenario, String level) {
+        if (sessionId == null) {
+            if (!SCENARIOS.containsKey(scenario) || !ConversationLevelProfile.SUPPORTED_LEVELS.contains(level))
+                fail(HttpStatus.BAD_REQUEST, "Tình huống hoặc độ khó không hợp lệ.");
+            var context = json.createObjectNode().put("scenario", SCENARIOS.get(scenario))
+                    .put("difficulty", level).put("turnNumber", 1);
+            context.setAll((ObjectNode) json.valueToTree(ConversationContent.roles(scenario, "standard")));
+            return context;
+        }
+        Row row = load(user, sessionId);
+        if (row.state.path("completed").asBoolean() || turns(row).size() >= 4
+                || !turns(row).isEmpty() && !current(row).path("done").asBoolean())
+            fail(HttpStatus.CONFLICT, "Hãy hoàn thành nhiệm vụ hiện tại trước khi tạo câu tiếp theo.");
+        return json.valueToTree(promptContext(row));
+    }
+
+    public ObjectNode acceptModelDemo(long user, String sessionId, String jobId, JsonNode expectedContext, JsonNode arm) {
+        available();
+        Row row = load(user, sessionId);
+        for (var turn : turns(row)) {
+            if (jobId.equals(turn.path("modelDemoJobId").asText())) return view(row);
+        }
+        if (!modelDemoContext(user, sessionId, null, null).equals(expectedContext))
+            fail(HttpStatus.CONFLICT, "Phiên đã thay đổi từ khi tạo job. Hãy tạo job mới.");
+        if (!arm.path("valid").asBoolean() || !arm.path("task").isObject())
+            fail(HttpStatus.CONFLICT, "Đầu ra chưa qua kiểm tra cấu trúc.");
+        JsonNode raw = arm.path("task");
+        JsonNode prompt = ConversationLocalClient.normalizeOutput(raw);
+        validateNextPrompt(row, prompt);
+        String lease = claim(row);
+        try {
+            // Preserve the existing semantic review and its quota before admitting demo output.
+            reviewPrompt(row, prompt, System.nanoTime() + TimeUnit.SECONDS.toNanos(90));
+            row.state.set("pendingGenerationSlots", raw.path("slots").deepCopy());
+            addTurn(row, prompt);
+            current(row).put("modelDemoJobId", jobId);
+            current(row).set("modelGeneration", arm.path("calls").deepCopy());
+            current(row).put("evaluationOnly", true);
+            commit(row, lease);
+        } catch (RuntimeException error) {
+            release(row.id, lease);
+            throw error;
+        }
+        warmAudio(row, turns(row).size(), "original");
+        return get(user, sessionId);
+    }
+
     private Map<String, Object> promptContext(Row row) {
         // Only the task history is needed, not every answer or the complete internal state.
         var history = turns(row).valueStream().map(t -> Map.of(

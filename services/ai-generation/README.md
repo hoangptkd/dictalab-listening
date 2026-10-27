@@ -51,7 +51,11 @@ bounded PCM WAV bytes; Java revalidates and persists under its existing lease/ow
 Each Java capability has an independent `legacy|shadow|canary|python` mode. Canary requires a user allowlist.
 Rollback changes only that flag. Shadow admits extra work under the global budget, preserves learner allowances and discards
 the Python output. Cloud shadow requires deliberately selecting this capability mode; conversation's older
-automatic shadow mechanism rejects a cloud primary. No automatic cloud fallback runs inside background jobs.
+automatic shadow mechanism rejects a cloud primary. These background capabilities do not automatically fall back to cloud.
+
+The separately enabled conversation demo lane adds `/v1/conversation/jobs`, sequential base/full07
+comparison and explicitly opted-in, budget-reserved cloud fallback. See `services/model-serving/README.md`.
+It remains evaluation-only and cannot promote a model or bypass existing conversation review.
 
 Run `python tools/ai-eval/jobs_smoke.py` for Java/API/RabbitMQ/worker tests in both local and production modes,
 using fake Ollama/Gemini/Cartesia. It creates/removes a disposable Docker broker unless
