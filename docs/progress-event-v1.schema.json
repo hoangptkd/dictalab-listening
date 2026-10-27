@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dictalab:progress-event:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventId", "type", "userId", "occurredAt", "session"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "eventId": {"type": "string", "format": "uuid"},
+    "type": {"enum": ["PracticeCompleted.v1", "UserDeleted.v1"]},
+    "userId": {"type": "integer", "minimum": 1},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "session": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sessionId", "revision", "lessonId", "lessonTitle", "level", "completedAt", "completedDate", "practiceSeconds", "firstAccuracy", "finalAccuracy", "score", "knownMissed", "unknownWords"],
+          "properties": {
+            "sessionId": {"type": "string", "format": "uuid"},
+            "revision": {"type": "integer", "minimum": 0},
+            "lessonId": {"type": "integer", "minimum": 1},
+            "lessonTitle": {"type": "string", "minLength": 1, "maxLength": 500},
+            "level": {"enum": ["A1", "A2", "B1", "B2"]},
+            "completedAt": {"type": "string", "format": "date-time"},
+            "completedDate": {"type": "string", "format": "date"},
+            "practiceSeconds": {"type": "integer", "minimum": 0},
+            "firstAccuracy": {"type": "number", "minimum": 0, "maximum": 100},
+            "finalAccuracy": {"type": "number", "minimum": 0, "maximum": 100},
+            "score": {"type": "number", "minimum": 0, "maximum": 100},
+            "knownMissed": {"type": "integer", "minimum": 0},
+            "unknownWords": {"type": "integer", "minimum": 0}
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [{
+    "if": {"properties": {"type": {"const": "UserDeleted.v1"}}},
+    "then": {"properties": {"session": {"type": "null"}}},
+    "else": {"properties": {"session": {"type": "object"}}}
+  }]
+}

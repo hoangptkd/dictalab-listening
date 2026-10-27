@@ -1,0 +1,83 @@
+openapi: 3.1.0
+info:
+  title: DictaLab Progress internal API
+  version: 1.0.0
+security:
+  - serviceToken: []
+paths:
+  /internal/v1/users/{userId}/dashboard:
+    get:
+      summary: Read one learner's solo dictation projection
+      description: Core must authenticate and authorize the learner before selecting userId.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+      responses:
+        '200':
+          description: Projection; an empty learner has zero totals and nullable timestamps.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [summary, trend, byLevel, errors, updatedAt, lastEventAt]
+                properties:
+                  summary:
+                    type: object
+                    required: [completedLessons, learningMinutes, averageFirstAttemptAccuracy, averageFinalAccuracy, averageScore]
+                    properties:
+                      completedLessons: {type: integer, minimum: 0}
+                      learningMinutes: {type: integer, minimum: 0}
+                      averageFirstAttemptAccuracy: {type: number, minimum: 0, maximum: 100}
+                      averageFinalAccuracy: {type: number, minimum: 0, maximum: 100}
+                      averageScore: {type: number, minimum: 0, maximum: 100}
+                  trend:
+                    type: array
+                    maxItems: 8
+                    items:
+                      type: object
+                      required: [sessionId, date, level, lessonTitle, firstAttemptAccuracy, finalAccuracy, overallScore]
+                      properties:
+                        sessionId: {type: string, format: uuid}
+                        date: {type: string, format: date}
+                        level: {enum: [A1, A2, B1, B2]}
+                        lessonTitle: {type: string}
+                        firstAttemptAccuracy: {type: number, minimum: 0, maximum: 100}
+                        finalAccuracy: {type: number, minimum: 0, maximum: 100}
+                        overallScore: {type: number, minimum: 0, maximum: 100}
+                  byLevel:
+                    type: array
+                    minItems: 4
+                    maxItems: 4
+                    items:
+                      type: object
+                      required: [level, completedLessons, averageFirstAttemptAccuracy, averageScore]
+                      properties:
+                        level: {enum: [A1, A2, B1, B2]}
+                        completedLessons: {type: integer, minimum: 0}
+                        averageFirstAttemptAccuracy: {type: number, minimum: 0, maximum: 100}
+                        averageScore: {type: number, minimum: 0, maximum: 100}
+                  errors:
+                    type: object
+                    required: [knownButMissed, unknownWords]
+                    properties:
+                      knownButMissed: {type: integer, minimum: 0}
+                      unknownWords: {type: integer, minimum: 0}
+                  updatedAt: {type: [string, 'null'], format: date-time}
+                  lastEventAt: {type: [string, 'null'], format: date-time}
+        '400': {description: Invalid learner ID}
+        '401': {description: Missing or incorrect service credential}
+        '503': {description: Projection database unavailable}
+  /actuator/health/readiness:
+    get:
+      security: []
+      responses:
+        '200': {description: Database and broker are ready}
+        '503': {description: Dependency unavailable}
+components:
+  securitySchemes:
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token

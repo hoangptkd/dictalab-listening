@@ -1,5 +1,9 @@
 # DictaLab — English Listening Dictation
 
+Microservice migration: [accepted scope and delivery ledger](docs/microservices-implementation.md).
+Progress Service has its own database, build and event consumer; local startup,
+backfill, shadow comparison and rollback: [Progress runbook](services/progress/README.md).
+
 Tài liệu toàn bộ hệ thống cập nhật 08/10/2026: [Current system reference](docs/current-system-reference.md). Có thể tải riêng file này lên ChatGPT để cung cấp ngữ cảnh về chức năng, công nghệ, thuật toán, API, dữ liệu và vận hành hiện tại. Tài liệu phân biệt mã local với các mốc triển khai đã ghi nhận, kèm prompt và các câu hỏi để chọn hướng phát triển tiếp.
 
 MVP web luyện nghe chép chính tả tiếng Anh theo CEFR A1–B2. Người học nghe từng câu, điền từng từ vào ô có độ dài tương ứng, nhận phản hồi ngay và theo dõi khả năng nghe thực tế qua chỉ số **first-attempt accuracy**.

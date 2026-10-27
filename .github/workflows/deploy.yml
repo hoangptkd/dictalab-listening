@@ -24,6 +24,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  progress:
+    uses: ./.github/workflows/progress.yml
+
   ai-platform:
     uses: ./.github/workflows/ai-platform.yml
 
@@ -171,7 +174,7 @@ jobs:
           if-no-files-found: error
 
   deploy:
-    needs: [test-build, postgres-tests, reliability, ai-platform]
+    needs: [test-build, postgres-tests, reliability, ai-platform, progress]
     if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20

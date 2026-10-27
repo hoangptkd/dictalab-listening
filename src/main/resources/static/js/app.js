@@ -3255,6 +3255,16 @@
     }
 
     function renderDashboard(dashboard) {
+        const updated = document.querySelector("#dashboard-updated");
+        if (updated) {
+            const remote = dashboard.progress?.source === "progress";
+            const timestamp = dashboard.progress?.updatedAt;
+            const date = timestamp ? new Date(timestamp) : null;
+            updated.hidden = !remote;
+            updated.textContent = remote && date && Number.isFinite(date.getTime())
+                ? `Tiến bộ cập nhật lúc ${date.toLocaleString("vi-VN")}. Buổi vừa hoàn thành có thể xuất hiện sau vài giây.`
+                : "Tiến bộ đang được đồng bộ. Buổi vừa hoàn thành có thể xuất hiện sau vài giây.";
+        }
         const summary = dashboard.summary;
         elements.headerSessionCount.textContent = summary.completedLessons;
         elements.dashboardSummary.innerHTML = [

@@ -1,0 +1,48 @@
+server:
+  address: ${PROGRESS_BIND_ADDRESS:127.0.0.1}
+  port: ${PROGRESS_PORT:8092}
+  shutdown: graceful
+spring:
+  application:
+    name: dictalab-progress
+  datasource:
+    url: ${PROGRESS_DB_URL}
+    username: ${PROGRESS_DB_USERNAME}
+    password: ${PROGRESS_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 3
+      minimum-idle: 0
+      connection-timeout: 3000
+  rabbitmq:
+    addresses: ${PROGRESS_RABBITMQ_URL:}
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:15672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    connection-timeout: 3s
+    listener:
+      simple:
+        prefetch: 1
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 5
+          initial-interval: 1s
+          max-interval: 10s
+          multiplier: 2
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db,rabbit
+dictalab:
+  progress:
+    service-token: ${PROGRESS_SERVICE_TOKEN}

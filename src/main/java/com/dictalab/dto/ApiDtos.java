@@ -342,9 +342,12 @@ public final class ApiDtos {
             List<LevelProgress> byLevel,
             ErrorBreakdown errors,
             Recommendation recommendation,
-            ListeningAssessment assessment
+            ListeningAssessment assessment,
+            ProgressMetadata progress
     ) {
     }
+
+    public record ProgressMetadata(String source, Instant updatedAt, Instant lastEventAt) {}
 
     public record HistoryPage(List<HistoryEntry> items, int page, int size, long totalElements, int totalPages) {
     }
