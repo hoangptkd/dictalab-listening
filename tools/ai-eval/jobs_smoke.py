@@ -96,7 +96,17 @@ def main():
                     assert self.headers.get("X-Service-Token") == SMOKE_TOKEN
                     model_calls.append(body)
                     purpose = json.loads(body["messages"][-1]["content"])
-                    raw = {"translationVi": "Cuộc họp lúc chín giờ tại sảnh.", "facts": [{"textVi": "Chín giờ"}, {"textVi": "Sảnh"}]} if "utteranceEn" in purpose else {
+                    guided = purpose.get("scenario") == "delivery" or "sourceTermAlignment" in purpose
+                    if guided:
+                        raw = {"translationVi": "Đừng mở bìa hồ sơ màu tím trước sáng thứ Tư. Em trai tôi không thể nhận nó trừ khi có thể xuất trình biên lai gốc pL4.",
+                            "facts": [{"textVi": "Đừng mở bìa hồ sơ màu tím trước sáng thứ Tư"}, {"textVi": "Biên lai gốc pL4"}]} if "utteranceEn" in purpose else {
+                            "slots": [{"kind": "instruction", "askVi": "Cần xử lý đồ vật thế nào?"}, {"kind": "document", "askVi": "Cần giấy tờ gì?"}],
+                            "utteranceEn": "Do not open the purple folder before Wednesday morning. My younger brother cannot collect it unless he can show the original receipt pL4.",
+                            "facts": [{"textEn": "Do not open the purple folder before Wednesday morning", "evidenceEn": "Do not open the purple folder before Wednesday morning"},
+                                {"textEn": "The original receipt pL4", "evidenceEn": "the original receipt pL4"}],
+                            "questionVi": "Cần xử lý đồ vật thế nào và cần giấy tờ gì?", "taskVi": "Nghe yêu cầu giao nhận.", "skill": "Nắm thông tin cụ thể"}
+                    else:
+                        raw = {"translationVi": "Cuộc họp lúc chín giờ tại sảnh.", "facts": [{"textVi": "Chín giờ"}, {"textVi": "Sảnh"}]} if "utteranceEn" in purpose else {
                         "slots": [{"kind": "time", "askVi": "Lúc nào?"}, {"kind": "place", "askVi": "Ở đâu?"}],
                         "utteranceEn": "Please meet me at nine tomorrow morning in the hotel lobby.",
                         "facts": [{"textEn": "nine", "evidenceEn": "at nine"}, {"textEn": "hotel lobby", "evidenceEn": "in the hotel lobby"}],
@@ -157,11 +167,14 @@ def main():
                     model_calls.clear()
                     try:
                         subprocess.run([shutil.which("mvn"), "-q", "-Dtest=AiPlatformSmokeTest", f"-Dai.jobs.smoke.url={url}",
-                            f"-Dai.jobs.smoke.provider={provider}", "test"], cwd=ROOT, check=True, timeout=180)
+                            f"-Dai.jobs.smoke.provider={provider}", "-Dai.jobs.smoke.scene=" + ("delivery" if production else "cafe"),
+                            "test"], cwd=ROOT, check=True, timeout=180)
                         assert len(calls) - before == 7, "duplicate delivery must not repeat a provider call"
                         assert [call["variant"] for call in model_calls] == ["base", "base", "full07", "full07"]
                         assert model_calls[0]["messages"] == model_calls[2]["messages"], "comparison must share the same input"
                         assert model_calls[1]["messages"] == model_calls[3]["messages"]
+                        translation_input = json.loads(model_calls[1]["messages"][-1]["content"])
+                        assert ("sourceTermAlignment" in translation_input) == production
 
                         def run_job(_=0):
                             job_id = str(uuid.uuid4())

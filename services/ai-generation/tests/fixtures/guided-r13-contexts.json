@@ -1,0 +1,580 @@
+{
+  "scope": "Already-observed synthetic regression inputs; no SFT data or generated outputs.",
+  "cases": [
+    {
+      "id": "scope-purple-folder",
+      "context": {
+        "utteranceEn": "Do not open the purple folder before Wednesday morning. My younger brother cannot collect it unless he can show the original receipt pL4.",
+        "facts": [
+          {
+            "textEn": "Do not open it before Wednesday morning"
+          },
+          {
+            "textEn": "The original receipt pL4"
+          }
+        ],
+        "partnerRole": "customer",
+        "learnerRole": "service employee",
+        "translationGlossary": [
+          {
+            "source": "before Wednesday morning",
+            "vietnamese": "trước sáng thứ Tư"
+          },
+          {
+            "source": "Wednesday morning",
+            "vietnamese": "sáng thứ Tư"
+          },
+          {
+            "source": "younger brother",
+            "vietnamese": "em trai"
+          },
+          {
+            "source": "receipt",
+            "vietnamese": "biên lai"
+          },
+          {
+            "source": "purple",
+            "vietnamese": "màu tím"
+          },
+          {
+            "source": "original receipt",
+            "vietnamese": "biên lai gốc"
+          },
+          {
+            "source": "show",
+            "vietnamese": "xuất trình"
+          },
+          {
+            "source": "folder",
+            "vietnamese": "bìa hồ sơ"
+          },
+          {
+            "source": "pL4",
+            "vietnamese": "pL4"
+          },
+          {
+            "source": "Do not",
+            "vietnamese": "đừng"
+          },
+          {
+            "source": "cannot",
+            "vietnamese": "không thể"
+          }
+        ],
+        "sentenceRequiredTerms": [
+          "trước sáng thứ Tư",
+          "sáng thứ Tư",
+          "em trai",
+          "biên lai",
+          "màu tím",
+          "biên lai gốc",
+          "xuất trình",
+          "bìa hồ sơ",
+          "pL4",
+          "đừng",
+          "không thể"
+        ],
+        "sourceTermAlignment": {
+          "rule": "Translate the COMPLETE original utterance and each COMPLETE original fact. These are local phrase constraints, not complete translations. Keep every local negation and action in its fact. Each time phrase belongs to its own source clause; never substitute another clause time. Keep fact count and order. Output only the required translationVi and facts schema.",
+          "utteranceClauses": [
+            {
+              "sourceEn": "Do not open the purple folder before Wednesday morning.",
+              "localGlossary": [
+                {
+                  "source": "Do not",
+                  "vietnamese": "đừng"
+                },
+                {
+                  "source": "purple",
+                  "vietnamese": "màu tím"
+                },
+                {
+                  "source": "folder",
+                  "vietnamese": "bìa hồ sơ"
+                },
+                {
+                  "source": "before Wednesday morning",
+                  "vietnamese": "trước sáng thứ Tư"
+                }
+              ]
+            },
+            {
+              "sourceEn": "My younger brother cannot collect it unless he can show the original receipt pL4.",
+              "localGlossary": [
+                {
+                  "source": "younger brother",
+                  "vietnamese": "em trai"
+                },
+                {
+                  "source": "cannot",
+                  "vietnamese": "không thể"
+                },
+                {
+                  "source": "show",
+                  "vietnamese": "xuất trình"
+                },
+                {
+                  "source": "original receipt",
+                  "vietnamese": "biên lai gốc"
+                },
+                {
+                  "source": "pL4",
+                  "vietnamese": "pL4"
+                }
+              ]
+            }
+          ],
+          "facts": [
+            {
+              "index": 0,
+              "sourceEn": "Do not open it before Wednesday morning",
+              "localGlossary": [
+                {
+                  "source": "Do not",
+                  "vietnamese": "đừng"
+                },
+                {
+                  "source": "before Wednesday morning",
+                  "vietnamese": "trước sáng thứ Tư"
+                }
+              ]
+            },
+            {
+              "index": 1,
+              "sourceEn": "The original receipt pL4",
+              "localGlossary": [
+                {
+                  "source": "original receipt",
+                  "vietnamese": "biên lai gốc"
+                },
+                {
+                  "source": "pL4",
+                  "vietnamese": "pL4"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "scope-yellow-bag",
+      "context": {
+        "utteranceEn": "You may collect the yellow bag after Tuesday evening, but you must not return it before Saturday morning. My older sister can sign for it.",
+        "facts": [
+          {
+            "textEn": "After Tuesday evening"
+          },
+          {
+            "textEn": "Must not return it before Saturday morning"
+          }
+        ],
+        "partnerRole": "customer",
+        "learnerRole": "service employee",
+        "translationGlossary": [
+          {
+            "source": "before Saturday morning",
+            "vietnamese": "trước sáng thứ Bảy"
+          },
+          {
+            "source": "After Tuesday evening",
+            "vietnamese": "sau tối thứ Ba"
+          },
+          {
+            "source": "after Tuesday evening",
+            "vietnamese": "sau tối thứ Ba"
+          },
+          {
+            "source": "Saturday morning",
+            "vietnamese": "sáng thứ Bảy"
+          },
+          {
+            "source": "Tuesday evening",
+            "vietnamese": "tối thứ Ba"
+          },
+          {
+            "source": "older sister",
+            "vietnamese": "chị gái"
+          },
+          {
+            "source": "yellow",
+            "vietnamese": "màu vàng"
+          },
+          {
+            "source": "must not",
+            "vietnamese": "không được"
+          }
+        ],
+        "sentenceRequiredTerms": [
+          "trước sáng thứ Bảy",
+          "sau tối thứ Ba",
+          "sáng thứ Bảy",
+          "tối thứ Ba",
+          "chị gái",
+          "màu vàng",
+          "không được"
+        ],
+        "sourceTermAlignment": {
+          "rule": "Translate the COMPLETE original utterance and each COMPLETE original fact. These are local phrase constraints, not complete translations. Keep every local negation and action in its fact. Each time phrase belongs to its own source clause; never substitute another clause time. Keep fact count and order. Output only the required translationVi and facts schema.",
+          "utteranceClauses": [
+            {
+              "sourceEn": "You may collect the yellow bag after Tuesday evening",
+              "localGlossary": [
+                {
+                  "source": "yellow",
+                  "vietnamese": "màu vàng"
+                },
+                {
+                  "source": "after Tuesday evening",
+                  "vietnamese": "sau tối thứ Ba"
+                }
+              ]
+            },
+            {
+              "sourceEn": "you must not return it before Saturday morning.",
+              "localGlossary": [
+                {
+                  "source": "must not",
+                  "vietnamese": "không được"
+                },
+                {
+                  "source": "before Saturday morning",
+                  "vietnamese": "trước sáng thứ Bảy"
+                }
+              ]
+            },
+            {
+              "sourceEn": "My older sister can sign for it.",
+              "localGlossary": [
+                {
+                  "source": "older sister",
+                  "vietnamese": "chị gái"
+                }
+              ]
+            }
+          ],
+          "facts": [
+            {
+              "index": 0,
+              "sourceEn": "After Tuesday evening",
+              "localGlossary": [
+                {
+                  "source": "After Tuesday evening",
+                  "vietnamese": "sau tối thứ Ba"
+                }
+              ]
+            },
+            {
+              "index": 1,
+              "sourceEn": "Must not return it before Saturday morning",
+              "localGlossary": [
+                {
+                  "source": "Must not",
+                  "vietnamese": "không được"
+                },
+                {
+                  "source": "before Saturday morning",
+                  "vietnamese": "trước sáng thứ Bảy"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "scope-gold-key",
+      "context": {
+        "utteranceEn": "Could my older brother return the gold locker key by Monday evening? He may show claim ticket cM8 instead of the original receipt if needed.",
+        "facts": [
+          {
+            "textEn": "By Monday evening"
+          },
+          {
+            "textEn": "Claim ticket cM8"
+          }
+        ],
+        "partnerRole": "customer",
+        "learnerRole": "service employee",
+        "translationGlossary": [
+          {
+            "source": "By Monday evening",
+            "vietnamese": "chậm nhất vào tối thứ Hai"
+          },
+          {
+            "source": "by Monday evening",
+            "vietnamese": "chậm nhất vào tối thứ Hai"
+          },
+          {
+            "source": "Monday evening",
+            "vietnamese": "tối thứ Hai"
+          },
+          {
+            "source": "older brother",
+            "vietnamese": "anh trai"
+          },
+          {
+            "source": "Claim ticket",
+            "vietnamese": "phiếu nhận đồ"
+          },
+          {
+            "source": "claim ticket",
+            "vietnamese": "phiếu nhận đồ"
+          },
+          {
+            "source": "receipt",
+            "vietnamese": "biên lai"
+          },
+          {
+            "source": "gold",
+            "vietnamese": "màu vàng kim"
+          },
+          {
+            "source": "original receipt",
+            "vietnamese": "biên lai gốc"
+          },
+          {
+            "source": "show",
+            "vietnamese": "xuất trình"
+          },
+          {
+            "source": "key",
+            "vietnamese": "chìa khóa"
+          },
+          {
+            "source": "cM8",
+            "vietnamese": "cM8"
+          },
+          {
+            "source": "locker key",
+            "vietnamese": "chìa khóa tủ"
+          }
+        ],
+        "sentenceRequiredTerms": [
+          "chậm nhất vào tối thứ Hai",
+          "tối thứ Hai",
+          "anh trai",
+          "phiếu nhận đồ",
+          "biên lai",
+          "màu vàng kim",
+          "biên lai gốc",
+          "xuất trình",
+          "chìa khóa",
+          "cM8",
+          "chìa khóa tủ"
+        ],
+        "sourceTermAlignment": {
+          "rule": "Translate the COMPLETE original utterance and each COMPLETE original fact. These are local phrase constraints, not complete translations. Keep every local negation and action in its fact. Each time phrase belongs to its own source clause; never substitute another clause time. Keep fact count and order. Output only the required translationVi and facts schema.",
+          "utteranceClauses": [
+            {
+              "sourceEn": "Could my older brother return the gold locker key by Monday evening?",
+              "localGlossary": [
+                {
+                  "source": "older brother",
+                  "vietnamese": "anh trai"
+                },
+                {
+                  "source": "gold",
+                  "vietnamese": "màu vàng kim"
+                },
+                {
+                  "source": "locker key",
+                  "vietnamese": "chìa khóa tủ"
+                },
+                {
+                  "source": "by Monday evening",
+                  "vietnamese": "chậm nhất vào tối thứ Hai"
+                }
+              ]
+            },
+            {
+              "sourceEn": "He may show claim ticket cM8 instead of the original receipt if needed.",
+              "localGlossary": [
+                {
+                  "source": "show",
+                  "vietnamese": "xuất trình"
+                },
+                {
+                  "source": "claim ticket",
+                  "vietnamese": "phiếu nhận đồ"
+                },
+                {
+                  "source": "cM8",
+                  "vietnamese": "cM8"
+                },
+                {
+                  "source": "original receipt",
+                  "vietnamese": "biên lai gốc"
+                }
+              ]
+            }
+          ],
+          "facts": [
+            {
+              "index": 0,
+              "sourceEn": "By Monday evening",
+              "localGlossary": [
+                {
+                  "source": "By Monday evening",
+                  "vietnamese": "chậm nhất vào tối thứ Hai"
+                }
+              ]
+            },
+            {
+              "index": 1,
+              "sourceEn": "Claim ticket cM8",
+              "localGlossary": [
+                {
+                  "source": "Claim ticket",
+                  "vietnamese": "phiếu nhận đồ"
+                },
+                {
+                  "source": "cM8",
+                  "vietnamese": "cM8"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "scope-black-folder",
+      "context": {
+        "utteranceEn": "Please keep the black folder until Thursday afternoon. My sister may collect it if she can show the original receipt kD9.",
+        "facts": [
+          {
+            "textEn": "Until Thursday afternoon"
+          },
+          {
+            "textEn": "The original receipt kD9"
+          }
+        ],
+        "partnerRole": "customer",
+        "learnerRole": "service employee",
+        "translationGlossary": [
+          {
+            "source": "Until Thursday afternoon",
+            "vietnamese": "cho đến chiều thứ Năm"
+          },
+          {
+            "source": "until Thursday afternoon",
+            "vietnamese": "cho đến chiều thứ Năm"
+          },
+          {
+            "source": "Thursday afternoon",
+            "vietnamese": "chiều thứ Năm"
+          },
+          {
+            "source": "receipt",
+            "vietnamese": "biên lai"
+          },
+          {
+            "source": "sister",
+            "vietnamese": "chị/em gái"
+          },
+          {
+            "source": "black",
+            "vietnamese": "màu đen"
+          },
+          {
+            "source": "original receipt",
+            "vietnamese": "biên lai gốc"
+          },
+          {
+            "source": "show",
+            "vietnamese": "xuất trình"
+          },
+          {
+            "source": "folder",
+            "vietnamese": "bìa hồ sơ"
+          },
+          {
+            "source": "kD9",
+            "vietnamese": "kD9"
+          }
+        ],
+        "sentenceRequiredTerms": [
+          "cho đến chiều thứ Năm",
+          "chiều thứ Năm",
+          "biên lai",
+          "chị/em gái",
+          "màu đen",
+          "biên lai gốc",
+          "xuất trình",
+          "bìa hồ sơ",
+          "kD9"
+        ],
+        "sourceTermAlignment": {
+          "rule": "Translate the COMPLETE original utterance and each COMPLETE original fact. These are local phrase constraints, not complete translations. Keep every local negation and action in its fact. Each time phrase belongs to its own source clause; never substitute another clause time. Keep fact count and order. Output only the required translationVi and facts schema.",
+          "utteranceClauses": [
+            {
+              "sourceEn": "Please keep the black folder until Thursday afternoon.",
+              "localGlossary": [
+                {
+                  "source": "black",
+                  "vietnamese": "màu đen"
+                },
+                {
+                  "source": "folder",
+                  "vietnamese": "bìa hồ sơ"
+                },
+                {
+                  "source": "until Thursday afternoon",
+                  "vietnamese": "cho đến chiều thứ Năm"
+                }
+              ]
+            },
+            {
+              "sourceEn": "My sister may collect it if she can show the original receipt kD9.",
+              "localGlossary": [
+                {
+                  "source": "sister",
+                  "vietnamese": "chị/em gái"
+                },
+                {
+                  "source": "show",
+                  "vietnamese": "xuất trình"
+                },
+                {
+                  "source": "original receipt",
+                  "vietnamese": "biên lai gốc"
+                },
+                {
+                  "source": "kD9",
+                  "vietnamese": "kD9"
+                }
+              ]
+            }
+          ],
+          "facts": [
+            {
+              "index": 0,
+              "sourceEn": "Until Thursday afternoon",
+              "localGlossary": [
+                {
+                  "source": "Until Thursday afternoon",
+                  "vietnamese": "cho đến chiều thứ Năm"
+                }
+              ]
+            },
+            {
+              "index": 1,
+              "sourceEn": "The original receipt kD9",
+              "localGlossary": [
+                {
+                  "source": "original receipt",
+                  "vietnamese": "biên lai gốc"
+                },
+                {
+                  "source": "kD9",
+                  "vietnamese": "kD9"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

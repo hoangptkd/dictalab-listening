@@ -1,6 +1,8 @@
 """Explicit evaluation lane: frozen prompts, durable jobs, no production release promotion."""
 import asyncio
+import hashlib
 import json
+import re
 from pathlib import Path
 import time
 from typing import Literal
@@ -18,9 +20,10 @@ from .redaction import redact
 from .registry import artifact_hash
 from .schemas import ConversationContext
 from .validation import validate_task
+from . import guided_translation
 
-PROMPT_VERSION = "conversation-reviewed-collection-v7-20261023"
-PROMPT_SHA = "55533dd4309ed220cd3579bce651d32e62e4e593ea55e94b7df2517628126d9b"
+PROMPT_VERSION = "conversation-demo-guided-r13-20261028"
+PROMPT_SHA = "62d4e1c7e03c26ebd9a5dca7d186bb27c22fd62be6078f09a72c2643402cf5cb"
 BASE_REVISION = "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a"
 ADAPTER_SHA = "1670910dcad7f1e8f66d1dd74e6297fe914c2067d0c26240b72b25fd36c922bf"
 
@@ -44,6 +47,9 @@ def artifact(settings):
     value = json.loads((Path(settings.registry_dir) / (PROMPT_VERSION + ".json")).read_text(encoding="utf-8"))
     if value.get("sha256") != PROMPT_SHA or artifact_hash(value) != PROMPT_SHA:
         raise ValueError("DEMO_PROMPT_DRIFT")
+    implementation = Path(guided_translation.__file__).read_text(encoding="utf-8").encode()
+    if hashlib.sha256(implementation).hexdigest() != value.get("guidanceImplementationSha256"):
+        raise ValueError("DEMO_GUIDANCE_DRIFT")
     return value
 
 
@@ -61,12 +67,17 @@ class LocalUnavailable(Exception):
 
 def messages(frozen, context, purpose, content=None):
     if purpose == "content":
-        system = frozen["instruction"] + "\n" + frozen["contentSystem"]
-        data = context
+        system = frozen["instruction"] + "\n" + frozen["contentSystem"] + "\n" + frozen["demoContentContract"]
+        schema = frozen["contentSchemas"][context["difficulty"]]
+        slots = schema["properties"]["slots"]
+        data = {**context, "slotCountRange": {"min": slots["minItems"], "max": slots["maxItems"]}, "outputSchema": schema}
     else:
         system = frozen["translationSystem"]
         data = {"partnerRole": context.get("partnerRole"), "learnerRole": context.get("learnerRole"),
             "utteranceEn": content["utteranceEn"], "facts": content["facts"]}
+        if guided_translation.in_scope(context):
+            data = guided_translation.enrich(data)
+            system = frozen["guidedTranslationSystem"]
     return [{"role": "system", "content": system},
         {"role": "user", "content": json.dumps(redact(data), ensure_ascii=False)}]
 
@@ -146,8 +157,16 @@ async def arm(payload, settings, frozen, variant, client, deadline, store, scope
         values[purpose] = value
     task = merge_content_and_translation(values["content"], values["translation"])
     errors = validate_task(task, level=payload.level, level_profile=profile["wordBounds"])
+    guided = guided_translation.in_scope(context)
+    if guided:
+        source = {"utteranceEn": values["content"]["utteranceEn"], "facts": values["content"]["facts"]}
+        errors += guided_translation.validate(guided_translation.enrich(source), values["translation"])
+    stripped = task["utteranceEn"].strip(" \t\n\r\f\v")
+    word_count = len(re.split(r"[ \t\n\r\f\v]+", stripped)) if stripped else 0
     return {"variant": variant, "valid": not errors, "task": task if not errors else None,
-        "candidate": task, "validationErrors": errors, "semanticReview": "not_evaluated", "calls": calls}
+        "candidate": task, "validationErrors": errors, "semanticReview": "not_evaluated", "calls": calls,
+        "translationGuidance": "source-guided-r13" if guided else "legacy",
+        "wordCount": word_count, "wordBounds": profile["wordBounds"]}
 
 
 async def execute(event, settings, store):

@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     ai_provider_config_source: str = Field(default="env", validation_alias="AI_PROVIDER_CONFIG_SOURCE")
     ai_provider_database_url: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_DATABASE_URL")
     ai_provider_encryption_key: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_ENCRYPTION_KEY")
+    registry_ownership: str = "legacy"
     cloud_providers: list[GeminiSource] = Field(default_factory=list, repr=False)
     registry_pools: dict = Field(default_factory=dict, repr=False, exclude=True)
     gemini_providers: list[GeminiSource] = Field(default_factory=list, repr=False,
@@ -123,9 +124,13 @@ class Settings(BaseSettings):
         super().__init__(**values)
         if self.ai_provider_config_source not in ("env", "database"):
             raise ValueError("invalid provider configuration source")
+        if self.registry_ownership not in ("legacy", "private") or (
+                self.registry_ownership == "private" and self.ai_provider_config_source != "database"):
+            raise ValueError("private registry ownership requires database configuration")
         if self.ai_provider_config_source == "database":
             from .provider_registry import load_registry
-            self.registry_pools, self.cloud_providers = load_registry(self.ai_provider_database_url, self.ai_provider_encryption_key)
+            self.registry_pools, self.cloud_providers = load_registry(self.ai_provider_database_url, self.ai_provider_encryption_key,
+                **({"require_private": True} if self.registry_ownership == "private" else {}))
             self.gemini_providers = [p for p in self.cloud_providers if p.platform == "gemini"]
             if "gemini" in self.registry_pools:
                 policy = self.registry_pools["gemini"]

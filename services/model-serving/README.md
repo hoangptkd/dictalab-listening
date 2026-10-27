@@ -3,6 +3,11 @@
 Lane đánh giá riêng, dùng model hiện có; không huấn luyện lại hay thay đổi điều
 kiện duyệt production. Đạt kiểm tra cấu trúc chưa chứng minh đầu ra đúng nghĩa.
 
+Cập nhật 28/10: [R13](../../docs/model-demo-guided-r13.md) thêm glossary theo
+mệnh đề/fact cho scene giao nhận, schema do server cấp và số từ trên UI. Đây
+là thay đổi pipeline inference; chưa chạy generation CPU thật với bản mới.
+Các kết quả CPU ở cuối tài liệu thuộc pipeline trước cập nhật này.
+
 ```mermaid
 flowchart LR
     UI[Trình duyệt] --> Core[Core / Spring Boot]
@@ -37,6 +42,20 @@ flowchart LR
   dịch. Prompt được ghim bằng version/hash trong code.
 
 ## Khởi động local
+
+Đối với runtime microservice đã tách credentials, dùng launcher riêng từ gốc repo:
+
+```powershell
+python scripts/run-service.py model --env-file data/microservices/model.env
+python scripts/run-service.py ai --env-file data/microservices/ai.env
+python scripts/run-service.py worker --env-file data/microservices/ai.env
+python scripts/run-service.py core --env-file data/microservices/core.env
+```
+
+Build lại JAR Core sau khi đổi prompt pin; API/worker cùng dùng artifact mới.
+Các file env trên là dữ liệu riêng bị Git bỏ qua; quy trình tạo và quyền truy cập
+ở `docs/ai-provider-database.md`. Launcher dưới đây là luồng legacy dùng `.env`
+chung, giữ cho rollback; không dùng để chứng minh cách ly credentials.
 
 Chạy từ gốc repository bằng PowerShell 7. PostgreSQL, Redis và RabbitMQ cần
 hoạt động theo cách khởi động hiện có. Progress có README riêng.

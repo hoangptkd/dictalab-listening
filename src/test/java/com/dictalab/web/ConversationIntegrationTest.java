@@ -58,6 +58,7 @@ class ConversationIntegrationTest {
     @Autowired MockMvc mvc;
     @MockitoBean GeminiClient ai;
     @MockitoBean CartesiaClient tts;
+    @MockitoBean com.dictalab.service.AiPlatformClient platform;
     long owner;
 
     @BeforeEach void setup() {
@@ -93,6 +94,20 @@ class ConversationIntegrationTest {
     private String start() {
         String id = service.create(owner, "cafe", "A1").path("id").asText();
         service.next(owner, id, 0); return id;
+    }
+
+    @Test void pythonAudioReadinessIsUserScopedAndNeedsNoCoreCartesiaKey() {
+        when(tts.enabled()).thenReturn(false);
+        when(platform.enabled("tts", owner)).thenReturn(true);
+        assertThat(service.catalog(owner).get("enabled")).isEqualTo(true);
+        assertThat(service.create(owner, "cafe", "A1").path("id").asText()).isNotBlank();
+        long other = users.saveAndFlush(new AppUser("audio-" + UUID.randomUUID() + "@test.local",
+                "Other", "unused", Instant.now())).getId();
+        assertThat(service.catalog(other).get("enabled")).isEqualTo(false);
+        assertThatThrownBy(() -> service.create(other, "cafe", "A1"))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        failure -> assertThat(failure.getStatusCode().value()).isEqualTo(503));
+        verify(tts, never()).synthesize(anyString());
     }
 
     @Test void modelDemoAcceptanceKeepsAnswersHiddenAndDoesNotApplyTwice() {

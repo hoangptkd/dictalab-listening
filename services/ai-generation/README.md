@@ -45,7 +45,8 @@ Enable `DICTALAB_AI_JOBS_ENABLED=true`, then start `ai-generation` and `ai-worke
 Internal submit endpoints are `/v1/tts/jobs`, `/v1/coach/reports`, `/v1/review/tasks` (202); poll
 `/v1/jobs/{jobId}` with the matching service token and opaque user scope. OpenAPI describes the discriminated
 payloads and v1 envelope. Java's existing durable outbox workers submit/poll; web requests remain asynchronous.
-Neither worker nor API has a PostgreSQL connection. Python returns validated evidence classifications or
+API/worker use SQLite for jobs and optionally a read-only PostgreSQL registry connection for provider configuration.
+They have no Core practice-data connection. Python returns validated evidence classifications or
 bounded PCM WAV bytes; Java revalidates and persists under its existing lease/ownership checks.
 
 Each Java capability has an independent `legacy|shadow|canary|python` mode. Canary requires a user allowlist.
@@ -116,11 +117,11 @@ is persisted by this endpoint. A new Core invocation gets a new ID, so callers
 must keep their existing domain-level policy for explicit retries and unknown
 outcomes. Neither HTTP client automatically retries this operation.
 
-Rollback: set Core transport to `legacy`, restart Core, then disable the AI
+Rollback: restore the protected legacy Core configuration, set transport to `legacy`, restart Core, then disable the AI
 gateway when in-flight requests have drained. Ensure the legacy provider registry
-and credentials are still available before rollback. Storage ownership migration
-and removal of provider credentials from Core remain separate pending work;
-the legacy shared registry is still supported during this stage.
+and credentials are still available before rollback. Private registry ownership
+and a Core runtime without provider credentials are now available for local use;
+the legacy shared registry remains supported. See `docs/ai-provider-database.md`.
 
 Repeatable unpaid verification from repository root:
 
@@ -129,3 +130,27 @@ python -X utf8 -m pytest -q services/ai-generation/tests/test_text_gateway.py se
 mvn --batch-mode --no-transfer-progress '-Dtest=GeminiClientTest,AiPlatformClientTest' test
 python -X utf8 tools/ai-eval/smoke.py
 ```
+
+## Isolated native runtime
+
+From the repository root, use one protected explicit file per service:
+
+```powershell
+python scripts/run-service.py ai --env-file data/microservices/ai.env
+python scripts/run-service.py worker --env-file data/microservices/ai.env
+python scripts/run-service.py core --env-file data/microservices/core.env
+python scripts/run-service.py progress --env-file data/microservices/progress.env
+```
+
+The launcher excludes inherited application credentials, proxy and JVM injection
+settings; it does not auto-load root `.env`. AI requires `AI_PROVIDER_CONFIG_SOURCE=database`
+and `DICTALAB_AI_REGISTRY_OWNERSHIP=private`, an independent AI database and a
+read-only runtime role without memberships. Operator credentials stay in a separate
+file. API/worker share one absolute SQLite path. Keep Redis/RabbitMQ and internal
+tokens consistent across the explicit files. Build Core/Progress JARs first.
+
+The local configuration uses Python text/TTS/coach/review routing with Core caller
+budgets enabled and Progress reads in shadow mode. Health and history parity are
+recorded in `docs/microservices-implementation.md`; production cutover is pending.
+The [R13 integration](../../docs/model-demo-guided-r13.md) is evaluation-only and
+does not change the production conversation artifact approval gate.

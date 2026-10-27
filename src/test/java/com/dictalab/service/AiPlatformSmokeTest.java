@@ -27,8 +27,9 @@ class AiPlatformSmokeTest {
         var audio = client.audio(client.complete("tts", 42, "smoke-tts", Map.of("kind", "tts", "text", "At nine.")));
         assertTrue(audio.length > 44);
         String id=UUID.randomUUID().toString();
+        String scene=System.getProperty("ai.jobs.smoke.scene", "cafe");
         var demoPayload=new ObjectMapper().valueToTree(Map.of("kind","conversation_demo","mode","compare","variant","full07",
-                "allowFallback",false,"level","A1","context",Map.of("scenario","cafe","turnNumber",1)));
+                "allowFallback",false,"level","A1","context",Map.of("scenario",scene,"turnNumber",1)));
         var state=client.submitDemo(42,id,java.time.Instant.now().plusSeconds(60),demoPayload);
         long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
         while (Set.of("PENDING","RUNNING").contains(state.path("status").asText())) {
@@ -39,7 +40,13 @@ class AiPlatformSmokeTest {
         }
         assertEquals("DONE",state.path("status").asText());
         ModelDemoService.validateResult(demoPayload,state.path("result"));
-        for(var arm:state.path("result").path("arms")) assertTrue(arm.path("valid").asBoolean(),arm.toString());
+        for(var arm:state.path("result").path("arms")) {
+            assertTrue(arm.path("valid").asBoolean(),arm.toString());
+            assertEquals(scene.equals("delivery") ? "source-guided-r13" : "legacy",arm.path("translationGuidance").asText());
+            assertEquals(scene.equals("delivery") ? 23 : 11,arm.path("wordCount").asInt());
+            assertEquals(35,arm.path("wordBounds").path("maxWords").asInt());
+            assertEquals("not_evaluated",arm.path("semanticReview").asText());
+        }
         var repeated=client.submitDemo(42,id,java.time.Instant.now().plusSeconds(60),demoPayload);
         assertEquals(state.path("result").path("generationId"),repeated.path("result").path("generationId"));
     }

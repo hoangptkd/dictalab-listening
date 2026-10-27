@@ -61,11 +61,14 @@ def decrypt_key(master, row):
         raise ValueError("Provider secret cannot be decrypted") from None
 
 
-def load_registry(dsn, master):
+def load_registry(dsn, master, *, require_private=False):
     try:
         cipher(master)
         with connect(dsn) as db:
             db.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            if require_private:
+                from .registry_migration import verify_private
+                verify_private(db, runtime=True)
             with db.cursor() as cursor:
                 cursor.execute("SELECT platform, default_model, global_rpm_limit, global_rpd_limit, enabled FROM ai_provider_pools ORDER BY platform")
                 pools = {row["platform"]: row for row in cursor.fetchall()}

@@ -108,6 +108,16 @@
                     const section = document.createElement("section"), heading = document.createElement("h4");
                     heading.textContent = `${arm.variant}${arm.fallbackFrom ? ` (chuyển từ ${arm.fallbackFrom})` : ""} · ${arm.valid ? "Đạt kiểm tra cấu trúc" : "Chưa đạt"}`;
                     section.append(heading);
+                    if (Number.isInteger(arm.wordCount) && arm.wordBounds) {
+                        const length = document.createElement("p");
+                        length.textContent = `Độ dài: ${arm.wordCount} từ · Giới hạn: ${arm.wordBounds.minWords}–${arm.wordBounds.maxWords} từ`;
+                        section.append(length);
+                    }
+                    if (arm.translationGuidance === "source-guided-r13") {
+                        const guidance = document.createElement("p");
+                        guidance.textContent = "Dịch có trợ giúp glossary R13 theo từng mệnh đề và ý; vẫn cần kiểm tra nghĩa.";
+                        section.append(guidance);
+                    }
                     for (const call of arm.calls || []) {
                         const source = document.createElement("p");
                         source.textContent = `${call.purpose}: ${call.provider} / ${call.model}${call.latencyMs != null ? ` · ${call.latencyMs} ms` : ""}`;

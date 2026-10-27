@@ -200,3 +200,52 @@ configuration, service state, or database was changed during sampling.
   passed with 2 existing Redis-dependent skips. The real Java -> AI API -> fake
   Ollama smoke passed, including exactly one generic text call with a 2,200-token
   output cap, alongside the two existing structured conversation calls.
+
+## Private ownership and actual local history (2026-10-28)
+
+- AI registry now supports its own migration/checksum ledger and database,
+  independent owner/read-only runtime roles, and a separate encryption master.
+  Verified copy moved 2 pools/4 accounts in local configuration; encrypted backup
+  parity, source preservation, disabled flags and role isolation passed. Core's
+  V40 registry remains for operator-controlled rollback. Repeatable disposable
+  PostgreSQL smoke covers copy/restore and rejects role membership escapes.
+- New `scripts/run-service.py` requires explicit protected env per service and
+  removes inherited application secrets/injection settings. Core uses a restricted
+  role without provider registry permissions or provider/master keys. AI runtime
+  receives no Core data permissions. Management credentials remain outside runtime.
+  Existing root `.env` is preserved for legacy rollback/operator use.
+- Core database was backed up with `pg_dump -Fc`, restored into a separate
+  temporary database and table counts compared before migrating V41 to V43.
+  Flyway checksum validation remains enabled. Progress owns another local database.
+- Native Core, AI API, AI worker and Progress started through isolated files.
+  Health returned 200; unauthenticated text/dashboard/Progress returned 401.
+  Python text/TTS/coach/review routes are configured, Core caller budgets/rate
+  limits enabled, paid demo budget zero, Progress publishing on and reads shadow.
+  This verifies startup/authentication, not paid provider generation or production readiness.
+- Actual local history: 7 users, 1 completed solo session, no shared session.
+  Backfill scanned that session, matched all 7 dashboard projections across
+  summaries/trends/levels/errors, left 0 pending/failed events, and a second
+  backfill added no events. This small dataset supplements synthetic tests;
+  it is not broad production parity. Remote Progress reads are not cut over yet.
+- Native Windows startup RSS snapshot: Core 668,950,528 bytes, Progress
+  220,696,576, AI API 98,512,896, worker 69,365,760. Infrastructure is excluded;
+  these are neither peak usage nor Linux VPS capacity measurements. The harness
+  stopped its own processes after checks.
+- Operational instructions and recovery are in `docs/ai-provider-database.md`.
+  VPS deployment, resource/recovery acceptance and portfolio evidence remain.
+
+## Latest training conversation applied (2026-10-28)
+
+The completed **train AI conversation** report at commit `129ce65` was checked
+against its private frozen evidence. Source-guided R13 translation is integrated
+only for delivery scenes, with immutable prompt/helper hashes, source/fact
+alignment, targeted term/identifier checks and existing semantic gates retained.
+Content now receives server-owned schema/slot ranges; the UI reports word bounds.
+No weights or datasets changed. Full scope, evidence and coordinated cutover:
+`docs/model-demo-guided-r13.md`.
+
+Original GPU study scores do not constitute a fresh application/CPU quality test.
+The updated wrapper has synthetic/unit/integration evidence; fresh CPU generation
+still requires 20 GiB free RAM. B1 soft length targets and independent semantic
+evaluation remain open. No production deployment or general adapter superiority
+is claimed.

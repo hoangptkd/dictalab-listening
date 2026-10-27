@@ -28,6 +28,7 @@ on:
       - 'scripts/run-local.ps1'
       - 'scripts/test-run-local-env.ps1'
       - 'scripts/run-model-demo.ps1'
+      - 'scripts/run-service.py'
       - '.env*.example'
       - '.github/workflows/ai-platform.yml'
 
@@ -73,6 +74,8 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,ModelDemoIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,AiProviderRegistryTest,ListeningComprehensionIntegrationTest test
       - name: Java to Python to fake Ollama smoke
         run: python tools/ai-eval/smoke.py
+      - name: Private registry migration, backup restore and database isolation
+        run: python tools/ai-eval/registry_smoke.py
       - name: Java API RabbitMQ worker smoke, local/cloud routing and capacity sweep
         env:
           AI_TEST_RABBITMQ_URL: amqp://guest:guest@127.0.0.1:5672/%2F
@@ -89,7 +92,7 @@ jobs:
         run: |
           docker compose --profile ai --profile ai-worker config --quiet
           docker build -f services/ai-generation/Dockerfile -t dictalab-ai-check .
-          docker run --rm dictalab-ai-check python -c "from app.config import Settings; from app.registry import load_artifact; print(load_artifact(Settings())['version'])"
+          docker run --rm dictalab-ai-check python -c "from app.config import Settings; from app.registry import load_artifact; from app.registry_migration import schema_checksum; from app.conversation_demo import artifact; print(load_artifact(Settings())['version'], artifact(Settings())['version'], schema_checksum())"
       - name: Encoding and diff checks
         run: |
           python tools/ai-eval/check_encoding.py

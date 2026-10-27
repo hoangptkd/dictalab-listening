@@ -51,3 +51,16 @@ def test_env_replace_failure_keeps_previous_file_and_cleans_temporary(tmp_path):
             accounts.replace_env(path,"KEEP_VALUE=after\n")
     assert path.read_text()=="KEEP_VALUE=before\n"
     assert not list(tmp_path.glob(".env.registry-*"))
+
+
+@pytest.mark.parametrize('master', ['private-master', '${AI_PROVIDER_ENCRYPTION_KEY}'])
+def test_explicit_management_file_cannot_be_overridden_by_parent_credentials(tmp_path, monkeypatch, capsys, master):
+    path = tmp_path / 'owner.env'
+    path.write_text('AI_PROVIDER_DATABASE_URL=private-target\nAI_PROVIDER_ENCRYPTION_KEY=' + master + '\n', encoding='utf-8')
+    monkeypatch.setenv('AI_PROVIDER_DATABASE_URL', 'legacy-parent')
+    monkeypatch.setenv('AI_PROVIDER_ENCRYPTION_KEY', 'legacy-master')
+    monkeypatch.setattr(accounts.sys, 'argv', ['provider_accounts.py', 'list', '--env-file', str(path)])
+    with patch.object(accounts, 'load_registry', return_value=({}, [])) as read:
+        accounts.main()
+        read.assert_called_once_with('private-target', master)
+    assert 'private-master' not in capsys.readouterr().out

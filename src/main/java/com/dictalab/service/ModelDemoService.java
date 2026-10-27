@@ -19,7 +19,7 @@ import java.util.*;
 /** Core keeps a durable submit/poll ledger and never waits for CPU inference on an HTTP request. */
 @Service
 public class ModelDemoService {
-    public static final String PROMPT_SHA = "55533dd4309ed220cd3579bce651d32e62e4e593ea55e94b7df2517628126d9b";
+    public static final String PROMPT_SHA = "62d4e1c7e03c26ebd9a5dca7d186bb27c22fd62be6078f09a72c2643402cf5cb";
     public static final String BASE_REVISION = "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a";
     public static final String ADAPTER_SHA = "1670910dcad7f1e8f66d1dd74e6297fe914c2067d0c26240b72b25fd36c922bf";
     private final JdbcTemplate db;
