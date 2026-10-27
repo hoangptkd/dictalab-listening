@@ -114,7 +114,15 @@ Smoke dựng và dọn broker dùng riêng nếu không có `AI_TEST_RABBITMQ_UR
 Provider giả kiểm tra giao tiếp/phục hồi, không đánh giá chất lượng model.
 Không trỏ phép thử vào broker production.
 
-Ngày 27/10/2026: đã xác minh file base/adapter và runtime local. Thời điểm
-kiểm tra còn khoảng 4.3 GiB RAM trống nên chưa chạy inference thật qua server
-mới. Chưa có benchmark chất lượng, RAM đỉnh, tốc độ hoặc bằng chứng deploy VPS
-cho milestone này. Trạng thái đầy đủ: `docs/microservices-implementation.md`.
+Ngày 28/10/2026: đã chạy inference thật qua server mới sau khi đóng ứng dụng
+không liên quan theo yêu cầu chủ máy, với khoảng 20.38 GiB RAM trống ban đầu.
+Base và full07 đều trả `Wednesday` cho cùng câu hỏi ngắn; latency lần lượt
+62,953 ms (gồm cold load) và 4,953 ms (đã nạp). Đây chưa phải benchmark tốc độ.
+
+Mẫu so sánh hội thoại A1 tại quán cà phê thất bại ở cả hai nhánh với
+`INVALID_MODEL_SCHEMA`: thừa slot/fact và sai/thiếu trường. Bộ kiểm tra đã chặn
+đầu ra; chưa chạy dịch hoặc duyệt nghĩa. Không dùng mẫu này để tuyên bố model
+đạt chất lượng hội thoại. Toàn lượt kiểm tra mất 633.8 giây; RAM hệ thống trống
+thấp nhất khoảng 3.96 GiB. Sampler RSS đo nhầm tiến trình launcher, nên chưa có
+số đo RAM đỉnh hợp lệ. Chưa deploy VPS. Bằng chứng và phần còn lại được ghi tại
+`docs/microservices-implementation.md`.

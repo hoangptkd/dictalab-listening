@@ -9,8 +9,9 @@ Billing, and Realtime remain in Core. No retraining or dataset changes.
 
 Local demonstrates all components, asynchronous conversation generation, and a
 base/adapter comparison screen with model provenance. VPS must eventually run
-all three business services, using cloud inference. The existing VPS reportedly
-has 1-2 GB RAM; measure actual capacity and propose any upgrade before spending.
+all three business services, using cloud inference. The read-only VPS inventory
+on 2026-10-27 found 2 vCPU and 953,704,448 bytes of RAM (about 0.89 GiB).
+Measure the complete deployment and propose any upgrade before spending.
 Do not assume the fine-tuned model will run on that VPS.
 
 Cloud fallback is opt-in, budgeted, bounded, and visible. Benchmark comparisons
@@ -27,7 +28,7 @@ An unchecked entry is incomplete, even if supporting code exists.
 - [ ] Backfill history and verify Core/Progress dashboard parity before cutover.
 - [ ] Separate provider registry ownership from Core database access.
 - [x] Make opt-in AI conversation demo jobs durable and restart-safe.
-- [ ] Serve the existing base and full07 adapter in a separate local process.
+- [x] Serve the existing base and full07 adapter in a separate local process.
 - [x] Integrate asynchronous conversation demo and the comparison UI.
 - [x] Enforce budgeted demo fallback and report actual provider/model provenance.
 - [ ] Run cross-service recovery, security, contract, and load checks.
@@ -72,6 +73,30 @@ Only mark the migration complete after each accepted requirement has direct
 runtime/test/deployment evidence. A passing local test or push does not prove
 VPS deployment, model quality, or full-system readiness.
 
+## Existing VPS resource inventory (2026-10-27)
+
+Read-only sample at `2026-10-27T15:48:14Z`, using the existing production
+sampling script over the established SSH connection:
+
+| Measurement | Observed value |
+| --- | --- |
+| CPU | 2 vCPU |
+| Total RAM | 953,704,448 bytes, about 0.89 GiB |
+| Available RAM | 234,610,688 bytes, about 224 MiB |
+| Used swap | 540,471,296 bytes, about 515 MiB |
+| Core resident memory | 363,708,416 bytes, about 347 MiB |
+| Core swapped memory | 247,992,320 bytes, about 237 MiB |
+| RabbitMQ cgroup memory | 21,823,488 bytes, about 21 MiB |
+| Core service | active, restart counter 0 |
+
+The learning evidence queue had one consumer and no waiting or unacknowledged
+messages. The AI and listening queue flags were disabled. The sample did not
+retrieve application metrics or PostgreSQL details; those parts of the baseline
+remain incomplete. Low load and a zero restart counter do not establish capacity
+for two additional business services. This observation does not authorize a
+purchase or prove that the three-service VPS deployment will fit. No production
+configuration, service state, or database was changed during sampling.
+
 ## Progress milestone evidence (2026-10-27)
 
 - Standalone service: 8 passing tests with disposable PostgreSQL 18 and RabbitMQ;
@@ -94,8 +119,8 @@ VPS deployment, model quality, or full-system readiness.
 - Separate loopback Model Serving process with pinned base/adapter/config hashes,
   runtime versions, tokenizer parity, bounded requests, token authentication and
   a free-memory guard. File/runtime verification passed against local files.
-  Actual inference through this new server is pending: only about 4.3 GiB RAM
-  was available, below the 20 GiB guard. No model quality claim follows.
+  Actual inference through this new server was subsequently verified on
+  2026-10-28; see the separate runtime evidence below. No model quality claim follows.
 - Core's additive V43 ledger persists ownership, intent idempotency, deadlines,
   short submit/poll leases and completed results. Existing conversation ownership,
   quota, semantic review, answer hiding and optimistic session leases remain.
@@ -124,6 +149,54 @@ VPS deployment, model quality, or full-system readiness.
 - Progress workflow `40528616084` failed on GitHub artifact storage quota.
   AI workflow `40528615640` also exposed a budget-disabled test fixture; that
   fixture is corrected locally. CI must be rechecked after the next push.
-- Remaining: real-model inference/evaluation, resource baselines, independent AI
+- Remaining: broader real-model evaluation, resource baselines, independent AI
   registry ownership, real history backfill/cutover, full-system runtime evidence
   and the VPS rollout. All new demo flags default off; no VPS change is implied.
+
+## Actual local inference (2026-10-28)
+
+- Unrelated applications were closed with the owner's authorization. The
+  harness observed 21,887,430,656 available bytes (20.38 GiB) before startup.
+  Model Serving used a random loopback port and an ephemeral service token;
+  no cloud requests, training or dataset changes were made.
+- The pinned base and full07 adapter both returned HTTP 200 for the same
+  one-word question, `What day follows Tuesday?`, with `Wednesday` (4 output
+  tokens). Reported latency: base 62,953 ms including cold load/verification;
+  full07 4,953 ms after load. This does not establish general throughput or
+  an adapter speed advantage. Readiness returned 200 after loading.
+- A real A1 cafe comparison used the frozen prompt/context with fallback off.
+  Both content outputs were rejected with `INVALID_MODEL_SCHEMA`; translation
+  was not dispatched for either arm. Both produced three slots/facts where A1
+  permits two. Base also had missing slot/fact fields and an invalid skill;
+  full07 used `text` instead of required `textEn`. Semantic review was not run.
+- The whole harness took 633.8 seconds including startup and the two smoke
+  calls. Minimum sampled system available RAM was 4,251,934,720 bytes (3.96 GiB).
+  The automated RSS sampler measured the interpreter launcher rather than its
+  model child, so its peak RSS field is invalid and is not a resource benchmark.
+  The model process exited after the check and available RAM recovered.
+- Result: actual serving/integration is demonstrated; this sample fails
+  conversation acceptance. Keep the model in the evaluation lane. A broader
+  evaluation and model quality improvements remain a separate phase.
+
+## Generic text transport milestone (2026-10-28)
+
+- Core now has an independent opt-in `legacy|python` text transport. The
+  provider remains `ollama|gemini|deepseek|openai_compatible` for existing budget
+  accounting. In Python mode, Core's generic text calls do not select accounts,
+  query the Core provider registry or reserve provider quota a second time.
+- AI executes the configured provider and an enabled exact model through the
+  existing gateway/quota protocol. No endpoint returns provider credentials.
+  JSON-object mode is limited to this generic path; structured workflows retain
+  their JSON-schema behavior. Core retains semantic/domain validation.
+- A metadata-only SQLite admission survives API restart and blocks duplicate
+  request IDs until one hour after their original deadline. Failed/unknown and
+  queue-expired requests retain admission. This is transport replay protection,
+  not domain-level exactly-once delivery: a new Core invocation gets a new ID.
+- Defaults remain off/legacy. Private AI registry storage, removal of credentials
+  from Core runtime configuration and actual routing cutover are still pending;
+  adding an API does not establish independent storage ownership.
+- Configuration and repeatable verification: `services/ai-generation/README.md`.
+- Local verification: 23 Java client/transport tests passed; 241 Python tests
+  passed with 2 existing Redis-dependent skips. The real Java -> AI API -> fake
+  Ollama smoke passed, including exactly one generic text call with a 2,200-token
+  output cap, alongside the two existing structured conversation calls.

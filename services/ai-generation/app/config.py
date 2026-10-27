@@ -104,6 +104,7 @@ class Settings(BaseSettings):
     cartesia_version: str = "2026-08-14"
     http_max_connections: int = 10
     model_demo_enabled: bool = False
+    text_gateway_enabled: bool = False
     model_serving_url: str = "http://127.0.0.1:8093"
     model_serving_token: str = Field(default="", repr=False)
     # Conservative admission reservations, not provider invoices. Zero disables cloud demo.
@@ -173,6 +174,9 @@ class Settings(BaseSettings):
                     or not 32 <= len(self.model_serving_token) <= 256
                     or not all(33 <= ord(c) <= 126 for c in self.model_serving_token)):
                 raise ValueError("CPU Model Serving requires loopback and a strong service token")
+        if self.text_gateway_enabled and (not 32 <= len(self.service_token) <= 256
+                or not all(33 <= ord(c) <= 126 for c in self.service_token)):
+            raise ValueError("text gateway requires a strong service token")
         for value, active in ((self.gemini_base_url, self.selected_provider == "gemini"),
                 (self.ollama_url, self.selected_provider == "ollama"),
                 (self.cartesia_url, bool(self.cartesia_api_key))):

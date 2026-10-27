@@ -78,3 +78,54 @@ successful result or label an already-sent call retry-safe.
 `/metrics` adds shared `dictalab_gemini_*` quota/status/outcome metrics. They include Java calls when
 the same project/model/Redis DB is used. Scrape one API instance to avoid double-counting shared counters.
 Read `docs/ai-platform-runbook.md` (Gemini pool section) before enabling this on real accounts.
+
+## Opt-in generic Core text transport
+
+`POST /v1/text/completions` executes the synchronous JSON text calls already used
+by Core for assessment, conversation review and clarification. It supplements the
+durable capability jobs. It does not return provider keys, accounts or endpoints.
+
+Configure both sides explicitly in protected runtime configuration:
+
+| Core | AI API |
+| --- | --- |
+| `DICTALAB_AI_TEXT_TRANSPORT=python` (default `legacy`) | `DICTALAB_AI_TEXT_GATEWAY_ENABLED=true` (default `false`) |
+| `DICTALAB_AI_PLATFORM_BASE_URL` | API binds loopback for native local use |
+| `DICTALAB_AI_TEXT_PROVIDER` | Matching `DICTALAB_AI_PRIMARY_PROVIDER` |
+| `DICTALAB_AI_TEXT_MODEL` | Matching enabled model in AI registry, or `DICTALAB_AI_MODEL` for Ollama |
+| `DICTALAB_AI_SERVICE_TOKEN` | Same random ASCII token, 32-256 characters |
+
+For local Ollama set both model settings to the installed model, for example
+`qwen3.5:9b`. In Python transport mode Core's default text model is explicit; it
+does not read the provider registry to discover a model. Existing conversation
+model overrides must also name an enabled exact model. Model/provider mismatch
+fails the call; no direct-provider or cloud fallback is implicit.
+
+Core retains caller budgets, domain/semantic validation and its provider guard.
+AI performs provider quota admission once through the existing shared Redis
+protocol; the Core transport does not reserve that quota again. Generic text uses
+JSON-object output and a 2,200-token cap; structured pipelines keep JSON schema.
+Requests carry a UUID and an absolute deadline of at most 60 seconds. Input is
+bounded to 256 KB; instruction/input have separate character limits and results
+are bounded to a 12,000-character JSON object with verified provider/model/ID.
+
+AI stores only request ID/deadline in its private SQLite ledger before provider
+I/O. Replay of the same ID is rejected even after API restart, failure or queue
+timeout; markers expire one hour after the original deadline. No prompt/result
+is persisted by this endpoint. A new Core invocation gets a new ID, so callers
+must keep their existing domain-level policy for explicit retries and unknown
+outcomes. Neither HTTP client automatically retries this operation.
+
+Rollback: set Core transport to `legacy`, restart Core, then disable the AI
+gateway when in-flight requests have drained. Ensure the legacy provider registry
+and credentials are still available before rollback. Storage ownership migration
+and removal of provider credentials from Core remain separate pending work;
+the legacy shared registry is still supported during this stage.
+
+Repeatable unpaid verification from repository root:
+
+```powershell
+python -X utf8 -m pytest -q services/ai-generation/tests/test_text_gateway.py services/ai-generation/tests/test_model_gateway.py
+mvn --batch-mode --no-transfer-progress '-Dtest=GeminiClientTest,AiPlatformClientTest' test
+python -X utf8 tools/ai-eval/smoke.py
+```

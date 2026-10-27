@@ -99,6 +99,7 @@ class JobStore:
                 day TEXT NOT NULL, scope TEXT NOT NULL, reserved INTEGER NOT NULL, calls INTEGER NOT NULL,
                 PRIMARY KEY(day,scope))""")
             db.execute("CREATE TABLE IF NOT EXISTS demo_reservations (job_id TEXT PRIMARY KEY)")
+            db.execute("CREATE TABLE IF NOT EXISTS text_admissions (id TEXT PRIMARY KEY, deadline REAL NOT NULL)")
 
     @contextmanager
     def connect(self):
@@ -136,6 +137,21 @@ class JobStore:
             except sqlite3.IntegrityError as exc:
                 raise Conflict("job ID was reused") from exc
         return str(event.jobId)
+
+    def admit_text(self, request_id, deadline):
+        # Metadata only: no prompts, answers or credentials survive the synchronous call.
+        # An uncertain paid outcome must not be replayed after an API restart.
+        now = time.time()
+        if not now < deadline <= now + 61:
+            raise ValueError("invalid text deadline")
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("DELETE FROM text_admissions WHERE deadline<?", (now - 3600,))
+            try:
+                db.execute("INSERT INTO text_admissions(id,deadline) VALUES (?,?)", (str(request_id), deadline))
+            except sqlite3.IntegrityError:
+                return False
+        return True
 
     def pending(self):
         self.cleanup()

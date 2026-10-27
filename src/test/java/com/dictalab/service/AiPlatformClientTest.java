@@ -37,6 +37,38 @@ class AiPlatformClientTest {
         client = new AiPlatformClient(json, config("python", Set.of()), new SimpleMeterRegistry());
     }
     @AfterEach void cleanup() { client.stopShadows(); server.stop(0); }
+
+    @Test void genericTextAuthenticatesAndVerifiesProvenanceWithNoAutomaticRetry() {
+        var actualProvider = new java.util.concurrent.atomic.AtomicReference<>("ollama");
+        server.createContext("/v1/text/completions", exchange -> {
+            calls.incrementAndGet();
+            assertThat(exchange.getRequestHeaders().getFirst("X-Service-Token")).isEqualTo("t".repeat(40));
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+            input = json.readTree(exchange.getRequestBody().readAllBytes());
+            byte[] body = json.writeValueAsBytes(Map.of("schemaVersion", "1", "requestId", input.path("requestId").asText(),
+                    "provider", actualProvider.get(), "model", "qwen3.5:9b", "task", Map.of("ok", true)));
+            exchange.sendResponseHeaders(200, body.length);
+            try (var output = exchange.getResponseBody()) { output.write(body); }
+        });
+        var remote = new AiPlatformClient(json, new AiPlatformProperties("http://127.0.0.1:" + server.getAddress().getPort(),
+                "t".repeat(40), "ollama", 5, "legacy", "legacy", "legacy", Set.of()), new SimpleMeterRegistry());
+        assertThat(remote.completeText("Return JSON.", "Evidence", "qwen3.5:9b", java.time.Duration.ofSeconds(2))
+                .path("ok").asBoolean()).isTrue();
+        assertThat(input.path("provider").asText()).isEqualTo("ollama");
+        assertThat(input.path("instruction").asText()).isEqualTo("Return JSON.");
+        assertThat(java.time.Instant.parse(input.path("deadline").asText())).isAfter(java.time.Instant.now());
+        assertThat(input.toString()).doesNotContain("apiKey", "endpoint");
+        actualProvider.set("gemini");
+        assertThatThrownBy(() -> remote.completeText("Return JSON.", "Evidence", "qwen3.5:9b", java.time.Duration.ofSeconds(2)))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("provenance");
+        assertThat(calls.get()).isEqualTo(2);
+    }
+
+    @Test void genericTextRejectsWeakTokenBeforeNetwork() {
+        assertThatThrownBy(() -> client.completeText("JSON", "Evidence", "model", java.time.Duration.ofSeconds(2)))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("strong service token");
+        assertThat(calls.get()).isZero();
+    }
     private AiPlatformProperties config(String mode, Set<Long> users) {
         return new AiPlatformProperties("http://127.0.0.1:" + server.getAddress().getPort(), "test-only", "ollama", 5,
                 mode, mode, mode, users);

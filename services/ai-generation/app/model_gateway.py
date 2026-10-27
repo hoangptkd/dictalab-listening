@@ -64,6 +64,7 @@ class ModelGateway:
         deepseek_thinking: bool = False,
         deepseek_reasoning_effort: str | None = None,
         deepseek_cache_prefix: bool = False,
+        json_object: bool = False,
     ) -> tuple[dict[str, Any], str]:
         """Call the selected provider.
 
@@ -83,6 +84,12 @@ class ModelGateway:
             raise ValueError("reasoning effort requires DeepSeek thinking and low/high/max")
         if provider in CLOUD_PROVIDERS:
             selected = self._primary_cloud
+            if json_object:
+                selected = OpenAiCompatibleProvider(base_url=self._settings.active_cloud_base_url,
+                    api_key=self._settings.active_cloud_api_key, model=self._settings.active_cloud_model,
+                    temperature=self._settings.temperature, client=self._client,
+                    max_tokens=self._settings.num_predict, provider_name=provider,
+                    chat_completions_path="/chat/completions" if provider == "gemini" else None)
             source = None
             store = None
             if self._settings.gemini_quota_enabled:
@@ -98,8 +105,10 @@ class ModelGateway:
                     if source.platform != "deepseek":
                         raise ValueError("reasoning effort requires a DeepSeek source")
                     extra["reasoning_effort"] = deepseek_reasoning_effort
-                selected = GeminiProvider(**common) if source.platform == "gemini" else OpenAiCompatibleProvider(**common,
-                    provider_name=source.platform, extra_body=extra, cache_stable_prefix=deepseek_cache_prefix)
+                selected = (GeminiProvider(**common) if source.platform == "gemini" and not json_object else
+                    OpenAiCompatibleProvider(**common, provider_name=source.platform, extra_body=extra,
+                        chat_completions_path="/chat/completions" if source.platform == "gemini" else None,
+                        cache_stable_prefix=deepseek_cache_prefix))
                 self.last_model, self.last_source_id = source.model, source.id
             try:
                 result = await selected.complete(messages, schema, deadline, purpose, temperature=temperature)

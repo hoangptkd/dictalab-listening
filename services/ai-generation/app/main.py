@@ -50,6 +50,8 @@ async def lifespan(_app):
 app = FastAPI(title="DictaLab AI Generation", version="0.2.0", lifespan=lifespan)
 from .job_api import router as job_router
 app.include_router(job_router)
+from .text_gateway import router as text_router
+app.include_router(text_router)
 logger = logging.getLogger("dictalab.ai_generation")
 logger.addFilter(RedactingFilter())
 
@@ -75,6 +77,15 @@ semaphore = asyncio.Semaphore(settings.effective_max_concurrency) if settings.ef
 
 @app.middleware("http")
 async def bound_job_requests(request: Request, call_next):
+    if request.method == "POST" and request.url.path == "/v1/text/completions":
+        if not settings.service_token or not _authorized(request.headers.get("X-Service-Token")):
+            return JSONResponse(status_code=401, content={"error": "invalid service token"})
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > 256000:
+                return JSONResponse(status_code=413, content={"error": "text input exceeds limit"})
+        request._body = bytes(body)
     if request.method == "POST" and request.url.path in ("/v1/tts/jobs", "/v1/coach/reports", "/v1/review/tasks", "/v1/conversation/jobs"):
         if not _authorized(request.headers.get("X-Service-Token")):
             return JSONResponse(status_code=401, content={"error": "invalid service token"})

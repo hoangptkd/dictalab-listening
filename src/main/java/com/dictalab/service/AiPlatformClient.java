@@ -35,6 +35,46 @@ public class AiPlatformClient {
     public boolean shadow(String kind) { return config.mode(kind).equals("shadow"); }
     public boolean local() { return config.textProvider().equals("ollama"); }
 
+    public boolean textConfigured() { return config.serviceToken().matches("[!-~]{32,256}"); }
+
+    /** Synchronous execution only. Core keeps domain validation and caller budget reservations. */
+    public JsonNode completeText(String instruction, String input, String model, Duration timeout) {
+        if (!textConfigured()) throw new IllegalStateException("AI text transport requires a strong service token");
+        if (instruction == null || instruction.isBlank() || instruction.length() > 48000
+                || input == null || input.isBlank() || input.length() > 120000
+                || model == null || !model.matches("[a-zA-Z0-9_.:/-]{1,128}")
+                || timeout == null || timeout.toMillis() < 1 || timeout.compareTo(Duration.ofSeconds(60)) > 0)
+            throw new IllegalArgumentException("Invalid AI text request");
+        String requestId = UUID.randomUUID().toString();
+        String body = json.writeValueAsString(Map.of("requestId", requestId, "provider", config.textProvider(),
+                "model", model, "instruction", instruction, "input", input,
+                "deadline", Instant.now().plus(timeout).toString()));
+        if (body.getBytes(StandardCharsets.UTF_8).length > 256000)
+            throw new IllegalArgumentException("AI text input exceeds limit");
+        var request = HttpRequest.newBuilder(URI.create(config.baseUrl() + "/v1/text/completions"))
+                .timeout(timeout).header("X-Service-Token", config.serviceToken())
+                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
+        var pending = http.sendAsync(request, ignored -> BoundedProviderBody.bytes(100000));
+        try {
+            var response = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            if (response.statusCode() != 200) throw new IllegalStateException("AI text transport rejected request");
+            JsonNode result = json.reader().with(tools.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                    .readTree(response.body());
+            String expectedModel = local() ? model : model.replaceFirst("^models/", "");
+            if (!"1".equals(result.path("schemaVersion").asText()) || !requestId.equals(result.path("requestId").asText())
+                    || !config.textProvider().equals(result.path("provider").asText())
+                    || !expectedModel.equals(result.path("model").asText()) || !result.path("task").isObject()
+                    || result.path("task").toString().length() > 12000)
+                throw new IllegalStateException("Invalid AI text result or provenance");
+            return result.path("task");
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("AI text request interrupted");
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException unavailable) {
+            throw new IllegalStateException("AI text outcome failed or unknown; automatic replay disabled");
+        } finally { pending.cancel(true); }
+    }
+
     public JsonNode submitDemo(long user, String id, Instant deadline, JsonNode payload) {
         String scope = AiBackgroundJobs.hash("ai-scope/" + config.serviceToken() + "/" + user);
         String body = json.writeValueAsString(Map.of("schemaVersion", "1", "jobId", id, "requestId", id,

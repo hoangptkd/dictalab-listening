@@ -32,6 +32,21 @@ public class GeminiClient {
     private boolean local;
     private String cloudPlatform = "gemini";
     private AiProviderRegistry registry;
+    private AiPlatformClient platform;
+    private boolean remoteText;
+    private String remoteModel;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureTextTransport(AiPlatformClient platform,
+            @Value("${dictalab.ai.platform.text-transport:legacy}") String transport,
+            @Value("${dictalab.ai.platform.text-model:gemini-3.5-flash-lite}") String textModel) {
+        if (!java.util.Set.of("legacy", "python").contains(transport)
+                || textModel == null || !textModel.matches("[a-zA-Z0-9_.:/-]{1,128}"))
+            throw new IllegalArgumentException("Invalid AI text transport or model");
+        if (transport.equals("python") && !platform.textConfigured())
+            throw new IllegalArgumentException("AI text transport requires a strong service token");
+        this.platform = platform; this.remoteText = transport.equals("python"); this.remoteModel = textModel;
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     void configureRegistry(AiProviderRegistry registry) { this.registry = registry; }
@@ -108,10 +123,11 @@ public class GeminiClient {
     }
 
     public boolean configured() {
+        if (remoteText) return platform.textConfigured();
         return local || (databaseEnabled() || !cloudPlatform.equals("gemini") ? routingEnabled() : !key.isBlank() || routingEnabled());
     }
 
-    public String model() { return local ? localModel : databaseEnabled() ? registry.model(cloudPlatform) : model; }
+    public String model() { return remoteText ? remoteModel : local ? localModel : databaseEnabled() ? registry.model(cloudPlatform) : model; }
 
     public JsonNode completeJson(String instruction, String input) {
         return requestJson(instruction, input, model(), assessmentTimeout);
@@ -134,6 +150,16 @@ public class GeminiClient {
         if (requestModel == null || requestModel.isBlank()) throw new IllegalArgumentException("Missing Gemini model");
         try (var permit=guard.enter()) {
           try {
+            if (remoteText) {
+                try {
+                    JsonNode result = platform.completeText(instruction, input, local ? remoteModel : requestModel, timeout);
+                    permit.success();
+                    return result;
+                } catch (RuntimeException unavailable) {
+                    permit.failure();
+                    throw new Failure("AI_SERVICE", "AI service did not return a verified text result");
+                }
+            }
             ProviderSelection selection = local ? null : selectProvider(instruction, input, requestModel);
             String targetModel = local ? localModel : selection.model();
             String targetUrl = local ? localBaseUrl + "/api/chat" : selection.url();
