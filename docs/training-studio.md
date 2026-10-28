@@ -22,6 +22,14 @@ Thư mục metadata cần quyền ghi của tài khoản dịch vụ, ở vùng 
 
 Proxy HTTPS phải chuyển tiếp thông tin scheme theo cấu hình proxy tin cậy hiện có. Không mở origin trực tiếp hoặc mở rộng trusted proxies tùy tiện. Ingestion từ HTTP bị từ chối; reporter giữ TLS verification và không theo redirect.
 
+### Dashboard local nhận dữ liệu qua website HTTPS
+
+Khi backend mới chỉ chạy trên máy local, có thể chuyển tiếp **đúng một đường dẫn POST telemetry đã đăng ký** từ reverse proxy HTTPS của website tới Studio qua SSH reverse forwarding. Cổng phía VPS và backend local đều chỉ bind loopback. Các trang quản trị, đăng nhập và lệnh điều khiển local không nằm trong đường chuyển tiếp này. Giữ bản sao cấu hình proxy, kiểm tra cấu hình trước khi áp dụng và xác minh health website sau thay đổi.
+
+Reporter lấy cookie/header CSRF từ website HTTPS và gửi khóa riêng cùng snapshot qua đường chuyển tiếp; backend local vẫn kiểm tra HTTPS, CSRF, khóa, thời hạn và bindings như bình thường. Reporter nhận diện bằng User-Agent `DictaLab-Training-Telemetry/1.0`; một số gateway Cloudflare trả lỗi 1010 cho User-Agent mặc định của Python trước khi request tới backend. Không dùng User-Agent của trình duyệt hoặc tắt kiểm tra bảo mật để xử lý lỗi này.
+
+Máy local, SSH relay và reporter Colab phải cùng hoạt động. Khi máy local ngủ hoặc relay mất kết nối, dashboard giữ snapshot cũ và báo mất cập nhật; trainer Colab không bị dừng. Đường chuyển tiếp chỉ phục vụ phiên đã đăng ký, cần cập nhật hoặc gỡ khi đổi/thu hồi phiên. Notebook đang chạy có thể dùng reporter trong terminal độc lập; không ngắt ô train chỉ để gắn đồng bộ và không đưa khóa vào mã notebook, shell history hay process arguments.
+
 ### Đăng ký và khóa kết nối
 
 1. ADMIN mở `/admin/training?view=sources` → **Kết nối máy train** → chọn Colab hoặc Local.
@@ -30,7 +38,22 @@ Proxy HTTPS phải chuyển tiếp thông tin scheme theo cấu hình proxy tin 
 4. Khóa chỉ được POST metadata cho đúng ID; không đọc dashboard/dataset và không gọi start/resume/pause/stop. ADMIN có thể thu hồi; thu hồi không dừng trainer hoặc xóa bằng chứng.
 5. Reporter vẫn dùng GET `/api/auth/csrf` và cookie/header CSRF trước POST `/api/training/telemetry/{id}`. Không bỏ CSRF của ingestion hoặc các API quản trị. Rate limit dùng nhóm AI hiện có.
 
-Snapshot tối đa 32 KB, schema cho phép chỉ các trường metadata đã xác định; không nhận command/path/raw log/dataset text. Sequence phải tăng; retry có cùng bytes/sequence được nhận idempotent. Server kiểm tra timestamp trong 5 phút, số hữu hạn, hash đúng định dạng, step không lùi; bindings config/data/review/environment/inspection/trainer, phase, model, planned steps và cấu hình không được đổi sau snapshot đầu tiên. Thay môi trường/config cần phiên mới.
+Snapshot tối đa 32 KB, schema cho phép chỉ các trường metadata đã xác định; không nhận command/path/raw log/dataset text. Sequence phải tăng; retry có cùng bytes/sequence được nhận idempotent. Server kiểm tra timestamp trong 5 phút, số hữu hạn, hash đúng định dạng. Dataset/manifest/review, phase, model/revision và planned steps được khóa cho cả lần train.
+
+### Một lần train, nhiều lần tiếp tục, cùng khóa
+
+Khóa và URL theo dõi thuộc **lần train**, không thuộc một tiến trình Colab. Reporter mới tự tạo `attempt.id` ổn định từ marker bắt đầu, tên status file và các hash; `attempt.fromStep` ghi số bước khôi phục. Restart reporter với cùng marker/hash không tạo attempt mới. Đổi runtime, marker hoặc mã/config tạo attempt mới nhưng dùng lại endpoint và khóa còn hạn. Khóa vẫn hết hạn sau 7 ngày, không tự gia hạn; máy chủ chỉ lưu hash nên không thể khôi phục khóa đã mất.
+
+1. Bấm **Kết nối lại** trong trang chi tiết, dùng reporter mới với status/log đúng của tiến trình hiện tại. Nhập khóa đã lưu bằng `getpass`, không chạy lại ô train.
+2. Snapshot đầu của attempt mới vào trạng thái **Chờ admin duyệt kết nối lại**. Reporter vẫn gửi mỗi 15 giây; không nhận là connected và không thay snapshot đã chấp nhận trước đó.
+3. Admin xem checkpoint bắt đầu và bảng thay đổi hash/config, sau đó duyệt đúng fingerprint. Quyền ADMIN theo email và CSRF vẫn bắt buộc; token metadata không có quyền duyệt. Nếu mã/config đổi thêm trong lúc chờ, approval cũ không có hiệu lực cho nội dung mới. Yêu cầu quá 5 phút cần snapshot mới.
+4. Snapshot tiếp theo khớp approval sẽ lưu bản cuối của attempt cũ và chuyển sang attempt mới **trong cùng link**. Tab **Lịch sử tiếp tục** cho đọc riêng cấu hình, hash, metrics và trạng thái cũ. Không cộng các step chạy lại khi rollback về checkpoint.
+
+Nếu reporter mới vẫn sống trong cùng runtime/notebook, chuyển sang marker mới bằng `reporter.follow_attempt(status_file="/content/status-resume-02.json", log="/content/train-resume-02.log")`; có thể truyền `config=` nếu cần. Cách này giữ nguyên khóa trong bộ nhớ, endpoint và vòng gửi, không yêu cầu nhập lại khóa. Chỉ gọi trong terminal/ô riêng khi kernel cho phép, không enqueue vào kernel đang chạy foreground. Nếu runtime đã mất, cần nhập lại khóa đã lưu; máy chủ không có bản rõ để khôi phục.
+
+Trong một attempt, mã/config/hash phải cố định và step không được lùi. Attempt mới có thể bắt đầu từ checkpoint trước tiến độ đã nhận, sau duyệt; không thể khai checkpoint vượt step đã biết. Không nhận lại snapshot của attempt đã đóng. Giới hạn 64 attempt cho mỗi lần train, mỗi snapshot vẫn 32 KB; lịch sử được lưu riêng, không chứa khóa. Các phiên cũ không có `attempt` được đọc như `legacy`, giữ nguyên khóa và dữ liệu, chuyển đổi khi reporter mới được duyệt. Đổi dataset/model/phase/đích step cần lần train riêng.
+
+Khi resume hoàn tất, reporter phân biệt `actualOptimizerUpdates` (cập nhật mới) và `restoredOptimizerSteps` (state khôi phục). Chỉ báo hoàn tất khi tổng bằng planned steps, wrapper xác nhận hoàn tất, bằng chứng tensor/gradient/adapter/validation đủ. Server vẫn ghi **máy gửi báo cáo**, không tự xác minh native checkpoint hay cho resume local. Việc duyệt attempt chỉ cấp nhận metadata, không chạy hoặc ngắt trainer.
 
 ### Colab
 

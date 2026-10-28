@@ -170,6 +170,14 @@ def capture(root, config, status_file, log, phase, *, measure=True):
                 "inspectionHash": sha(bounded(root, cfg["lora"]["target_modules_from"])),
                 "trainerHash": sha(root / "training/train_sft_lora.py")}
     status = read(status_file)
+    restored = status.get("restoredCheckpointSteps", 0)
+    if not isinstance(restored, int) or isinstance(restored, bool) or restored < 0:
+        raise ValueError("Invalid restored checkpoint step")
+    attempt = None
+    if status.get("startedAt"):
+        identity = json.dumps({"statusFile": Path(status_file).name, "startedAt": status["startedAt"],
+                               "bindings": bindings}, sort_keys=True)
+        attempt = {"id": "attempt-" + hashlib.sha256(identity.encode()).hexdigest()[:32], "fromStep": restored}
     result = read(output / "run-manifest.json")
     updates = read(output / "optimizer-evidence.json")
     counts = manifest.get("splits", {}).get("train", {}).get("count", 0) or manifest.get("counts", {}).get("train", 0)
@@ -195,6 +203,9 @@ def capture(root, config, status_file, log, phase, *, measure=True):
         step = result.get("steps", step)
     safe_history = [numbers(item) for item in history][-120:]
     safe_history = [h for h in safe_history if not h.get("step", 0) > step]
+    evaluations = [h for h in safe_history if "eval_loss" in h]
+    if attempt and restored:
+        safe_history = [h for h in safe_history if h.get("step", 0) > restored]
     safe_cfg = {k: cfg[k] for k in ("base_model", "base_revision", "device", "seed", "max_seq_length", "packing", "loss_mask_policy", "assistant_only_loss", "enable_thinking") if k in cfg}
     safe_cfg.update(lora={k: cfg["lora"][k] for k in ("r", "alpha", "dropout") if k in cfg["lora"]},
                     quantization={k: cfg["quantization"][k] for k in ("compute_dtype", "load_in_4bit", "quant_type", "double_quant") if k in cfg["quantization"]},
@@ -208,7 +219,15 @@ def capture(root, config, status_file, log, phase, *, measure=True):
              and result.get("baseRevision") == cfg["base_revision"]
              and result.get("truncationCount") == 0 and result.get("maskPolicy") == "last-assistant-only")
     finite = updates.get("finiteLoggedGradients") is True
-    updated = updates.get("actualOptimizerUpdates") == step == planned and step > 0 and updates.get("changedAdapterTensors", 0) > 0
+    new_updates = updates.get("actualOptimizerUpdates", 0)
+    # A resume restores optimizer state; those steps are distinct from this process's actual updates.
+    resumed_evidence = (not restored or attempt and status.get("completedFullTraining") is True
+                        and status.get("step", status.get("steps")) == planned
+                        and updates.get("restoredCheckpointSteps") == restored
+                        and updates.get("totalVerifiedSteps") == planned and updates.get("tensorComparisonVerified") is True)
+    updated = (isinstance(new_updates, int) and not isinstance(new_updates, bool) and new_updates > 0
+               and new_updates + restored == step == planned and resumed_evidence
+               and updates.get("changedAdapterTensors", 0) > 0)
     validation = numbers(result.get("validationMetrics", {}), {"eval_loss", "eval_runtime", "eval_samples_per_second", "eval_steps_per_second", "epoch"})
     is_active = active(root, config) if measure else False
     failure = "none"
@@ -232,6 +251,13 @@ def capture(root, config, status_file, log, phase, *, measure=True):
               "history": safe_history, "validation": validation,
               "optimizerEvidence": {k: v for k, v in updates.items() if k in ("actualOptimizerUpdates", "changedAdapterTensors", "finiteLoggedGradients", "initialAmpScale") and (isinstance(v, bool) or isinstance(v, (int, float)) and math.isfinite(v))},
               "resources": resources, "checkpoints": checkpoints(output, bindings), "artifacts": artifacts, "failure": failure}
+    if attempt:
+        report["attempt"] = attempt
+    if restored and updated:
+        report["optimizerEvidence"]["restoredOptimizerSteps"] = restored
+    if not report["validation"]:
+        if evaluations:
+            report["validation"] = numbers(evaluations[-1], {"eval_loss", "epoch"})
     report["dataset"] = dataset_summary(root, cfg)
     for key in ("startedAt", "finishedAt"):
         if status.get(key): report[key] = status[key]
@@ -254,11 +280,14 @@ class Reporter:
         self.endpoint, self._token = endpoint, token
         self.origin = urllib.parse.urlunsplit((url.scheme, url.netloc, "", "", ""))
         self.options = dict(root=root, config=config, status_file=status_file, log=log, phase=phase)
+        self.custom_capture = capture_fn is not None
         self.capture = capture_fn or (lambda: capture(**self.options))
         self.interval = max(15, interval)
         self.opener = urllib.request.build_opener(NoRedirect(), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        # Identify this client to the HTTPS gateway; urllib's default UA can be rejected before CSRF.
+        self.opener.addheaders = [("User-Agent", "DictaLab-Training-Telemetry/1.0"), ("Accept", "application/json")]
         self.event = threading.Event()
-        self.state = {"connected": False, "lastAcceptedAt": None, "lastError": None}
+        self.state = {"connected": False, "pendingApproval": False, "lastAcceptedAt": None, "lastError": None}
         self.thread = None
 
     def send(self, report):
@@ -273,8 +302,13 @@ class Reporter:
             csrf["headerName"]: csrf["token"]})
         with self.opener.open(request, timeout=15) as response:
             ack = json.loads(response.read(16_000))
-        if ack.get("accepted") is not True or ack.get("sequence") != report["sequence"]: raise ValueError("Server did not acknowledge this snapshot")
-        self.state.update(connected=True, lastAcceptedAt=utc(), lastError=None)
+        if ack.get("sequence") != report["sequence"]: raise ValueError("Server did not acknowledge this snapshot")
+        if ack.get("accepted") is False and ack.get("pendingApproval") is True:
+            self.state.update(connected=False, pendingApproval=True, lastError="Approve the new attempt in Training Studio; reuse the existing key. Trainer unchanged.")
+        elif ack.get("accepted") is True:
+            self.state.update(connected=True, pendingApproval=False, lastAcceptedAt=utc(), lastError=None)
+        else:
+            raise ValueError("Server did not acknowledge this snapshot")
 
     def once(self):
         try:
@@ -290,6 +324,20 @@ class Reporter:
 
     def _loop(self):
         while not self.event.wait(self.interval): self.once()
+
+    def follow_attempt(self, *, status_file, log, config=None):
+        """Switch observation to a new marker without changing the existing endpoint, key or trainer."""
+        if self.custom_capture or self.event.is_set():
+            raise ValueError("Only an active Colab reporter can follow another attempt")
+        options = {**self.options, "status_file": status_file, "log": log}
+        if config is not None:
+            options["config"] = config
+        # Validate metadata before switching the polling thread's options atomically.
+        sample = capture(**options)
+        if "attempt" not in sample:
+            raise ValueError("The new status marker needs a stable startedAt")
+        self.options = options
+        return sample["attempt"]
 
     def start(self):
         if self.thread and self.thread.is_alive(): raise ValueError("This reporter is already active")

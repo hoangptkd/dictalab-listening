@@ -8,9 +8,11 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -25,11 +27,79 @@ def file_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+_RESUME_FILES = {"adapter_model.safetensors", "adapter_config.json", "optimizer.pt", "scheduler.pt", "rng_state.pth", "trainer_state.json"}
+
+
 def read_object(path: Path) -> dict:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise DatasetError(f"expected JSON object: {path.name}")
     return value
+
+
+def validate_checkpoint_integrity(checkpoint: Path) -> dict[str, str]:
+    """Return the recorded hashes only when a native checkpoint is complete."""
+    integrity = read_object(checkpoint / "resume-integrity.json")
+    files = integrity.get("files", {})
+    if (not isinstance(files, dict) or not _RESUME_FILES <= files.keys()
+            or any(not isinstance(name, str) or not isinstance(value, str)
+                   or Path(name).name != name or not (checkpoint / name).is_file()
+                   or file_hash(checkpoint / name) != value for name, value in files.items())):
+        raise DatasetError("resume checkpoint is incomplete or changed")
+    step = checkpoint.name.removeprefix("checkpoint-")
+    if (not re.fullmatch(r"[1-9]\d*", step) or integrity.get("step") != int(step)
+            or read_object(checkpoint / "trainer_state.json").get("global_step") != int(step)):
+        raise DatasetError("resume checkpoint step/state mismatch")
+    return files
+
+
+def mirror_checkpoint_to_drive(mirror_root: Path, checkpoint: Path, run_inputs: Path) -> Path:
+    """Copy a verified checkpoint into an independently verified Drive mirror.
+
+    The trainer writes to local storage first.  A checkpoint becomes visible on
+    Drive only after every declared file and the run inputs have been copied and
+    hashed from a unique staging directory.  Existing backups are never replaced.
+    """
+    checkpoint = checkpoint.resolve()
+    run_inputs = run_inputs.resolve()
+    if not mirror_root.is_absolute():
+        raise DatasetError("checkpoint mirror path must be absolute")
+    if not run_inputs.is_file() or checkpoint.parent.name != "checkpoints":
+        raise DatasetError("checkpoint mirror requires this run's native checkpoint and inputs")
+    files = validate_checkpoint_integrity(checkpoint)
+    root = mirror_root.resolve()
+    if root == checkpoint or root in checkpoint.parents:
+        raise DatasetError("checkpoint mirror cannot contain the live training output")
+    target = root / "checkpoints" / checkpoint.name
+    if target.exists():
+        raise DatasetError(f"Drive checkpoint already exists and will not be overwritten: {target.name}")
+    staging = root / f".mirror-{checkpoint.name}-{uuid.uuid4().hex}.partial"
+    staged_checkpoint = staging / "checkpoints" / checkpoint.name
+    try:
+        staged_checkpoint.mkdir(parents=True)
+        for name in files:
+            shutil.copy2(checkpoint / name, staged_checkpoint / name)
+        shutil.copy2(checkpoint / "resume-integrity.json", staged_checkpoint / "resume-integrity.json")
+        shutil.copy2(run_inputs, staging / "run-inputs.json")
+        if validate_checkpoint_integrity(staged_checkpoint) != files:
+            raise DatasetError("Drive checkpoint hash verification failed")
+        if file_hash(staging / "run-inputs.json") != file_hash(run_inputs):
+            raise DatasetError("Drive run-inputs hash verification failed")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            raise DatasetError(f"Drive checkpoint already exists and will not be overwritten: {target.name}")
+        mirrored_inputs = root / "run-inputs.json"
+        if mirrored_inputs.exists() and file_hash(mirrored_inputs) != file_hash(run_inputs):
+            raise DatasetError("Drive mirror belongs to a different training run")
+        if not mirrored_inputs.exists():
+            (staging / "run-inputs.json").replace(mirrored_inputs)
+        staged_checkpoint.replace(target)
+        validate_checkpoint_integrity(target)
+        return target
+    except Exception as error:
+        raise DatasetError(f"Drive checkpoint mirror failed: {error}") from error
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def load_bundle(manifest_path: Path) -> tuple[dict, dict[str, list[dict]]]:
@@ -252,8 +322,10 @@ def make_trainer(model, tokenizer, train_rows, validation_rows, config: dict, ou
 
         class RecoveryCheckpoint(TrainerCallback):
             def on_step_end(self, args, state, control, **kwargs):
-                # Extra recovery saves preserve epoch evaluation and validation-only best selection.
-                if state.global_step % settings["checkpoint_steps"] == 0 or pause_requested(output.parent):
+                # The epoch save must run once, after evaluation, including a fractional final epoch.
+                epoch_end = (state.epoch is not None and state.epoch % 1 == 0) or state.global_step == state.max_steps
+                if (pause_requested(output.parent)
+                        or (state.global_step % settings["checkpoint_steps"] == 0 and not epoch_end)):
                     control.should_save = True
                 return control
 
@@ -271,6 +343,9 @@ def make_trainer(model, tokenizer, train_rows, validation_rows, config: dict, ou
                 files = {f.name: file_hash(f) for f in folder.iterdir() if f.is_file() and f.name != "resume-integrity.json"}
                 (folder / "resume-integrity.json").write_text(
                     json.dumps({"step": state.global_step, "files": files}, indent=2) + "\n", encoding="utf-8")
+                mirror = os.environ.get("DICTALAB_CHECKPOINT_MIRROR")
+                if mirror:
+                    mirror_checkpoint_to_drive(Path(mirror), folder, output.parent / "run-inputs.json")
                 # Stop only after the native optimizer/scheduler/RNG save is complete.
                 if pause_requested(output.parent):
                     control.should_training_stop = True
@@ -313,16 +388,7 @@ def check_resume_checkpoint(output: Path, checkpoint: Path, inputs: dict) -> Pat
         raise DatasetError("resume checkpoint must belong to this run's checkpoints directory")
     if read_object(output / "run-inputs.json") != inputs:
         raise DatasetError("resume inputs differ from the original config/data/review/environment")
-    integrity = read_object(checkpoint / "resume-integrity.json")
-    files = integrity.get("files", {})
-    required = {"adapter_model.safetensors", "adapter_config.json", "optimizer.pt", "scheduler.pt", "rng_state.pth", "trainer_state.json"}
-    if (not isinstance(files, dict) or not required <= files.keys()
-            or any(Path(name).name != name or not (checkpoint / name).is_file()
-                   or file_hash(checkpoint / name) != value for name, value in files.items())):
-        raise DatasetError("resume checkpoint is incomplete or changed")
-    step = int(checkpoint.name.removeprefix("checkpoint-"))
-    if integrity.get("step") != step or read_object(checkpoint / "trainer_state.json").get("global_step") != step:
-        raise DatasetError("resume checkpoint step/state mismatch")
+    validate_checkpoint_integrity(checkpoint)
     return checkpoint
 
 

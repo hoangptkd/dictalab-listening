@@ -88,12 +88,10 @@ class SpaRoutingTest {
                 "spa-route-user-" + UUID.randomUUID() + "@dictalab.local",
                 "Routing User", "unused", Instant.now()
         ));
-        AppUser newAdmin = new AppUser(
-                "spa-route-admin-" + UUID.randomUUID() + "@dictalab.local",
-                "Routing Admin", "unused", Instant.now()
-        );
-        newAdmin.promoteToAdmin(Instant.now());
-        adminUser = userRepository.save(newAdmin);
+        adminUser = userRepository.findByEmail("hoangptkdhy@gmail.com").orElseGet(() ->
+                new AppUser("hoangptkdhy@gmail.com", "Routing Admin", "unused", Instant.now()));
+        if (!"ADMIN".equals(adminUser.getRole())) adminUser.promoteToAdmin(Instant.now());
+        adminUser = userRepository.save(adminUser);
     }
 
     // ── SPA routes trả về 200 OK (forward → index.html) ──────────────────
@@ -221,6 +219,20 @@ class SpaRoutingTest {
     }
 
     @Test
+    void trainingStudioIsRestrictedToTheNamedAdministrator() throws Exception {
+        AppUser other = new AppUser("other-admin-" + UUID.randomUUID() + "@dictalab.local", "Other Admin", "unused", Instant.now());
+        other.promoteToAdmin(Instant.now());
+        other = userRepository.save(other);
+        var otherAdmin = user(DictaLabPrincipal.from(other));
+        mockMvc.perform(get("/admin/training").with(otherAdmin)).andExpect(status().isForbidden());
+        mockMvc.perform(get("/admin/training.html").with(otherAdmin)).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/admin/training").with(otherAdmin)).andExpect(status().isForbidden());
+        mockMvc.perform(get("/admin/colab_reporter.py").with(otherAdmin)).andExpect(status().isForbidden());
+        mockMvc.perform(get("/admin/training").with(user(DictaLabPrincipal.from(adminUser))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void trainingCommandsRequireAdminAndCsrfBeforeReachingRuntime() throws Exception {
         for (String path : new String[]{"/api/admin/training/runs", "/api/admin/training/runs/abc/start",
                 "/api/admin/training/runs/abc/resume", "/api/admin/training/runs/abc/pause", "/api/admin/training/runs/abc/stop"}) {
@@ -234,6 +246,16 @@ class SpaRoutingTest {
                             .contentType("application/json").content("{}"))
                     .andExpect(status().isServiceUnavailable());
         }
+    }
+
+    @Test
+    void attemptApprovalRequiresNamedAdminAndCsrfAndCannotUseTelemetryCredentials() throws Exception {
+        String path = "/api/admin/training/colab/colab-" + "0".repeat(32) + "/approve-attempt";
+        String body = "{\"fingerprint\":\"" + "a".repeat(64) + "\"}";
+        mockMvc.perform(post(path).with(csrf()).contentType("application/json").content(body)).andExpect(status().isUnauthorized());
+        mockMvc.perform(post(path).with(user(DictaLabPrincipal.from(user))).with(csrf()).contentType("application/json").content(body)).andExpect(status().isForbidden());
+        mockMvc.perform(post(path).with(user(DictaLabPrincipal.from(adminUser))).contentType("application/json").content(body)).andExpect(status().isForbidden());
+        mockMvc.perform(post(path).with(user(DictaLabPrincipal.from(adminUser))).with(csrf()).contentType("application/json").content(body)).andExpect(status().isNotFound());
     }
 
     @Test

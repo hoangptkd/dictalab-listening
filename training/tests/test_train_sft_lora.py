@@ -4,11 +4,14 @@ import json
 import os
 import types
 
+import sys
+from types import SimpleNamespace
+
 import pytest
 
 from training.prepare_dataset import DatasetError
 from training.tests.test_prepare_dataset import _prepare, _row, _write
-from training.train_sft_lora import UpdateGate, check_cpu_memory, check_resume_checkpoint, checked_inputs, file_hash, load_bundle, pad_batch, tokenize_target, validate_review, verify_environment, write_optimizer_evidence
+from training.train_sft_lora import UpdateGate, check_cpu_memory, check_resume_checkpoint, checked_inputs, file_hash, load_bundle, pad_batch, tokenize_target, validate_review, verify_environment, write_optimizer_evidence, mirror_checkpoint_to_drive
 
 
 class CharacterTokenizer:
@@ -131,7 +134,46 @@ def test_real_cpu_sft_and_adapter_round_trip(tmp_path):
     assert report["gradientCheckpointing"]
     assert report["recoveryCheckpointVerified"] and report["resumedOptimizerState"]
     assert report["pauseFinishedStepAndSavedState"] and report["pauseSkippedPartialEpochEvaluation"]
+    assert report["epochMirrorAfterEvaluation"] and report["driveRecoverySteps"] == [1, 2, 3, 4]
     assert not report["trainingReady"] and not report["realCheckpointLoaded"]
+
+
+@pytest.mark.parametrize("step,epoch,max_steps,paused,expected", [
+    (10, 0.1, 200, False, True),
+    (11, 0.11, 200, False, False),
+    (100, 1.0, 200, False, False),
+    (200, 2.0, 200, False, False),
+    (150, 1.5, 150, False, False),
+    (100, 1.0, 200, True, True),
+])
+def test_recovery_save_defers_epoch_boundary_until_evaluation(monkeypatch, tmp_path, step, epoch, max_steps, paused, expected):
+    from training.train_sft_lora import make_trainer
+
+    class FakeTrainer:
+        def __init__(self, **kwargs):
+            self.callbacks = []
+
+        def add_callback(self, callback):
+            self.callbacks.append(callback)
+
+    monkeypatch.setitem(sys.modules, "datasets", SimpleNamespace(Dataset=SimpleNamespace(from_list=lambda rows: rows)))
+    monkeypatch.setitem(sys.modules, "trl", SimpleNamespace(SFTConfig=lambda **kwargs: kwargs, SFTTrainer=FakeTrainer))
+    monkeypatch.setitem(sys.modules, "transformers", SimpleNamespace(TrainerCallback=object))
+    config = {"seed": 17, "device": "cpu", "quantization": {"compute_dtype": "float32"},
+              "training": {"per_device_batch_size": 1, "gradient_accumulation_steps": 1,
+                           "epochs": 2, "learning_rate": 0.001, "warmup_ratio": 0.0,
+                           "scheduler": "constant", "gradient_checkpointing": True, "checkpoint_steps": 10}}
+    trainer = make_trainer(None, SimpleNamespace(pad_token_id=0), [{}], [{}], config, tmp_path / "checkpoints", smoke=False)
+    if paused:
+        (tmp_path / "control-request.json").write_text('{"action":"pause"}', encoding="utf-8")
+    state = SimpleNamespace(global_step=step, epoch=epoch, max_steps=max_steps)
+    control = SimpleNamespace(should_save=False, should_evaluate=False)
+    callback = trainer.callbacks[0]
+    assert callback.on_step_end(None, state, control).should_save is expected
+    control.should_save = control.should_evaluate = True  # Native epoch scheduling follows the step hook.
+    callback.on_epoch_end(None, state, control)
+    assert control.should_save is (not paused)
+    assert control.should_evaluate is (not paused)
 
 
 def test_template_config_cannot_load_a_floating_checkpoint(tmp_path):
@@ -272,6 +314,27 @@ def test_update_gate_records_skips_and_evidence_during_full_training(tmp_path):
     assert json.loads((tmp_path / "optimizer-evidence.json").read_text(encoding="utf-8")) == {
         "actualOptimizerUpdates": 0, "skippedOptimizerSteps": 1, "startStep": 10,
         "changedAdapterTensors": None, "initialAmpScale": None, "finiteLoggedGradients": True}
+
+def test_drive_mirror_is_hash_verified_and_never_overwrites(tmp_path):
+    output = tmp_path / "run"
+    checkpoint = output / "checkpoints/checkpoint-10"
+    checkpoint.mkdir(parents=True)
+    inputs = output / "run-inputs.json"
+    inputs.write_text(json.dumps({"datasetHash": "approved-data"}), encoding="utf-8")
+    for name in ("adapter_model.safetensors", "adapter_config.json", "optimizer.pt", "scheduler.pt", "rng_state.pth"):
+        (checkpoint / name).write_bytes((name + " state").encode())
+    (checkpoint / "trainer_state.json").write_text(json.dumps({"global_step": 10}), encoding="utf-8")
+    (checkpoint / "resume-integrity.json").write_text(json.dumps({
+        "step": 10, "files": {item.name: file_hash(item) for item in checkpoint.iterdir()}
+    }), encoding="utf-8")
+
+    target = mirror_checkpoint_to_drive(tmp_path / "drive/DictaLab", checkpoint, inputs)
+
+    assert target == tmp_path / "drive/DictaLab/checkpoints/checkpoint-10"
+    assert file_hash(target / "optimizer.pt") == file_hash(checkpoint / "optimizer.pt")
+    assert (tmp_path / "drive/DictaLab/run-inputs.json").read_bytes() == inputs.read_bytes()
+    with pytest.raises(DatasetError, match="will not be overwritten"):
+        mirror_checkpoint_to_drive(tmp_path / "drive/DictaLab", checkpoint, inputs)
 
 
 def test_validator_hash_survives_windows_linux_checkout_line_endings(tmp_path, monkeypatch):

@@ -78,6 +78,15 @@ public class TrainingStudioController {
     @PostMapping("/colab/{id}/revoke")
     public Map<String, Object> revoke(@PathVariable String id) { return colab.revoke(id); }
 
+    @PostMapping("/colab/{id}/approve-attempt")
+    public Map<String, Object> approveAttempt(@PathVariable String id, @RequestBody Map<String, Object> body,
+                                              @AuthenticationPrincipal DictaLabPrincipal actor) {
+        return colab.approveAttempt(id, body, actor.id());
+    }
+
+    @GetMapping("/colab/{id}/attempts/{attempt}")
+    public JsonNode attempt(@PathVariable String id, @PathVariable String attempt) { return colab.attempt(id, attempt); }
+
     @PostMapping("/runs")
     public JsonNode create(@RequestBody Map<String, Object> body,
                            @AuthenticationPrincipal DictaLabPrincipal actor) {

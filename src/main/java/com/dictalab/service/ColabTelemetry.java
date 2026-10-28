@@ -58,24 +58,27 @@ public class ColabTelemetry {
     private ObjectNode read(String id) {
         try {
             Path path = path(id);
-            if (!Files.isRegularFile(path) || Files.isSymbolicLink(path) || Files.size(path) > 100_000)
+            if (!Files.isRegularFile(path) || Files.isSymbolicLink(path) || Files.size(path) > 200_000)
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiên Colab.");
             return (ObjectNode) json.readTree(Files.readString(path));
         } catch (java.io.IOException e) { throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Không đọc được metadata Colab."); }
     }
 
-    private void save(String id, ObjectNode value) {
+    private void save(String id, ObjectNode value) { saveFile(path(id), value); }
+
+    private void saveFile(Path destination, ObjectNode value) {
         Path temporary = null;
         try {
-            Files.createDirectories(directory);
-            if (Files.isSymbolicLink(directory)) throw new java.io.IOException("Symlink directory");
-            try { Files.setPosixFilePermissions(directory, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------")); }
+            Path parent = destination.getParent();
+            Files.createDirectories(parent);
+            if (Files.isSymbolicLink(directory) || Files.isSymbolicLink(parent)) throw new java.io.IOException("Symlink directory");
+            try { Files.setPosixFilePermissions(parent, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------")); }
             catch (UnsupportedOperationException ignored) { /* Windows inherits the configured private directory ACL. */ }
-            temporary = Files.createTempFile(directory, ".colab-", ".tmp");
+            temporary = Files.createTempFile(parent, ".colab-", ".tmp");
             try { Files.setPosixFilePermissions(temporary, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")); }
             catch (UnsupportedOperationException ignored) { }
             Files.writeString(temporary, json.writeValueAsString(value), StandardCharsets.UTF_8);
-            Files.move(temporary, path(id), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (java.io.IOException e) { throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Không lưu được metadata Colab; chưa xác nhận nhận dữ liệu."); }
         finally { if (temporary != null) try { Files.deleteIfExists(temporary); } catch (java.io.IOException ignored) { } }
     }
@@ -138,7 +141,7 @@ public class ColabTelemetry {
     }
 
     private void validate(JsonNode report) {
-        fields(report, Set.of("schemaVersion", "sequence", "observedAt", "phase", "status", "step", "plannedSteps", "startedAt", "finishedAt", "model", "revision", "device", "dtype", "gpu", "bindings", "config", "history", "validation", "optimizerEvidence", "resources", "checkpoints", "artifacts", "failure", "dataset"));
+        fields(report, Set.of("schemaVersion", "sequence", "observedAt", "phase", "status", "step", "plannedSteps", "startedAt", "finishedAt", "model", "revision", "device", "dtype", "gpu", "bindings", "config", "history", "validation", "optimizerEvidence", "resources", "checkpoints", "artifacts", "failure", "dataset", "attempt"));
         if (!report.path("schemaVersion").isIntegralNumber() || report.path("schemaVersion").asInt() != 1 || !report.path("sequence").isIntegralNumber() || report.path("sequence").asLong() < 1
                 || !Set.of("smoke", "full").contains(report.path("phase").asText()) || !STATUSES.contains(report.path("status").asText())) throw invalid("Schema hoặc trạng thái Colab không hợp lệ.");
         try {
@@ -148,6 +151,13 @@ public class ColabTelemetry {
         for (String k : List.of("step", "plannedSteps")) if (!report.path(k).isIntegralNumber() || report.path(k).asLong() < 0 || report.path(k).asLong() > 1_000_000) throw invalid("Số step không hợp lệ.");
         int step = report.path("step").asInt(), planned = report.path("plannedSteps").asInt();
         if (planned < 1 || step > planned || (report.path("phase").asText().equals("smoke") && planned != 1)) throw invalid("Tiến độ smoke và full phải tách riêng.");
+        if (report.has("attempt")) {
+            var attempt = report.path("attempt");
+            fields(attempt, Set.of("id", "fromStep"));
+            if (!attempt.path("id").asText().matches("attempt-[a-f0-9]{32}") || !attempt.path("fromStep").isIntegralNumber()
+                    || attempt.path("fromStep").asLong() < 0 || attempt.path("fromStep").asLong() > step)
+                throw invalid("Mã lần tiếp tục hoặc checkpoint bắt đầu không hợp lệ.");
+        }
         if (!report.path("model").asText().equals("Qwen/Qwen3.5-4B") || !report.path("revision").asText().matches("[a-f0-9]{40}")
                 || !Set.of("cuda", "cpu").contains(report.path("device").asText()) || !Set.of("float16", "bfloat16", "float32").contains(report.path("dtype").asText()) ) throw invalid("Model hoặc thiết bị không hợp lệ.");
         if (report.path("gpu").asText().length() > 100) throw invalid("Tên GPU quá dài.");
@@ -175,8 +185,8 @@ public class ColabTelemetry {
         for (var item : report.path("history")) { numeric(item, METRICS); if (item.has("step") && (item.path("step").asDouble() < 0 || item.path("step").asDouble() > step)) throw invalid("History vượt optimizer step hiện tại."); }
         numeric(report.path("validation"), Set.of("eval_loss", "eval_runtime", "eval_samples_per_second", "eval_steps_per_second", "epoch"));
         var updates = report.path("optimizerEvidence");
-        fields(updates, Set.of("actualOptimizerUpdates", "changedAdapterTensors", "finiteLoggedGradients", "initialAmpScale"));
-        for (String k : List.of("actualOptimizerUpdates", "changedAdapterTensors")) if (updates.has(k) && (!updates.path(k).isIntegralNumber() || updates.path(k).asLong() < 0)) throw invalid("Bằng chứng optimizer không hợp lệ.");
+        fields(updates, Set.of("actualOptimizerUpdates", "restoredOptimizerSteps", "changedAdapterTensors", "finiteLoggedGradients", "initialAmpScale"));
+        for (String k : List.of("actualOptimizerUpdates", "restoredOptimizerSteps", "changedAdapterTensors")) if (updates.has(k) && (!updates.path(k).isIntegralNumber() || updates.path(k).asLong() < 0 || updates.path(k).asLong() > 1_000_000)) throw invalid("Bằng chứng optimizer không hợp lệ.");
         if (updates.has("finiteLoggedGradients") && !updates.path("finiteLoggedGradients").isBoolean()) throw invalid("Bằng chứng gradient không hợp lệ.");
         if (updates.has("initialAmpScale") && (!updates.path("initialAmpScale").isNumber() || !Double.isFinite(updates.path("initialAmpScale").asDouble()))) throw invalid("AMP scale không hợp lệ.");
         numeric(report.path("resources"), Set.of("gpuTotalBytes", "gpuUsedBytes", "gpuUtilization", "peakAllocatedBytes", "ramTotal", "ramAvailable", "ramPercent", "diskFree", "diskTotal", "cpuPercent", "cpuCores"));
@@ -201,12 +211,47 @@ public class ColabTelemetry {
         if (report.has("failure") && !Set.of("runtime", "nonfinite_gradient", "missing_update", "out_of_memory", "incomplete_evidence", "none").contains(report.path("failure").asText())) throw invalid("Mã lỗi không hợp lệ.");
         String status = report.path("status").asText();
         if (Set.of("SMOKE_PASSED", "REPORTED_COMPLETE").contains(status)) {
-            if (updates.path("actualOptimizerUpdates").asInt() != step || step != planned || step < 1 || !updates.path("finiteLoggedGradients").asBoolean()
+            long restored = updates.path("restoredOptimizerSteps").asLong();
+            if (restored > 0 && (!report.has("attempt") || restored != report.path("attempt").path("fromStep").asInt())) throw invalid("Bước khôi phục không khớp lần tiếp tục.");
+            if (updates.path("actualOptimizerUpdates").asLong() < 1 || updates.path("actualOptimizerUpdates").asLong() + restored != step || step != planned || step < 1 || !updates.path("finiteLoggedGradients").asBoolean()
                     || report.path("device").asText().equals("cuda") && updates.path("changedAdapterTensors").asInt() < 1
                     || !report.path("artifacts").has("adapterHash") || !report.path("artifacts").has("adapterConfigHash")) throw invalid("Chưa có bằng chứng cập nhật optimizer/adapter hữu hạn.");
             if (status.equals("SMOKE_PASSED") != report.path("phase").asText().equals("smoke")) throw invalid("Không được gắn smoke thành full training.");
             if (status.equals("REPORTED_COMPLETE") && !report.path("validation").has("eval_loss")) throw invalid("Full training chưa có validation loss.");
         }
+    }
+
+    private String attemptId(JsonNode report) { return report.path("attempt").path("id").asText("legacy"); }
+
+    private ObjectNode attemptIdentity(JsonNode report) {
+        var identity = json.createObjectNode();
+        for (String field : List.of("attempt", "bindings", "config", "phase", "model", "revision", "plannedSteps", "dataset", "device", "dtype"))
+            if (report.has(field)) identity.set(field, report.path(field).deepCopy());
+        return identity;
+    }
+
+    private Path archivePath(String id, String attempt) {
+        path(id);
+        if (!attempt.equals("legacy") && !attempt.matches("attempt-[a-f0-9]{32}")) throw invalid("Mã lần tiếp tục không hợp lệ.");
+        return directory.resolve("attempts").resolve(id).resolve(attempt + ".json");
+    }
+
+    /** Approves metadata only. This never launches a trainer or verifies a remote checkpoint. */
+    public synchronized Map<String, Object> approveAttempt(String id, Map<String, Object> body, Long actor) {
+        ready();
+        if (!body.keySet().equals(Set.of("fingerprint"))) throw invalid("Cần fingerprint chính xác của lần tiếp tục đang chờ.");
+        var row = read(id);
+        var pending = row.path("pendingAttempt");
+        if (row.path("revoked").asBoolean() || !Instant.parse(row.path("expiresAt").asText()).isAfter(Instant.now()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Khóa đã hết hạn hoặc bị thu hồi; không thể duyệt kết nối lại.");
+        if (!pending.isObject() || !pending.path("fingerprint").asText().equals(body.get("fingerprint"))
+                || Duration.between(Instant.parse(pending.path("receivedAt").asText()), Instant.now()).compareTo(Duration.ofMinutes(5)) > 0)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Yêu cầu đã đổi hoặc quá cũ. Chờ reporter gửi snapshot mới rồi kiểm tra lại.");
+        var approval = json.createObjectNode();
+        approval.set("identity", attemptIdentity(pending.path("report")));
+        approval.put("approvedBy", String.valueOf(actor)).put("approvedAt", Instant.now().toString());
+        row.set("attemptApproval", approval); save(id, row);
+        return Map.of("message", "Đã duyệt lần tiếp tục. Reporter sẽ dùng lại khóa hiện có; trainer không bị tác động.");
     }
 
     public synchronized Map<String, Object> receive(String id, String authorization, byte[] bytes, boolean secure) {
@@ -229,8 +274,47 @@ public class ColabTelemetry {
         if (sequence <= previous) throw new ResponseStatusException(HttpStatus.CONFLICT, "Snapshot cũ hoặc sequence bị tái sử dụng.");
         if (row.has("report")) {
             JsonNode before = row.path("report");
-            for (String field : List.of("bindings", "phase", "model", "revision", "config", "plannedSteps", "dataset")) if (!before.path(field).equals(report.path(field))) throw new ResponseStatusException(HttpStatus.CONFLICT, "Cấu hình/dataset/phase thay đổi; cần đăng ký phiên mới.");
-            if (report.path("step").asInt() < before.path("step").asInt()) throw new ResponseStatusException(HttpStatus.CONFLICT, "Optimizer step không được lùi.");
+            // Dataset and model identity belong to the logical run; code/config belong to each attempt.
+            for (String field : List.of("phase", "model", "revision", "plannedSteps", "dataset"))
+                if (!before.path(field).equals(report.path(field))) throw new ResponseStatusException(HttpStatus.CONFLICT, "Model/dataset/phase/đích step thay đổi; cần lần train riêng.");
+            for (String field : List.of("datasetHash", "datasetManifestHash", "reviewHash"))
+                if (!before.path("bindings").path(field).equals(report.path("bindings").path(field)))
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Dữ liệu hoặc bằng chứng duyệt đã đổi; cần lần train riêng.");
+            if (attemptId(before).equals(attemptId(report))) {
+                if (!attemptIdentity(before).equals(attemptIdentity(report)))
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Mã/config của lần tiếp tục đã đổi; reporter cần mã attempt mới, dùng lại khóa hiện có.");
+                if (report.path("step").asInt() < before.path("step").asInt()) throw new ResponseStatusException(HttpStatus.CONFLICT, "Optimizer step không được lùi trong cùng lần tiếp tục.");
+            } else {
+                for (var archived : row.path("attempts")) if (archived.path("id").asText().equals(attemptId(report)))
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Lần tiếp tục cũ đã đóng; không nhận lại snapshot.");
+                int from = report.path("attempt").path("fromStep").asInt(-1);
+                if (from < 0 || from > before.path("step").asInt()) throw new ResponseStatusException(HttpStatus.CONFLICT, "Checkpoint bắt đầu vượt tiến độ đã nhận. Kiểm tra lại provenance.");
+                if (row.path("attempts").size() >= 63) throw new ResponseStatusException(HttpStatus.CONFLICT, "Đã đạt giới hạn 64 lần tiếp tục.");
+                var identity = attemptIdentity(report);
+                if (!identity.equals(row.path("attemptApproval").path("identity"))) {
+                    var pending = json.createObjectNode();
+                    pending.set("report", report.deepCopy());
+                    pending.put("fingerprint", digest(json.writeValueAsString(identity))).put("receivedAt", Instant.now().toString());
+                    row.set("pendingAttempt", pending); save(id, row);
+                    return Map.of("accepted", false, "pendingApproval", true, "sequence", sequence);
+                }
+                // Archive the accepted snapshot before replacing it; a failed write leaves the active run intact.
+                var archive = json.createObjectNode();
+                archive.set("report", before.deepCopy());
+                archive.put("receivedAt", row.path("receivedAt").asText());
+                if (row.has("currentAttemptApproval")) archive.set("approval", row.path("currentAttemptApproval").deepCopy());
+                saveFile(archivePath(id, attemptId(before)), archive);
+                var summary = json.createObjectNode();
+                summary.put("id", attemptId(before)).put("step", before.path("step").asInt())
+                        .put("status", before.path("status").asText())
+                        .put("startedAt", before.path("startedAt").asText()).put("receivedAt", row.path("receivedAt").asText());
+                summary.set("bindings", before.path("bindings").deepCopy());
+                summary.set("fromStep", before.has("attempt") ? before.path("attempt").path("fromStep") : json.nullNode());
+                if (!row.has("attempts")) row.putArray("attempts");
+                ((tools.jackson.databind.node.ArrayNode)row.path("attempts")).add(summary);
+                row.set("currentAttemptApproval", row.path("attemptApproval").deepCopy());
+                row.remove("pendingAttempt"); row.remove("attemptApproval");
+            }
         }
         row.set("report", report); row.put("sequence", sequence).put("contentHash", contentHash).put("receivedAt", Instant.now().toString());
         save(id, row);
@@ -268,14 +352,35 @@ public class ColabTelemetry {
         out.set("metrics", metrics);
         out.put("log", "Colab gửi metrics có cấu trúc, không gửi raw log/nội dung dataset. Mở notebook để đọc log gốc.");
         out.put("error", report.path("failure").asText("none").equals("none") ? "" : "Colab báo lỗi: " + report.path("failure").asText());
+        out.put("endpoint", publicUrl + "/api/training/telemetry/" + id);
+        out.set("attempt", report.has("attempt") ? report.path("attempt").deepCopy() : json.createObjectNode().put("id", "legacy").putNull("fromStep"));
+        out.set("attempts", row.has("attempts") ? row.path("attempts").deepCopy() : json.createArrayNode());
+        if (row.has("pendingAttempt")) {
+            var pending = (ObjectNode)row.path("pendingAttempt").deepCopy();
+            pending.put("approved", attemptIdentity(pending.path("report")).equals(row.path("attemptApproval").path("identity")));
+            out.set("pendingAttempt", pending);
+        }
         return out;
+    }
+
+    public synchronized JsonNode attempt(String id, String attempt) {
+        ready();
+        var row = read(id);
+        if (attemptId(row.path("report")).equals(attempt)) return row.path("report").deepCopy();
+        Path file = archivePath(id, attempt);
+        try {
+            if (!Files.isRegularFile(file) || Files.isSymbolicLink(file) || Files.size(file) > 40_000)
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy lịch sử lần tiếp tục.");
+            return json.readTree(Files.readString(file)).path("report");
+        } catch (java.io.IOException e) { throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Không đọc được lịch sử lần tiếp tục."); }
     }
 
     public synchronized List<ObjectNode> runs() {
         if (!enabled) return List.of();
         return ids().stream().map(id -> {
             var row = detail(id);
-            for (String field : List.of("history", "config", "bindings", "log")) row.remove(field);
+            row.put("pendingAttemptApproval", row.has("pendingAttempt"));
+            for (String field : List.of("history", "config", "bindings", "log", "pendingAttempt", "attempts")) row.remove(field);
             return row;
         }).toList();
     }
