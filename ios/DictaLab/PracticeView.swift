@@ -11,6 +11,7 @@ struct PracticeView: View {
     @State private var confirmExit = false
     @State private var confirmReveal = false
     @State private var correctFlash: Int? = nil   // word index that just turned correct
+    @FocusState private var focusedWord: Int?
 
     init(session: PracticeSession, api: APIClient) {
         _store = StateObject(wrappedValue: PracticeStore(session: session, api: api))
@@ -47,6 +48,8 @@ struct PracticeView: View {
             Button("Hủy", role: .cancel) { }
         } message: { Text("Các từ mở đáp án không tính là trả lời đúng. Bạn cần nghe lại trọn câu.") }
         .onChange(of: store.answers) { _ in store.saveDraft() }
+        .onChange(of: store.session.sentence?.sentenceId) { _ in focusedWord = nil }
+        .onChange(of: store.audioActive) { active in if active { focusedWord = nil } }
         .onChange(of: scenePhase) { phase in if phase != .active { store.stop() } }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in store.stop() }
         .onDisappear { store.stop() }
@@ -65,7 +68,8 @@ struct PracticeView: View {
             .padding(.horizontal, 0)
             .animation(.spring(response: 0.5, dampingFraction: 0.8), value: sentence.position)
 
-            ScrollView {
+            ScrollViewReader { proxy in
+              ScrollView {
                 VStack(spacing: 24) {
 
                     // ── Waveform Hero ─────────────────────────────────────
@@ -102,6 +106,11 @@ struct PracticeView: View {
                 }
                 .padding(.top, 20)
                 .animation(.spring(response: 0.35, dampingFraction: 0.8), value: sentence.canComplete)
+              }
+              .scrollDismissesKeyboard(.interactively)
+              .onChange(of: focusedWord) { index in
+                  if let index { withAnimation { proxy.scrollTo(index, anchor: .center) } }
+              }
             }
         }
     }
@@ -116,7 +125,7 @@ struct PracticeView: View {
                 if store.result != nil { dismiss() } else { confirmExit = true }
             } label: {
                 Image(systemName: store.result != nil ? "xmark" : "chevron.left")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(.body, weight: .semibold))
                     .foregroundStyle(Color.dlInk)
             }
             .disabled(store.busy)
@@ -127,7 +136,7 @@ struct PracticeView: View {
         ToolbarItem(placement: .principal) {
             if let sentence = store.session.sentence {
                 Text("\(sentence.position) / \(sentence.totalSentences)")
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .font(.system(.footnote, design: .monospaced, weight: .semibold))
                     .foregroundStyle(Color.dlInk)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
@@ -152,8 +161,9 @@ struct PracticeView: View {
         VStack(spacing: 16) {
             // Tappable waveform
             Button {
-                if store.playing { store.stop() } else { store.play() }
+                if store.audioActive { store.stop() } else { store.play() }
             } label: {
+              VStack(spacing: 8) {
                 ZStack {
                     Circle()
                         .fill(Color.dlTeal.opacity(store.playing ? 0.10 : 0.05))
@@ -169,22 +179,42 @@ struct PracticeView: View {
                     WaveformVisualizer(isPlaying: store.playing)
                         .frame(width: 90, height: 64)
                 }
+                HStack(spacing: 6) {
+                    if store.playbackPhase == .preparing || store.playbackPhase == .confirming {
+                        ProgressView().tint(Color.dlInk)
+                    } else {
+                        Image(systemName: store.audioActive ? "stop.fill" : "play.fill")
+                    }
+                    Text(playbackLabel)
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.dlInk)
+              }
             }
             .disabled(store.busy)
-            .accessibilityLabel(store.playing ? "Dừng phát" : "Nghe câu này")
+            .accessibilityLabel(playbackLabel)
 
             // Listen count hint
             if sentence.replayCount > 0 {
                 Text("Đã nghe \(sentence.replayCount) lượt")
-                    .font(.system(size: 12))
+                    .font(.system(.caption))
                     .foregroundStyle(Color.dlInkSecondary)
                     .transition(.opacity)
             }
 
             // Speed chips
-            SpeedChipRow(speed: $store.speed, disabled: store.playing || store.busy)
+            SpeedChipRow(speed: $store.speed, disabled: store.audioActive || store.busy)
         }
         .padding(.horizontal, 16)
+    }
+
+    private var playbackLabel: String {
+        switch store.playbackPhase {
+        case .idle: return "Nghe câu này"
+        case .preparing: return "Đang chuẩn bị audio · Hủy"
+        case .playing: return "Dừng phát"
+        case .confirming: return "Đang ghi nhận lượt nghe · Hủy"
+        }
     }
 
     // MARK: - Word Grid
@@ -193,6 +223,7 @@ struct PracticeView: View {
         FlowLayout(spacing: 8) {
             ForEach(sentence.words) { word in
                 wordTile(word, sentence: sentence)
+                    .id(word.index)
             }
         }
         .padding(.horizontal, 16)
@@ -204,8 +235,8 @@ struct PracticeView: View {
             if word.resolved {
                 // Correct / revealed tile
                 Text((word.punctuationBefore ?? "") + word.text + (word.punctuationAfter ?? ""))
-                    .font(.system(size: 15, weight: .bold, design: .serif))
-                    .foregroundStyle(word.revealed ? Color.dlInkSecondary : Color.dlTeal)
+                    .font(.system(.subheadline, design: .serif, weight: .bold))
+                    .foregroundStyle(word.revealed ? Color.dlInkSecondary : Color.dlInk)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
                     .background(
@@ -230,16 +261,9 @@ struct PracticeView: View {
                         get: { store.answers[word.index] ?? "" },
                         set: { store.answers[word.index] = String($0.prefix(100)) }
                     ),
-                    busy: store.busy || store.playing,
-                    onSubmit: { Task {
-                        await store.check(word)
-                        if store.session.sentence?.words.first(where: { $0.index == word.index })?.correct == true {
-                            withAnimation { correctFlash = word.index }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                withAnimation { correctFlash = nil }
-                            }
-                        }
-                    }},
+                    busy: store.busy || store.audioActive,
+                    focus: $focusedWord,
+                    onSubmit: { Task { await check(word) } },
                     onHint: { hintType in Task { await store.hint(hintType, index: word.index) } },
                     onReveal: { Task { await store.hint("REVEAL_WORD", index: word.index) } }
                 )
@@ -252,8 +276,22 @@ struct PracticeView: View {
                 .font(.caption)
                 .foregroundStyle(Color.dlInkSecondary)
                 .frame(maxWidth: 180, minHeight: 44, alignment: .leading)
-                .disabled(store.busy || store.playing)
+                .disabled(store.busy || store.audioActive)
             }
+        }
+    }
+
+    private func check(_ word: WordSlot) async {
+        guard !store.busy, !store.audioActive else { return }
+        await store.check(word)
+        if store.session.sentence?.words.first(where: { $0.index == word.index })?.correct == true {
+            focusedWord = store.session.sentence?.nextUnresolvedWord(after: word.index)
+            withAnimation { correctFlash = word.index }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                withAnimation { correctFlash = nil }
+            }
+        } else {
+            focusedWord = word.index
         }
     }
 
@@ -270,23 +308,23 @@ struct PracticeView: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "lightbulb")
-                                .font(.system(size: 12))
+                                .font(.system(.caption))
                             Text("Mở đáp án cả câu")
-                                .font(.system(size: 13))
+                                .font(.system(.footnote))
                             if sentence.hintCount > 0 {
                                 Text("\(sentence.hintCount)")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundStyle(Color.dlBackground)
+                                    .font(.system(.caption2, weight: .bold))
+                                    .foregroundStyle(Color.dlInk)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
                                     .background(Color.dlTeal, in: Capsule())
                             }
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 10))
+                                .font(.system(.caption2))
                         }
                         .foregroundStyle(Color.dlInkSecondary)
                     }
-                    .disabled(store.busy || store.playing || !sentence.hasListened)
+                    .disabled(store.busy || store.audioActive || !sentence.hasListened)
                 }
 
                 Spacer()
@@ -294,7 +332,7 @@ struct PracticeView: View {
                 // Word count
                 let resolved = sentence.words.filter(\.resolved).count
                 Text("\(resolved)/\(sentence.words.count) từ")
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(Color.dlInkSecondary)
             }
             Text(sentence.requiresReplayAfterReveal
@@ -316,7 +354,7 @@ struct PracticeView: View {
                 Text(sentence.position == sentence.totalSentences
                      ? "Hoàn thành bài nghe"
                      : "Câu tiếp theo")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(.body, weight: .bold))
                     .foregroundStyle(Color.dlBackground)
                 Spacer()
                 if store.busy {
@@ -325,7 +363,7 @@ struct PracticeView: View {
                         .scaleEffect(0.8)
                 } else {
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(.subheadline, weight: .bold))
                         .foregroundStyle(Color.dlBackground)
                 }
             }
@@ -333,7 +371,7 @@ struct PracticeView: View {
             .padding(.vertical, 16)
             .background(Color.dlInk, in: RoundedRectangle(cornerRadius: 14))
         }
-        .disabled(store.busy || store.playing)
+        .disabled(store.busy || store.audioActive)
         .padding(.horizontal, 16)
     }
 }
@@ -345,11 +383,10 @@ struct WordInputTile: View {
     let sentence: Sentence
     @Binding var answer: String
     let busy: Bool
+    var focus: FocusState<Int?>.Binding
     let onSubmit: () -> Void
     let onHint: (String) -> Void
     let onReveal: () -> Void
-
-    @FocusState private var focused: Bool
 
     var body: some View {
         HStack(spacing: 0) {
@@ -360,16 +397,17 @@ struct WordInputTile: View {
                 word.firstLetter.map { "· · ·  (\($0)…)" } ?? placeholder,
                 text: $answer
             )
-            .font(.system(size: 14, weight: .medium, design: .monospaced))
+            .font(.system(.subheadline, design: .monospaced, weight: .medium))
             .foregroundStyle(Color.dlInk)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
-            .submitLabel(.done)
-            .focused($focused)
+            .submitLabel(sentence.nextUnresolvedWord(after: word.index) == word.index ? .done : .next)
+            .focused(focus, equals: word.index)
             .disabled(!sentence.hasListened || busy)
             .onSubmit(onSubmit)
             .accessibilityLabel("Từ \(word.index + 1), \(word.length) chữ cái")
-            .frame(width: min(160, max(44, CGFloat(word.length) * 9 + 20)), height: 44)
+            .frame(width: min(160, max(44, CGFloat(word.length) * 9 + 20)))
+            .frame(minHeight: 44)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(
@@ -378,16 +416,16 @@ struct WordInputTile: View {
                         .fill(Color.dlSurface)
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(
-                            focused ? Color.dlTeal : (hasError ? Color.red.opacity(0.5) : Color.dlBorder.opacity(0.6)),
-                            lineWidth: focused ? 1.5 : 1
+                            focus.wrappedValue == word.index ? Color.dlInk : (hasError ? Color.red.opacity(0.5) : Color.dlBorder.opacity(0.6)),
+                            lineWidth: focus.wrappedValue == word.index ? 1.5 : 1
                         )
                 }
             )
             .shadow(
-                color: focused ? Color.dlTeal.opacity(0.2) : .clear,
-                radius: focused ? 4 : 0
+                color: focus.wrappedValue == word.index ? Color.dlTeal.opacity(0.2) : .clear,
+                radius: focus.wrappedValue == word.index ? 4 : 0
             )
-            .animation(.easeInOut(duration: 0.2), value: focused)
+            .animation(.easeInOut(duration: 0.2), value: focus.wrappedValue)
 
             Button(action: onSubmit) {
                 Image(systemName: "checkmark.circle")
@@ -404,7 +442,7 @@ struct WordInputTile: View {
                     Button("Mở từ này", role: .destructive) { onReveal() }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 12))
+                        .font(.system(.caption))
                         .foregroundStyle(Color.dlInkSecondary)
                         .frame(width: 44, height: 44)
                 }
@@ -438,7 +476,7 @@ struct FlowLayout: Layout {
         var maxX: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let size = subview.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
             if x + size.width > width && x > 0 {
                 y += rowHeight + spacing
                 x = 0; rowHeight = 0
@@ -467,7 +505,7 @@ struct FlowLayout: Layout {
         }
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let size = subview.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
             if x + size.width > bounds.maxX && !rowViews.isEmpty {
                 placeRow()
                 y += rowHeight + spacing

@@ -4,25 +4,30 @@ import CryptoKit
 
 @MainActor
 final class PracticeStore: ObservableObject {
+    enum PlaybackPhase: Equatable { case idle, preparing, playing, confirming }
     private struct Pending: Codable { let key: String; let body: Data }
     @Published var session: PracticeSession
     @Published var answers: [Int: String] = [:]
     @Published var busy = false
-    @Published var playing = false
+    @Published private(set) var playbackPhase = PlaybackPhase.idle
+    var playing: Bool { playbackPhase == .playing }
+    var audioActive: Bool { playbackPhase != .idle }
     @Published var error: String?
     @Published var result: LessonResult?
     @Published var speed = 1.0
     private let api: APIClient
-    private let audio = AudioPlayback()
+    private let audio: any AudioPlaying
     private var playbackTask: Task<Void, Never>?
     private var sentenceStarted = Date()
     private var wordStarted = Date()
     private let defaults: UserDefaults
 
-    init(session: PracticeSession, api: APIClient, defaults: UserDefaults = .standard) {
+    init(session: PracticeSession, api: APIClient, defaults: UserDefaults = .standard,
+         audio: (any AudioPlaying)? = nil) {
         self.session = session
         self.api = api
         self.defaults = defaults
+        self.audio = audio ?? AudioPlayback()
         loadDraft()
     }
 
@@ -88,7 +93,7 @@ final class PracticeStore: ObservableObject {
     }
 
     private func update(_ operation: () async throws -> Sentence) async {
-        guard !busy, !playing else { return }
+        guard !busy, !audioActive else { return }
         busy = true
         error = nil
         defer { busy = false }
@@ -100,22 +105,23 @@ final class PracticeStore: ObservableObject {
     }
 
     func play() {
-        guard !busy, !playing, let sentence = session.sentence else { return }
-        playing = true
+        guard !busy, !audioActive, let sentence = session.sentence else { return }
+        playbackPhase = .preparing
         error = nil
         let playbackSpeed = speed
         playbackTask = Task {
-            defer { playing = false; playbackTask = nil }
+            defer { playbackPhase = .idle; playbackTask = nil }
             do {
-                try await audio.play(sentence, speed: playbackSpeed, api: api) {
+                try await audio.play(sentence, speed: playbackSpeed, api: api, onStarted: {
                     self.session.sentence = try await self.command("/replay-events",
                         Replay(event: "STARTED", playbackSpeed: playbackSpeed))
-                }
+                }, onPlaying: { self.playbackPhase = .playing })
                 try Task.checkCancellation()
+                playbackPhase = .confirming
                 session.sentence = try await command("/replay-events", Replay(event: "COMPLETED", playbackSpeed: playbackSpeed))
                 wordStarted = Date()
             } catch is CancellationError { }
-            catch { self.error = error.localizedDescription }
+            catch { if !Task.isCancelled { self.error = error.localizedDescription } }
         }
     }
 
@@ -126,7 +132,7 @@ final class PracticeStore: ObservableObject {
     }
 
     func complete() async {
-        guard !busy, !playing, session.sentence?.canComplete == true else { return }
+        guard !busy, !audioActive, session.sentence?.canComplete == true else { return }
         busy = true
         error = nil
         defer { busy = false }

@@ -16,6 +16,14 @@ Giao diện được thiết kế lại theo phong cách **Academic Editorial Li
 - **Màu**: `#FDF9EF` cream · `#001516` ink · `#42D3B0` teal accent.
 - `DesignSystem.swift` chứa tất cả tokens màu, components dùng chung (shimmer, tab bar, waveform…).
 
+### Cải thiện trải nghiệm 1.2
+
+- Giữ trình độ và điều hướng của từng tab; lỗi tải trình độ mới không hiện bài của trình độ cũ.
+- Chấm đúng sẽ chuyển sang ô từ chưa giải tiếp theo; chấm sai giữ ô đang nhập.
+- Nút nghe có nhãn rõ ràng và phân biệt chuẩn bị audio, đang phát, đang ghi nhận lượt nghe.
+- Chữ chức năng dùng màu ink để tăng tương phản; text style thích ứng cỡ chữ iOS,
+  nội dung dài được xuống dòng và hàng tốc độ có thể cuộn khi chữ lớn.
+
 ## Chức năng bản đầu
 
 - Đăng nhập và đăng ký bằng email; dùng chung tài khoản với website. Người dùng Google có thể đặt mật khẩu qua trang Quên mật khẩu.

@@ -40,7 +40,7 @@ struct RootView: View {
                 VStack(spacing: 12) {
                     WaveformVisualizer(isPlaying: true)
                     Text("Đang kết nối…")
-                        .font(.system(size: 13)).foregroundStyle(Color.dlInkSecondary)
+                        .font(.system(.footnote)).foregroundStyle(Color.dlInkSecondary)
                 }
             } else if api.account != nil {
                 MainTabView()
@@ -81,11 +81,11 @@ struct SplashView: View {
                 .frame(width: 80, height: 48)
 
             Text("DictaLab")
-                .font(.system(size: 28, weight: .bold, design: .serif))
+                .font(.system(.title, design: .serif, weight: .bold))
                 .foregroundStyle(Color.dlInk)
 
             Text("Một câu mỗi lần. Tiến bộ mỗi ngày.")
-                .font(.system(size: 13))
+                .font(.system(.footnote))
                 .foregroundStyle(Color.dlInkSecondary)
         }
         .opacity(opacity)

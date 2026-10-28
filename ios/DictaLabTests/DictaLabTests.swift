@@ -2,6 +2,7 @@ import XCTest
 import Security
 import SwiftUI
 import UIKit
+import Combine
 @testable import DictaLab
 
 @MainActor
@@ -18,6 +19,19 @@ final class FlowLayoutTests: XCTestCase {
         let wide = host.sizeThatFits(in: CGSize(width: 270, height: 1000))
         XCTAssertEqual(wide.width, 270, accuracy: 0.5)
         XCTAssertEqual(wide.height, 78, accuracy: 0.5)
+    }
+
+    func testLongTextWrapsAndGrowsAtAccessibilityTextSizes() {
+        let content = FlowLayout(spacing: 8) {
+            Text(String(repeating: "a long answer ", count: 6)).font(.body)
+        }
+        let normal = UIHostingController(rootView: content.dynamicTypeSize(.large))
+            .sizeThatFits(in: CGSize(width: 288, height: 2000))
+        let large = UIHostingController(rootView: content.dynamicTypeSize(.accessibility3))
+            .sizeThatFits(in: CGSize(width: 288, height: 2000))
+        XCTAssertEqual(large.width, 288, accuracy: 0.5)
+        XCTAssertGreaterThan(large.height, normal.height)
+        XCTAssertGreaterThan(normal.height, 30)
     }
 }
 
@@ -230,7 +244,190 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(attempts[0].1, attempts[1].1)
     }
 
+    func testFailedLevelChangeDoesNotExposePreviousLessonsAndCanRetry() async throws {
+        let a1 = Data(#"[{"id":1,"title":"A1 lesson","description":"","level":"A1","estimatedMinutes":1,"sentenceCount":1,"progressPercent":0,"inProgress":false,"completed":false}]"#.utf8)
+        let b2 = Data(#"[{"id":2,"title":"B2 lesson","description":"","level":"B2","estimatedMinutes":1,"sentenceCount":1,"progressPercent":0,"inProgress":false,"completed":false}]"#.utf8)
+        var failB2 = true
+        MockURLProtocol.handler = { request in
+            let level = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!.first!.value
+            if level == "A1" { return (200, [:], a1) }
+            if failB2 { throw URLError(.notConnectedToInternet) }
+            return (200, [:], b2)
+        }
+        defer { MockURLProtocol.handler = nil }
+        let catalog = CatalogStore(api: makeClient())
+        await catalog.load()
+        XCTAssertEqual(catalog.lessons.map(\.id), [1])
+        XCTAssertFalse(catalog.needsLoad)
+        catalog.level = "B2"
+        await catalog.load()
+        XCTAssertTrue(catalog.lessons.isEmpty)
+        XCTAssertNotNil(catalog.error)
+        XCTAssertFalse(catalog.loading)
+        XCTAssertTrue(catalog.needsLoad)
+        failB2 = false
+        await catalog.load()
+        XCTAssertEqual(catalog.lessons.map(\.id), [2])
+        XCTAssertNil(catalog.error)
+        XCTAssertFalse(catalog.needsLoad)
+        XCTAssertEqual(catalog.level, "B2")
+    }
+
+    func testFailedRefreshRetainsLessonsFromTheSameLevel() async throws {
+        let lesson = Data(#"[{"id":1,"title":"A1 lesson","description":"","level":"A1","estimatedMinutes":1,"sentenceCount":1,"progressPercent":0,"inProgress":false,"completed":false}]"#.utf8)
+        var fail = false
+        MockURLProtocol.handler = { _ in
+            if fail { throw URLError(.networkConnectionLost) }
+            return (200, [:], lesson)
+        }
+        defer { MockURLProtocol.handler = nil }
+        let catalog = CatalogStore(api: makeClient())
+        await catalog.load()
+        fail = true
+        await catalog.load()
+        XCTAssertEqual(catalog.lessons.map(\.id), [1])
+        XCTAssertNotNil(catalog.error)
+        XCTAssertFalse(catalog.loading)
+    }
+
+    func testNextWordSkipsResolvedSlotsAndWrapsToEarlierUnansweredWord() throws {
+        var value = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(Self.sentenceJSON.utf8)) as? [String: Any])
+        let original = try XCTUnwrap((value["words"] as? [[String: Any]])?.first)
+        value["words"] = (0..<4).map { index -> [String: Any] in
+            var word = original
+            word["index"] = index
+            word["correct"] = index == 1
+            word["revealed"] = index == 2
+            return word
+        }
+        let sentence = try JSONDecoder().decode(Sentence.self, from: JSONSerialization.data(withJSONObject: value))
+        XCTAssertEqual(sentence.nextUnresolvedWord(after: 0), 3)
+        XCTAssertEqual(sentence.nextUnresolvedWord(after: 3), 0)
+        let complete = try JSONDecoder().decode(Sentence.self, from: Data(Self.sentenceJSON.utf8))
+        XCTAssertNil(complete.nextUnresolvedWord(after: 0))
+    }
+
+    func testAudioPreparationPlaybackAndConfirmationAreDistinct() async throws {
+        let session = try JSONDecoder().decode(PracticeSession.self, from: Data(Self.sessionJSON.utf8))
+        let csrf = csrfJSON
+        let sentence = Data(Self.sentenceJSON.utf8)
+        var events: [String] = []
+        MockURLProtocol.handler = { request in
+            if request.url!.path == "/api/auth/csrf" { return (200, [:], csrf) }
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: MockURLProtocol.body(request)) as? [String: Any])
+            events.append(try XCTUnwrap(body["event"] as? String))
+            return (200, [:], sentence)
+        }
+        defer { MockURLProtocol.handler = nil }
+        let audio = ControlledAudio()
+        let suite = "DictaLabTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = PracticeStore(session: session, api: makeClient(), defaults: defaults, audio: audio)
+        let confirming = expectation(description: "Confirming playback")
+        let idle = expectation(description: "Playback finished")
+        let observation = store.$playbackPhase.dropFirst().sink { phase in
+            if phase == .confirming { confirming.fulfill() }
+            if phase == .idle { idle.fulfill() }
+        }
+        defer { observation.cancel(); store.stop() }
+        store.play()
+        XCTAssertEqual(store.playbackPhase, .preparing)
+        XCTAssertTrue(store.audioActive)
+        XCTAssertFalse(store.playing)
+        await fulfillment(of: [audio.preparing], timeout: 3)
+        await store.check(session.sentence!.words[0])
+        await store.complete()
+        XCTAssertTrue(events.isEmpty)
+        audio.ready()
+        await fulfillment(of: [audio.playing], timeout: 3)
+        XCTAssertTrue(store.playing)
+        XCTAssertTrue(store.audioActive)
+        audio.finish()
+        await fulfillment(of: [confirming, idle], timeout: 3, enforceOrder: true)
+        XCTAssertFalse(store.audioActive)
+        XCTAssertNil(store.error)
+        XCTAssertEqual(events, ["STARTED", "COMPLETED"])
+    }
+
+    func testCancelDuringPreparationDoesNotRecordACompletedListen() async throws {
+        let session = try JSONDecoder().decode(PracticeSession.self, from: Data(Self.sessionJSON.utf8))
+        var requests = 0
+        MockURLProtocol.handler = { _ in requests += 1; throw URLError(.badServerResponse) }
+        defer { MockURLProtocol.handler = nil }
+        let audio = ControlledAudio()
+        audio.cancellationError = URLError(.cancelled)
+        let suite = "DictaLabTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = PracticeStore(session: session, api: makeClient(), defaults: defaults, audio: audio)
+        let idle = expectation(description: "Preparation cancelled")
+        let observation = store.$playbackPhase.dropFirst().sink { if $0 == .idle { idle.fulfill() } }
+        defer { observation.cancel(); store.stop() }
+        store.play()
+        await fulfillment(of: [audio.preparing], timeout: 3)
+        store.stop()
+        await fulfillment(of: [idle], timeout: 3)
+        XCTAssertEqual(requests, 0)
+        XCTAssertNil(store.error)
+        XCTAssertFalse(store.audioActive)
+    }
+
+    func testStoppingPlaybackDoesNotSendCompletedEvent() async throws {
+        let session = try JSONDecoder().decode(PracticeSession.self, from: Data(Self.sessionJSON.utf8))
+        let csrf = csrfJSON
+        let sentence = Data(Self.sentenceJSON.utf8)
+        var events: [String] = []
+        MockURLProtocol.handler = { request in
+            if request.url!.path == "/api/auth/csrf" { return (200, [:], csrf) }
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: MockURLProtocol.body(request)) as? [String: Any])
+            events.append(try XCTUnwrap(body["event"] as? String))
+            return (200, [:], sentence)
+        }
+        defer { MockURLProtocol.handler = nil }
+        let audio = ControlledAudio()
+        let suite = "DictaLabTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = PracticeStore(session: session, api: makeClient(), defaults: defaults, audio: audio)
+        let idle = expectation(description: "Playback stopped")
+        let observation = store.$playbackPhase.dropFirst().sink { if $0 == .idle { idle.fulfill() } }
+        defer { observation.cancel(); store.stop() }
+        store.play()
+        await fulfillment(of: [audio.preparing], timeout: 3)
+        audio.ready()
+        await fulfillment(of: [audio.playing], timeout: 3)
+        store.stop()
+        await fulfillment(of: [idle], timeout: 3)
+        XCTAssertEqual(events, ["STARTED"])
+        XCTAssertNil(store.error)
+    }
+
     private struct TestCredentials: Decodable { let email: String; let password: String }
     private static let sentenceJSON = #"{"sentenceId":1,"position":1,"totalSentences":2,"words":[{"index":0,"length":5,"mask":"_____","userInput":"hello","correct":true,"revealed":false,"prefilled":false,"classificationAvailable":false}],"speechText":null,"audioUrl":"/audio/test.mp3","audioStartSeconds":0.5,"audioEndSeconds":1.5,"speechRate":0.8,"replayCount":1,"hintCount":0,"revealCount":0,"hasListened":true,"requiresReplayAfterReveal":false,"canComplete":true}"#
     private static let sessionJSON = "{\"sessionId\":\"test-session\",\"lessonId\":1,\"lessonTitle\":\"Test\",\"level\":\"A1\",\"sentence\":" + sentenceJSON + "}"
+}
+
+@MainActor
+private final class ControlledAudio: AudioPlaying {
+    let preparing = XCTestExpectation(description: "Audio preparing")
+    let playing = XCTestExpectation(description: "Audio playing")
+    private var preparation: CheckedContinuation<Void, Never>?
+    private var playback: CheckedContinuation<Void, Never>?
+    var cancellationError: Error = CancellationError()
+
+    func play(_ sentence: Sentence, speed: Double, api: APIClient,
+              onStarted: () async throws -> Void, onPlaying: () -> Void) async throws {
+        await withCheckedContinuation { preparation = $0; preparing.fulfill() }
+        if Task.isCancelled { throw cancellationError }
+        try await onStarted()
+        if Task.isCancelled { throw cancellationError }
+        onPlaying()
+        await withCheckedContinuation { playback = $0; playing.fulfill() }
+        if Task.isCancelled { throw cancellationError }
+    }
+
+    func ready() { preparation?.resume(); preparation = nil }
+    func finish() { playback?.resume(); playback = nil }
+    func stop() { ready(); finish() }
 }

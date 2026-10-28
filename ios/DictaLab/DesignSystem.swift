@@ -155,8 +155,8 @@ struct FloatingTabBar: View {
                 } label: {
                     Image(systemName: i == selectedTab && i != 0
                           ? tabs[i].icon + ".fill" : tabs[i].icon)
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(i == selectedTab ? Color.dlTeal : Color.dlInkSecondary)
+                        .font(.system(.title3, weight: .medium))
+                        .foregroundStyle(i == selectedTab ? Color.dlInk : Color.dlInkSecondary)
                         .frame(width: 52, height: 44)
                         .background(
                             i == selectedTab
@@ -183,8 +183,8 @@ struct LevelBadge: View {
     let level: String
     var body: some View {
         Text(level)
-            .font(.system(size: 11, weight: .bold, design: .monospaced))
-            .foregroundStyle(Color.dlTeal)
+            .font(.system(.caption2, design: .monospaced, weight: .bold))
+            .foregroundStyle(Color.dlInk)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(Color.dlTeal.opacity(0.12), in: Capsule())
@@ -218,29 +218,39 @@ struct SpeedChipRow: View {
     private let speeds: [Double] = [0.75, 1.0, 1.25]
 
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(speeds, id: \.self) { s in
-                Button {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { speed = s }
-                } label: {
-                    Text(s == 1.0 ? "1×" : (s < 1.0 ? "0.75×" : "1.25×"))
-                        .font(.system(size: 13, weight: speed == s ? .bold : .regular, design: .monospaced))
-                        .foregroundStyle(speed == s ? Color.dlTeal : Color.dlInkSecondary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .background(
-                            speed == s ? Color.dlTeal.opacity(0.1) : Color.clear,
-                            in: Capsule()
-                        )
-                        .overlay(
-                            Capsule().stroke(
-                                speed == s ? Color.dlTeal : Color.dlBorder.opacity(0.5),
-                                lineWidth: speed == s ? 1.5 : 1
-                            )
-                        )
-                }
-                .disabled(disabled)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) { chips }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) { chips }
             }
+        }
+    }
+
+    private var chips: some View {
+        ForEach(speeds, id: \.self) { s in
+            Button {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { speed = s }
+            } label: {
+                Text(s == 1.0 ? "1×" : (s < 1.0 ? "0.75×" : "1.25×"))
+                    .font(.system(.footnote, design: .monospaced, weight: speed == s ? .bold : .regular))
+                    .fixedSize()
+                    .foregroundStyle(speed == s ? Color.dlInk : Color.dlInkSecondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .frame(minHeight: 44)
+                    .background(
+                        speed == s ? Color.dlTeal.opacity(0.1) : Color.clear,
+                        in: Capsule()
+                    )
+                    .overlay(
+                        Capsule().stroke(
+                            speed == s ? Color.dlInk : Color.dlBorder.opacity(0.5),
+                            lineWidth: speed == s ? 1.5 : 1
+                        )
+                    )
+            }
+            .accessibilityAddTraits(speed == s ? .isSelected : [])
+            .disabled(disabled)
         }
     }
 }

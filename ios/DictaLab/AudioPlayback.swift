@@ -17,7 +17,14 @@ struct AudioSegment {
 }
 
 @MainActor
-final class AudioPlayback: NSObject, AVAudioPlayerDelegate {
+protocol AudioPlaying {
+    func play(_ sentence: Sentence, speed: Double, api: APIClient,
+              onStarted: () async throws -> Void, onPlaying: () -> Void) async throws
+    func stop()
+}
+
+@MainActor
+final class AudioPlayback: NSObject, AVAudioPlayerDelegate, AudioPlaying {
     private var player: AVAudioPlayer?
     private let speech = AVSpeechSynthesizer()
     private var stopped = false
@@ -25,7 +32,7 @@ final class AudioPlayback: NSObject, AVAudioPlayerDelegate {
     private var cachedAudio: (path: String, data: Data)?
 
     func play(_ sentence: Sentence, speed: Double, api: APIClient,
-              onStarted: () async throws -> Void) async throws {
+              onStarted: () async throws -> Void, onPlaying: () -> Void) async throws {
         stop()
         stopped = false
         try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
@@ -60,6 +67,7 @@ final class AudioPlayback: NSObject, AVAudioPlayerDelegate {
             guard !stopped else { throw CancellationError() }
             finishedNormally = false
             guard audio.play() else { throw AppError(message: "Không thể phát audio. Hãy thử lại.") }
+            onPlaying()
             while audio.isPlaying, audio.currentTime < segment.end {
                 try await Task.sleep(nanoseconds: 20_000_000)
             }
@@ -76,6 +84,7 @@ final class AudioPlayback: NSObject, AVAudioPlayerDelegate {
             utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
             utterance.rate = Float(min(0.65, max(0.25, sentence.speechRate * speed)))
             speech.speak(utterance)
+            onPlaying()
             while speech.isSpeaking { try await Task.sleep(nanoseconds: 40_000_000) }
             try Task.checkCancellation()
             guard !stopped else { throw CancellationError() }
