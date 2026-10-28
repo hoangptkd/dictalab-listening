@@ -23,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[2]
+SMOKE_TOKEN = "smoke-only-token-at-least-32-characters"
 
 
 def free_port():
@@ -69,6 +70,7 @@ def main():
             wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(24000); wav.writeframes(b"\x00\x00" * 240)
         audio = output.getvalue()
         calls = []
+        model_calls = []
         unavailable = threading.Event()
 
         class FakeProvider(BaseHTTPRequestHandler):
@@ -90,6 +92,30 @@ def main():
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 calls.append(self.path)
+                if self.path == "/v1/infer":
+                    assert self.headers.get("X-Service-Token") == SMOKE_TOKEN
+                    model_calls.append(body)
+                    purpose = json.loads(body["messages"][-1]["content"])
+                    guided = purpose.get("scenario") == "delivery" or "sourceTermAlignment" in purpose
+                    if guided:
+                        raw = {"translationVi": "Đừng mở bìa hồ sơ màu tím trước sáng thứ Tư. Em trai tôi không thể nhận nó trừ khi có thể xuất trình biên lai gốc pL4.",
+                            "facts": [{"textVi": "Đừng mở bìa hồ sơ màu tím trước sáng thứ Tư"}, {"textVi": "Biên lai gốc pL4"}]} if "utteranceEn" in purpose else {
+                            "slots": [{"kind": "instruction", "askVi": "Cần xử lý đồ vật thế nào?"}, {"kind": "document", "askVi": "Cần giấy tờ gì?"}],
+                            "utteranceEn": "Do not open the purple folder before Wednesday morning. My younger brother cannot collect it unless he can show the original receipt pL4.",
+                            "facts": [{"textEn": "Do not open the purple folder before Wednesday morning", "evidenceEn": "Do not open the purple folder before Wednesday morning"},
+                                {"textEn": "The original receipt pL4", "evidenceEn": "the original receipt pL4"}],
+                            "questionVi": "Cần xử lý đồ vật thế nào và cần giấy tờ gì?", "taskVi": "Nghe yêu cầu giao nhận.", "skill": "Nắm thông tin cụ thể"}
+                    else:
+                        raw = {"translationVi": "Cuộc họp lúc chín giờ tại sảnh.", "facts": [{"textVi": "Chín giờ"}, {"textVi": "Sảnh"}]} if "utteranceEn" in purpose else {
+                        "slots": [{"kind": "time", "askVi": "Lúc nào?"}, {"kind": "place", "askVi": "Ở đâu?"}],
+                        "utteranceEn": "Please meet me at nine tomorrow morning in the hotel lobby.",
+                        "facts": [{"textEn": "nine", "evidenceEn": "at nine"}, {"textEn": "hotel lobby", "evidenceEn": "in the hotel lobby"}],
+                        "questionVi": "Cuộc hẹn lúc nào và ở đâu?", "taskVi": "Nghe thông tin cuộc hẹn.", "skill": "Nắm thông tin cụ thể"}
+                    self.send({"requestId": body["requestId"], "provider": "local_cpu", "model": "Qwen/Qwen3.5-4B",
+                        "baseRevision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a", "variant": body["variant"],
+                        "adapterSha256": "1670910dcad7f1e8f66d1dd74e6297fe914c2067d0c26240b72b25fd36c922bf" if body["variant"] == "full07" else None,
+                        "raw": json.dumps(raw)})
+                    return
                 if unavailable.is_set():
                     self.send({"error": "test host unavailable"}, status=503); return
                 if self.path == "/tts/bytes":
@@ -116,7 +142,9 @@ def main():
                 env = {k: v for k, v in os.environ.items() if not k.startswith("DICTALAB_AI_")}
                 env.update({"DICTALAB_AI_JOBS_ENABLED": "true", "DICTALAB_AI_JOBS_DATABASE": str(Path(directory) / (provider + ".sqlite3")),
                     "DICTALAB_AI_RABBITMQ_URL": broker, "DICTALAB_AI_CONVERSATION_ENABLED": "false",
-                    "DICTALAB_AI_PRODUCTION_MODE": str(production).lower(), "DICTALAB_AI_SERVICE_TOKEN": "smoke-only-token",
+                    "DICTALAB_AI_PRODUCTION_MODE": str(production).lower(), "DICTALAB_AI_SERVICE_TOKEN": SMOKE_TOKEN,
+                    "DICTALAB_AI_MODEL_DEMO_ENABLED": "true", "DICTALAB_AI_MODEL_SERVING_TOKEN": SMOKE_TOKEN,
+                    "DICTALAB_AI_MODEL_SERVING_URL": f"http://127.0.0.1:{fake.server_port}",
                     "DICTALAB_AI_GEMINI_API_KEY": "test-only-cloud", "DICTALAB_AI_GEMINI_MODEL": "test-cloud",
                     "DICTALAB_AI_GEMINI_BASE_URL": f"http://127.0.0.1:{fake.server_port}/v1",
                     "DICTALAB_AI_OLLAMA_URL": f"http://127.0.0.1:{fake.server_port}",
@@ -136,17 +164,24 @@ def main():
                                 log.seek(0); raise RuntimeError(log.read()[-3000:])
                             time.sleep(0.1)
                     before = len(calls)
+                    model_calls.clear()
                     try:
                         subprocess.run([shutil.which("mvn"), "-q", "-Dtest=AiPlatformSmokeTest", f"-Dai.jobs.smoke.url={url}",
-                            f"-Dai.jobs.smoke.provider={provider}", "test"], cwd=ROOT, check=True, timeout=180)
-                        assert len(calls) - before == 3, "duplicate delivery must not repeat a provider call"
+                            f"-Dai.jobs.smoke.provider={provider}", "-Dai.jobs.smoke.scene=" + ("delivery" if production else "cafe"),
+                            "test"], cwd=ROOT, check=True, timeout=180)
+                        assert len(calls) - before == 7, "duplicate delivery must not repeat a provider call"
+                        assert [call["variant"] for call in model_calls] == ["base", "base", "full07", "full07"]
+                        assert model_calls[0]["messages"] == model_calls[2]["messages"], "comparison must share the same input"
+                        assert model_calls[1]["messages"] == model_calls[3]["messages"]
+                        translation_input = json.loads(model_calls[1]["messages"][-1]["content"])
+                        assert ("sourceTermAlignment" in translation_input) == production
 
                         def run_job(_=0):
                             job_id = str(uuid.uuid4())
                             payload = {"schemaVersion": "1", "jobId": job_id, "requestId": job_id, "userScope": "a" * 64,
                                 "idempotencyKey": job_id, "deadline": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(),
                                 "payload": {"kind": "review", "facts": [{"id": "F1", "text": "nine"}], "recall": "nine"}}
-                            headers = {"Content-Type": "application/json", "X-Service-Token": "smoke-only-token", "X-User-Scope": "a" * 64,
+                            headers = {"Content-Type": "application/json", "X-Service-Token": SMOKE_TOKEN, "X-User-Scope": "a" * 64,
                                 "X-AI-Provider": provider, "X-Request-Id": job_id, "Idempotency-Key": job_id}
                             started = time.monotonic()
                             req = urllib.request.Request(url + "/v1/review/tasks", data=json.dumps(payload).encode(), headers=headers)

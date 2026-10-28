@@ -30,13 +30,15 @@ public class SupportController {
     private final ObjectMapper json;
     private final RoomRegistry rooms;
     private final AdminQueryService queries;
+    private final com.dictalab.service.ProgressOutbox progress;
     public SupportController(JdbcTemplate db, ListeningComprehensionService listening, ObjectMapper json,
-                             RoomRegistry rooms, AdminQueryService queries) {
+                             RoomRegistry rooms, AdminQueryService queries, com.dictalab.service.ProgressOutbox progress) {
         this.db = db;
         this.listening = listening;
         this.json = json;
         this.rooms = rooms;
         this.queries=queries;
+        this.progress=progress;
     }
 
     public record Ticket(@NotBlank @Pattern(regexp = "AUDIO|TRANSCRIPT|SCORE|ACCOUNT_DELETE|OTHER") String category,
@@ -215,6 +217,8 @@ public class SupportController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email xác nhận không khớp.");
         if (rooms.findRoomForUser(userId).isPresent())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Người dùng cần rời phòng gọi trước khi xóa.");
+        db.queryForList("SELECT id FROM app_users WHERE id=? FOR UPDATE", Long.class, userId);
+        progress.userDeleted(userId);
         db.update("DELETE FROM listening_sessions WHERE user_id=?", userId);
         db.update("DELETE FROM practice_sessions WHERE user_id=?", userId);
         db.update("DELETE FROM audio_exposure_events WHERE user_id=?", userId);

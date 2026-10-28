@@ -58,6 +58,7 @@ class ConversationIntegrationTest {
     @Autowired MockMvc mvc;
     @MockitoBean GeminiClient ai;
     @MockitoBean CartesiaClient tts;
+    @MockitoBean com.dictalab.service.AiPlatformClient platform;
     long owner;
 
     @BeforeEach void setup() {
@@ -93,6 +94,57 @@ class ConversationIntegrationTest {
     private String start() {
         String id = service.create(owner, "cafe", "A1").path("id").asText();
         service.next(owner, id, 0); return id;
+    }
+
+    @Test void pythonAudioReadinessIsUserScopedAndNeedsNoCoreCartesiaKey() {
+        when(tts.enabled()).thenReturn(false);
+        when(platform.enabled("tts", owner)).thenReturn(true);
+        assertThat(service.catalog(owner).get("enabled")).isEqualTo(true);
+        assertThat(service.create(owner, "cafe", "A1").path("id").asText()).isNotBlank();
+        long other = users.saveAndFlush(new AppUser("audio-" + UUID.randomUUID() + "@test.local",
+                "Other", "unused", Instant.now())).getId();
+        assertThat(service.catalog(other).get("enabled")).isEqualTo(false);
+        assertThatThrownBy(() -> service.create(other, "cafe", "A1"))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        failure -> assertThat(failure.getStatusCode().value()).isEqualTo(503));
+        verify(tts, never()).synthesize(anyString());
+    }
+
+    @Test void modelDemoAcceptanceKeepsAnswersHiddenAndDoesNotApplyTwice() {
+        String id=service.create(owner,"cafe","A1").path("id").asText();
+        var context=service.modelDemoContext(owner,id,null,null);
+        var arm=json.createObjectNode().put("valid",true);
+        arm.set("task",prompt("demo"));
+        arm.putArray("calls").addObject().put("purpose","content").put("provider","local_cpu")
+                .put("model","Qwen/Qwen3.5-4B").put("variant","full07");
+        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any(java.time.Duration.class)))
+                .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
+        String job=UUID.randomUUID().toString();
+        var accepted=service.acceptModelDemo(owner,id,job,context,arm);
+        assertThat(accepted.path("turns").size()).isEqualTo(1);
+        var turn=accepted.path("turns").path(0);
+        assertThat(turn.path("evaluationOnly").asBoolean()).isTrue();
+        assertThat(turn.path("modelGeneration").path(0).path("variant").asText()).isEqualTo("full07");
+        assertThat(turn.path("prompt").has("utteranceEn")).isFalse();
+        assertThat(turn.path("prompt").has("facts")).isFalse();
+        assertThat(service.acceptModelDemo(owner,id,job,context,arm).path("turns").size()).isEqualTo(1);
+        verify(ai,times(1)).completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any(java.time.Duration.class));
+        assertThatThrownBy(()->service.acceptModelDemo(owner+100000,id,job,context,arm)).isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test void modelDemoRejectsStaleContextAndSemanticFailureWithoutAddingTurn() {
+        String id=service.create(owner,"cafe","A1").path("id").asText();
+        var context=service.modelDemoContext(owner,id,null,null);
+        var arm=json.createObjectNode().put("valid",true);
+        arm.set("task",prompt("demo"));
+        assertThatThrownBy(()->service.acceptModelDemo(owner,id,"stale",json.createObjectNode(),arm))
+                .isInstanceOf(ResponseStatusException.class);
+        verify(ai,never()).completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any(java.time.Duration.class));
+        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any(java.time.Duration.class)))
+                .thenReturn(json.readTree("{\"valid\":false,\"reason\":\"fixture mismatch\"}"));
+        assertThatThrownBy(()->service.acceptModelDemo(owner,id,"rejected",context,arm)).isInstanceOf(IllegalStateException.class);
+        assertThat(service.get(owner,id).path("turns")).isEmpty();
+        assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?",String.class,id)).isNull();
     }
 
     private void reviewRemaining(String id, int from) {

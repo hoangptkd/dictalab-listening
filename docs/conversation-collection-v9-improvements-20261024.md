@@ -1,5 +1,352 @@
 # Cải thiện thu thập v9 — 24/10/2026
 
+## Mới nhất: chủ dự án áp dụng low cho B1
+
+Chủ dự án xác nhận áp dụng sau pilot B1 high 8/8 và low 8/8. Artifact mới
+`artifacts/prompts/conversation-reviewed-collection-v12-cache-low-b1-20261024.json`
+khóa `reasoningEffortByLevel={A1:low,A2:low,B1:low}`; B2 vẫn mặc định high.
+Thinking bật, cache prefix ổn định, maxTokens 16.384 và timeout 240 giây giữ
+nguyên. Không đổi nội dung prompt/schema/rubric hoặc quyền duyệt Web. Pilot
+8 cặp train không chứng minh chất lượng tương đương dài hạn; không đưa vào SFT.
+
+Bản tiếp nối `data/fine-tuning/reviewed-500-v14-low-b1-20261024` snapshot
+**337 bài đạt/537 ứng viên** từ v13 sau khi lô cũ đã hết pending. Giữ toàn bộ
+quyết định/hash/manifest cũ, lịch sử gửi và trạng thái quota; không prepare lại
+thư mục đã có, reset quota hoặc hồi sinh reject. Bài mới bắt đầu từ 0538.
+Tổng 500, A1/A2/B1 mỗi mức 150 và B2 50; target train 122/121/121/36,
+validation 14/15/13/6, test 14/14/16/8 giữ nguyên. Đủ dữ liệu mới audit/export
+và SFT/LoRA thật với data/loss-mask gates. Không deploy/shutdown/Gemini.
+
+```powershell
+python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v14-low-b1-20261024 --limit 8 --deepseek-only --teacher-concurrency 2 --web-batch-size 2 --overlap-web
+```
+
+Giữ hai DeepSeek song song, một Web request theo cặp mỗi lúc trong hội thoại
+mới, hard checks + Web PASS đầy đủ tự chốt. Không Codex duyệt riêng; UNKNOWN
+không replay/split, quota rõ mới resume đúng request. Các quyết định giữ high
+hoặc chưa áp dụng low B1 bên dưới là lịch sử đã được thay thế.
+Đã xác minh 2.882 tệp kế thừa; request thật B1 `candidate-0539` gửi
+`reasoning_effort=low`, thinking enabled và max_tokens 16.384. Nhóm kiểm tra
+collection: **161 passed**; UTF-8 và diff checks đạt. Không deploy.
+
+## Mới nhất: giảm B2 xuống 50 bài; thử B1 low riêng
+
+Chủ dự án chốt **A1/A2/B1 mỗi mức 150 bài, B2 50 bài**, vẫn tổng 500:
+400 train + 48 validation + 52 test. Bản tiếp nối
+`data/fine-tuning/reviewed-500-v13-reduced-b2-20261024` giữ nguyên checkpoint
+297 bài đạt/489 ứng viên từ v12, mọi quyết định/hash/lịch sử gửi/quota cũ.
+Không prepare lại thư mục đã có hoặc sửa manifest cũ. Phân bổ không đồng đều
+trong từng tập để giữ đủ 8 bài test B2 đã đạt, không loại hay chuyển tập bài cũ.
+
+| Tập | A1 | A2 | B1 | B2 | Tổng |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Train | 122 | 121 | 121 | 36 | 400 |
+| Validation | 14 | 15 | 13 | 6 | 48 |
+| Test | 14 | 14 | 16 | 8 | 52 |
+| Tổng | 150 | 150 | 150 | 50 | 500 |
+
+Prepare lần đầu dùng `--total-articles 500 --reduced-b2 --web-approval
+--continue-from <v12>` cùng artifact cache v11 và hai Web account đã khóa.
+Mọi caller phân bổ, đặt chỗ in-flight, nhận bài, trạng thái và export đọc target
+theo cả tập/mức; manifest cũ với target đồng đều vẫn được đọc nguyên trạng.
+
+Pilot B1 riêng tại `data/fine-tuning/diagnostic-b1-low-20261024` gồm 8 cặp
+high/low, chỉ ngữ cảnh train, không đưa vào SFT hay bù bộ chính. Mỗi cặp giữ
+cùng context/prompt/schema/model, thinking bật, 16.384 token, timeout 240 giây,
+cache bật; thứ tự high/low đảo giữa hai nửa. Hai DeepSeek song song, Web chấm
+theo cặp nối tiếp; kiểm tra cứng + Web PASS đầy đủ, không Codex duyệt từng bài.
+Đo output/reasoning token, thời gian, cache, hard/Web reject và token trên bài
+được nhận. Mẫu nhỏ không chứng minh chất lượng tương đương dài hạn.
+Kết quả thật đủ 16 lượt, usage 16/16: **high 8/8, low 8/8** qua hard checks
+và Web PASS. Tám cặp context và body gửi thật khớp hoàn toàn ngoài effort;
+mỗi ID chỉ gửi một lần, không sửa/replay, peak teacher 2, không Web đồng thời.
+
+| B1 | Bài đạt | Output token | Reasoning token | Giây sinh trung bình | Output token/bài đạt |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| High mặc định | 8/8 | 27.120 | 23.351 | 19,84 | 3.390 |
+| Low | 8/8 | 20.440 | 16.829 | 15,37 | 2.555 |
+
+Low giảm **24,63% output**, **27,93% reasoning**, **22,52% thời gian gọi
+trung bình** và **24,63% output token/bài đạt** trong mẫu này. Input cùng
+42.278 token mỗi arm; cache hit lần lượt 24.576 high và 22.528 low. Không quy
+mọi chênh lệch thời gian cho effort hoặc coi mức giảm output là giảm toàn bill.
+Bằng chứng đầy đủ ở `diagnostic-b1-low-20261024/report.json`; không có mẫu
+diagnostic nào được đưa vào chiến dịch chính. Web model chưa xác minh,
+không có usage Web; không suy ra tương đương chất lượng dài hạn từ 8 cặp.
+**Chưa áp dụng low B1 vào bộ chính**; A1/A2 low, B1/B2 mặc định high giữ nguyên
+trong khi thử. Không gọi Gemini, không reset quota/replay, không shutdown.
+Kiểm tra thay đổi phân bổ: **310 passed, 1 skipped**; UTF-8, compile và diff
+đạt. Có kiểm tra tổng từng tập/mức, giữ manifest cha, từ chối target làm mất
+bài cũ, cùng tổng 500 nhưng sai phân bổ không hoàn tất, và hai teacher không
+đặt chỗ vượt ô cuối với cả target cũ/mới. Không deploy.
+Các đoạn phân bổ đều 100/12/13 bên dưới là lịch sử đã được thay thế.
+
+## Mới nhất: giữ prefix ổn định để hưởng giá cache DeepSeek
+
+DeepSeek [bật context cache tự động](https://api-docs.deepseek.com/guides/kv_cache/),
+không cần header hoặc API tạo cache. Prefix phải khớp chính xác phần đã lưu;
+cache cần thời gian tạo và chỉ best effort. Không gửi lại/warm-up bài cũ.
+
+Lô trước 0420–0427 có **0/42.088 input token cache hit**, đủ usage 8/8 lượt.
+Nguyên nhân: provider đặt schema lên đầu messages; enum ID thay đổi theo bài
+nằm trước phần hướng dẫn chung dài, làm prefix thay đổi sớm. Opt-in mới
+`cacheStablePrefix=true` đặt hướng dẫn và payload trước, schema đầy đủ sau;
+giữ nguyên schema, enum ID, validation, JSON mode và durable sent log trước HTTP.
+Mọi caller không opt-in giữ layout cũ. Cache chỉ giảm tiền input; không tái dùng
+đáp án, không thay đổi output/reasoning budget hoặc quy trình duyệt.
+
+Artifact mới bất biến:
+`artifacts/prompts/conversation-reviewed-collection-v11-cache-low-20261024.json`.
+Tiếp nối `data/fine-tuning/reviewed-500-v12-cache-web-20261024` từ v11-low-web,
+giữ **254 bài đạt/427 ứng viên**, toàn bộ quyết định, hash và lịch sử gửi cũ.
+Không prepare lại thư mục có sẵn hoặc sửa manifest cũ. Báo cáo riêng
+`cache-audit.json` đo usage hit/miss, thiếu usage, request hash và chi phí ước tính;
+không lưu nội dung bài loại. Đo bằng các ứng viên mới 0428–0435.
+
+Đo thật đủ 8 lượt mới: **6/8 có hit**, **15.872/40.104 input token được cache
+(39,58%)**; usage đủ 8/8 và hit + miss khớp prompt tokens từng lượt. So với
+chính lượng token này nếu toàn bộ input là cache miss, tiền input ước giảm
+**38,79%**, tổng DeepSeek input + output giảm **9,74%**. Ước tính cuối tuần:
+**0,021612216 USD**, thay vì 0,0239454 USD; tiết kiệm 0,002333184 USD. Không lấy
+chênh lệch tổng tiền giữa hai lô để quy hết cho cache vì độ dài output khác nhau.
+Đây là lô nhỏ chứng minh cache đã hit, chưa chứng minh tỷ lệ hit dài hạn.
+
+Lô 0428–0435 có 5 bài được Web chốt đạt, 3 bài bị hard checks loại;
+checkpoint **259 đạt/435 ứng viên**, READY, không pending. A1/A2 low đạt 4/4
+trong lô này; mẫu nhỏ không chứng minh chất lượng tương đương cấu hình khác.
+Kiểm tra training + gateway + registry: **342 passed, 1 skipped**; UTF-8,
+compile và diff checks đạt. Bằng chứng riêng giữ đủ usage cả ba bài loại,
+không giữ target hoặc raw Web chứa bài loại, không có dispatch trùng.
+
+Theo [giá chính thức](https://api-docs.deepseek.com/quick_start/pricing/)
+kiểm tra 24/10/2026, `deepseek-flash` off peak có giá USD/triệu token:
+hit **0,003**, miss **0,15**, output **0,60**; peak gấp đôi. Cuối tuần off peak.
+Token input được hit rẻ hơn 98%; đây không phải mức giảm tổng hóa đơn vì output
+vẫn tính riêng. Chi phí báo cáo là ước tính từ usage đã biết, không phải hóa đơn.
+
+```powershell
+python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v12-cache-web-20261024 --limit 8 --deepseek-only --teacher-concurrency 2 --web-batch-size 2 --overlap-web
+```
+
+Giữ low A1/A2, mặc định high B1/B2, thinking bật, hai teacher, Web cặp nối tiếp
+trong hội thoại mới, kiểm tra cứng + Web PASS đầy đủ tự chốt. Không Codex duyệt
+từng bài, không Gemini mới, không shutdown/watchdog. UNKNOWN không replay;
+quota không reset. Tổng 400/48/52 và trần 1.500 cộng dồn; đủ 500 rồi audit/export
+thật trước SFT, giữ data/loss-mask gates. Mục này thay đường dẫn chiến dịch cũ.
+
+## Mới nhất: áp dụng low cho A1/A2
+
+Chủ dự án yêu cầu áp dụng `low` sau pilot. Bài A1/A2 mới gửi
+`reasoning_effort=low`; B1/B2 giữ mặc định high của provider. Thinking vẫn bật,
+trần 16.384 token và timeout 240 giây giữ nguyên. Không đổi prompt, schema,
+rubric hoặc quyền duyệt Web; không thêm lại Codex duyệt độc lập.
+
+Artifact mới: `artifacts/prompts/conversation-reviewed-collection-v10-low-a1a2-20261024.json`.
+Chiến dịch tiếp nối: `data/fine-tuning/reviewed-500-v11-low-web-20261024`,
+snapshot **249 bài đạt / 419 ứng viên** từ v10-web. Giữ nguyên mọi quyết định,
+hash/manifest cũ, prefix gửi, quota/account state và trần 1.500 cộng dồn.
+Không prepare lại thư mục có sẵn, không reset quota hoặc hồi sinh bài loại.
+
+```powershell
+python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v11-low-web-20261024 --limit 8 --deepseek-only --teacher-concurrency 2 --web-batch-size 2 --overlap-web
+```
+
+Lịch tiếp tục dùng DeepSeek song song 2, Web theo cặp nối tiếp và tự chốt sau
+kiểm tra cứng + Web PASS. Tổng 400/48/52, audit trước SFT, không Gemini mới,
+không shutdown/watchdog. Low đã được chủ dự án chọn; pilot trước ghi nhận
+7/8 sau Codex so với high 8/8, chưa chứng minh chất lượng tương đương.
+Các quyết định giữ high/chưa áp dụng low trong phần lịch sử dưới đây hết hiệu lực
+đối với A1/A2 mới; quyết định loại mẫu diagnostic cũ vẫn giữ nguyên.
+
+## Mới nhất: bỏ Codex duyệt từng bài theo yêu cầu chủ dự án
+
+Từ checkpoint **244 bài đạt / 411 ứng viên**, quyền quyết định bài mới chuyển
+sang **kiểm tra cứng + Web PASS đầy đủ**. Không cần `independent-notes.json`,
+`apply-independent-notes.py` hoặc Codex đối chiếu từng fact. Web false/null sẽ
+loại bài; không còn override lỗi giả. Lưu reviewer `AI:chatgpt-web`, hash nguồn,
+context và kết quả Web, audit từng fact, account và model đã biết/chưa xác minh.
+Kết quả thiếu/sai bằng chứng hoặc UNKNOWN không được nhận và không tự gửi lại.
+
+Manifest cũ khóa quyền Codex nên giữ nguyên, không sửa hash. Tạo **một bản tiếp
+nối** `data/fine-tuning/reviewed-500-v10-web-20261024` bằng `prepare --web-approval
+--continue-from data/fine-tuning/reviewed-500-v9-deepseek-20261024 --total-articles 500`
+với cùng artifact v9 và hai bridge cũ. Không chạy prepare lại vào thư mục đã có.
+Giữ nguyên toàn bộ 411 quyết định, 244 bài đạt, prefix gửi, quota/account state
+và trần 1.500 cộng dồn; bài đã loại không được hồi sinh. Export giữ đúng reviewer
+Codex của bài cũ và Web của bài mới, không đổi nhãn thành duyệt bởi con người.
+
+Luồng thu thập tự chốt kết quả đã lưu khi hết lô hoặc tiếp tục sau checkpoint:
+
+```powershell
+python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v10-web-20261024 --limit 8 --deepseek-only --teacher-concurrency 2 --web-batch-size 2 --overlap-web
+```
+
+Giữ thinking high, không Gemini mới, hai DeepSeek đồng thời, một Web request mỗi
+lúc theo cặp trong hội thoại mới. Không shutdown/watchdog. Tổng 500 = 400/48/52,
+mỗi mức 100/12/13; đủ bài và không pending mới audit provenance, phân bổ, hash,
+exact/near duplicate, holdout, schema/content/translation và export trước SFT.
+Audit không thêm lại bước Codex duyệt riêng từng bài. Data/loss-mask gates giữ nguyên.
+
+Kiểm tra thay đổi: 281 test training đạt, 1 bỏ qua; nhóm collection 132 đạt,
+UTF-8/compile/diff đạt. Có kiểm tra PASS/false/null, hash/fact sai, UNKNOWN không
+gửi lại, quota không mất trạng thái dừng, hai teacher và Web nối tiếp, kế thừa
+quyết định cũ và export đúng reviewer; bằng chứng Web bị sửa sau duyệt sẽ bị chặn.
+
+Đây là thay đổi quyền duyệt, không phải bằng chứng chất lượng tăng. Pilot trước
+đã có một bài Web PASS mà Codex loại; quyết định loại đó vẫn giữ nguyên ngoài
+bộ chính. Các yêu cầu Codex duyệt từng bài trong phần lịch sử dưới đây hết hiệu lực
+cho bài mới của chiến dịch tiếp nối.
+
+## Mới nhất: pilot effort A1/A2 và hai lời gọi DeepSeek
+
+Đã thử thật 16 ứng viên diagnostic, ngoài SFT và ngoài trần ứng viên của bộ chính:
+8 cấu hình thinking mặc định (`high`) và 8 `reasoning_effort=low`, mỗi cấu hình có
+4 A1 và 4 A2. Tám cặp dùng cùng context, wrapper, model `deepseek-flash`, schema,
+trần 16.384 token, timeout 240 giây và rubric. Hai nửa dùng các biến thể context
+khác nhau; thứ tự cohort là high/1, low/2, high/2, low/1. Chỉ thay effort trong
+từng cặp, không dùng cắt trần token để ép suy nghĩ ngắn. Bốn ô nguồn/mức thuộc ba
+họ kịch bản, tám context, đều train; không dùng nội dung holdout để chọn cấu hình.
+Không thử Gemini.
+
+Codex đọc nguồn, vai, lịch sử và toàn bộ trường song ngữ trước khi đọc verdict Web,
+ghi căn cứ riêng và quote mỗi fact rồi chạy `apply-independent-notes.py`. Web cho
+PASS cả 16; Codex loại một bài A2 low do câu hỏi khác tiết lộ một waypoint bắt
+buộc trong đáp án lộ trình. Đã xóa chi tiết bài loại và raw nhóm dùng chung;
+giữ hash, loại lỗi, usage và bằng chứng gửi, không sửa hoặc đưa bài diagnostic vào SFT.
+
+| Effort | Codex đạt | A1 | A2 | Completion token | Reasoning token | Sinh trung bình/bài |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Mặc định high | 8/8 | 4/4 | 4/4 | 33.817 | 31.175 | 22,32 giây |
+| Low | 7/8 | 4/4 | 3/4 | 22.480 | 19.857 | 15,97 giây |
+
+Low giảm 33,5% completion token, 36,3% reasoning token và 28,4% thời gian gọi
+trung bình trong mẫu này. **Chưa áp dụng low vào bộ chính**: chưa giữ được tỷ lệ
+đạt quan sát. Mẫu 8 bài/mỗi effort nhỏ, không chứng minh khác biệt dài hạn hay
+quan hệ nhân quả của một lỗi đơn lẻ. Không đổi artifact/manifest/hash của chiến dịch.
+
+| Cohort 4 bài | In-flight tối đa | Sinh + Web, chưa gồm Codex |
+| --- | ---: | ---: |
+| High tuần tự | 1 | 123,20 giây |
+| High song song | 2 | 76,18 giây |
+| Low tuần tự | 1 | 109,63 giây |
+| Low song song | 2 | 57,90 giây |
+
+Đây là thời gian mô tả: cohort 1/2 khác biến thể/focus và output, còn cache/tải API
+cũng thay đổi. Không coi chênh lệch high 38,2% là cam kết tăng tốc; không hứa gấp đôi.
+Tất cả 16 lượt DeepSeek HTTP 200, đủ usage, không 402/429/UNKNOWN. Hai cohort song
+song ghi nhận peak=2; request được lưu trước HTTP, mỗi ID chỉ gửi một lần. Tám nhóm
+Web dùng tám hội thoại mới của account-1, model UI chưa xác minh; token Web không có.
+Web vẫn một request mỗi lúc, Codex duyệt từng bài. Tổng teacher usage pilot:
+76.468 input + 56.297 output = 132.765 token, gồm 51.032 reasoning token trong output.
+
+Đã thêm tùy chọn **`--teacher-concurrency 2`** và giữ mặc định cũ nếu không truyền.
+Tái sử dụng reserve ID/ô đích, quota admission atomic, kiểm tra trùng nối tiếp,
+guard chống replay và drain mọi sibling/Web đang gửi khi lỗi. Kiểm tra mock gồm
+sibling lỗi trả trước, quota, UNKNOWN, exception, trùng, trần 1.500 và ô cuối cùng.
+Kiểm tra hoàn tất: 298 test đạt, 1 bỏ qua; UTF-8, compile và `git diff --check` đạt.
+Theo [DeepSeek Thinking Mode](https://api-docs.deepseek.com/guides/thinking_mode/),
+effort low được hỗ trợ và mặc định là high; [giới hạn API công bố](https://api-docs.deepseek.com/quick_start/rate_limit/)
+cho `deepseek-flash` là 2.500 đồng thời/tài khoản. Đây không bảo đảm số dư hoặc
+khả năng nhận request thực tế; giữ quota pool/cooldown, dừng trên quota hoặc lỗi chưa rõ.
+
+Quyết định vận hành: **high như cũ + DeepSeek song song 2**, Web theo cặp và Codex
+độc lập. Lịch 15 phút được tạm dừng khi test, bật lại sau kiểm tra và delivery.
+Checkpoint bộ chính vẫn **244/500 duyệt, 411/1.500 ứng viên**, không còn pending.
+Không prepare lại, không tính 15 bài diagnostic đạt vào bộ chính. Không shutdown
+hoặc arm watchdog. Đủ 500 và audit thật đạt mới SFT; không deploy.
+
+```powershell
+python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v9-deepseek-20261024 --limit 8 --deepseek-only --teacher-concurrency 2 --web-batch-size 2 --overlap-web
+```
+
+Bằng chứng riêng local: `data/fine-tuning/diagnostic-speed-20261024/results.json`,
+timing, notes và quyết định trong từng cohort. Cấu hình low chỉ nằm trong artifact
+diagnostic; `teacherGenerationConfig.reasoningEffortByLevel` được khóa cùng manifest
+và kiểm tra cả body HTTP. Chưa có thay đổi cấu hình sinh cho B1/B2.
+
+## Cập nhật mới nhất: hủy tắt máy và tiếp tục thu thập
+
+Chủ dự án yêu cầu hủy tắt máy và tiếp tục tạo bài. Lệnh đang chờ đã được hủy
+thành công bằng `shutdown.exe /a`. Từ đây không dùng
+`--shutdown-on-worker-failure`, không arm watchdog tắt máy và không tự gọi shutdown,
+kể cả khi quota hoặc lỗi chặn thu thập. Lưu checkpoint và báo lỗi khi không thể tiếp tục.
+Các quyền tắt máy trong phần lịch sử bên dưới đã bị thay thế.
+
+Checkpoint khôi phục có 236 bài duyệt/395 ứng viên. Hai bài cuối có lượt Web
+`UNKNOWN`, không có phản hồi lưu được; không gửi lại. Sau khi kiểm tra không còn
+worker hoặc bridge đang xử lý, có thể chốt loại vận hành cả nhóm: giữ hash,
+account, usage và trạng thái `UNKNOWN` cùng quyết định bỏ, xóa nội dung chi tiết.
+Không tạo Web PASS hoặc nhận bài chưa chấm để gỡ chặn. Tiếp tục bằng ID ứng viên mới,
+giữ nguyên manifest, trần ứng viên, quota và các bài đã duyệt.
+
+Lỗi checkpoint `WinError 5` được xử lý bằng retry ngắn, có giới hạn cho lỗi chia sẻ
+file Windows; giữ bản cũ và file tạm nếu lỗi vẫn còn. Không bỏ atomic replace.
+Mục tiêu 500 bài, DeepSeek-only, Web theo cặp và Codex duyệt độc lập vẫn giữ nguyên.
+
+## Quyết định mới nhất: 500 bài, DeepSeek và chấm Web theo cặp
+
+Chủ dự án đã xác nhận **400 train + 48 validation + 52 test**, mỗi mức A1/A2/B1/B2
+lần lượt **100/12/13**. Tổng là 500 bài, không phải 500 train cộng tập khác.
+Chiến dịch đang dùng: `data/fine-tuning/reviewed-500-v9-deepseek-20261024`.
+Snapshot giữ nguyên 185 bài duyệt/311 ứng viên từ phiên mixed; không loại bỏ ba bài
+Gemini đã duyệt, không gọi Gemini mới, không sửa manifest hoặc reset quota của phiên cũ.
+Trần 1.500 ứng viên vẫn cộng dồn. Những mục 700/mixed bên dưới là lịch sử.
+
+Đã thử thật trong **ba hội thoại mới khác nhau** của account-1:
+
+| Nhóm | Mẫu | Thời gian Web | Kết quả đối chiếu độc lập |
+| --- | --- | ---: | --- |
+| 3 bài | A1/A2/B1 validation đã chấm riêng | 25,16 giây | Đủ 8 fact audit; có một lỗi giả `noAnswerLeak` ở bài A2 |
+| 2 bài | Một bài tốt và một bản diagnostic cố ý dịch sai thời lượng | 15,37 giây | Bài tốt giữ kết quả; lỗi dịch được phát hiện đúng |
+| 2 bài | Hai bài A2/B1 validation gốc | 18,55 giây | Khớp toàn bộ checks chấm riêng và duyệt độc lập |
+
+Lỗi giả nhóm 3 cho rằng câu hỏi “giấy tờ gì” tiết lộ đáp án “phiếu đăng ký”.
+Câu hỏi không nêu loại giấy tờ; đáp án gist chỉ nói chào đón và hướng dẫn nhận phòng,
+không đòi liệt kê loại phiếu. Vì vậy cảnh báo không có căn cứ. Không dùng nhóm 3 tiếp.
+Mẫu sai diagnostic được tách riêng, không sửa bản gốc và không đưa vào SFT.
+Biên bản đầy đủ local: `data/fine-tuning/diagnostic-web-batch-20261024/`.
+Nhãn model Web không được UI cung cấp; không coi alias là model đã xác minh.
+
+Đã chạy tiếp lô thật DeepSeek-only candidate-0308–0311: hai hội thoại Web mới,
+đủ 11 fact audit, cả 4 bài được Codex duyệt độc lập sau khi đọc nguồn trước Web.
+Mẫu nhỏ không chứng minh tỷ lệ dài hạn hoặc phần trăm tăng tốc. Quyết định vận hành:
+**2 bài/hội thoại mới**, một yêu cầu Web mỗi lúc; `--overlap-web` vẫn chồng sinh và chấm.
+
+```powershell
+python -X utf8 -m training.collect_reviewed collect --campaign data/fine-tuning/reviewed-500-v9-deepseek-20261024 --limit 8 --deepseek-only --web-batch-size 2 --overlap-web --shutdown-on-worker-failure
+```
+
+Không prepare lại thư mục này. Chấm nhóm giữ schema/checks/evidence riêng từng bài,
+hash request/response chung và liên kết thành viên. Thiếu/trùng ID, trích dẫn chéo bài,
+JSON sai hoặc kết quả gửi chưa rõ đều chặn; không tự gửi lại riêng thành viên.
+Quota rõ ràng mới cho phép tiếp tục đúng request nhóm đã lưu. Bài lẻ cuối lô được
+chấm riêng. Bài loại xóa raw request/response/attempt dùng chung có chứa chi tiết bài
+đó; giữ metadata hash/account/usage/trạng thái và bằng chứng riêng của bài đạt.
+
+### SFT và quyền tắt máy mới
+
+Đủ **500 bài duyệt**, không còn pending: audit phân bổ 100/12/13 mỗi mức, provenance,
+exact/near duplicate, holdout và cặp content/translation; export. Không tự gắn gate
+audit đạt khi chưa kiểm tra, không train dữ liệu thiếu/chưa duyệt. Sau audit đạt,
+chạy SFT/LoRA thật Qwen3.5-4B bằng runner hiện có, chọn checkpoint bằng validation.
+Config local `training-config.yaml` trong chiến dịch mới trỏ vào export/dataset và
+training-review.json. Dùng Python `.venv-cpu`, giữ loss mask và quyền thử dưới RAM
+ước lượng bằng `--attempt-below-memory-estimate`; không chạy smoke tài nguyên riêng.
+Lưu optimizer step/checkpoint/loss hoặc lỗi thật; không deploy production.
+
+Chủ dự án đã cấp lại quyền **tắt máy khi hết quota hoặc không thể tạo thêm dữ liệu**,
+không hỏi lại. Web một tài khoản hết quota vẫn chuyển đúng quy tắc; cả hai hết quota
+thì lưu checkpoint/báo cáo và tắt máy. Không chờ quota qua đêm như chỉ dẫn cũ.
+Không tắt chỉ vì đủ bài: phải chuyển sang audit/SFT. Khi thất bại không thể tiếp tục,
+lưu kết quả/lỗi và usage biết được/phần thiếu, dừng automation, flush file rồi gọi
+`shutdown.exe /s /f /t 60`. Không dùng lệnh thật trong kiểm thử.
+
+Watchdog ngoài worker đã triển khai: chờ worker lưu/drain các lời gọi đã gửi rồi
+xử lý trạng thái quota/BLOCKED/cap hoặc worker thoát bất thường. Duyệt Codex giữa
+lô là trạng thái bình thường. Watchdog này không giám sát việc Codex hết token,
+Codex bị treo hoặc Windows treo; prompt/lịch không bảo đảm xử lý các tình huống đó.
+Các mục hủy quyền tắt máy trước đây được thay thế bằng yêu cầu mới này.
+
 ## Đã dừng lịch chạy
 
 Automation `ti-p-t-c-thu-th-p-700-b-i-duy-t` đã chuyển sang `PAUSED` theo yêu cầu.

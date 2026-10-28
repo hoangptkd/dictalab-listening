@@ -11,13 +11,13 @@ from uuid import UUID
 
 from pydantic import Field, model_validator
 
-from . import coach, review, tts
+from . import coach, review, tts, conversation_demo
 from .coach import StrictModel
 from .config import CLOUD_PROVIDERS
 
 QUEUE = "dictalab.ai.platform.v1"
 DLQ = QUEUE + ".dead"
-Payload = Annotated[coach.CoachInput | review.ReviewInput | tts.TtsInput, Field(discriminator="kind")]
+Payload = Annotated[coach.CoachInput | review.ReviewInput | tts.TtsInput | conversation_demo.ConversationDemoInput, Field(discriminator="kind")]
 
 
 def canonical(value):
@@ -56,6 +56,8 @@ class JobEvent(JobRequest):
 
 
 def capability_metadata(payload, settings):
+    if payload.kind == "conversation_demo":
+        return conversation_demo.metadata(settings)
     module = {"coach": coach, "review": review, "tts": tts}[payload.kind]
     instruction = getattr(module, "INSTRUCTION", "Cartesia PCM 24000 mono 16-bit WAV")
     return {"provider": "cartesia" if payload.kind == "tts" else settings.selected_provider,
@@ -73,7 +75,8 @@ def execution_fingerprint(payload, settings):
         "pool": [{k: v for k, v in p.model_dump().items() if k != "api_key"}
                  for p in settings.sources_for(settings.selected_provider)] if settings.gemini_quota_enabled else [],
         "config": {name: getattr(settings, name) for name in ("num_ctx", "num_predict", "ollama_url", "gemini_base_url",
-                    "gemini_model", "cartesia_url", "cartesia_voice", "cartesia_version")}})
+                    "gemini_model", "cartesia_url", "cartesia_voice", "cartesia_version", "model_serving_url",
+                    "demo_daily_budget_microusd", "demo_call_reservation_microusd", "demo_daily_cloud_calls")}})
 
 
 class Conflict(ValueError):
@@ -92,6 +95,11 @@ class JobStore:
                 deadline REAL NOT NULL, lease REAL, published REAL NOT NULL DEFAULT 0,
                 result TEXT, error TEXT, updated REAL NOT NULL, UNIQUE(scope,idem))""")
             db.execute("CREATE TABLE IF NOT EXISTS worker_health (id INTEGER PRIMARY KEY, heartbeat REAL NOT NULL)")
+            db.execute("""CREATE TABLE IF NOT EXISTS demo_budget (
+                day TEXT NOT NULL, scope TEXT NOT NULL, reserved INTEGER NOT NULL, calls INTEGER NOT NULL,
+                PRIMARY KEY(day,scope))""")
+            db.execute("CREATE TABLE IF NOT EXISTS demo_reservations (job_id TEXT PRIMARY KEY)")
+            db.execute("CREATE TABLE IF NOT EXISTS text_admissions (id TEXT PRIMARY KEY, deadline REAL NOT NULL)")
 
     @contextmanager
     def connect(self):
@@ -107,8 +115,9 @@ class JobStore:
     def register(self, request: JobRequest, settings):
         now = time.time()
         deadline = request.deadline.timestamp()
-        if not now < deadline <= now + 91:
-            raise ValueError("job deadline must be within 90 seconds")
+        maximum = 3600 if request.payload.kind == "conversation_demo" else 90
+        if not now < deadline <= now + maximum + 1:
+            raise ValueError("invalid job deadline")
         payload = request.payload.model_dump()
         fingerprint = execution_fingerprint(request.payload, settings)
         event = JobEvent(**request.model_dump(), payloadHash=digest(payload))
@@ -128,6 +137,21 @@ class JobStore:
             except sqlite3.IntegrityError as exc:
                 raise Conflict("job ID was reused") from exc
         return str(event.jobId)
+
+    def admit_text(self, request_id, deadline):
+        # Metadata only: no prompts, answers or credentials survive the synchronous call.
+        # An uncertain paid outcome must not be replayed after an API restart.
+        now = time.time()
+        if not now < deadline <= now + 61:
+            raise ValueError("invalid text deadline")
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("DELETE FROM text_admissions WHERE deadline<?", (now - 3600,))
+            try:
+                db.execute("INSERT INTO text_admissions(id,deadline) VALUES (?,?)", (str(request_id), deadline))
+            except sqlite3.IntegrityError:
+                return False
+        return True
 
     def pending(self):
         self.cleanup()
@@ -158,7 +182,7 @@ class JobStore:
             if event.attempt != row["attempts"] + 1:
                 return "REJECTED"
             db.execute("UPDATE jobs SET status='RUNNING',attempts=attempts+1,lease=?,updated=? WHERE id=?",
-                       (min(row["deadline"], now + 90) + 5, now, row["id"]))
+                       (min(row["deadline"], now + (3600 if event.payload.kind == "conversation_demo" else 90)) + 5, now, row["id"]))
         return "CLAIMED"
 
     def finish(self, event, result=None, *, error=None, retry=False):
@@ -194,6 +218,26 @@ class JobStore:
     def heartbeat(self):
         with self.connect() as db:
             db.execute("INSERT INTO worker_health VALUES (1,?) ON CONFLICT(id) DO UPDATE SET heartbeat=excluded.heartbeat", (time.time(),))
+
+    def reserve_demo_cloud(self, job_id, scope, settings, calls):
+        amount = settings.demo_call_reservation_microusd * calls
+        if not amount or not settings.demo_daily_budget_microusd or not settings.demo_daily_cloud_calls:
+            raise OverflowError("demo cloud budget is disabled")
+        day = datetime.now(timezone.utc).date().isoformat()
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            # Re-entering an uncertain paid execution must never issue the calls twice.
+            if db.execute("SELECT 1 FROM demo_reservations WHERE job_id=?", (job_id,)).fetchone():
+                raise OverflowError("demo reservation already consumed")
+            for owner in ("GLOBAL", scope):
+                db.execute("INSERT OR IGNORE INTO demo_budget VALUES (?,?,0,0)", (day, owner))
+                changed = db.execute("""UPDATE demo_budget SET reserved=reserved+?,calls=calls+?
+                    WHERE day=? AND scope=? AND reserved<=? AND calls<=?""",
+                    (amount, calls, day, owner, settings.demo_daily_budget_microusd - amount,
+                     settings.demo_daily_cloud_calls - calls)).rowcount
+                if changed != 1:
+                    raise OverflowError("demo budget exhausted")
+            db.execute("INSERT INTO demo_reservations VALUES (?)", (job_id,))
 
     def metrics(self):
         self.cleanup()

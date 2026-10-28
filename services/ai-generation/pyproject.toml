@@ -30,4 +30,4 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.setuptools.package-data]
-app = ["*.lua"]
+app = ["*.lua", "sql/*.sql"]

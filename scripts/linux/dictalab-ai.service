@@ -1,0 +1,36 @@
+[Unit]
+Description=DictaLab AI API
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+User=dictalab-ai
+Group=dictalab-ai
+WorkingDirectory=/opt/dictalab/services/current/ai
+EnvironmentFile=/etc/dictalab/ai.env
+Environment=PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONDONTWRITEBYTECODE=1
+Environment=DICTALAB_AI_REGISTRY_DIR=/opt/dictalab/services/current/artifacts/prompts
+Environment=DICTALAB_AI_JOBS_DATABASE=/var/lib/dictalab-ai/jobs.sqlite3
+ExecStart=/opt/dictalab/services/current/venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8091
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=650
+KillMode=mixed
+UMask=0077
+StateDirectory=dictalab-ai
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dictalab-ai
+InaccessiblePaths=-/var/lib/dictalab -/etc/dictalab/app.env -/etc/dictalab/progress.env
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+MemoryMax=256M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

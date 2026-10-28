@@ -2,8 +2,11 @@
 
 ## Phạm vi
 
-Áp dụng local, chưa deploy production. Java và Python dùng cùng database PostgreSQL
-của ứng dụng; không có database tài khoản thứ hai hay API HTTP trả key.
+Áp dụng local, chưa deploy production. Có hai cấu hình: `legacy` giữ registry
+trong database Core để rollback; `private` chuyển registry sang database do AI sở hữu.
+Runtime mới của Core chỉ gọi HTTP có xác thực, không nhận master key hay provider key.
+Không có API HTTP trả key. Phần cấu hình chung bên dưới mô tả luồng legacy;
+luồng private có quy trình riêng ở cuối tài liệu.
 Registry hỗ trợ `gemini`, `deepseek`, `openai_compatible`. Chọn nền tảng tường minh;
 không tự chuyển từ Gemini miễn phí sang DeepSeek tính phí.
 
@@ -36,6 +39,8 @@ Java dùng datasource ứng dụng hiện có, không dùng DSN Python. Trong Co
 nhận DSN container; Redis dùng địa chỉ `redis:6379`, Java host dùng `127.0.0.1:16379`.
 DB từ xa cần `sslmode=verify-full` và CA tin cậy; ngoại lệ `postgres` chỉ dành cho
 network Compose local riêng của repository, không dùng ngoại lệ này cho máy chủ từ xa.
+
+Đây là chế độ legacy. Không cấp datasource Core cho runtime AI trong chế độ private.
 
 Giữ master key ngoài DB và sao lưu riêng trong nơi bảo vệ. Mất key thì không giải mã
 được API key. Backup DB sau import chứa ciphertext, nhưng vẫn có dữ liệu ứng dụng riêng tư.
@@ -155,6 +160,98 @@ Task này không restart dịch vụ đang chạy, không sinh dữ liệu, khô
 Nguồn: [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/),
 [JSON Output](https://api-docs.deepseek.com/guides/json_mode/),
 [Rate Limit & Isolation](https://api-docs.deepseek.com/quick_start/rate_limit/).
+
+## Registry riêng cho AI microservice (28/10/2026)
+
+### Chuẩn bị và sao chép
+
+1. Backup Core bằng `pg_dump -Fc`, kiểm tra danh sách archive và thử restore vào
+   database tạm mới. Ghi nhận parity trước khi đổi runtime. Không ghi đè Core.
+2. Quản trị PostgreSQL tạo database riêng, ví dụ `dictalab_ai`, owner riêng
+   không superuser/createdb/createrole/replication/bypassrls hoặc membership
+   có quyền cao. Runtime dùng role khác, không có bất kỳ role membership nào.
+   Thu hồi PUBLIC CONNECT/CREATE và chỉ cấp quyền cần thiết. Không dùng role
+   quản trị PostgreSQL để chạy service.
+3. Tạo file quản trị bảo vệ `data/microservices/ai-registry-owner.env` với
+   `AI_PROVIDER_DATABASE_URL` của owner và `AI_PROVIDER_ENCRYPTION_KEY` mới,
+   khác master legacy. File runtime `ai.env` dùng DSN read-only và cùng master
+   AI mới. Giữ DSN/key trong file có ACL hạn chế, không truyền qua đối số CLI.
+4. Khởi tạo schema và copy bằng các lệnh từ gốc repository:
+
+   ```powershell
+   python tools/ai-eval/provider_accounts.py init-private --env-file data/microservices/ai-registry-owner.env
+   python tools/ai-eval/provider_accounts.py copy-registry --env-file .env --target-env data/microservices/ai-registry-owner.env
+   ```
+
+   CLI dùng đúng file tường minh, không lấy biến hoặc nội suy credentials từ
+   process cha. Init chỉ nhận database rỗng hoặc schema có checksum đúng;
+   migration AI độc lập tại `services/ai-generation/app/sql/001_provider_registry.sql`.
+   Không chạy lại Flyway Core trong database AI.
+5. Copy không đổi source/config. Nó mã hóa lại theo master mới, bảo toàn flags
+   account trong pool đang tắt, tạo backup mã hóa có ACL bảo vệ và giải mã kiểm
+   chứng trước import. Đích khác dữ liệu bị từ chối; đích giống hệt là no-op.
+   Source thay đổi trong khi copy khiến transaction đích rollback. Tạm dừng
+   chỉnh registry trong cửa sổ copy/cutover để tránh snapshot lỗi thời.
+6. Owner cấp runtime `USAGE` schema và `SELECT` trên ba bảng
+   `ai_provider_pools`, `ai_provider_accounts`, `ai_registry_schema`; không cấp
+   INSERT/UPDATE/DELETE/TRUNCATE/CREATE hay quyền SET ROLE. Thu hồi quyền
+   PUBLIC và không cấp AI đọc bảng Core. Core runtime không được CONNECT DB AI
+   hoặc đọc registry legacy; giữ role quản trị migration ngoài runtime.
+
+AI runtime đặt `AI_PROVIDER_CONFIG_SOURCE=database`,
+`DICTALAB_AI_REGISTRY_OWNERSHIP=private`, DSN read-only và master riêng.
+Startup xác minh schema/checksum, role hạn chế, không membership hoặc quyền ghi
+registry. Sai điều kiện thì từ chối cloud request, không lùi về key legacy.
+CLI upsert dùng file owner; không cấp owner file cho API/worker.
+
+### Chạy và cutover local
+
+Core dùng `DICTALAB_AI_TEXT_TRANSPORT=python`, model/provider tường minh và các
+mode TTS/coach/review đã chọn. File Core không có provider key, registry DSN
+hay master. AI và Core chia sẻ internal service token; Model Serving dùng token
+riêng. Progress có DB/role riêng. Bật caller budget/rate limit phù hợp ở Core;
+ngân sách cloud demo mặc định 0. Không public cổng nội bộ.
+
+```powershell
+python scripts/run-service.py core --env-file data/microservices/core.env
+python scripts/run-service.py ai --env-file data/microservices/ai.env
+python scripts/run-service.py worker --env-file data/microservices/ai.env
+python scripts/run-service.py progress --env-file data/microservices/progress.env
+```
+
+Build JAR Core/Progress trước. Launcher không tự đọc `.env` chung, không thừa
+kế application secrets/proxy/JVM injection từ process cha và kiểm tra biến theo
+service. API/worker phải dùng cùng SQLite path tuyệt đối. `run-local.ps1` và
+`run-model-demo.ps1` là launcher legacy, không chứng minh cách ly credentials.
+
+Local đã copy 2 pools/4 accounts, kiểm backup/parity, quyền runtime và Core
+isolation. Core đã backup/restore kiểm chứng và migrate V41→V43 với checksum
+Flyway. Cả ba service + worker đã health PASS, route không xác thực trả 401.
+Đây là cấu hình development; chưa có artifact hội thoại production được duyệt.
+
+### Restore và rollback
+
+Backup copy là envelope `v1:`, dùng master AI mới và AAD
+`id=registry-copy, platform=gemini, account_id=operator, model=backup, endpoint=local`.
+Giải mã chỉ trong bộ nhớ qua `app.provider_registry.decrypt_key`; không in payload.
+Tạo database/owner phục hồi riêng, `init-private`, truyền payload trong bộ nhớ vào
+`tools/ai-eval/provider_accounts.py` hàm `apply_accounts`, rồi so `snapshot()`.
+Smoke dưới đây tự thực hiện quy trình này bằng dữ liệu giả.
+
+Để rollback, drain công việc và khôi phục cả cấu hình legacy bảo vệ đã xác minh
+cùng mode legacy; khởi động lại Core trước khi tắt gateway AI. Chỉ đổi flag trên
+file Core đã bỏ credentials là chưa đủ. Không xóa registry AI/Core hoặc down
+migration. Đối chiếu các cập nhật registry sau copy trước khi quay lại bản cũ.
+Root `.env` local giữ cho operator/rollback, không cấp cho runtime mới.
+
+```powershell
+python -X utf8 tools/ai-eval/registry_smoke.py
+python -X utf8 -m pytest -q tools/ai-eval/test_provider_accounts.py tools/ai-eval/test_service_launcher.py
+```
+
+Smoke dùng PostgreSQL Docker riêng, kiểm copy/restore/parity, disabled flags,
+checksum, role memberships, runtime read-only, Core isolation và từ chối đích
+không an toàn. Không gọi API trả phí. Việc triển khai VPS vẫn là mốc riêng.
 
 ## Khôi phục
 

@@ -1,0 +1,63 @@
+name: Progress service checks
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: ['codex/**']
+    paths:
+      - 'services/progress/**'
+      - 'src/**'
+      - 'docs/progress-*.json'
+      - 'docs/progress-*.yaml'
+      - 'compose.yaml'
+      - '.env.example'
+      - 'pom.xml'
+      - '.github/workflows/progress.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contracts-and-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Verify Progress against PostgreSQL 18 and RabbitMQ
+        run: mvn -f services/progress/pom.xml --batch-mode --no-transfer-progress verify
+      - name: Verify Core outbox and packaged service recovery
+        run: >-
+          mvn --batch-mode --no-transfer-progress
+          -Ddictalab.testcontainers=true
+          -Ddictalab.testcontainers.postgres-image=postgres:18-alpine
+          -Dspring.profiles.active=postgres-test
+          -Dtest=ProgressOutboxIntegrationTest,ProgressDeliveryIntegrationTest,ProgressClientTest test
+      - name: Validate image and Compose packaging
+        env:
+          POSTGRES_DB: test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test-only
+          RABBITMQ_USER: test
+          RABBITMQ_PASSWORD: test-only
+          PROGRESS_DB_PASSWORD: test-only
+          PROGRESS_SERVICE_TOKEN: ci-progress-test-token-at-least-32-chars
+        run: |
+          docker compose --profile messaging --profile progress config --quiet
+          docker build -t dictalab-progress-check services/progress
+          git diff --check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: progress-service-evidence
+          retention-days: 7
+          path: |
+            services/progress/target/surefire-reports/
+            target/surefire-reports/
+            target/readiness/progress-delivery/
+          if-no-files-found: error

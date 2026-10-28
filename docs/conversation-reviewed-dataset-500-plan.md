@@ -1,6 +1,68 @@
 # Thu thập dữ liệu đã duyệt và train Qwen3.5-4B
 
+**Mới nhất 24/10: chủ dự án áp dụng low B1.** A1/A2/B1 low, B2 high mặc định;
+thinking/cache/16.384 token/240 giây giữ nguyên. Tiếp nối tại
+`data/fine-tuning/reviewed-500-v14-low-b1-20261024`, snapshot 337 bài đạt/537
+ứng viên từ v13, không đổi hash hoặc quyết định/quota cũ. Artifact cache v12
+khóa cấu hình mới. Tổng 150/150/150/50, 400/48/52, Web chốt và audit trước
+SFT giữ nguyên; không Gemini/Codex duyệt riêng/shutdown/deploy. Các quyết định
+giữ B1 high bên dưới là lịch sử. Xem
+[cấu hình hiện tại](conversation-collection-v9-improvements-20261024.md).
+
+**Mới nhất 24/10: A1/A2/B1 mỗi mức 150 bài, B2 50 bài.** Vẫn tổng
+400 train / 48 validation / 52 test; từng tập lần lượt A1/A2/B1/B2 là
+122/121/121/36, 14/15/13/6, 14/14/16/8. Giữ cả 297 bài đạt/489 ứng viên
+và 8 bài test B2 đã có, không chuyển tập hoặc sửa manifest cũ. Tiếp nối tại
+`data/fine-tuning/reviewed-500-v13-reduced-b2-20261024` bằng preset
+`--total-articles 500 --reduced-b2`. Thử B1 low riêng trên 8 cặp train ngoài
+SFT; bộ chính vẫn A1/A2 low, B1/B2 high cho tới quyết định tiếp theo.
+Web chốt đầy đủ, cache và concurrency 2 giữ nguyên; không Gemini/shutdown.
+Phân bổ đều bên dưới hết hiệu lực. Xem
+[phân bổ và pilot B1](conversation-collection-v9-improvements-20261024.md).
+
+**Mới nhất 24/10: tối ưu prefix cache DeepSeek.** Chiến dịch tiếp nối
+`data/fine-tuning/reviewed-500-v12-cache-web-20261024` giữ 254 bài/427 ứng viên;
+artifact cache v11 đặt schema có ID sau hướng dẫn/payload để prefix chung ổn định,
+không đổi validation hoặc manifest cũ. Đo cache hit/miss bằng usage thật, không
+warm-up/replay. Giữ low A1/A2, hai teacher, Web chốt, 400/48/52, audit trước SFT,
+không Gemini/Codex duyệt riêng/shutdown. Xem
+[cache và giá hiện tại](conversation-collection-v9-improvements-20261024.md).
+
+**Mới nhất 24/10: chủ dự án áp dụng low cho A1/A2.** B1/B2 giữ high mặc định.
+Chiến dịch `data/fine-tuning/reviewed-500-v11-low-web-20261024` tiếp nối 249 bài
+đạt/419 ứng viên từ v10-web, không sửa hash hoặc quyết định cũ. Giữ kiểm tra
+cứng + Web chốt, DeepSeek song song 2, mục tiêu 400/48/52 và audit trước SFT;
+không Gemini mới, không Codex duyệt độc lập, không shutdown. Xem
+[cấu hình hiện tại](conversation-collection-v9-improvements-20261024.md).
+
+**Quyết định mới nhất 24/10: bỏ Codex duyệt từng bài.** Bài mới được nhận sau
+kiểm tra cứng và Web PASS có đủ bằng chứng; false/null loại, UNKNOWN chặn và
+không replay. Không viết independent notes hay override Web. Chiến dịch tiếp nối
+`data/fine-tuning/reviewed-500-v10-web-20261024` giữ 244 bài/411 ứng viên cùng mọi
+quyết định cũ; manifest/hash cũ giữ nguyên. Export ghi đúng reviewer từng bài.
+Tổng 400/48/52, high, DeepSeek song song 2, Web theo cặp, audit trước SFT,
+không Gemini mới và không shutdown vẫn áp dụng. Các yêu cầu Codex duyệt bài
+bên dưới là lịch sử. Xem [luồng hiện tại](conversation-collection-v9-improvements-20261024.md).
+
 Ngày chốt: 23/10/2026. Đây là yêu cầu cho chiến dịch mới; các báo cáo benchmark cũ giữ nguyên.
+
+**Cập nhật sau pilot 24/10/2026:** chủ dự án đã hủy tắt máy; không shutdown hoặc
+arm watchdog khi quota/lỗi. Bộ chính giữ thinking mặc định high, thêm
+`--teacher-concurrency 2`; low A1/A2 đạt 7/8 so với high 8/8 trong pilot riêng,
+chưa áp dụng. Web theo cặp vẫn nối tiếp, Codex duyệt độc lập. Mục tiêu 400/48/52
+và audit trước SFT giữ nguyên. Các quyền tắt máy bên dưới là lịch sử đã bị thay thế.
+Chi tiết tại [kết quả pilot](conversation-collection-v9-improvements-20261024.md).
+
+**Quyết định mới nhất 24/10/2026:** tổng **500 bài**, gồm **400 train + 48 validation
++ 52 test**, mỗi mức A1–B2 là 100/12/13. Dừng gọi Gemini mới; giữ dữ liệu đã duyệt.
+Chiến dịch hiện tại: `data/fine-tuning/reviewed-500-v9-deepseek-20261024`, snapshot
+185 bài/311 ứng viên, trần 1.500 cộng dồn. Chấm 2 bài trong mỗi hội thoại Web mới
+đã thử thật; Codex vẫn duyệt độc lập. Đủ dữ liệu và audit đạt thì chạy SFT/LoRA thật.
+Chủ dự án cấp lại quyền tắt máy khi hết quota hoặc không thể tạo thêm dữ liệu:
+lưu checkpoint/báo cáo/flush trước, dừng lịch rồi `shutdown.exe /s /f /t 60`, không
+hỏi lại. Không tắt khi chỉ vừa đủ số bài, phải tiến hành audit/SFT.
+Xem [cập nhật vận hành](conversation-collection-v9-improvements-20261024.md).
+Các mục 700 bài, hai teacher và hủy tắt máy bên dưới là lịch sử đã được thay thế.
 
 **Thu thập mới sau vòng thử v8:** chủ dự án xác nhận làm đủ 700 bài theo bảng bên
 dưới. Hai tài khoản ChatGPT Web dùng hai profile độc lập, mỗi profile một tab.

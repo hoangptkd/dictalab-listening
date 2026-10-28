@@ -51,6 +51,35 @@ class GeminiClientTest {
 
     @AfterEach void stop() { server.stop(0); }
 
+    @Test void remoteTextSkipsCoreRegistryAndQuotaAndNeverFallsBack() {
+        var registry = org.mockito.Mockito.mock(AiProviderRegistry.class);
+        var platform = org.mockito.Mockito.mock(AiPlatformClient.class);
+        org.mockito.Mockito.when(platform.textConfigured()).thenReturn(true);
+        org.mockito.Mockito.when(platform.completeText("Review", "Evidence", "ai-owned-model", java.time.Duration.ofSeconds(60)))
+                .thenReturn(json.valueToTree(Map.of("ok", true)));
+        client.configureRegistry(registry);
+        client.configureTextTransport(platform, "python", "ai-owned-model");
+        assertThat(client.configured()).isTrue();
+        assertThat(client.model()).isEqualTo("ai-owned-model");
+        assertThat(client.completeJson("Review", "Evidence").path("ok").asBoolean()).isTrue();
+        org.mockito.Mockito.verifyNoInteractions(registry);
+        assertThat(requests.get()).isZero();
+        org.mockito.Mockito.when(platform.completeText("Review", "Evidence", "ai-owned-model", java.time.Duration.ofSeconds(60)))
+                .thenThrow(new IllegalStateException("unknown outcome secret-value"));
+        assertThatThrownBy(() -> client.completeJson("Review", "Evidence"))
+                .isInstanceOf(GeminiClient.Failure.class).hasMessageNotContaining("secret-value");
+        assertThat(requests.get()).isZero();
+        org.mockito.Mockito.verifyNoInteractions(registry);
+    }
+
+    @Test void invalidRemoteTransportFailsConfiguration() {
+        var platform = org.mockito.Mockito.mock(AiPlatformClient.class);
+        assertThatThrownBy(() -> client.configureTextTransport(platform, "python", "model"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> client.configureTextTransport(platform, "unknown", "model"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     @Test void conversationOverrideDoesNotChangeTheAssessmentModelAndPreservesVietnamese() {
         assertThat(client.completeJson("Tạo câu nghe.", "{\"scenario\":\"Hỏi đường\"}", "gemini-3.5-flash-lite").path("ok").asBoolean()).isTrue();
         assertThat(received.get().path("model").asText()).isEqualTo("gemini-3.5-flash-lite");

@@ -56,6 +56,7 @@ public class PracticeService {
     private final Clock clock;
     private final boolean learningEnabled;
     private final PremiumAccessService premium;
+    private final ProgressOutbox progress;
 
     @org.springframework.beans.factory.annotation.Value("${dictalab.practice.local-grading.enabled:true}")
     private boolean localGradingEnabled;
@@ -74,6 +75,7 @@ public class PracticeService {
                            ListeningAssessmentService assessmentService,
                            JdbcTemplate db,
                            PremiumAccessService premium,
+                           ProgressOutbox progress,
                            @org.springframework.beans.factory.annotation.Value("${dictalab.learning.enabled:false}") boolean learningEnabled) {
         this.lessonRepository = lessonRepository;
         this.previewWordRepository = previewWordRepository;
@@ -89,6 +91,7 @@ public class PracticeService {
         this.assessmentService = assessmentService;
         this.db = db;
         this.premium = premium;
+        this.progress = progress;
         this.clock = Clock.systemUTC();
         this.learningEnabled = learningEnabled;
     }
@@ -568,6 +571,7 @@ public class PracticeService {
         Instant completedAt = now();
         session.complete(completedAt, practiceSeconds, score.firstAttemptAccuracy(), score.finalAccuracy(),
                 knownMissed, unknown, score.overallScore());
+        progress.completed(session);
         ApiDtos.LessonReview review = toLessonReview(session, totalWords, sentenceReviews);
         return toResult(session, review);
     }

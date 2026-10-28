@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     ai_provider_config_source: str = Field(default="env", validation_alias="AI_PROVIDER_CONFIG_SOURCE")
     ai_provider_database_url: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_DATABASE_URL")
     ai_provider_encryption_key: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_ENCRYPTION_KEY")
+    registry_ownership: str = "legacy"
     cloud_providers: list[GeminiSource] = Field(default_factory=list, repr=False)
     registry_pools: dict = Field(default_factory=dict, repr=False, exclude=True)
     gemini_providers: list[GeminiSource] = Field(default_factory=list, repr=False,
@@ -103,6 +104,14 @@ class Settings(BaseSettings):
     cartesia_voice: str = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
     cartesia_version: str = "2026-08-14"
     http_max_connections: int = 10
+    model_demo_enabled: bool = False
+    text_gateway_enabled: bool = False
+    model_serving_url: str = "http://127.0.0.1:8093"
+    model_serving_token: str = Field(default="", repr=False)
+    # Conservative admission reservations, not provider invoices. Zero disables cloud demo.
+    demo_daily_budget_microusd: int = Field(default=0, ge=0)
+    demo_call_reservation_microusd: int = Field(default=0, ge=0)
+    demo_daily_cloud_calls: int = Field(default=0, ge=0)
 
     # Production mode: when true, service_token is mandatory and startup
     # fails if it is empty or contains unsafe characters.
@@ -115,9 +124,13 @@ class Settings(BaseSettings):
         super().__init__(**values)
         if self.ai_provider_config_source not in ("env", "database"):
             raise ValueError("invalid provider configuration source")
+        if self.registry_ownership not in ("legacy", "private") or (
+                self.registry_ownership == "private" and self.ai_provider_config_source != "database"):
+            raise ValueError("private registry ownership requires database configuration")
         if self.ai_provider_config_source == "database":
             from .provider_registry import load_registry
-            self.registry_pools, self.cloud_providers = load_registry(self.ai_provider_database_url, self.ai_provider_encryption_key)
+            self.registry_pools, self.cloud_providers = load_registry(self.ai_provider_database_url, self.ai_provider_encryption_key,
+                **({"require_private": True} if self.registry_ownership == "private" else {}))
             self.gemini_providers = [p for p in self.cloud_providers if p.platform == "gemini"]
             if "gemini" in self.registry_pools:
                 policy = self.registry_pools["gemini"]
@@ -157,6 +170,18 @@ class Settings(BaseSettings):
             raise ValueError("job retention must be between 60 and 86400 seconds")
         if self.http_max_connections < 0:
             raise ValueError("invalid HTTP pool limit")
+        if self.model_demo_enabled:
+            uri = urlsplit(self.model_serving_url)
+            if (uri.scheme != "http" or uri.hostname not in ("127.0.0.1", "localhost", "::1")
+                    or uri.username or uri.password or uri.query or uri.fragment or uri.path not in ("", "/")
+                    or not 32 <= len(self.service_token) <= 256
+                    or not all(33 <= ord(c) <= 126 for c in self.service_token)
+                    or not 32 <= len(self.model_serving_token) <= 256
+                    or not all(33 <= ord(c) <= 126 for c in self.model_serving_token)):
+                raise ValueError("CPU Model Serving requires loopback and a strong service token")
+        if self.text_gateway_enabled and (not 32 <= len(self.service_token) <= 256
+                or not all(33 <= ord(c) <= 126 for c in self.service_token)):
+            raise ValueError("text gateway requires a strong service token")
         for value, active in ((self.gemini_base_url, self.selected_provider == "gemini"),
                 (self.ollama_url, self.selected_provider == "ollama"),
                 (self.cartesia_url, bool(self.cartesia_api_key))):

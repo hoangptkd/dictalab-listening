@@ -1,5 +1,59 @@
 # Thu thập 700 bài với hai tài khoản Web
 
+**Mới nhất 24/10: áp dụng low B1 theo xác nhận chủ dự án.** Dùng chiến dịch
+`data/fine-tuning/reviewed-500-v14-low-b1-20261024`, tiếp nối 337 bài đạt/537
+ứng viên với artifact cache v12; A1/A2/B1 low, B2 high mặc định. Giữ nguyên
+quyết định, hash và quota cũ; Web theo cặp nối tiếp, chỉ đổi account khi quota
+rõ, không replay/split UNKNOWN. Tổng 150/150/150/50, không Codex duyệt riêng,
+Gemini hay shutdown. Xem [cấu hình mới](conversation-collection-v9-improvements-20261024.md).
+
+**Mới nhất 24/10: giảm B2 còn 50, A1/A2/B1 mỗi mức 150 bài.** Tổng vẫn
+400/48/52; tiếp nối `data/fine-tuning/reviewed-500-v13-reduced-b2-20261024`
+từ 297 bài đạt/489 ứng viên, giữ hash/quyết định/trạng thái quota và 8 test B2.
+Pilot B1 low riêng chỉ dùng train, không bù SFT; bộ chính chưa đổi B1 high.
+Web theo cặp và một request mỗi lúc; chỉ đổi account khi quota rõ, không replay.
+Không Codex duyệt riêng/Gemini/shutdown. Các phân bổ đều cũ hết hiệu lực. Xem
+[phân bổ và pilot mới](conversation-collection-v9-improvements-20261024.md).
+
+**Mới nhất 24/10: prefix cache DeepSeek.** Dùng chiến dịch tiếp nối
+`data/fine-tuning/reviewed-500-v12-cache-web-20261024`, giữ 254 bài/427 ứng viên,
+hash, quyết định và trạng thái quota. Cache tự động, schema có ID đặt cuối khi
+artifact opt-in; kiểm chứng bằng usage thật, không warm-up hoặc gửi lại.
+Giữ low A1/A2, hai teacher, một Web request theo cặp mỗi lúc; đổi Web account chỉ
+khi quota rõ. UNKNOWN không replay, không Codex duyệt từng bài, không Gemini mới,
+không shutdown/watchdog. Mục tiêu vẫn tổng 500 rồi audit/export/SFT. Xem
+[cấu hình cache](conversation-collection-v9-improvements-20261024.md).
+
+**Mới nhất 24/10: áp dụng low A1/A2 theo yêu cầu chủ dự án**, B1/B2 high mặc định.
+Chiến dịch tiếp nối `data/fine-tuning/reviewed-500-v11-low-web-20261024` giữ
+249 bài đạt/419 ứng viên, quota, lịch sử gửi và quyết định cũ. Các quy tắc Web
+theo cặp nối tiếp, đổi account chỉ khi quota rõ, chống replay, Web chốt sau
+kiểm tra cứng và không shutdown giữ nguyên. Xem
+[cấu hình hiện tại](conversation-collection-v9-improvements-20261024.md).
+
+**Mới nhất 24/10: chủ dự án bỏ Codex duyệt từng bài.** Chuyển sang bản tiếp nối
+`data/fine-tuning/reviewed-500-v10-web-20261024`, giữ 244 bài đạt/411 ứng viên và
+mọi quyết định cũ. Bài mới qua kiểm tra cứng + Web PASS đầy đủ thì tự chốt với
+reviewer Web; false/null loại, thiếu bằng chứng/UNKNOWN chặn, không tự replay.
+Không cần independent notes hoặc override. Giữ Web theo cặp, hai DeepSeek đồng
+thời, high, không Gemini mới, không shutdown; tổng 500 = 400/48/52 rồi audit/SFT.
+Quy tắc chuyển tài khoản và chống gửi trùng giữ nguyên. Các yêu cầu Codex duyệt
+từng bài phía dưới là lịch sử. Xem [luồng hiện tại](conversation-collection-v9-improvements-20261024.md).
+
+**Mới nhất 24/10 sau pilot:** tổng vẫn 500 bài; high mặc định + hai DeepSeek
+in-flight bằng `--teacher-concurrency 2`, Web theo cặp nối tiếp, không Gemini mới.
+Low A1/A2 chưa áp dụng vì pilot Codex đạt 7/8 so với high 8/8. Chủ dự án đã hủy
+tắt máy: không shutdown/watchdog khi quota hoặc lỗi; checkpoint và báo nguyên nhân.
+Các quyền shutdown bên dưới chỉ là lịch sử. Xem [báo cáo v9](conversation-collection-v9-improvements-20261024.md).
+
+**Thay thế ngày 24/10:** chủ dự án chốt tổng **500 bài: 400/48/52**, dừng Gemini,
+chấm Web theo cặp trong hội thoại mới sau phép thử thực tế. Chiến dịch hiện tại
+`data/fine-tuning/reviewed-500-v9-deepseek-20261024`; đủ dữ liệu/audit thì SFT.
+Một Web hết quota vẫn chuyển tài khoản; cả hai hết quota hoặc không thể thu thập
+thêm thì checkpoint, báo cáo, dừng lịch và tắt máy theo quyền mới, không chờ qua đêm.
+Chi tiết mới nhất tại [báo cáo v9](conversation-collection-v9-improvements-20261024.md).
+Các quyết định trái với mục này bên dưới chỉ còn là lịch sử.
+
 **Cập nhật 24/10/2026:** chủ dự án yêu cầu dừng lịch; automation đã `PAUSED`,
 lô cuối đã kết thúc và không tự sinh thêm. Cấu hình v9 cho chiến dịch mới cùng
 phân tích lỗi nằm trong [báo cáo cải thiện](conversation-collection-v9-improvements-20261024.md).

@@ -24,6 +24,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  progress:
+    uses: ./.github/workflows/progress.yml
+
   ai-platform:
     uses: ./.github/workflows/ai-platform.yml
 
@@ -63,6 +66,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dependency-scan
+          retention-days: 7
           path: |
             target/runtime-dependencies.txt
             target/dependency-scan.json
@@ -78,6 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: unit-test-reports
+          retention-days: 7
           path: target/surefire-reports/
 
       - name: Save verified application
@@ -85,6 +90,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: application
+          retention-days: 14
           path: target/english-dictation-0.1.0-SNAPSHOT.jar
           if-no-files-found: error
 
@@ -130,6 +136,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: postgres-test-reports-${{ matrix.postgres }}
+          retention-days: 7
           path: target/surefire-reports/
 
   reliability:
@@ -162,6 +169,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: reliability-${{ matrix.postgres }}
+          retention-days: 7
           path: |
             target/reliability/surefire-reports/
             target/reliability/worker-recovery-*/
@@ -173,8 +181,8 @@ jobs:
           if-no-files-found: error
 
   deploy:
-    needs: [test-build, postgres-tests, reliability, ai-platform]
-    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main'
+    needs: [test-build, postgres-tests, reliability, ai-platform, progress]
+    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main' && vars.PRODUCTION_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

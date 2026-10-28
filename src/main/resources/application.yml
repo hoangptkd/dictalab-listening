@@ -160,6 +160,17 @@ dictalab:
     encryption-key: ${PAYMENT_ENCRYPTION_KEY:}
     bootstrap-email: ${PAYMENT_BOOTSTRAP_EMAIL:}
     policy-version: ${PAYMENT_POLICY_VERSION:MANUAL_REVIEW_V1}
+
+  model-demo:
+    enabled: ${DICTALAB_MODEL_DEMO_ENABLED:false}
+    poll-delay-ms: 2000
+  progress:
+    enabled: ${DICTALAB_PROGRESS_ENABLED:false}
+    read-mode: ${DICTALAB_PROGRESS_READ_MODE:legacy}
+    base-url: ${DICTALAB_PROGRESS_BASE_URL:http://127.0.0.1:8092}
+    service-token: ${PROGRESS_SERVICE_TOKEN:}
+    timeout-ms: ${DICTALAB_PROGRESS_TIMEOUT_MS:2000}
+    dispatch-delay-ms: 5000
   operational-limits-enabled: ${DICTALAB_OPERATIONAL_LIMITS_ENABLED:false}
   billing:
     enabled: ${DICTALAB_BILLING_ENABLED:false}
@@ -181,6 +192,8 @@ dictalab:
       base-url: ${DICTALAB_AI_PLATFORM_BASE_URL:http://127.0.0.1:8091}
       service-token: ${DICTALAB_AI_SERVICE_TOKEN:}
       text-provider: ${DICTALAB_AI_TEXT_PROVIDER:gemini}
+      text-transport: ${DICTALAB_AI_TEXT_TRANSPORT:legacy}
+      text-model: ${DICTALAB_AI_TEXT_MODEL:gemini-3.5-flash-lite}
       timeout-seconds: ${DICTALAB_AI_JOB_TIMEOUT_SECONDS:80}
       tts: ${DICTALAB_AI_TTS_MODE:legacy}
       coach: ${DICTALAB_AI_COACH_MODE:legacy}

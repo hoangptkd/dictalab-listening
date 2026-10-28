@@ -8,12 +8,13 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from urllib.parse import quote
+from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services/ai-generation"))
 from dotenv import dotenv_values
 from app.config import GeminiSource
-from app.provider_registry import connect, load_registry, save_pool, save_source, encrypt_key
+from app.provider_registry import connect, load_registry, save_pool, save_source, encrypt_key, decrypt_key
 
 
 async def probe(config, platform, generate=False):
@@ -81,8 +82,59 @@ def apply_accounts(dsn, master, payload):
     return load_registry(dsn, master)
 
 
-def import_env(path, payload):
-    config = environment(path)
+def copy_registry(source, target):
+    """Copy to an initialized private DB. Config files and source rows are never changed."""
+    from app.registry_migration import identity, snapshot, verify_private
+    source_dsn, target_dsn = source["AI_PROVIDER_DATABASE_URL"], target["AI_PROVIDER_DATABASE_URL"]
+    source_master, target_master = source["AI_PROVIDER_ENCRYPTION_KEY"], target["AI_PROVIDER_ENCRYPTION_KEY"]
+    if source_master == target_master:
+        raise ValueError("private registry requires an independent encryption key")
+    with connect(source_dsn) as origin:
+        origin.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+        source_id = identity(origin)
+        expected = snapshot(origin, source_master)
+    if not expected["pools"]:
+        raise ValueError("source registry is empty")
+    with connect(target_dsn, readonly=False) as destination:
+        target_id = identity(destination)
+        if source_id["role"] == target_id["role"] or all(
+                source_id[key] == target_id[key] for key in ("database", "server", "port")):
+            raise ValueError("target must have an independent database and role")
+        verify_private(destination)
+        destination.execute("LOCK TABLE ai_provider_pools,ai_provider_accounts IN EXCLUSIVE MODE")
+        current = snapshot(destination, target_master)
+        if current["pools"] or current["accounts"]:
+            if current != expected:
+                raise ValueError("target contains a different registry; nothing overwritten")
+            return {"copied": False, "pools": len(expected["pools"]), "accounts": len(expected["accounts"])}
+        # A protected encrypted backup is written and decrypted for verification before import.
+        backup = ROOT / "data/backups" / ("ai-registry-copy-" + uuid4().hex + ".encrypted")
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        backup_id = dict(id="registry-copy", platform="gemini", account_id="operator", model="backup", endpoint="local")
+        envelope = encrypt_key(target_master, backup_id, json.dumps(expected, ensure_ascii=False, sort_keys=True))
+        replace_env(backup, envelope)
+        if json.loads(decrypt_key(target_master, backup_id | dict(api_key_ciphertext=backup.read_text(encoding="utf-8")))) != expected:
+            raise ValueError("encrypted backup verification failed")
+        for pool in expected["pools"]:
+            save_pool(destination, pool["platform"], pool["default_model"], pool["global_rpm_limit"],
+                pool["global_rpd_limit"], pool["enabled"])
+        for account in expected["accounts"]:
+            save_source(destination, target_master, account)
+        if snapshot(destination, target_master) != expected:
+            raise ValueError("copied registry verification failed")
+        # A concurrent operator edit must prevent treating an obsolete snapshot as ready for cutover.
+        with connect(source_dsn) as fresh:
+            fresh.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            if snapshot(fresh, source_master) != expected:
+                raise ValueError("source changed during copy; target transaction rolled back")
+    with connect(target_dsn) as verified:
+        if snapshot(verified, target_master) != expected:
+            raise ValueError("post-commit registry verification failed")
+    return {"copied": True, "pools": len(expected["pools"]), "accounts": len(expected["accounts"])}
+
+
+def import_env(path, payload, config=None):
+    config = environment(path) if config is None else config
     if config.get("AI_PROVIDER_CONFIG_SOURCE") == "database":
         raise ValueError("Already migrated; use upsert")
     sources = json.loads(config.get("GEMINI_PROVIDERS_JSON", "[]"))
@@ -130,13 +182,26 @@ def import_env(path, payload):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command",choices=("import-env","upsert","list","probe"))
-    parser.add_argument("--env-file",type=Path,default=ROOT/".env")
+    parser.add_argument("command",choices=("import-env","upsert","list","probe","init-private","copy-registry"))
+    parser.add_argument("--env-file",type=Path)
     parser.add_argument("--platform",choices=("gemini","deepseek","openai_compatible"),default="gemini")
     parser.add_argument("--generate",action="store_true",help="Probe only: send at most one bounded paid generation; never retry")
+    parser.add_argument("--target-env",type=Path,help="Copy only: explicit protected management config for the private target")
     args = parser.parse_args()
     try:
-        config = environment(args.env_file)
+        # An explicit file always wins over ambient credentials, including for later upserts/probes.
+        path = args.env_file or ROOT/".env"
+        config = dict(dotenv_values(path, interpolate=False)) if args.env_file or args.command in ("init-private", "copy-registry") else environment(path)
+        if args.command == "init-private":
+            from app.registry_migration import initialize
+            initialize(config["AI_PROVIDER_DATABASE_URL"])
+            print("Private AI registry schema verified; no account data changed.")
+            return
+        if args.command == "copy-registry":
+            if args.target_env is None or path.resolve() == args.target_env.resolve():
+                raise ValueError("distinct explicit target env file required")
+            print(json.dumps(copy_registry(config, dict(dotenv_values(args.target_env, interpolate=False)))))
+            return
         if args.command == "probe":
             import asyncio
             result = asyncio.run(probe(config,args.platform,args.generate))
@@ -145,7 +210,7 @@ def main():
                 raise ValueError("Model probe failed")
             return
         if args.command == "import-env":
-            pools,sources = import_env(args.env_file,json.load(sys.stdin))
+            pools,sources = import_env(path,json.load(sys.stdin),config)
         elif args.command == "upsert":
             pools,sources = apply_accounts(config["AI_PROVIDER_DATABASE_URL"],config["AI_PROVIDER_ENCRYPTION_KEY"],json.load(sys.stdin))
         else:

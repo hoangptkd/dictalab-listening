@@ -7,6 +7,7 @@ on:
     branches: ['codex/**']
     paths:
       - 'services/ai-generation/**'
+      - 'services/model-serving/**'
       - 'training/generate_teacher_data.py'
       - 'training/benchmark_teacher.py'
       - 'training/semantic_rubric.py'
@@ -26,6 +27,13 @@ on:
       - 'ops/observability/**'
       - 'scripts/run-local.ps1'
       - 'scripts/test-run-local-env.ps1'
+      - 'scripts/run-model-demo.ps1'
+      - 'scripts/run-service.py'
+      - 'scripts/linux/service-bundle.py'
+      - 'scripts/linux/test_service_bundle.py'
+      - 'scripts/linux/test_service_units.py'
+      - 'scripts/linux/dictalab-ai*.service'
+      - 'scripts/linux/dictalab-progress.service'
       - '.env*.example'
       - '.github/workflows/ai-platform.yml'
 
@@ -64,13 +72,15 @@ jobs:
       - name: Python contracts, registry, readiness, regression and golden metrics
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
-        run: python -m pytest -q services/ai-generation/tests tools/ai-eval training/tests/test_generate_teacher_data.py training/tests/test_benchmark_teacher.py training/tests/test_prepare_dataset.py
+        run: python -m pytest -q services/ai-generation/tests services/model-serving/test_server.py tools/ai-eval training/tests/test_generate_teacher_data.py training/tests/test_benchmark_teacher.py training/tests/test_prepare_dataset.py
       - name: Java routing and contract tests
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
-        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,AiProviderRegistryTest,ListeningComprehensionIntegrationTest test
+        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,ModelDemoIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,AiProviderRegistryTest,ListeningComprehensionIntegrationTest test
       - name: Java to Python to fake Ollama smoke
         run: python tools/ai-eval/smoke.py
+      - name: Private registry migration, backup restore and database isolation
+        run: python tools/ai-eval/registry_smoke.py
       - name: Java API RabbitMQ worker smoke, local/cloud routing and capacity sweep
         env:
           AI_TEST_RABBITMQ_URL: amqp://guest:guest@127.0.0.1:5672/%2F
@@ -87,18 +97,27 @@ jobs:
         run: |
           docker compose --profile ai --profile ai-worker config --quiet
           docker build -f services/ai-generation/Dockerfile -t dictalab-ai-check .
-          docker run --rm dictalab-ai-check python -c "from app.config import Settings; from app.registry import load_artifact; print(load_artifact(Settings())['version'])"
+          docker run --rm dictalab-ai-check python -c "from app.config import Settings; from app.registry import load_artifact; from app.registry_migration import schema_checksum; from app.conversation_demo import artifact; print(load_artifact(Settings())['version'], artifact(Settings())['version'], schema_checksum())"
       - name: Encoding and diff checks
         run: |
           python tools/ai-eval/check_encoding.py
           git diff --check
+      - name: Verify coordinated service release packaging
+        run: |
+          python -m unittest discover -s scripts/linux -p test_service_bundle.py
+          command -v systemd-analyze
+          python -m unittest discover -s scripts/linux -p test_service_units.py
+          python scripts/linux/service-bundle.py build --revision "$GITHUB_SHA" --output target/microservices-release.tar.gz
       - name: Local dotenv quoting contract
         shell: pwsh
-        run: ./scripts/test-run-local-env.ps1
+        run: |
+          ./scripts/test-run-local-env.ps1
+          ./scripts/test-run-local-env.ps1 -LauncherName run-model-demo.ps1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ai-platform-evidence
+          retention-days: 7
           path: |
             artifacts/reports/ai-platform-*.json
             target/surefire-reports/

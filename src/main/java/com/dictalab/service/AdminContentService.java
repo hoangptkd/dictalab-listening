@@ -37,13 +37,15 @@ public class AdminContentService {
     private final org.springframework.transaction.support.TransactionTemplate transaction;
     private final AdminQueryService queries;
     private final Clock clock = Clock.systemUTC();
+    private final ProgressOutbox progress;
 
     public AdminContentService(LessonRepository lessonRepository,
                                LessonSentenceRepository sentenceRepository,
                                PracticeSessionRepository sessionRepository,
                                MediaStorageService mediaStorage,
                                JdbcTemplate jdbcTemplate, S3MediaLifecycle s3Lifecycle,
-                               org.springframework.transaction.PlatformTransactionManager manager, AdminQueryService queries) {
+                               org.springframework.transaction.PlatformTransactionManager manager, AdminQueryService queries,
+                               ProgressOutbox progress) {
         this.lessonRepository = lessonRepository;
         this.sentenceRepository = sentenceRepository;
         this.sessionRepository = sessionRepository;
@@ -52,6 +54,7 @@ public class AdminContentService {
         this.s3Lifecycle = s3Lifecycle;
         this.transaction = new org.springframework.transaction.support.TransactionTemplate(manager);
         this.queries = queries;
+        this.progress = progress;
     }
 
     public List<AdminDtos.LessonListItem> listLessons() {
@@ -117,6 +120,7 @@ public class AdminContentService {
     @Transactional
     public AdminDtos.LessonResponse updateLesson(Long lessonId, AdminDtos.UpdateLessonRequest request) {
         Lesson lesson = requireLesson(lessonId);
+        boolean titleChanged = !lesson.getTitle().equals(request.title().trim());
         boolean levelChanged = lesson.getLevel() != request.level();
         Integer listeningUnits = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM listening_units WHERE lesson_id=?", Integer.class, lessonId);
@@ -151,6 +155,7 @@ public class AdminContentService {
                 speakerCount, accentProfile, vocabularyDifficulty, grammarDifficulty, sentenceDifficulty,
                 assessmentChanged ? false : lesson.isAssessmentCalibrated(), Instant.now(clock)
         );
+        if (titleChanged || levelChanged) progress.refreshLesson(lessonId);
         return toResponse(lesson);
     }
 

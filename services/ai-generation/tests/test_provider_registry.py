@@ -59,11 +59,12 @@ def test_vendor_quota_isolation_and_preserved_gemini_namespace():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("thinking", [False, True])
-async def test_deepseek_wire_and_no_cross_platform_fallback(thinking):
+@pytest.mark.parametrize("cache_prefix", [False, True])
+@pytest.mark.parametrize("thinking,effort", [(False, None), (True, None), (True, "low"), (True, "high")])
+async def test_deepseek_wire_and_no_cross_platform_fallback(thinking, effort, cache_prefix):
     cfg = registry_settings()
     # Independent fake account avoids sharing the memory counters with the isolation check.
-    cfg.cloud_providers[1].project_id = "wire-test-" + str(thinking)
+    cfg.cloud_providers[1].project_id = "wire-test-" + str(thinking) + str(effort) + str(cache_prefix)
     cfg.registry_pools["deepseek"]["global_rpm_limit"] = 2
     calls = []
     def handler(request):
@@ -72,17 +73,40 @@ async def test_deepseek_wire_and_no_cross_platform_fallback(thinking):
         assert request.headers["Authorization"] == "Bearer fake-deepseek"
         body = json.loads(request.content)
         assert body["thinking"] == {"type": "enabled" if thinking else "disabled"}
+        assert body.get("reasoning_effort") == effort
         assert body["response_format"] == {"type":"json_object"}
-        assert "JSON" in body["messages"][0]["content"]
+        assert "JSON" in body["messages"][-1 if cache_prefix else 0]["content"]
+        assert body["messages"][0 if cache_prefix else 1] == {"role":"system", "content":"Stable instructions"}
         return httpx.Response(200,json={"choices":[{"finish_reason":"stop","message":{"content":'{"ok":true}'}}]})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         gateway = ModelGateway(cfg,client)
-        result,platform = await gateway.complete([], {"type":"object"},time.monotonic()+10,"check",
-                                                deepseek_thinking=thinking)
+        result,platform = await gateway.complete([{"role":"system", "content":"Stable instructions"}],
+            {"type":"object"},time.monotonic()+10,"check", deepseek_thinking=thinking,
+            deepseek_reasoning_effort=effort, deepseek_cache_prefix=cache_prefix)
         assert result == {"ok":True} and platform == "deepseek"
         with pytest.raises(QuotaUnavailable):
             await gateway.complete([], {"type":"object"},time.monotonic()+10,"check")
     assert len(calls)==1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("thinking,effort", [(False, "low"), (True, "medium")])
+async def test_invalid_reasoning_effort_never_sends(thinking, effort):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: pytest.fail("invalid effort must not send"))) as client:
+        with pytest.raises(ValueError, match="reasoning effort"):
+            await ModelGateway(registry_settings(), client).complete([], {}, time.monotonic()+10, "check",
+                deepseek_thinking=thinking, deepseek_reasoning_effort=effort)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform,cache_prefix", [("gemini", True), ("deepseek", 1)])
+async def test_invalid_cache_opt_in_never_sends(platform, cache_prefix):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: pytest.fail("invalid cache opt-in must not send"))) as client:
+        with pytest.raises(ValueError, match="cache prefix"):
+            await ModelGateway(registry_settings(platform), client).complete([], {}, time.monotonic()+10,
+                "check", deepseek_cache_prefix=cache_prefix)
 
 
 @pytest.mark.asyncio

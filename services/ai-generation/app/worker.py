@@ -20,6 +20,9 @@ logger.addFilter(RedactingFilter())
 
 
 async def execute(event, settings):
+    if event.payload.kind == "conversation_demo":
+        from .conversation_demo import execute as execute_demo
+        return await execute_demo(event, settings, JobStore(settings.jobs_database, settings.job_retention_seconds))
     remaining = min(90, event.deadline.timestamp() - time.time())
     if remaining <= 0:
         raise TimeoutError("job expired")

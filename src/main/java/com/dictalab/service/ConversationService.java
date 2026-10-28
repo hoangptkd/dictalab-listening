@@ -155,7 +155,7 @@ public class ConversationService {
 
     public Map<String, Object> catalog(long userId) {
         var result = new LinkedHashMap<String,Object>();
-        result.put("enabled", config.enabled() && ai.configured() && tts.enabled());
+        result.put("enabled", config.enabled() && ai.configured() && audioConfigured(userId));
         result.put("scenarios", SCENARIOS); result.put("levels", ConversationLevelProfile.SUPPORTED_LEVELS);
         var page = history(userId, 0, 12);
         result.put("sessions", page.get("sessions")); result.put("hasMore", page.get("hasMore"));
@@ -204,7 +204,7 @@ public class ConversationService {
     }
 
     public ObjectNode create(long userId, String scenario, String difficulty, String sourceSessionId) {
-        available();
+        available(userId);
         if (!SCENARIOS.containsKey(scenario) || !ConversationLevelProfile.SUPPORTED_LEVELS.contains(difficulty)) fail(HttpStatus.BAD_REQUEST, "Tình huống hoặc độ khó không hợp lệ.");
         String practiceFocus = "";
         if (sourceSessionId != null) {
@@ -318,7 +318,7 @@ public class ConversationService {
     }
 
     public ObjectNode next(long userId, String id, int expectedTurn) {
-        available();
+        available(userId);
         Row row = load(userId, id);
         var turns = turns(row);
         // Repeated next requests cannot create a second turn.
@@ -353,7 +353,7 @@ public class ConversationService {
     }
 
     public ObjectNode answer(long userId, String id, int expectedTurn, UUID requestId, String answer) {
-        available();
+        available(userId);
         Row row = load(userId, id);
         for (JsonNode turn : turns(row)) for (JsonNode attempt : turn.path("attempts")) {
             if (requestId.toString().equals(attempt.path("requestId").asText()) && attempt.has("evaluation")) {
@@ -406,7 +406,7 @@ public class ConversationService {
         var attempts = turn.path("attempts");
         if (kind.equals("review") && !attempts.isEmpty() && !attempts.path(attempts.size() - 1).has("evaluation"))
             fail(HttpStatus.CONFLICT, "Câu trả lời đã lưu đang chờ chấm. Hãy chấm lại trước khi mở lời giải.");
-        if (kind.equals("clarify")) available();
+        if (kind.equals("clarify")) available(userId);
         String lease = claim(row);
         try {
             if (kind.equals("finish")) row.state.put("completed", true).put("transferSkipped", true);
@@ -448,7 +448,7 @@ public class ConversationService {
     }
 
     public ObjectNode play(long userId, String id, int expectedTurn, String variant, boolean slow) {
-        available();
+        available(userId);
         Row row = load(userId, id);
         ObjectNode turn = playableTurn(row, expectedTurn);
         checkAudioVariant(turn, variant);
@@ -536,6 +536,53 @@ public class ConversationService {
         if(urls.get(0)==null) return false;
         media.serveConversationAudio(urls.get(0),request,response);
         return true;
+    }
+
+    public JsonNode modelDemoContext(long user, String sessionId, String scenario, String level) {
+        if (sessionId == null) {
+            if (!SCENARIOS.containsKey(scenario) || !ConversationLevelProfile.SUPPORTED_LEVELS.contains(level))
+                fail(HttpStatus.BAD_REQUEST, "Tình huống hoặc độ khó không hợp lệ.");
+            var context = json.createObjectNode().put("scenario", SCENARIOS.get(scenario))
+                    .put("difficulty", level).put("turnNumber", 1);
+            context.setAll((ObjectNode) json.valueToTree(ConversationContent.roles(scenario, "standard")));
+            return context;
+        }
+        Row row = load(user, sessionId);
+        if (row.state.path("completed").asBoolean() || turns(row).size() >= 4
+                || !turns(row).isEmpty() && !current(row).path("done").asBoolean())
+            fail(HttpStatus.CONFLICT, "Hãy hoàn thành nhiệm vụ hiện tại trước khi tạo câu tiếp theo.");
+        return json.valueToTree(promptContext(row));
+    }
+
+    public ObjectNode acceptModelDemo(long user, String sessionId, String jobId, JsonNode expectedContext, JsonNode arm) {
+        available(user);
+        Row row = load(user, sessionId);
+        for (var turn : turns(row)) {
+            if (jobId.equals(turn.path("modelDemoJobId").asText())) return view(row);
+        }
+        if (!modelDemoContext(user, sessionId, null, null).equals(expectedContext))
+            fail(HttpStatus.CONFLICT, "Phiên đã thay đổi từ khi tạo job. Hãy tạo job mới.");
+        if (!arm.path("valid").asBoolean() || !arm.path("task").isObject())
+            fail(HttpStatus.CONFLICT, "Đầu ra chưa qua kiểm tra cấu trúc.");
+        JsonNode raw = arm.path("task");
+        JsonNode prompt = ConversationLocalClient.normalizeOutput(raw);
+        validateNextPrompt(row, prompt);
+        String lease = claim(row);
+        try {
+            // Preserve the existing semantic review and its quota before admitting demo output.
+            reviewPrompt(row, prompt, System.nanoTime() + TimeUnit.SECONDS.toNanos(90));
+            row.state.set("pendingGenerationSlots", raw.path("slots").deepCopy());
+            addTurn(row, prompt);
+            current(row).put("modelDemoJobId", jobId);
+            current(row).set("modelGeneration", arm.path("calls").deepCopy());
+            current(row).put("evaluationOnly", true);
+            commit(row, lease);
+        } catch (RuntimeException error) {
+            release(row.id, lease);
+            throw error;
+        }
+        warmAudio(row, turns(row).size(), "original");
+        return get(user, sessionId);
     }
 
     private Map<String, Object> promptContext(Row row) {
@@ -1120,7 +1167,8 @@ public class ConversationService {
         if (!value.isTextual() || value.asText().isBlank() || value.asText().length() > max) throw new IllegalStateException("Invalid AI text");
         return value.asText();
     }
-    private void available() { if (!config.enabled() || !ai.configured() || !tts.enabled()) unavailable("Hội thoại AI chưa được cấu hình trên máy chủ."); }
+    private boolean audioConfigured(long user) { return platform != null && platform.enabled("tts", user) || tts.enabled(); }
+    private void available(long user) { if (!config.enabled() || !ai.configured() || !audioConfigured(user)) unavailable("Hội thoại AI chưa được cấu hình trên máy chủ."); }
     private void unavailable(String message) { fail(HttpStatus.SERVICE_UNAVAILABLE, message); }
     private void logFailure(String operation,RuntimeException failure) {
         // Only fixed validation codes are logged; never provider messages or learner evidence.

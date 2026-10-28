@@ -55,7 +55,13 @@ public class AiUsageBudget {
     }
 
     private void reserve(Long userId, boolean tts, boolean local) {
-        transaction.executeWithoutResult(status -> {
+        transaction.executeWithoutResult(status -> admit(userId,tts,local));
+    }
+
+    @org.springframework.transaction.annotation.Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void reserveDemo(Long userId, boolean local) { admit(userId,false,local); }
+
+    private void admit(Long userId, boolean tts, boolean local) {
             if (premium != null && userId != null) premium.takeAi(userId,tts);
             Boolean accepting=db.queryForObject("SELECT enabled FROM ai_budget_control WHERE id=1 FOR UPDATE",Boolean.class);
             if (!Boolean.TRUE.equals(accepting)) throw rejected("AI đang tạm dừng. Bài làm của bạn vẫn được lưu.");
@@ -64,7 +70,6 @@ public class AiUsageBudget {
             long amount=local ? 0 : tts?ttsReservation:llmReservation;
             add(day,local ? "LOCAL_GLOBAL" : "GLOBAL",amount,globalLimit,globalCalls);
             if (userId!=null) add(day,(local ? "LOCAL_USER:" : "USER:")+userId,amount,userLimit,userCalls);
-        });
     }
 
     private void add(Date day,String scope,long amount,long limit,int calls) {

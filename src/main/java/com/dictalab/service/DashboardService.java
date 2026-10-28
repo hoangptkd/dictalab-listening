@@ -21,16 +21,27 @@ public class DashboardService {
     private final PracticeSessionRepository sessionRepository;
     private final RecommendationService recommendationService;
     private final ListeningAssessmentService assessmentService;
+    private final ProgressClient progress;
 
     public DashboardService(PracticeSessionRepository sessionRepository,
                             RecommendationService recommendationService,
-                            ListeningAssessmentService assessmentService) {
+                            ListeningAssessmentService assessmentService, ProgressClient progress) {
         this.sessionRepository = sessionRepository;
         this.recommendationService = recommendationService;
         this.assessmentService = assessmentService;
+        this.progress = progress;
     }
 
     public ApiDtos.DashboardResponse dashboard(Long userId) {
+        if (progress.mode().equals("remote")) {
+            var projection = progress.fetch(userId);
+            var recent = sessionRepository.findByUserIdAndStatusAndRoomIdIsNullOrderByCompletedAtDescIdDesc(
+                    userId, SessionStatus.COMPLETED, PageRequest.of(0, 1));
+            return new ApiDtos.DashboardResponse(projection.summary(), projection.trend(), projection.byLevel(),
+                    projection.errors(), recommendationService.recommend(userId, recent.isEmpty() ? null : recent.get(0)),
+                    assessmentService.assess(userId),
+                    new ApiDtos.ProgressMetadata("progress", projection.updatedAt(), projection.lastEventAt()));
+        }
         var totals = sessionRepository.dashboardTotals(userId, SessionStatus.COMPLETED);
         long count = totals.stream().mapToLong(PracticeSessionRepository.LevelTotals::getCompletedLessons).sum();
         long seconds = totals.stream().mapToLong(PracticeSessionRepository.LevelTotals::getPracticeSeconds).sum();
@@ -73,11 +84,13 @@ public class DashboardService {
                 Math.toIntExact(totals.stream().mapToLong(PracticeSessionRepository.LevelTotals::getKnownMissed).sum()),
                 Math.toIntExact(totals.stream().mapToLong(PracticeSessionRepository.LevelTotals::getUnknownWords).sum())
         );
-        return new ApiDtos.DashboardResponse(
+        var response = new ApiDtos.DashboardResponse(
                 summary, trend, byLevel, errors, recommendationService.recommend(userId,
                         recent.isEmpty() ? null : recent.get(recent.size() - 1)),
-                assessmentService.assess(userId)
+                assessmentService.assess(userId), new ApiDtos.ProgressMetadata("core", java.time.Instant.now(), null)
         );
+        if (progress.mode().equals("shadow")) progress.compare(userId, response);
+        return response;
     }
 
     private double average(double sum, long count) {

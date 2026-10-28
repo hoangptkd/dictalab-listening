@@ -42,8 +42,10 @@ def main():
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             calls.append(body)
-            translation = "translationVi" in body["format"]["properties"]
-            self.send({"done": True, "done_reason": "stop", "message": {"content": json.dumps(TRANSLATION if translation else CONTENT)}})
+            generic = body["format"] == {"type": "object"}
+            translation = "translationVi" in body["format"].get("properties", {})
+            self.send({"done": True, "done_reason": "stop", "message": {
+                "content": json.dumps({"ok": True} if generic else TRANSLATION if translation else CONTENT)}})
 
     fake = ThreadingHTTPServer(("127.0.0.1", 0), FakeOllama)
     threading.Thread(target=fake.serve_forever, daemon=True).start()
@@ -52,7 +54,9 @@ def main():
         port = port_socket.getsockname()[1]
     env = {k: v for k, v in os.environ.items() if not k.startswith("DICTALAB_AI_")}
     env.update({"DICTALAB_AI_OLLAMA_URL": f"http://127.0.0.1:{fake.server_port}",
-                "DICTALAB_AI_SERVICE_TOKEN": "smoke-only-token", "DICTALAB_AI_TIMEOUT_SECONDS": "10"})
+                "DICTALAB_AI_SERVICE_TOKEN": "smoke-only-token-at-least-32-characters", "DICTALAB_AI_TIMEOUT_SECONDS": "10",
+                "AI_PROVIDER_CONFIG_SOURCE": "env", "DICTALAB_AI_TEXT_GATEWAY_ENABLED": "true",
+                "DICTALAB_AI_JOBS_DATABASE": str(ROOT / "target/text-smoke-jobs.sqlite3")})
     process = None
     try:
         with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as log:
@@ -84,10 +88,11 @@ def main():
                 log.seek(0)
                 print(log.read()[-4000:])
                 raise
-            assert len(calls) == 2, "expected exactly English + translation calls"
-            assert calls[0]["options"]["temperature"] == 0.3
-            assert calls[1]["options"]["temperature"] == 0.1
-            print("Java -> Python -> fake Ollama smoke passed; exactly two model calls")
+            assert len(calls) == 3, "expected exactly English + translation + generic text calls"
+            assert sorted(call["options"]["temperature"] for call in calls) == [0, 0.1, 0.3]
+            generic = [call for call in calls if call["format"] == {"type": "object"}]
+            assert len(generic) == 1 and generic[0]["options"]["num_predict"] == 2200
+            print("Java -> Python -> fake Ollama smoke passed; exactly three model calls, including generic text")
     finally:
         if process is not None:
             process.terminate()

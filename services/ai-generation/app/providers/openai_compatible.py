@@ -41,6 +41,7 @@ class OpenAiCompatibleProvider(ModelProvider):
         extra_headers: dict[str, str] | None = None,
         use_json_schema: bool = False,
         extra_body: dict[str, Any] | None = None,
+        cache_stable_prefix: bool = False,
     ) -> None:
         base = base_url.rstrip("/")
         if chat_completions_path:
@@ -58,6 +59,9 @@ class OpenAiCompatibleProvider(ModelProvider):
         self._extra_headers = dict(extra_headers or {})
         self._use_json_schema = use_json_schema
         self._extra_body = dict(extra_body or {})
+        if type(cache_stable_prefix) is not bool or cache_stable_prefix and provider_name != "deepseek":
+            raise ValueError("cache prefix layout requires DeepSeek")
+        self._cache_stable_prefix = cache_stable_prefix
 
     @property
     def name(self) -> str:
@@ -92,7 +96,10 @@ class OpenAiCompatibleProvider(ModelProvider):
             **self._extra_body,
         }
         if self._provider_name != "gemini" and schema:
-            body["messages"] = [{"role": "system", "content": "Return one JSON object matching this JSON schema: " + json.dumps(schema)}, *messages]
+            schema_message = {"role": "system", "content": "Return one JSON object matching this JSON schema: " + json.dumps(schema)}
+            # Per-request enum IDs must not precede the reusable instructions/payload prefix.
+            body["messages"] = ([*messages, schema_message] if self._cache_stable_prefix else
+                                [schema_message, *messages])
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",

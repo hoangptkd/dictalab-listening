@@ -55,7 +55,7 @@ test('restore requires a verified empty dedicated endpoint and checks it before 
 test('Linux CI deploy uses the tested release helper, not the Windows restore workflow',()=>{
     const workflow=fs.readFileSync(path.join(__dirname,'../../../.github/workflows/deploy.yml'),'utf8');
     const deploy=workflow.slice(workflow.indexOf('  deploy:'));
-    assert.ok(deploy.includes('needs: [test-build, postgres-tests, reliability, ai-platform]'));
+    assert.ok(deploy.includes('needs: [test-build, postgres-tests, reliability, ai-platform, progress]'));
     assert.ok(deploy.includes('scripts/linux/release.py'));
     assert.ok(deploy.includes('sudo -n python3'));
     assert.ok(deploy.includes('sha256sum dictalab-new.jar'));

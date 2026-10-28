@@ -1,0 +1,56 @@
+name: Build personal iOS app
+
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile SwiftUI, run simulator tests and package unsigned IPA
+        run: bash ios/scripts/build.sh
+      - name: Publish personal iPhone package and test evidence
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="ios-personal-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          ditto -c -k --keepParent ios/build/Tests.xcresult ios/build/DictaLab-Tests.xcresult.zip
+          gh release create "$tag" \
+            ios/build/DictaLab-unsigned.ipa \
+            ios/build/DictaLab-unsigned.ipa.sha256 \
+            ios/build/DictaLab-iPhone.png \
+            ios/build/DictaLab-Tests.xcresult.zip \
+            ios/build/test.log ios/build/device.log \
+            --target "$GITHUB_SHA" --title "DictaLab iPhone personal build ${GITHUB_RUN_NUMBER}" \
+            --notes-file ios/RELEASE_NOTES.md --prerelease
+          gh release view "$tag" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
+      - name: Summarize checks without consuming Actions artifact storage
+        if: always()
+        run: |
+          if [ -f ios/build/test.log ]; then
+            grep -E 'Executed [0-9]+ tests|TEST SUCCEEDED|TEST FAILED' ios/build/test.log >> "$GITHUB_STEP_SUMMARY" || true
+          fi
+          if [ -f ios/build/DictaLab-unsigned.ipa.sha256 ]; then
+            cat ios/build/DictaLab-unsigned.ipa.sha256 >> "$GITHUB_STEP_SUMMARY"
+          fi
