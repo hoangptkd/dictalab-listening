@@ -79,7 +79,7 @@ def services_stopped():
             raise RuntimeError('All installed business-service processes must be inactive before snapshot')
 
 
-def runtime_database(name):
+def runtime_settings(name):
     path = SERVICE_ENVS / {'core': 'app.env', 'ai': 'ai.env', 'progress': 'progress.env'}[name]
     protected(path)
     settings = {}
@@ -91,6 +91,11 @@ def runtime_database(name):
         if key in settings or len(parts) > 1:
             raise ValueError('Runtime environment requires unique literal single-line assignments')
         settings[key] = parts[0] if parts else ''
+    return settings
+
+
+def runtime_database(name):
+    settings = runtime_settings(name)
     if name == 'ai':
         if (settings.get('DICTALAB_AI_REGISTRY_OWNERSHIP') != 'private'
                 or settings.get('AI_PROVIDER_CONFIG_SOURCE') != 'database'

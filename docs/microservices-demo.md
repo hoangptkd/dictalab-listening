@@ -216,9 +216,11 @@ or replacement requires a separate operator decision. Staging does not change
 `current`, systemd units/accounts, protected configuration or persistent state.
 It does not establish health, resource capacity or rollback safety.
 
-The current `release.py` activates Core only. Coordinated activation, isolated
-runtime configuration, state backup and full-service rollback remain deployment
-work. Do not use a Core-only activation as proof all three services were deployed.
+The existing automated `release.py` flow activates Core only. The manual
+`service-release.py` command below coordinates all four business processes with
+a verified snapshot and optional reviewed application rollback. Actual-host
+activation and workflow acceptance remain deployment gates. Do not use a
+Core-only activation as proof all three services were deployed.
 
 ### Linux process layout
 
@@ -316,6 +318,78 @@ These tests create real locked identities and test unprivileged read/write
 access inside the disposable container. Live systemd calls are simulated; the
 separate unit syntax check above uses real `systemd-analyze`. This is not service
 startup, actual-host provisioning, database or VPS capacity acceptance.
+
+### Coordinated activation and application rollback
+
+After the AWS database, restore, main-release and VPS capacity gates pass, use
+the staged bundle with the manual release command. Keep `service-release.py`,
+`service-provision.py`, `service-bundle.py`, `cloud-backup.py` and `release.py`
+together under `scripts/linux/`, with `run-service.py` in its parent `scripts/`
+directory. Run from a protected checkout using Linux root and Python 3.12+.
+
+The private databases, migrations/grants, AI ledger and runtime configuration
+must already be prepared and verified. This command does not bootstrap them or
+roll out configuration changes. It requires the exact candidate units installed
+and loaded without drop-ins or pending daemon reloads. All three databases and
+runtime roles must be distinct, and backup roles must match their runtime targets
+with verified TLS. Internal tokens must agree. AI uses the private registry,
+durable jobs and cloud inference; Core routes text/jobs to AI and publishes
+Progress events while dashboard reads remain `legacy`. Model demo stays disabled.
+
+For the first activation, `current` must already point to the candidate prepared
+by `service-provision.py`; Core must be active and the other processes inactive:
+
+```text
+sudo python3 scripts/linux/service-release.py /path/to/microservices-release.tar.gz --sha256 BUNDLE_SHA256 --initial
+```
+
+For an upgrade, stage a different release and require all four original processes
+active and healthy. Omit `--initial`:
+
+```text
+sudo python3 scripts/linux/service-release.py /path/to/microservices-release.tar.gz --sha256 BUNDLE_SHA256
+```
+
+An exclusive root-only release lock prevents overlapping uses of this command.
+Coordinate separately with the existing Core release flow, operators and backup
+jobs; they do not share this lock. The command stops Core, AI API, AI worker and
+Progress in that order, allowing bounded worker drain. It takes and verifies the
+coordinated snapshot, rechecks immutable payload/configuration, atomically
+replaces `current` and Core's JAR, then starts Progress, worker, API and Core.
+HTTP readiness and a fresh worker heartbeat are required. A root-private,
+fsynced `activation-*/activation.json` receipt records the phase and snapshot.
+Services are not enabled at boot by this command. Remote Progress read cutover
+and learner/payment workflow acceptance remain separate steps.
+
+Before a switch, a failed preparation attempts to resume the original process
+set and verify readiness. After a switch, automatic application rollback requires
+adding `--rollback-compatible` to the command. This flag is an operator assertion
+after reviewing/testing backwards-compatible migrations, contracts and durable
+state; it is not proof of compatibility. The independent existing financial-write
+guard still rejects unsafe or uncertain rollback even with the flag. If rollback
+is permitted, only the old Core JAR and previous release link are restored and
+the original active processes restarted. Databases, SQLite jobs/budgets, media,
+Redis and RabbitMQ retain their current state. Keep the previous release/venv.
+
+Without that review, or if rollback/verification fails, the tool attempts to
+leave the processes stopped and records `forward-repair-required`. Inspect actual
+service state and the protected receipt/snapshot before forward repair. A failed
+stop can leave process state uncertain. An interrupted or incomplete receipt
+blocks subsequent releases; do not delete receipts, restore old data or rerun
+blindly. Resolve the recorded phase and reconcile code/config/state first.
+
+The success result is `process-readiness-only-not-production-workflow-acceptance`.
+Repeat its isolated regression checks with:
+
+```text
+docker run --rm --network none --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace/scripts/linux dictalab-ai-check python -m unittest -v test_service_release
+```
+
+These tests use real staged files, atomic replacements, locks, an HTTP server
+and the isolated financial helper, while systemd and snapshot composition are
+simulated. The separate backup suite below performs real PostgreSQL/SQLite
+restore checks. Neither suite replaces activation, recovery and capacity
+acceptance on the intended host.
 
 The unit limits are 256 MiB each for API/worker and 384 MiB for Progress. They
 are initial measured-process guardrails, not acceptance of the complete 2 GB

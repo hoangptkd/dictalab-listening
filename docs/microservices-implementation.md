@@ -460,3 +460,39 @@ database cutover has been verified by this task.
 - This is filesystem/inactive-unit preparation only. Runtime config semantics,
   initialized private databases/ledger, actual-host install, coordinated
   activation/rollback, AWS/VPS acceptance and fresh R13 generation remain open.
+
+## Coordinated Linux activation (2026-10-28)
+
+- Added manual `service-release.py` for the four business processes using a
+  verified staged bundle. It checks exact installed/loaded units, pending daemon
+  reloads, isolated service configuration, distinct runtime DBs/roles, protected
+  backup targets, internal tokens and cloud/VPS routing before stopping writers.
+  Shared configuration validation reuses the local launcher without requiring
+  third-party Python packages in the privileged operations runtime.
+- Uses an exclusive release lock and private fsynced phase receipts. Stops Core,
+  API, worker and Progress, verifies the coordinated snapshot, replaces the
+  release link/Core JAR atomically, then starts in reverse order. HTTP readiness
+  and a worker heartbeat beyond the stale window are required. Configuration,
+  unit and payload drift prevent a successful activation.
+- Before-switch failures resume and verify the original process set. After-switch
+  rollback requires explicit operator-reviewed compatibility and the independent
+  financial-write guard. It restores only application artifacts/link; live DBs,
+  SQLite jobs/budgets, media, Redis and RabbitMQ are never rewound. Unsafe,
+  uncertain or failed recovery retains evidence and blocks another release for
+  forward repair. No boot enablement or Progress read cutover is performed.
+- Fifteen focused Linux checks cover upgrades/initial activation, atomic file
+  replacement, preparation recovery, reviewed/unreviewed rollback, financial
+  rejection/unknown outcome, config/unit/payload drift, stale loaded units,
+  unfinished receipts, concurrent locks, real HTTP redirects/worker heartbeat
+  and the isolated financial helper. Systemd and release snapshot composition
+  are simulated; real PostgreSQL dump/restore remains in the backup suite.
+- The combined Linux suite passed 83 checks with 2 explicit skips (live systemd
+  availability and the PostgreSQL opt-in check). All 9 backup checks passed
+  separately with real TLS/SCRAM PostgreSQL dump/restore. The 29 Windows launcher
+  regressions, Python compilation, UTF-8 and diff checks passed.
+- The manual command is documented in `docs/microservices-demo.md`; CI repeats
+  its checks. Existing automated deployment remains Core-only and paused.
+  Initialized private DBs/ledger, actual-host activation/recovery, AWS restore,
+  VPS RAM/capacity, complete application acceptance and fresh R13 CPU quality
+  evidence are still required. Process readiness alone does not complete the
+  migration or establish safe production rollback.
