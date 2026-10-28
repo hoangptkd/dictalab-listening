@@ -7,6 +7,34 @@ Core dùng địa chỉ Workers làm public URL và chấp nhận chính xác or
 
 ## Bật/tắt database thủ công
 
+### Bảng điều khiển trên Windows
+
+Mở `scripts/aurora-control-panel.cmd` bằng cách nhấp đúp. Máy cần PowerShell 7
+và khóa SSH đang dùng cho EC2. Bảng có nút **Bật Aurora**, **Tắt Aurora**,
+**Làm mới** và **Mở ứng dụng**; tự đọc trạng thái mỗi 20 giây, hiển thị bảo trì,
+bốn tiến trình và RAM EC2. Có thể tạo shortcut đến launcher trên Desktop.
+
+Nút tắt yêu cầu xác nhận vì website sẽ vào bảo trì và thực hiện backup trước
+khi dừng database. Giữ cửa sổ và kết nối mạng trong suốt lệnh; bảng chặn đóng
+cửa sổ và vô hiệu hóa lệnh cạnh tranh khi đang bật/tắt. Chỉ báo thành công khi
+CLI trên EC2 trả kết quả hoàn tất; lỗi SSH hoặc trạng thái quá 60 giây sẽ khóa
+nút thao tác cho đến khi đọc lại thành công. Mất kết nối giữa lệnh có thể khiến
+quy trình trên EC2 tiếp tục; đọc trạng thái và kiểm tra log trước khi thử lại.
+
+```powershell
+pwsh -NoProfile -STA -File ./scripts/aurora-control-panel.ps1
+# Nếu đổi máy/khóa:
+pwsh -NoProfile -STA -File ./scripts/aurora-control-panel.ps1 -HostName 54.254.221.170 -IdentityFile C:/path/to/key.pem
+# Kiểm tra bằng fixture, không kết nối hoặc bật/tắt AWS:
+pwsh -NoProfile -STA -File ./scripts/aurora-control-panel.ps1 -SelfTest
+```
+
+Bảng dùng lại `ec2-services.ps1` qua SSH kiểm tra host key; không tạo endpoint
+quản trị công khai, không giữ AWS credential trên máy local. Khi IP quản trị
+đổi, cần cập nhật rule SSH `/32` đúng IP; bảng không tự thay quyền AWS.
+
+### Dòng lệnh
+
 Từ PowerShell tại thư mục dự án, với khóa SSH đã có trên máy quản trị:
 
 ```powershell
@@ -66,8 +94,15 @@ Có thể truyền `-HostName` và `-IdentityFile`. Không đưa khóa vào Git.
   Policy vận hành được quản lý riêng với stack database-access hiện có.
 - GitHub CI/CD vẫn tạm dừng theo yêu cầu quota. Triển khai này thực hiện qua SSH
   và dashboard Cloudflare; không phải một lần deploy bằng GitHub Actions.
-- Lightsail cũ `184.194.89.90` chưa bị xóa. Khi kiểm tra, ứng dụng inactive,
-  Caddy và cloud-backup.timer còn active. Không mặc định tài nguyên cũ hết phí.
+  Trước khi bật lại deploy workflow, cần kiểm tra host/known-host secrets và
+  chuyển bước kích hoạt một JAR cũ sang quy trình release ba service có backup
+  và readiness. Không chỉ đổi IP rồi chạy lại bước deploy một JAR.
+- AWS đã xác nhận Lightsail `ubuntu-vps-1` (`184.194.89.90`) bị xóa ngày
+  28/10/2026. IP tĩnh `ubuntu-vps-ip` đã được giải phóng. Phí đã phát sinh trước
+  khi xóa không được coi là đã hoàn lại. Snapshot Lightsail cũ
+  `dictalab-1gb-before-upsize-20261011` cũng đã xóa sau khi kiểm tra các backup
+  được giữ trên EC2 và máy quản trị; không còn instance/IP/snapshot Lightsail
+  trong danh sách đã kiểm tra, Storage không có disk hoặc bucket riêng.
 
 ## Dữ liệu, backup và giới hạn đo tải
 
@@ -89,6 +124,14 @@ thành công có manifest checksum riêng. Bản trước cutover `services-qqp9
 khớp, SQLite integrity `ok`. Evidence riêng trên EC2 tại
 `/var/backups/dictalab-ec2-services-20261028/`, chỉ root đọc.
 Chưa có lịch offsite/retention tự động hoặc diễn tập dựng lại toàn host.
+
+Khi dọn Lightsail, instance biến mất trước lúc tải xong archive retirement mới;
+archive tải dở không phải backup hợp lệ. Bản migration cũ 411.642.824 byte vẫn
+còn trên EC2 và đã sao chép đầy đủ về máy quản trị, đối chiếu SHA-256 và đọc
+kiểm tra 303 thành viên archive. Snapshot production `services-5xak1j3m` cũng
+được kiểm tra lại checksum/archive/SQLite; lần kiểm tra này không restore SQL.
+Các lịch sử release/backup chỉ có trên Lightsail chưa được chứng minh đã sao
+chép đầy đủ; không suy ra chúng đều được giữ từ backup migration.
 
 Nghiệm thu cutover ngày 28/10/2026:
 
