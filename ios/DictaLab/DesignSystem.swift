@@ -113,6 +113,7 @@ struct WaveformVisualizer: View {
     }
 
     private func startAnimation() {
+        timer?.invalidate()
         animateOnce()
         timer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { _ in
             animateOnce()
@@ -152,9 +153,8 @@ struct FloatingTabBar: View {
                         selectedTab = i
                     }
                 } label: {
-                    Image(systemName: i == selectedTab
-                          ? tabs[i].icon + ".fill"
-                          : tabs[i].icon)
+                    Image(systemName: i == selectedTab && i != 0
+                          ? tabs[i].icon + ".fill" : tabs[i].icon)
                         .font(.system(size: 20, weight: .medium))
                         .foregroundStyle(i == selectedTab ? Color.dlTeal : Color.dlInkSecondary)
                         .frame(width: 52, height: 44)
@@ -166,6 +166,7 @@ struct FloatingTabBar: View {
                         )
                 }
                 .accessibilityLabel(tabs[i].label)
+                .accessibilityAddTraits(i == selectedTab ? .isSelected : [])
             }
         }
         .padding(.horizontal, 12)

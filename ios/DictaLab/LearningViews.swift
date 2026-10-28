@@ -23,10 +23,10 @@ struct MainTabView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            // Floating tab bar
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             FloatingTabBar(selectedTab: $selectedTab)
-                .padding(.bottom, 20)
+                .padding(.vertical, 12)
         }
         // Hide the system tab bar (we draw our own)
         .toolbarBackground(.hidden, for: .tabBar)
@@ -80,7 +80,7 @@ struct CatalogView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 16)
-                    .padding(.bottom, 120) // space for floating tab bar
+                    .padding(.bottom, 16)
                     .animation(.spring(response: 0.4, dampingFraction: 0.85), value: lessons.count)
                     .animation(.spring(response: 0.4, dampingFraction: 0.85), value: loading)
                 }
@@ -551,7 +551,7 @@ struct AccountView: View {
                     Text(api.account?.email ?? "").foregroundStyle(Color.dlInkSecondary)
                 }
                 Section("DictaLab cho iPhone") {
-                    Text("Giao diện SwiftUI · phiên bản 1.0")
+                    Text("Giao diện SwiftUI · phiên bản 1.1")
                     Text("Bài nghe, chấm từ, lịch sử và tiến bộ dùng chung dữ liệu với website.")
                     Text("Bản đầu tập trung luyện chép chính tả. Nghe hiểu, Conversation, Coach và phòng học cùng bạn chưa có giao diện iOS.")
                         .font(.footnote).foregroundStyle(Color.dlInkSecondary)

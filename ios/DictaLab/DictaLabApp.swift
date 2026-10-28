@@ -12,7 +12,7 @@ struct DictaLabApp: App {
     }
 
     var body: some Scene {
-        WindowGroup { RootView().environmentObject(api).tint(Color.accentColor) }
+        WindowGroup { RootView().environmentObject(api).tint(Color.accentColor).preferredColorScheme(.light) }
     }
 }
 
@@ -160,38 +160,5 @@ struct ErrorNotice: View {
     var body: some View {
         Label(message, systemImage: "exclamationmark.circle")
             .font(.callout).foregroundStyle(.red).accessibilityAddTraits(.updatesFrequently)
-    }
-}
-
-struct AccountView: View {
-    @EnvironmentObject private var api: APIClient
-    @State private var busy = false
-    @State private var error: String?
-
-    var body: some View {
-        Form {
-            Section("Tài khoản học tập") {
-                Text(api.account?.displayName ?? "")
-                Text(api.account?.email ?? "").foregroundStyle(.secondary)
-            }
-            Section("DictaLab cho iPhone") {
-                Text("Giao diện SwiftUI · phiên bản 1.0")
-                Text("Bài nghe, chấm từ, lịch sử và tiến bộ dùng chung dữ liệu với website.")
-                Text("Bản đầu tập trung luyện chép chính tả. Nghe hiểu, Conversation, Coach và phòng học cùng bạn chưa có giao diện iOS.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                Link("Quyền riêng tư", destination: api.baseURL.appendingPathComponent("privacy"))
-                Link("Hỗ trợ", destination: api.baseURL.appendingPathComponent("help"))
-            }
-            Section {
-                if let error { ErrorNotice(message: error) }
-                Button("Đăng xuất", role: .destructive) {
-                    Task {
-                        busy = true; error = nil
-                        defer { busy = false }
-                        do { try await api.logout() } catch { self.error = error.localizedDescription }
-                    }
-                }.disabled(busy)
-            }
-        }.navigationTitle("Tài khoản")
     }
 }

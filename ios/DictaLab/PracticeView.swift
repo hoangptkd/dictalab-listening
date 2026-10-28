@@ -120,6 +120,7 @@ struct PracticeView: View {
                     .foregroundStyle(Color.dlInk)
             }
             .disabled(store.busy)
+            .accessibilityLabel(store.result == nil ? "Đóng phòng luyện" : "Xong")
         }
 
         // Center: sentence counter
@@ -199,88 +200,107 @@ struct PracticeView: View {
 
     @ViewBuilder
     private func wordTile(_ word: WordSlot, sentence: Sentence) -> some View {
-        if word.resolved {
-            // Correct / revealed tile
-            Text((word.punctuationBefore ?? "") + word.text + (word.punctuationAfter ?? ""))
-                .font(.system(size: 15, weight: .bold, design: .serif))
-                .foregroundStyle(word.revealed ? Color.dlInkSecondary : Color.dlTeal)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(
-                    word.revealed
-                        ? Color.dlSurface
-                        : Color.dlTealLight,
-                    in: RoundedRectangle(cornerRadius: 10)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(word.revealed ? Color.dlBorder : Color.dlTeal.opacity(0.4), lineWidth: 1)
-                )
-                .scaleEffect(correctFlash == word.index ? 1.08 : 1.0)
-                .animation(.spring(response: 0.25, dampingFraction: 0.6), value: correctFlash)
-                .accessibilityLabel("Từ \(word.index + 1): \(word.text), \(word.revealed ? "đã mở đáp án" : "đúng")")
-        } else {
-            // Input tile
-            WordInputTile(
-                word: word,
-                sentence: sentence,
-                answer: Binding(
-                    get: { store.answers[word.index] ?? "" },
-                    set: { store.answers[word.index] = String($0.prefix(100)) }
-                ),
-                busy: store.busy || store.playing,
-                onSubmit: { Task {
-                    await store.check(word)
-                    if word.correct {
-                        withAnimation { correctFlash = word.index }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            withAnimation { correctFlash = nil }
+        VStack(alignment: .leading, spacing: 6) {
+            if word.resolved {
+                // Correct / revealed tile
+                Text((word.punctuationBefore ?? "") + word.text + (word.punctuationAfter ?? ""))
+                    .font(.system(size: 15, weight: .bold, design: .serif))
+                    .foregroundStyle(word.revealed ? Color.dlInkSecondary : Color.dlTeal)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(
+                        word.revealed
+                            ? Color.dlSurface
+                            : Color.dlTealLight,
+                        in: RoundedRectangle(cornerRadius: 10)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(word.revealed ? Color.dlBorder : Color.dlTeal.opacity(0.4), lineWidth: 1)
+                    )
+                    .scaleEffect(correctFlash == word.index ? 1.08 : 1.0)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: correctFlash)
+                    .accessibilityLabel("Từ \(word.index + 1): \(word.text), \(word.revealed ? "đã mở đáp án" : "đúng")")
+            } else {
+                // Input tile
+                WordInputTile(
+                    word: word,
+                    sentence: sentence,
+                    answer: Binding(
+                        get: { store.answers[word.index] ?? "" },
+                        set: { store.answers[word.index] = String($0.prefix(100)) }
+                    ),
+                    busy: store.busy || store.playing,
+                    onSubmit: { Task {
+                        await store.check(word)
+                        if store.session.sentence?.words.first(where: { $0.index == word.index })?.correct == true {
+                            withAnimation { correctFlash = word.index }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                withAnimation { correctFlash = nil }
+                            }
                         }
-                    }
-                }},
-                onHint: { hintType in Task { await store.hint(hintType, index: word.index) } },
-                onReveal: { Task { await store.hint("REVEAL_WORD", index: word.index) } }
-            )
+                    }},
+                    onHint: { hintType in Task { await store.hint(hintType, index: word.index) } },
+                    onReveal: { Task { await store.hint("REVEAL_WORD", index: word.index) } }
+                )
+            }
+            if word.classificationAvailable {
+                Menu(word.errorType == "UNKNOWN" ? "Từ chưa biết" : word.errorType == "KNOWN_BUT_MISSED" ? "Biết nhưng nghe lỡ" : "Phân loại từ đã sai") {
+                    Button("Biết nhưng nghe lỡ") { Task { await store.classify(word, as: "KNOWN_BUT_MISSED") } }
+                    Button("Từ chưa biết") { Task { await store.classify(word, as: "UNKNOWN") } }
+                }
+                .font(.caption)
+                .foregroundStyle(Color.dlInkSecondary)
+                .frame(maxWidth: 180, minHeight: 44, alignment: .leading)
+                .disabled(store.busy || store.playing)
+            }
         }
     }
 
     // MARK: - Hint Row
 
     private func hintRow(_ sentence: Sentence) -> some View {
-        HStack(spacing: 8) {
-            // Reveal sentence button (destructive, hidden unless eligible)
-            if !sentence.canComplete {
-                Button {
-                    guard sentence.hasListened else { return }
-                    confirmReveal = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "lightbulb")
-                            .font(.system(size: 12))
-                        Text("Gợi ý")
-                            .font(.system(size: 13))
-                        if sentence.hintCount > 0 {
-                            Text("\(sentence.hintCount)")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(Color.dlBackground)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.dlTeal, in: Capsule())
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                // Reveal sentence button (destructive, hidden unless eligible)
+                if !sentence.canComplete {
+                    Button {
+                        guard sentence.hasListened else { return }
+                        confirmReveal = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lightbulb")
+                                .font(.system(size: 12))
+                            Text("Mở đáp án cả câu")
+                                .font(.system(size: 13))
+                            if sentence.hintCount > 0 {
+                                Text("\(sentence.hintCount)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Color.dlBackground)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.dlTeal, in: Capsule())
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10))
                         }
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10))
+                        .foregroundStyle(Color.dlInkSecondary)
                     }
-                    .foregroundStyle(Color.dlInkSecondary)
+                    .disabled(store.busy || store.playing || !sentence.hasListened)
                 }
-                .disabled(store.busy || store.playing || !sentence.hasListened)
+
+                Spacer()
+
+                // Word count
+                let resolved = sentence.words.filter(\.resolved).count
+                Text("\(resolved)/\(sentence.words.count) từ")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Color.dlInkSecondary)
             }
-
-            Spacer()
-
-            // Word count
-            let resolved = sentence.words.filter(\.resolved).count
-            Text("\(resolved)/\(sentence.words.count) từ")
-                .font(.system(size: 12, design: .monospaced))
+            Text(sentence.requiresReplayAfterReveal
+                 ? "Bạn đã mở đáp án. Cần nghe lại trọn câu trước khi tiếp tục."
+                 : "Nghe câu trước khi nhập. Từ mở đáp án không tính là trả lời đúng. Bản nháp được lưu trên thiết bị này.")
+                .font(.caption)
                 .foregroundStyle(Color.dlInkSecondary)
         }
         .padding(.horizontal, 16)
@@ -348,7 +368,8 @@ struct WordInputTile: View {
             .focused($focused)
             .disabled(!sentence.hasListened || busy)
             .onSubmit(onSubmit)
-            .frame(minWidth: CGFloat(word.length) * 9 + 20, maxWidth: 160)
+            .accessibilityLabel("Từ \(word.index + 1), \(word.length) chữ cái")
+            .frame(width: min(160, max(44, CGFloat(word.length) * 9 + 20)), height: 44)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(
@@ -368,6 +389,14 @@ struct WordInputTile: View {
             )
             .animation(.easeInOut(duration: 0.2), value: focused)
 
+            Button(action: onSubmit) {
+                Image(systemName: "checkmark.circle")
+                    .foregroundStyle(Color.dlInkSecondary)
+                    .frame(width: 44, height: 44)
+            }
+            .disabled(!sentence.hasListened || busy || answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityLabel("Chấm từ \(word.index + 1)")
+
             // Hint button (word-level, only after listening)
             if sentence.hasListened && !busy {
                 Menu {
@@ -377,11 +406,17 @@ struct WordInputTile: View {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 12))
                         .foregroundStyle(Color.dlInkSecondary)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 44, height: 44)
                 }
+                .accessibilityLabel("Gợi ý từ \(word.index + 1)")
             }
         }
-        .accessibilityLabel("Từ \(word.index + 1), \(word.length) chữ cái")
+        if hasError {
+            Text("Chưa đúng. Hãy nghe và thử lại.")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .frame(maxWidth: 180)
+        }
     }
 
     private var hasError: Bool {
@@ -412,7 +447,7 @@ struct FlowLayout: Layout {
             rowHeight = max(rowHeight, size.height)
             maxX = max(maxX, x)
         }
-        return CGSize(width: maxX, height: y + rowHeight)
+        return CGSize(width: proposal.width ?? max(0, maxX - spacing), height: y + rowHeight)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {

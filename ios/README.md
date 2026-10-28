@@ -32,9 +32,12 @@ Dữ liệu trên website được giữ nguyên. Bản nháp chưa gửi chỉ 
 
 ## Build `.ipa`
 
-Workflow `ios.yml` đã được gỡ khỏi CI để tiết kiệm hạn mức GitHub Actions, nên không còn build
-hoặc tạo Release tự động khi push thay đổi trong `ios/`. Build bằng script cục bộ trên máy Mac
-có Xcode:
+Workflow `ios.yml` chỉ chạy khi đẩy tag `ios-build-*` hoặc chọn **Run workflow** trên GitHub.
+Push code thông thường không chạy macOS để tiết kiệm hạn mức GitHub Actions.
+Workflow chạy kiểm tra, XCTest, build arm64 và tạo bản phát hành riêng tư kèm IPA, SHA-256,
+ảnh simulator và log. IPA vẫn cần được ký để cài trên iPhone.
+
+Cũng có thể build bằng script cục bộ trên máy Mac có Xcode:
 
 ```bash
 bash ios/scripts/build.sh
