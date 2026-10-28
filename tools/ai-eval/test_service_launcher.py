@@ -53,6 +53,22 @@ def test_core_keeps_its_credentials_and_literal_quoting_only(tmp_path):
     assert 'AI_PROVIDER_ENCRYPTION_KEY' not in result
 
 
+@pytest.mark.parametrize('component', ['ai', 'worker', 'progress'])
+def test_explicit_iam_profile_settings_do_not_import_ambient_credentials(tmp_path, component):
+    path = tmp_path / 'service.env'
+    text = 'AWS_PROFILE=runtime\nAWS_REGION=ap-southeast-1\nAWS_SHARED_CREDENTIALS_FILE=/etc/service/runtime.aws\n'
+    text += ('AURORA_DB_HOST=cluster.rds.amazonaws.com\nSPRING_PROFILES_ACTIVE=aurora\n' if component == 'progress'
+             else 'AI_PROVIDER_CONFIG_SOURCE=database\nDICTALAB_AI_REGISTRY_OWNERSHIP=private\n')
+    path.write_text(text, encoding='utf-8')
+    result = launcher.child_environment(component, path, {'AWS_ACCESS_KEY_ID': 'operator', 'AWS_PROFILE': 'operator'})
+    assert result['AWS_PROFILE'] == 'runtime'
+    assert 'AWS_ACCESS_KEY_ID' not in result
+    explicit = {k: v for k, v in result.items() if k not in ('PYTHONUTF8', 'PYTHONIOENCODING')}
+    launcher.validate_config(component, explicit)
+    with pytest.raises(ValueError):
+        launcher.validate_config(component, dict(explicit, AWS_SECRET_ACCESS_KEY='operator'))
+
+
 def stack_configs(tmp_path):
     token = 'fixture-internal-token-at-least-32-chars'
     (tmp_path / 'core.env').write_text('DICTALAB_AI_SERVICE_TOKEN=' + token + '\n'

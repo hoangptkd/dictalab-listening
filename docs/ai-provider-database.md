@@ -194,15 +194,26 @@ Nguồn: [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/),
    chỉnh registry trong cửa sổ copy/cutover để tránh snapshot lỗi thời.
 6. Owner cấp runtime `USAGE` schema và `SELECT` trên ba bảng
    `ai_provider_pools`, `ai_provider_accounts`, `ai_registry_schema`; không cấp
-   INSERT/UPDATE/DELETE/TRUNCATE/CREATE hay quyền SET ROLE. Thu hồi quyền
+   INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER/CREATE, quyền cấp lại SELECT
+   hoặc quyền SET ROLE. Không cấp quyền ghi/cấp lại qua từng cột. Thu hồi quyền
    PUBLIC và không cấp AI đọc bảng Core. Core runtime không được CONNECT DB AI
    hoặc đọc registry legacy; giữ role quản trị migration ngoài runtime.
 
 AI runtime đặt `AI_PROVIDER_CONFIG_SOURCE=database`,
 `DICTALAB_AI_REGISTRY_OWNERSHIP=private`, DSN read-only và master riêng.
 Startup xác minh schema/checksum, role hạn chế, không membership hoặc quyền ghi
-registry. Sai điều kiện thì từ chối cloud request, không lùi về key legacy.
+registry ở cấp bảng/cột. Runtime không được sở hữu database/schema/registry,
+CREATE trên database hoặc schema ứng dụng, kể cả quyền thừa hưởng qua PUBLIC;
+không được cấp lại quyền SELECT. Sai điều kiện thì từ chối cloud request, không
+lùi về key legacy. Đây là kiểm tra quyền registry, không thay thế rà soát các
+hàm SECURITY DEFINER, quyền ngoài registry hoặc cách ly toàn bộ cluster.
 CLI upsert dùng file owner; không cấp owner file cho API/worker.
+
+Nếu runtime bị từ chối sau cập nhật này, dùng tài khoản quản trị xác minh và thu
+hồi grant dư trong cửa sổ bảo trì; giữ dữ liệu/master key và kiểm lại CLI smoke.
+Không đổi API/worker sang owner để vượt kiểm tra. PostgreSQL mặc định ở mỗi bản
+cài có thể khác nhau; kiểm tra quyền thực tế thay vì giả định PUBLIC đã an toàn.
+Các phép kiểm tra dùng [hàm phân quyền của PostgreSQL](https://www.postgresql.org/docs/18/functions-info.html#FUNCTIONS-INFO-ACCESS-TABLE).
 
 ### Chạy và cutover local
 

@@ -2,7 +2,7 @@
 import base64
 import os
 import re
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 import psycopg
 from psycopg.rows import dict_row
@@ -18,7 +18,24 @@ def connect(dsn, *, readonly=True):
     # 'postgres' is the private service DNS on this repository's local Compose network.
     if uri.hostname not in ("localhost", "127.0.0.1", "::1", "postgres") and "sslmode=verify-full" not in uri.query.split("&"):
         raise ValueError("Remote provider registry requires verified TLS")
-    return psycopg.connect(dsn, connect_timeout=3, row_factory=dict_row,
+    parameters = parse_qsl(uri.query, keep_blank_values=True)
+    regions = [value for key, value in parameters if key == "iam_region"]
+    credentials = {}
+    timeout = 3
+    if regions:
+        if (len(regions) != 1 or not re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-\d", regions[0])
+                or not uri.hostname.endswith(".rds.amazonaws.com") or not uri.username or uri.password
+                or any(key in {"host", "hostaddr", "port", "user", "password", "dbname", "service"}
+                       for key, _ in parameters)
+                or [value for key, value in parameters if key == "sslmode"] != ["verify-full"]):
+            raise ValueError("IAM registry requires an RDS endpoint, region, user and verified TLS without a password")
+        import boto3
+        credentials["password"] = boto3.Session(region_name=regions[0]).client("rds").generate_db_auth_token(
+            DBHostname=uri.hostname, Port=uri.port or 5432, DBUsername=unquote(uri.username))
+        dsn = urlunsplit(uri._replace(query=urlencode([(k, v) for k, v in parameters if k != "iam_region"])))
+        # A new token is signed for every physical connection, including reconnects after 15 minutes.
+        timeout = 60
+    return psycopg.connect(dsn, **credentials, connect_timeout=timeout, row_factory=dict_row,
         options="-c statement_timeout=5000 -c lock_timeout=3000" + (" -c default_transaction_read_only=on" if readonly else ""))
 
 

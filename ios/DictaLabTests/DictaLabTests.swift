@@ -1,6 +1,25 @@
 import XCTest
 import Security
+import SwiftUI
+import UIKit
 @testable import DictaLab
+
+@MainActor
+final class FlowLayoutTests: XCTestCase {
+    func testWordTilesWrapWithinTheAvailableWidth() {
+        let host = UIHostingController(rootView: FlowLayout(spacing: 8) {
+            Color.clear.frame(width: 120, height: 30)
+            Color.clear.frame(width: 120, height: 50)
+            Color.clear.frame(width: 120, height: 20)
+        })
+        let narrow = host.sizeThatFits(in: CGSize(width: 200, height: 1000))
+        XCTAssertEqual(narrow.width, 200, accuracy: 0.5)
+        XCTAssertEqual(narrow.height, 116, accuracy: 0.5)
+        let wide = host.sizeThatFits(in: CGSize(width: 270, height: 1000))
+        XCTAssertEqual(wide.width, 270, accuracy: 0.5)
+        XCTAssertEqual(wide.height, 78, accuracy: 0.5)
+    }
+}
 
 final class SessionVaultTests: XCTestCase {
     func testSignedAppCanPersistAndClearSessionInKeychain() throws {

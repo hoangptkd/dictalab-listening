@@ -2,13 +2,8 @@ name: Build personal iOS app
 
 on:
   push:
-    paths:
-      - 'ios/**'
-      - '.github/workflows/ios.yml'
-  pull_request:
-    paths:
-      - 'ios/**'
-      - '.github/workflows/ios.yml'
+    tags:
+      - 'ios-build-*'
   workflow_dispatch:
 
 permissions:
@@ -16,7 +11,7 @@ permissions:
 
 concurrency:
   group: ios-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   ios:
@@ -26,15 +21,16 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: Check native project regression guards
+        run: python3 -m unittest discover -s ios/scripts -p 'test_*.py'
       - name: Compile SwiftUI, run simulator tests and package unsigned IPA
         run: bash ios/scripts/build.sh
       - name: Publish personal iPhone package and test evidence
-        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="ios-personal-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          tag="ios-personal-${GITHUB_SHA:0:12}-${GITHUB_RUN_ATTEMPT}"
           ditto -c -k --keepParent ios/build/Tests.xcresult ios/build/DictaLab-Tests.xcresult.zip
           gh release create "$tag" \
             ios/build/DictaLab-unsigned.ipa \
@@ -42,10 +38,10 @@ jobs:
             ios/build/DictaLab-iPhone.png \
             ios/build/DictaLab-Tests.xcresult.zip \
             ios/build/test.log ios/build/device.log \
-            --target "$GITHUB_SHA" --title "DictaLab iPhone personal build ${GITHUB_RUN_NUMBER}" \
+            --target "$GITHUB_SHA" --title "DictaLab iPhone UI update ${GITHUB_SHA:0:7}" \
             --notes-file ios/RELEASE_NOTES.md --prerelease
           gh release view "$tag" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
-      - name: Summarize checks without consuming Actions artifact storage
+      - name: Summarize checks without Actions artifact storage
         if: always()
         run: |
           if [ -f ios/build/test.log ]; then

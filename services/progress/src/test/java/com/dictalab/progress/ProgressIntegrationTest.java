@@ -50,6 +50,20 @@ class ProgressIntegrationTest {
     @Autowired ObjectMapper json;
     final UUID sessionId = UUID.randomUUID();
 
+    @Test void auroraRuntimeValidatesWithoutDdlAndRejectsPendingMigrations(@org.junit.jupiter.api.io.TempDir java.nio.file.Path migrations) throws Exception {
+        db.execute("CREATE ROLE progress_schema_runtime LOGIN PASSWORD 'synthetic-schema-check'");
+        db.execute("GRANT USAGE ON SCHEMA public TO progress_schema_runtime");
+        db.execute("GRANT SELECT ON flyway_schema_history TO progress_schema_runtime");
+        var flyway = org.flywaydb.core.Flyway.configure()
+            .dataSource(postgres.getJdbcUrl(), "progress_schema_runtime", "synthetic-schema-check")
+            .locations("classpath:db/migration", "filesystem:" + migrations).load();
+        var strategy = new ProgressApplication().auroraSchemaValidation();
+        assertThatCode(() -> strategy.migrate(flyway)).doesNotThrowAnyException();
+        java.nio.file.Files.writeString(migrations.resolve("V2__pending.sql"), "CREATE TABLE must_not_be_created(id INTEGER);");
+        assertThatThrownBy(() -> strategy.migrate(flyway)).isInstanceOf(RuntimeException.class);
+        assertThat(db.queryForObject("SELECT to_regclass('must_not_be_created')", String.class)).isNull();
+    }
+
     @BeforeEach void resetData() {
         db.update("DELETE FROM progress_sessions");
         db.update("DELETE FROM progress_users");

@@ -116,11 +116,42 @@ def main():
             with connect(restore_dsn) as db:
                 assert snapshot(db, ai_key) == expected
             with psycopg.connect(admin_dsn, autocommit=True) as admin:
+                admin.execute("CREATE ROLE rds_iam NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE")
+                admin.execute("GRANT rds_iam TO ai_runtime")
+            load_registry(runtime_dsn, ai_key, require_private=True)
+            with psycopg.connect(admin_dsn, autocommit=True) as admin:
                 admin.execute("GRANT ai_owner TO ai_runtime")
             denied(lambda: load_registry(runtime_dsn, ai_key, require_private=True), ValueError)
             with psycopg.connect(admin_dsn, autocommit=True) as admin:
                 admin.execute("REVOKE ai_owner FROM ai_runtime")
             denied(lambda: load_registry(owner_dsn, ai_key, require_private=True), ValueError)
+            # Read-only transactions do not prove role isolation: the credential
+            # could reconnect read-write. Probe actual grants, including columns.
+            for grant, revoke in (
+                ('GRANT CREATE ON DATABASE ai TO ai_runtime', 'REVOKE CREATE ON DATABASE ai FROM ai_runtime'),
+                ('GRANT CREATE ON SCHEMA public TO ai_runtime', 'REVOKE CREATE ON SCHEMA public FROM ai_runtime'),
+                ('GRANT CREATE ON SCHEMA public TO PUBLIC', 'REVOKE CREATE ON SCHEMA public FROM PUBLIC'),
+                ('GRANT UPDATE(enabled) ON ai_provider_accounts TO ai_runtime', 'REVOKE UPDATE(enabled) ON ai_provider_accounts FROM ai_runtime'),
+                ('GRANT REFERENCES(id) ON ai_provider_accounts TO ai_runtime', 'REVOKE REFERENCES(id) ON ai_provider_accounts FROM ai_runtime'),
+                ('GRANT TRIGGER ON ai_provider_accounts TO ai_runtime', 'REVOKE TRIGGER ON ai_provider_accounts FROM ai_runtime'),
+                ('GRANT SELECT ON ai_provider_accounts TO ai_runtime WITH GRANT OPTION',
+                 'REVOKE GRANT OPTION FOR SELECT ON ai_provider_accounts FROM ai_runtime'),
+                ('GRANT SELECT(id) ON ai_provider_accounts TO ai_runtime WITH GRANT OPTION',
+                 'REVOKE SELECT(id) ON ai_provider_accounts FROM ai_runtime'),
+            ):
+                with connect(owner_dsn, readonly=False) as db:
+                    db.execute(grant)
+                denied(lambda: load_registry(runtime_dsn, ai_key, require_private=True), ValueError)
+                with connect(owner_dsn, readonly=False) as db:
+                    db.execute(revoke)
+                load_registry(runtime_dsn, ai_key, require_private=True)
+            with psycopg.connect(dsn('ai', 'postgres', password), autocommit=True) as admin:
+                admin.execute('CREATE SCHEMA runtime_owned AUTHORIZATION ai_runtime')
+                admin.execute('REVOKE ALL ON SCHEMA runtime_owned FROM ai_runtime')
+            denied(lambda: load_registry(runtime_dsn, ai_key, require_private=True), ValueError)
+            with psycopg.connect(dsn('ai', 'postgres', password), autocommit=True) as admin:
+                admin.execute('DROP SCHEMA runtime_owned')
+            load_registry(runtime_dsn, ai_key, require_private=True)
             pools, sources = load_registry(runtime_dsn, ai_key, require_private=True)
             assert len(pools) == 2 and len(sources) == 2 and not next(s for s in sources if s.platform == "deepseek").enabled
             cfg = Settings(primary_provider="gemini", ai_provider_config_source="database", registry_ownership="private",

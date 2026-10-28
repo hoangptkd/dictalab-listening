@@ -1,6 +1,7 @@
 import base64
 import json
 import time
+import sys
 from unittest.mock import patch, Mock
 
 import httpx
@@ -13,6 +14,39 @@ from app.model_gateway import ModelGateway
 MASTER = base64.b64encode(bytes(range(32))).decode()
 ROW = dict(id="ds1",platform="deepseek",account_id="account1",model="deepseek-flash",
            endpoint="https://api.deepseek.com/chat/completions")
+
+
+def test_iam_reconnect_signs_a_fresh_token_without_mutating_the_dsn():
+    from app.provider_registry import connect
+    sdk = Mock()
+    signer = sdk.Session.return_value.client.return_value
+    signer.generate_db_auth_token.side_effect = ["first-token", "renewed-token"]
+    dsn = "postgresql://ai_runtime@cluster.example.ap-southeast-1.rds.amazonaws.com/ai?sslmode=verify-full&iam_region=ap-southeast-1"
+    with patch.dict(sys.modules, {"boto3": sdk}), patch("app.provider_registry.psycopg.connect") as pg:
+        connect(dsn)
+        connect(dsn, readonly=False)
+    assert [call.kwargs["password"] for call in pg.call_args_list] == ["first-token", "renewed-token"]
+    assert all("iam_region" not in call.args[0] and call.kwargs["connect_timeout"] == 60
+               for call in pg.call_args_list)
+    assert "default_transaction_read_only=on" in pg.call_args_list[0].kwargs["options"]
+    assert "default_transaction_read_only" not in pg.call_args_list[1].kwargs["options"]
+    signer.generate_db_auth_token.assert_called_with(
+        DBHostname="cluster.example.ap-southeast-1.rds.amazonaws.com", Port=5432, DBUsername="ai_runtime")
+
+
+@pytest.mark.parametrize("dsn", [
+    "postgresql://ai@localhost/ai?sslmode=verify-full&iam_region=ap-southeast-1",
+    "postgresql://ai:secret@x.rds.amazonaws.com/ai?sslmode=verify-full&iam_region=ap-southeast-1",
+    "postgresql://ai@x.rds.amazonaws.com/ai?sslmode=require&iam_region=ap-southeast-1",
+    "postgresql://ai@x.rds.amazonaws.com/ai?sslmode=verify-full&iam_region=",
+    "postgresql://ai@x.rds.amazonaws.com/ai?sslmode=verify-full&iam_region=ap-southeast-1&iam_region=ap-southeast-1",
+    "postgresql://ai@x.rds.amazonaws.com/ai?sslmode=verify-full&iam_region=ap-southeast-1&host=other",
+])
+def test_invalid_iam_identity_or_tls_never_connects(dsn):
+    from app.provider_registry import connect
+    with patch("app.provider_registry.psycopg.connect") as pg, pytest.raises(ValueError):
+        connect(dsn)
+    pg.assert_not_called()
 
 
 def test_crypto_roundtrip_tamper_wrong_master_and_python_java_fixture():
