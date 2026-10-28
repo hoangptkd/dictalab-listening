@@ -1,0 +1,18 @@
+[Unit]
+Description=Private Redis for the Aurora demo
+PartOf=dictalab-aurora-demo.service
+StopWhenUnneeded=yes
+
+[Service]
+User=dictalab
+Group=dictalab
+ExecStart=/usr/bin/redis-server /etc/dictalab/aurora-redis.conf
+Restart=no
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dictalab/aurora-demo
+
+# Loopback, password and persistence settings belong in the protected Redis config.
