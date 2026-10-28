@@ -529,7 +529,7 @@ database cutover has been verified by this task.
   table ownership, column-level writes/references, TRIGGER and SELECT grant
   options at table/column level. Existing elevated-role and membership checks
   remain. Runtime failures stay redacted and never use environment fallback.
-- The real disposable PostgreSQL 18 registry smoke passed nine added privilege
+- The real disposable PostgreSQL 17 and 18 registry smoke passed nine added privilege
   scenarios, each rejected while unsafe and accepted again after revocation.
   Copy/restore/parity and existing runtime isolation checks still passed; 21
   focused Python operator/registry tests passed. No production grants changed.
