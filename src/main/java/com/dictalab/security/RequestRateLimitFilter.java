@@ -98,7 +98,8 @@ public class RequestRateLimitFilter extends OncePerRequestFilter {
         if(path.startsWith("/api/training/telemetry/")) group="ai";
         if(group.isEmpty() && (path.startsWith("/api/v1/practice-sessions")
                 || path.startsWith("/api/v1/catalog/") || path.startsWith("/api/v1/listening-learning/")
-                || path.startsWith("/api/v1/listening/"))) group="practice";
+                || path.startsWith("/api/v1/listening/") || path.startsWith("/api/v1/vocabulary/")
+                || path.startsWith("/api/admin/vocabulary/"))) group="practice";
         if(group.isEmpty()){chain.doFilter(request,response);return;}
         var auth=SecurityContextHolder.getContext().getAuthentication();
         String actor=auth!=null && auth.getPrincipal() instanceof DictaLabPrincipal user?"u:"+user.id():"ip:"+request.getRemoteAddr();

@@ -168,6 +168,10 @@ dictalab:
     client-id: ${PAYOS_CLIENT_ID:}
     api-key: ${PAYOS_API_KEY:}
     checksum-key: ${PAYOS_CHECKSUM_KEY:}
+  vocabulary:
+    enabled: ${DICTALAB_VOCABULARY_ENABLED:false}
+    new-cards-per-day: ${DICTALAB_VOCABULARY_NEW_CARDS_PER_DAY:10}
+    session-size: ${DICTALAB_VOCABULARY_SESSION_SIZE:20}
   learning:
     enabled: ${DICTALAB_LEARNING_ENABLED:false}
     queue-enabled: ${DICTALAB_LEARNING_QUEUE_ENABLED:false}

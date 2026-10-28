@@ -162,6 +162,7 @@ public class SecurityConfig {
                                 "/catalog",
                                 "/listening", "/listening/*",
                                 "/conversation", "/conversation/*",
+                                "/vocabulary", "/vocabulary/*",
                                 "/practice/*",
                                 "/history", "/history/*",
                                 "/dashboard",
