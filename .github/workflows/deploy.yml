@@ -61,6 +61,12 @@ jobs:
           mvn --batch-mode --no-transfer-progress dependency:list -DincludeScope=runtime -DoutputFile=target/runtime-dependencies.txt
           python3 scripts/scan-dependencies.py target/runtime-dependencies.txt target/dependency-scan.json
 
+      - name: Run tests and build executable JAR
+        run: mvn --batch-mode --no-transfer-progress -Pproduction-s3,ci-unit clean verify
+
+      - name: Verify S3 production packaging and published lesson pages
+        run: python3 scripts/verify-production-jar.py target/english-dictation-0.1.0-SNAPSHOT.jar
+
       - name: Save dependency scan evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -70,12 +76,6 @@ jobs:
           path: |
             target/runtime-dependencies.txt
             target/dependency-scan.json
-
-      - name: Run tests and build executable JAR
-        run: mvn --batch-mode --no-transfer-progress -Pproduction-s3,ci-unit clean verify
-
-      - name: Verify S3 production packaging and published lesson pages
-        run: python3 scripts/verify-production-jar.py target/english-dictation-0.1.0-SNAPSHOT.jar
 
       - name: Save unit test reports
         if: always()
@@ -96,6 +96,7 @@ jobs:
 
   postgres-tests:
     strategy:
+      fail-fast: false
       matrix:
         postgres: ${{ fromJSON((github.event_name == 'schedule' || inputs.full_compatibility) && '["17.11-alpine","18.4-alpine"]' || '["18.4-alpine"]') }}
     runs-on: ubuntu-latest
@@ -143,6 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
+      fail-fast: false
       matrix:
         postgres: ${{ fromJSON((github.event_name == 'schedule' || inputs.full_compatibility) && '["17.11-alpine","18.4-alpine"]' || '["18.4-alpine"]') }}
     steps:

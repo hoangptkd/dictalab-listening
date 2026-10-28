@@ -77,6 +77,8 @@ test('CI runs shared checks once and PostgreSQL suites independently before depl
     const deploy = job('deploy');
     for (const section of [build, postgres, reliability, deploy]) assert.ok(section, 'Missing CI job');
     assert.doesNotMatch(build, /matrix:|services:|postgres-test/);
+    assert.ok(build.indexOf('Save dependency scan evidence') > build.indexOf('Verify S3 production packaging'),
+        'An artifact quota failure must not prevent tests and package verification from running');
     for (const command of ['node --test src/test/js/*.cjs', 'node scripts/test-b1-expansion.cjs',
         'python3 -m unittest discover', 'python3 scripts/scan-dependencies.py',
         '-Pproduction-s3,ci-unit clean verify', 'python3 scripts/verify-production-jar.py']) {
@@ -85,6 +87,7 @@ test('CI runs shared checks once and PostgreSQL suites independently before depl
     }
     assert.match(build, /name: application\r?\n\s+retention-days: 14\r?\n\s+path: target\/english-dictation-0\.1\.0-SNAPSHOT\.jar/);
     for (const section of [postgres, reliability]) {
+        assert.match(section, /fail-fast: false/, 'One failed PostgreSQL variant must not cancel the other variant');
         assert.ok(section.includes(`postgres: \${{ fromJSON((github.event_name == 'schedule' || inputs.full_compatibility) && '["17.11-alpine","18.4-alpine"]' || '["18.4-alpine"]') }}`));
         assert.doesNotMatch(section, /^    needs:/m, 'Database tests must start independently of H2/build');
     }
