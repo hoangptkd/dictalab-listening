@@ -395,3 +395,39 @@ database cutover has been verified by this task.
   request or production deployment ran. Coordinated activation/backups/rollback,
   verified AWS configuration, actual VPS capacity and fresh R13 CPU generation
   remain outstanding.
+
+## Coordinated application-state snapshots (2026-10-28)
+
+- Added an explicit `cloud-backup.py --services` mode and checksum-based
+  `--verify-services` command. The existing Core-only mode/timer remains separate.
+  All four installed systemd processes must be inactive with zero PIDs before
+  and after the snapshot. The utility never changes service state or writes to
+  production databases.
+- Three independent libpq backup services use protected configuration, verified
+  TLS/channel binding and distinct backup roles. Targets must match runtime
+  database identities and differ from runtime roles; inherited PG/provider
+  settings are excluded. AI requires private registry ownership and its actual
+  unit ledger path. Configuration/CA ownership and permissions are checked.
+- Snapshots contain Core/AI/Progress dumps, consolidated SQLite jobs/budgets/
+  reservations/admissions, media, protected configs, Core/Progress artifacts,
+  release provenance and installed units. A separate root-only backup directory
+  keeps AI credentials outside Core's filesystem access. Source DB/WAL copies
+  are consolidated privately to avoid creating root-owned SQLite lock files
+  alongside the AI account's original ledger. Original bytes/ownership/modes
+  were verified unchanged.
+- Nine focused checks passed in a network-disabled disposable Linux container.
+  The opt-in test started its own PostgreSQL 18 cluster with TLS/SCRAM channel
+  binding, dumped three independent databases, restored into three different
+  databases and compared fixture rows. SQLite WAL state, failed dumps, resumed
+  writers, wrong targets/roles/ledger paths, permissions, CA writability,
+  symlinks and snapshot corruption/membership checks are covered. No real
+  production data, application credentials or paid providers were used.
+- The broader Linux operations suite passed 56 tests with 2 explicit skips
+  (systemd availability and the separately executed PostgreSQL opt-in test).
+  AI Platform CI now repeats the full TLS restore rehearsal. Windows explicitly
+  skips the 9 Linux-root checks; this is not Windows backup acceptance.
+- Snapshot verification proves archive/SQLite integrity, not production restore
+  acceptance. Previous AI release/venv, Redis and RabbitMQ must remain intact;
+  they are not duplicated or rewound. Ownership/ACL grants must be reapplied to
+  fresh restore targets. AWS schema/data restore, provisioning, coordinated
+  activation/rollback and actual VPS capacity remain required before rollout.

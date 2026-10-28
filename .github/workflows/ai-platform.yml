@@ -32,6 +32,8 @@ on:
       - 'scripts/linux/service-bundle.py'
       - 'scripts/linux/test_service_bundle.py'
       - 'scripts/linux/test_service_units.py'
+      - 'scripts/linux/cloud-backup.py'
+      - 'scripts/linux/test_cloud_backup.py'
       - 'scripts/linux/dictalab-ai*.service'
       - 'scripts/linux/dictalab-progress.service'
       - '.env*.example'
@@ -110,6 +112,14 @@ jobs:
           python scripts/linux/service-bundle.py build --revision "$GITHUB_SHA" --output target/microservices-release.tar.gz
           bundle_sha256=$(sha256sum target/microservices-release.tar.gz | cut -d ' ' -f 1)
           docker run --rm --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace dictalab-ai-check python scripts/linux/service-bundle.py stage target/microservices-release.tar.gz --sha256 "$bundle_sha256"
+      - name: Verify coordinated backup and disposable restores
+        run: |
+          docker build --tag dictalab-backup-check - <<'DOCKERFILE'
+          FROM postgres:18-alpine
+          RUN apk add --no-cache python3 openssl
+          WORKDIR /checks
+          DOCKERFILE
+          docker run --rm --network none --env TEST_SERVICE_BACKUP_POSTGRES=1 --mount "type=bind,source=$PWD/scripts/linux,target=/checks,readonly" dictalab-backup-check python3 -m unittest -v test_cloud_backup
       - name: Local dotenv quoting contract
         shell: pwsh
         run: |

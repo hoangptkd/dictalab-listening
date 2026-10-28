@@ -264,7 +264,9 @@ After the main-release, AWS database and capacity gates pass, provisioning must:
    keys are present: `/opt/dictalab/services/current/artifacts/prompts` and
    `/var/lib/dictalab-ai/jobs.sqlite3`. systemd environment files override
    `Environment=` defaults. API and worker must share the same ledger; keep its
-   database/WAL/SHM files together during quiescent backup. `StateDirectory=`
+   committed database and WAL pages together during quiescent backup. The
+   coordinated backup consolidates private copies into a standalone SQLite file
+   and leaves the original DB/WAL/SHM ownership untouched. `StateDirectory=`
    creates the 0700 AI state directory without deleting it on stop.
 6. Install the exact verified units under `/etc/systemd/system/` as root-owned
    0644 files. Run `systemd-analyze verify` against the installed paths after the
@@ -289,6 +291,79 @@ python3 -m unittest discover -s scripts/linux -p test_service_units.py
 The check uses a temporary filesystem root and stub executable paths with the
 actual unit files. It does not start services or prove production permissions,
 health, graceful drain or reboot recovery. Those still require the real host.
+
+### Coordinated application-state backup
+
+`cloud-backup.py --services` is separate from the existing Core-only backup and
+timer. It requires Linux root, PostgreSQL 18 clients at
+`/usr/lib/postgresql/18/bin/`, the installed four units already inactive with
+zero main PIDs, three initialized private databases, the existing AI job ledger
+and an explicit `current` release symlink. Provision initial databases/ledger and
+units before the first rollout; missing state is rejected rather than interpreted
+as an empty backup. No command in this section stops/starts services or changes
+the release pointer. Keep ingress, batch writers and registry edits quiescent
+throughout the snapshot; systemd checks cannot exclude unrelated writers.
+
+Create `/var/lib/dictalab-service-backups` as root:root 0700. This separate path
+keeps provider credentials and AI state inaccessible to the Core Unix account.
+Protect `/etc/dictalab/{app,ai,progress}.env` and
+`/etc/dictalab/backup.pg_service.conf` as root-owned 0600 files. The latter is a
+libpq service file with exactly `[core]`, `[ai]` and `[progress]`. Each section
+must explicitly contain these eight keys:
+
+```ini
+[core]
+host=DIRECT_DATABASE_HOST
+port=5432
+dbname=CORE_DATABASE_NAME
+user=CORE_BACKUP_ROLE
+password=SET_IN_PROTECTED_FILE_ONLY
+sslmode=verify-full
+sslrootcert=/etc/dictalab/verified-database-ca.pem
+channel_binding=require
+```
+
+Add the `[ai]` and `[progress]` sections with their own database names and backup
+roles. No defaults or implicit credential sources are accepted. Endpoints must
+match the corresponding protected runtime configuration; a proxy/alias change
+needs an explicit configuration review. Backup roles must differ from runtime
+roles and have enough access to dump their database, without cross-service
+permissions. Provision those grants against the selected AWS target before use.
+Install the verified database CA separately; keep TLS and channel binding enabled.
+The backup command supplies each child only its selected libpq service name and
+bounded connection/statement settings, never inherited PG/provider credentials.
+
+```text
+sudo python3 scripts/linux/cloud-backup.py --services
+sudo python3 scripts/linux/cloud-backup.py --verify-services /var/lib/dictalab-service-backups/services-ID --sha256 MANIFEST_SHA256
+```
+
+Retain the emitted manifest checksum independently. The snapshot includes three
+custom PostgreSQL dumps, consolidated SQLite jobs/budgets/reservations/admission
+data, both Core media directories including empty directories, protected runtime
+and backup configs, the Core/Progress JARs, release provenance and installed units.
+Files are root-owned 0600 beneath 0700 directories. Verification rejects checksum,
+membership, permission or link changes and checks PostgreSQL archive structure
+and SQLite integrity. Failed attempts remain private and do not emit success.
+
+Keep the previous immutable release directory and its venv: the snapshot records
+its revision but does not duplicate the AI runtime. Retain live RabbitMQ and
+Redis state during deployment/rollback. They are not captured or rewound here;
+resetting them can lose messages, admissions, sessions or provider quota state.
+PostgreSQL dumps omit ownership/ACL so restore can target a fresh database;
+reapply reviewed owner/runtime grants before reconnecting service processes.
+Keep restored configs root-only and restore the ledger with the dedicated AI
+account's ownership. Do not automatically rewind live databases, reservations
+or queues after new writes. This is an application-state snapshot prerequisite,
+not a complete disaster-recovery or coordinated rollback implementation.
+
+CI restores all three dumps into separate databases in a disposable PostgreSQL
+18 instance with verified TLS/SCRAM channel binding, compares fixture rows, and
+checks WAL-backed jobs/reservations/budgets/admissions. Only systemd states are
+simulated; the PostgreSQL dump/restore and SQLite operations are real. That
+evidence does not replace a restore drill using the actual AWS schema/data,
+least-privilege grants and measured recovery time. No production credentials or
+databases are used in CI.
 
 ## VPS deployment gates
 
