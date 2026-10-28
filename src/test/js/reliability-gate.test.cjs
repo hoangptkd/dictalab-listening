@@ -136,6 +136,67 @@ test('CI Java test partition covers every Spring context suite without duplicati
     assert.ok(!matches('JwtTokenServiceTest.java'), 'Pure unit tests must not be repeated on PostgreSQL');
 });
 
+test('superseded CI can be cancelled without cancelling main deployments or sibling services', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const read = name => fs.readFileSync(path.join(__dirname, '../../../.github/workflows/', name + '.yml'), 'utf8');
+    const concurrency = source => source.match(/^concurrency:\r?\n([\s\S]*?)(?=^\S)/m)?.[1];
+    const main = concurrency(read('deploy'));
+    assert.ok(main);
+    assert.match(main, /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/);
+    const cancelChecks = "cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/codex/')) }}";
+    for (const name of ['ai-platform', 'progress']) {
+        const component = concurrency(read(name));
+        assert.ok(component?.includes(`group: ${name}-${'${{ github.workflow }}'}-${'${{ github.event_name }}'}-${'${{ github.ref }}'}`),
+            'Called workflows must have distinct groups and must not cancel their caller');
+        assert.ok(component.includes(cancelChecks), 'Main, scheduled and manual runs must not be cancelled by a later check');
+    }
+});
+
+test('branch service checks exclude unrelated frontend files while full main gates stay enabled', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const read = name => fs.readFileSync(path.join(__dirname, '../../../.github/workflows/', name + '.yml'), 'utf8');
+    for (const name of ['ai-platform', 'progress']) {
+        const workflow = read(name);
+        const start = workflow.indexOf("      - 'src/**'");
+        assert.ok(start >= 0);
+        for (const excluded of ['src/main/resources/static/**', 'src/main/resources/templates/**', 'src/test/js/**']) {
+            assert.ok(workflow.indexOf(`      - '!${excluded}'`) > start, 'Exclusions must follow the broad src pattern');
+        }
+    }
+    const ai = read('ai-platform');
+    const lastExclusion = ai.indexOf("      - '!src/test/js/**'");
+    for (const file of ['conversation.js', 'model-demo.js']) {
+        assert.ok(ai.indexOf(`      - 'src/main/resources/static/js/${file}'`) > lastExclusion,
+            'AI frontend contracts must still trigger branch AI checks');
+    }
+    const mainEvents = read('deploy').split(/^permissions:/m)[0];
+    assert.match(mainEvents, /pull_request:\r?\n    branches:\r?\n      - main/);
+    assert.match(mainEvents, /push:\r?\n    branches:\r?\n      - main/);
+    assert.doesNotMatch(mainEvents, /paths(?:-ignore)?:/, 'Main and PR integration gates must not use component path filters');
+});
+
+test('optional builds are manual while lightweight training checks remain automatic', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const read = name => fs.readFileSync(path.join(__dirname, '../../../.github/workflows/', name + '.yml'), 'utf8');
+    const ios = read('ios');
+    const iosEvents = ios.split(/^permissions:/m)[0];
+    assert.match(iosEvents, /workflow_dispatch:/);
+    assert.doesNotMatch(iosEvents, /^  (?:push|pull_request|schedule):/m);
+    assert.ok(ios.includes('bash ios/scripts/build.sh'), 'Manual iOS compilation and tests must remain available');
+    const training = read('training-offline');
+    for (const event of ['push', 'pull_request']) {
+        assert.ok(training.includes(`  ${event}:\n    branches: [main]`) || training.includes(`  ${event}:\r\n    branches: [main]`));
+    }
+    const offline = training.split('  offline:')[1]?.split('  cpu-runtime:')[0];
+    assert.ok(offline?.includes('python -m pytest -q training/tests'));
+    assert.doesNotMatch(offline, /^    if:/m, 'Lightweight training validation must not become manual-only');
+    assert.match(training, /cpu-runtime:\r?\n    if: github\.event_name == 'workflow_dispatch'/);
+    assert.ok(training.includes('SFT_RUN_RUNTIME_TESTS: \'1\''), 'Manual CPU runtime tests must remain available');
+});
+
 test('VPS preflight collectors run long enough to produce ten samples without weakening guards', () => {
     const fs = require('node:fs');
     const path = require('node:path');

@@ -8,6 +8,9 @@ on:
     paths:
       - 'services/progress/**'
       - 'src/**'
+      - '!src/main/resources/static/**'
+      - '!src/main/resources/templates/**'
+      - '!src/test/js/**'
       - 'docs/progress-*.json'
       - 'docs/progress-*.yaml'
       - 'compose.yaml'
@@ -17,6 +20,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: progress-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/codex/')) }}
 
 jobs:
   contracts-and-recovery:
