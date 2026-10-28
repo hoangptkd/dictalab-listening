@@ -969,7 +969,9 @@ async def test_teacher_dispatch_uses_frozen_budget_and_marks_unknown_transport(
             self.config, self.client = config, client
         async def complete(self, messages, schema, deadline, purpose, **kwargs):
             assert self.config.num_predict == max_tokens and self.config.timeout_seconds == timeout
-            assert timeout - 2 < deadline - time.monotonic() <= timeout
+            # Compare absolute times to avoid rounding above the budget on a coarse clock.
+            now = time.monotonic()
+            assert now + timeout - 2 < deadline <= now + timeout
             assert kwargs.get("deepseek_reasoning_effort") == wire_effort
             assert kwargs.get("deepseek_cache_prefix") is (True if cache_prefix else None)
             schema_message = {"role":"system", "content":"Return one JSON object matching this JSON schema: " + json.dumps(schema)}
