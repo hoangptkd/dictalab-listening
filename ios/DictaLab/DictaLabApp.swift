@@ -20,25 +20,42 @@ struct RootView: View {
     @EnvironmentObject private var api: APIClient
     @State private var loading = true
     @State private var error: String?
+    @State private var splashDone = false
 
     var body: some View {
-        Group {
-            if loading { ProgressView("Đang mở DictaLab…") }
-            else if api.account != nil {
-                TabView {
-                    NavigationStack { CatalogView() }
-                        .tabItem { Label("Bài nghe", systemImage: "headphones") }
-                    NavigationStack { HistoryView() }
-                        .tabItem { Label("Lịch sử", systemImage: "clock") }
-                    NavigationStack { ProgressScreen() }
-                        .tabItem { Label("Tiến bộ", systemImage: "chart.bar") }
-                    NavigationStack { AccountView() }
-                        .tabItem { Label("Tài khoản", systemImage: "person.crop.circle") }
+        ZStack {
+            Color.dlBackground.ignoresSafeArea()
+
+            if !splashDone {
+                SplashView()
+                    .transition(.opacity)
+                    .onAppear {
+                        Task {
+                            await restore()
+                            withAnimation(.easeOut(duration: 0.4)) { splashDone = true }
+                        }
+                    }
+            } else if loading {
+                // Brief secondary load (should be instant)
+                VStack(spacing: 12) {
+                    WaveformVisualizer(isPlaying: true)
+                    Text("Đang kết nối…")
+                        .font(.system(size: 13)).foregroundStyle(Color.dlInkSecondary)
                 }
-            } else { AuthView() }
+            } else if api.account != nil {
+                MainTabView()
+                    .transition(.opacity)
+            } else {
+                AuthView()
+                    .transition(.opacity)
+            }
         }
-        .task { await restore() }
-        .alert("Chưa thể kết nối", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+        .animation(.easeInOut(duration: 0.35), value: splashDone)
+        .animation(.easeInOut(duration: 0.35), value: api.account != nil)
+        .alert("Chưa thể kết nối", isPresented: Binding(
+            get: { error != nil },
+            set: { if !$0 { error = nil } }
+        )) {
             Button("Thử lại") { Task { await restore() } }
             Button("Đóng", role: .cancel) { }
         } message: { Text(error ?? "") }
@@ -49,6 +66,33 @@ struct RootView: View {
         defer { loading = false }
         do { try await api.restore() }
         catch { self.error = error.localizedDescription }
+    }
+}
+
+// MARK: - Splash Screen
+
+struct SplashView: View {
+    @State private var playing = false
+    @State private var opacity: Double = 0
+
+    var body: some View {
+        VStack(spacing: 16) {
+            WaveformVisualizer(isPlaying: playing, color: .dlTeal, barCount: 7)
+                .frame(width: 80, height: 48)
+
+            Text("DictaLab")
+                .font(.system(size: 28, weight: .bold, design: .serif))
+                .foregroundStyle(Color.dlInk)
+
+            Text("Một câu mỗi lần. Tiến bộ mỗi ngày.")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.dlInkSecondary)
+        }
+        .opacity(opacity)
+        .onAppear {
+            withAnimation(.easeIn(duration: 0.4)) { opacity = 1 }
+            withAnimation(.easeIn(duration: 0.3).delay(0.2)) { playing = true }
+        }
     }
 }
 
