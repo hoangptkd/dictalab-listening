@@ -1,0 +1,25 @@
+[Unit]
+Description=DictaLab Aurora demo (maximum one hour per start)
+Wants=network-online.target
+Requires=dictalab-aurora-redis.service
+After=network-online.target dictalab-aurora-redis.service
+Conflicts=dictalab.service
+
+[Service]
+User=dictalab
+Group=dictalab
+WorkingDirectory=/opt/dictalab/app
+EnvironmentFile=/etc/dictalab/aurora-demo.env
+ExecStart=/usr/bin/java -Xms128m -Xmx384m -XX:+ExitOnOutOfMemoryError -jar /opt/dictalab/aurora-demo/dictalab.jar --server.address=127.0.0.1 --server.port=18082 --server.forward-headers-strategy=framework --logging.file.name=/var/lib/dictalab/aurora-demo/logs/app.json
+RuntimeMaxSec=3600
+Restart=no
+TimeoutStopSec=100
+SuccessExitStatus=143
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dictalab/aurora-demo
+
+# Deliberately no Install section: demos must not start automatically at boot.

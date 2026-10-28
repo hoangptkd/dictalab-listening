@@ -1,0 +1,23 @@
+# Run the backend only during a demo: scheduled jobs keep Aurora awake while it runs.
+spring:
+  datasource:
+    url: jdbc:aws-wrapper:postgresql://${AURORA_DB_HOST}:5432/${AURORA_DB_NAME:dictalab_demo}
+    username: ${AURORA_DB_USERNAME:dictalab_demo}
+    password: ""
+    driver-class-name: software.amazon.jdbc.Driver
+    hikari:
+      maximum-pool-size: 2
+      minimum-idle: 0
+      connection-timeout: 65000
+      initialization-fail-timeout: 90000
+      idle-timeout: 60000
+      max-lifetime: 840000
+      data-source-properties:
+        wrapperPlugins: iam
+        iamRegion: ${AWS_REGION:ap-southeast-1}
+        sslmode: verify-full
+        sslfactory: org.postgresql.ssl.DefaultJavaSSLFactory
+        connectTimeout: 60
+        socketTimeout: 65
+        tcpKeepAlive: true
+        ApplicationName: dictalab-aurora-demo
