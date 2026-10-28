@@ -39,6 +39,8 @@ on:
       - 'scripts/linux/test_service_units.py'
       - 'scripts/linux/cloud-backup.py'
       - 'scripts/linux/test_cloud_backup.py'
+      - 'scripts/linux/test_aws_database_access.py'
+      - 'ops/aws/**'
       - 'scripts/linux/dictalab-ai*.service'
       - 'scripts/linux/dictalab-progress.service'
       - '.env*.example'
@@ -83,11 +85,15 @@ jobs:
       - name: Java routing and contract tests
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
-        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,ModelDemoIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,AiProviderRegistryTest,ListeningComprehensionIntegrationTest test
+        run: mvn --batch-mode --no-transfer-progress -Dtest=AuroraSchemaValidationTest,ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,ModelDemoIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,AiProviderRegistryTest,ListeningComprehensionIntegrationTest test
       - name: Java to Python to fake Ollama smoke
         run: python tools/ai-eval/smoke.py
       - name: Private registry migration, backup restore and database isolation
         run: python tools/ai-eval/registry_smoke.py
+      - name: Aurora IAM policies and PostgreSQL 17 privilege boundaries
+        env:
+          TEST_AWS_DATABASE_BOOTSTRAP: '1'
+        run: python -m unittest discover -s scripts/linux -p test_aws_database_access.py -v
       - name: Java API RabbitMQ worker smoke, local/cloud routing and capacity sweep
         env:
           AI_TEST_RABBITMQ_URL: amqp://guest:guest@127.0.0.1:5672/%2F

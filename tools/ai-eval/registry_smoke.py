@@ -116,6 +116,10 @@ def main():
             with connect(restore_dsn) as db:
                 assert snapshot(db, ai_key) == expected
             with psycopg.connect(admin_dsn, autocommit=True) as admin:
+                admin.execute("CREATE ROLE rds_iam NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE")
+                admin.execute("GRANT rds_iam TO ai_runtime")
+            load_registry(runtime_dsn, ai_key, require_private=True)
+            with psycopg.connect(admin_dsn, autocommit=True) as admin:
                 admin.execute("GRANT ai_owner TO ai_runtime")
             denied(lambda: load_registry(runtime_dsn, ai_key, require_private=True), ValueError)
             with psycopg.connect(admin_dsn, autocommit=True) as admin:

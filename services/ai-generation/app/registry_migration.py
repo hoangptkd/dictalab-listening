@@ -35,8 +35,9 @@ def verify_private(db, *, runtime=False):
         raise ValueError("private registry migration checksum mismatch")
     if runtime:
         if db.execute("""SELECT EXISTS(SELECT 1 FROM pg_roles parent WHERE parent.rolname<>current_user
+                AND parent.rolname<>'rds_iam'
                 AND pg_has_role(current_user,parent.oid,'MEMBER')) AS allowed""").fetchone()["allowed"]:
-            # NOINHERIT still permits SET ROLE; runtime credentials must have no alternate role.
+            # rds_iam enables authentication only; all data/owner role memberships remain forbidden.
             raise ValueError("private registry runtime role must not have role memberships")
         writable = db.execute("""SELECT
             has_database_privilege(current_user,current_database(),'CREATE') OR

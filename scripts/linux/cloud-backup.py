@@ -105,7 +105,7 @@ def runtime_database(name):
         user = urllib.parse.unquote(url.username or '')
     else:
         prefix = 'PROGRESS_' if name == 'progress' else ''
-        url = urllib.parse.urlsplit(settings[prefix + 'DB_URL'].removeprefix('jdbc:'))
+        url = urllib.parse.urlsplit(settings[prefix + 'DB_URL'].removeprefix('jdbc:').removeprefix('aws-wrapper:'))
         user = settings[prefix + 'DB_USERNAME']
     if url.scheme not in ('postgres', 'postgresql') or not url.hostname or not user:
         raise ValueError('Explicit PostgreSQL runtime identity is required')
@@ -122,15 +122,25 @@ def service_environment(name):
     for section in config.values():
         if not section.name or section.name == 'DEFAULT':
             continue
-        if (set(section) != {'host', 'port', 'dbname', 'user', 'password', 'sslmode', 'sslrootcert', 'channel_binding'}
-                or section['sslmode'] != 'verify-full' or section['channel_binding'] != 'require'
+        common = {'host', 'port', 'dbname', 'user', 'sslmode', 'sslrootcert', 'channel_binding'}
+        iam = section.get('auth') == 'iam'
+        required = common | ({'auth', 'region', 'aws_profile', 'aws_shared_credentials_file'} if iam else {'password'})
+        if (set(section) != required
+                or section['sslmode'] != 'verify-full'
+                or section['channel_binding'] != ('prefer' if iam else 'require')
                 or not section['host'] or any(c in section['host'] for c in '/,= \r\n')
                 or '-pooler.' in section['host'] or not 1 <= int(section['port']) <= 65535
                 or not re.fullmatch(r'[a-zA-Z0-9_-]{1,63}', section['dbname'])
-                or not section['user'] or not section['password']
+                or not section['user'] or not iam and not section['password']
                 or not pathlib.Path(section['sslrootcert']).is_absolute()
                 or not pathlib.Path(section['sslrootcert']).is_file()):
             raise ValueError('Backup requires direct PostgreSQL endpoints, explicit credentials and verified TLS')
+        if iam:
+            if (not section['host'].endswith('.rds.amazonaws.com')
+                    or not re.fullmatch(r'[a-z]{2}(?:-[a-z]+)+-\d', section['region'])
+                    or not section['aws_profile'] or not pathlib.Path(section['aws_shared_credentials_file']).is_absolute()):
+                raise ValueError('IAM backup requires an RDS endpoint, region and protected credential profile')
+            protected(pathlib.Path(section['aws_shared_credentials_file']))
         certificate = pathlib.Path(section['sslrootcert']).stat()
         if certificate.st_uid != 0 or certificate.st_mode & 0o022:
             raise ValueError('Database CA must be root-owned without group/world write access')
@@ -142,9 +152,27 @@ def service_environment(name):
         roles.add(section['user'])
     if len(identities) != 3 or len(roles) != 3:
         raise ValueError('Each business service needs its own database and backup role')
-    return {'PATH': '/usr/local/bin:/usr/bin:/bin', 'HOME': '/nonexistent', 'LANG': 'C.UTF-8',
+    environment = {'PATH': '/usr/local/bin:/usr/bin:/bin', 'HOME': '/nonexistent', 'LANG': 'C.UTF-8',
             'PGSERVICEFILE': str(SERVICE_CONFIG), 'PGSERVICE': name, 'PGCONNECT_TIMEOUT': '15',
             'PGOPTIONS': '-c statement_timeout=120000 -c lock_timeout=3000'}
+    selected = config[name]
+    if selected.get('auth') == 'iam':
+        import boto3
+        credentials = configparser.ConfigParser(interpolation=None)
+        credentials.read(selected['aws_shared_credentials_file'])
+        profile = credentials[selected['aws_profile']]
+        session = boto3.Session(region_name=selected['region'],
+            aws_access_key_id=profile['aws_access_key_id'], aws_secret_access_key=profile['aws_secret_access_key'],
+            aws_session_token=profile.get('aws_session_token'))
+        token = session.client('rds').generate_db_auth_token(DBHostname=selected['host'],
+            Port=int(selected['port']), DBUsername=selected['user'])
+        # IAM uses a signed token over verified TLS, not SCRAM channel binding.
+        environment.pop('PGSERVICEFILE')
+        environment.pop('PGSERVICE')
+        environment.update(PGHOST=selected['host'], PGPORT=selected['port'], PGDATABASE=selected['dbname'],
+            PGUSER=selected['user'], PGPASSWORD=token, PGSSLMODE='verify-full',
+            PGSSLROOTCERT=selected['sslrootcert'], PGCHANNELBINDING='prefer', PGCONNECT_TIMEOUT='60')
+    return environment
 
 
 def copy_private(source, target):

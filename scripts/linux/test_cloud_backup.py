@@ -11,7 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 spec = importlib.util.spec_from_file_location('cloud_backup', Path(__file__).with_name('cloud-backup.py'))
 backup = importlib.util.module_from_spec(spec)
@@ -160,6 +160,33 @@ class CloudBackupTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.create()
         self.assertEqual([], list(backup.SERVICE_BACKUPS.iterdir()))
+
+    def test_iam_backup_uses_fresh_tokens_and_never_passes_secrets_in_arguments(self):
+        host = 'cluster.example.ap-southeast-1.rds.amazonaws.com'
+        credentials = self.root / 'aws-credentials'
+        self.private(credentials, '[backup]\naws_access_key_id=synthetic-id\naws_secret_access_key=synthetic-key\n')
+        text = backup.SERVICE_CONFIG.read_text().replace('host=localhost', 'host=' + host)
+        text = text.replace('password=synthetic-test-password',
+            f'auth=iam\nregion=ap-southeast-1\naws_profile=backup\naws_shared_credentials_file={credentials}')
+        self.private(backup.SERVICE_CONFIG, text.replace('channel_binding=require', 'channel_binding=prefer'))
+        for path in backup.SERVICE_ENVS.iterdir():
+            if path.name.endswith('.env'):
+                self.private(path, path.read_text().replace('localhost', host))
+        sdk = Mock()
+        signer = sdk.Session.return_value.client.return_value
+        signer.generate_db_auth_token.side_effect = ['token-one', 'token-two']
+        with patch.dict(sys.modules, {'boto3': sdk}), patch.dict(os.environ, {'PGHOST': 'wrong'}):
+            first = backup.service_environment('ai')
+            second = backup.service_environment('ai')
+        self.assertEqual('token-one', first['PGPASSWORD'])
+        self.assertEqual('token-two', second['PGPASSWORD'])
+        self.assertEqual(host, second['PGHOST'])
+        self.assertEqual('verify-full', second['PGSSLMODE'])
+        self.assertNotIn('PGSERVICEFILE', second)
+        self.assertEqual([], self.commands)
+        credentials.chmod(0o644)
+        with self.assertRaises(ValueError):
+            backup.service_environment('ai')
 
     def test_private_permissions_and_symlinks_are_rejected(self):
         backup.SERVICE_CONFIG.chmod(0o644)
