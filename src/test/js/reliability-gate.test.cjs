@@ -77,6 +77,8 @@ test('CI runs shared checks once and PostgreSQL suites independently before depl
     const deploy = job('deploy');
     for (const section of [build, postgres, reliability, deploy]) assert.ok(section, 'Missing CI job');
     assert.doesNotMatch(build, /matrix:|services:|postgres-test/);
+    assert.ok(build.indexOf('Resolve and scan runtime dependencies') > build.indexOf('Run tests and build executable JAR'),
+        'Maven clean must finish before dependency evidence is generated');
     assert.ok(build.indexOf('Save dependency scan evidence') > build.indexOf('Verify S3 production packaging'),
         'An artifact quota failure must not prevent tests and package verification from running');
     for (const command of ['node --test src/test/js/*.cjs', 'node scripts/test-b1-expansion.cjs',

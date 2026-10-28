@@ -56,16 +56,16 @@ jobs:
       - name: Check release and dependency scanner behavior
         run: python3 -m unittest discover -s scripts/linux -p 'test_*.py'
 
-      - name: Resolve and scan runtime dependencies
-        run: |
-          mvn --batch-mode --no-transfer-progress dependency:list -DincludeScope=runtime -DoutputFile=target/runtime-dependencies.txt
-          python3 scripts/scan-dependencies.py target/runtime-dependencies.txt target/dependency-scan.json
-
       - name: Run tests and build executable JAR
         run: mvn --batch-mode --no-transfer-progress -Pproduction-s3,ci-unit clean verify
 
       - name: Verify S3 production packaging and published lesson pages
         run: python3 scripts/verify-production-jar.py target/english-dictation-0.1.0-SNAPSHOT.jar
+
+      - name: Resolve and scan runtime dependencies
+        run: |
+          mvn --batch-mode --no-transfer-progress dependency:list -DincludeScope=runtime -DoutputFile=target/runtime-dependencies.txt
+          python3 scripts/scan-dependencies.py target/runtime-dependencies.txt target/dependency-scan.json
 
       - name: Save dependency scan evidence
         if: always()
