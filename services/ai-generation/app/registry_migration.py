@@ -39,9 +39,17 @@ def verify_private(db, *, runtime=False):
             # NOINHERIT still permits SET ROLE; runtime credentials must have no alternate role.
             raise ValueError("private registry runtime role must not have role memberships")
         writable = db.execute("""SELECT
-            has_table_privilege(current_user,'ai_provider_pools','INSERT,UPDATE,DELETE,TRUNCATE') OR
-            has_table_privilege(current_user,'ai_provider_accounts','INSERT,UPDATE,DELETE,TRUNCATE') OR
-            has_table_privilege(current_user,'ai_registry_schema','INSERT,UPDATE,DELETE,TRUNCATE') AS allowed""").fetchone()
+            has_database_privilege(current_user,current_database(),'CREATE') OR
+            EXISTS(SELECT 1 FROM pg_database WHERE datname=current_database()
+                AND datdba=(SELECT oid FROM pg_roles WHERE rolname=current_user)) OR
+            EXISTS(SELECT 1 FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname<>'information_schema'
+                AND (has_schema_privilege(current_user,oid,'CREATE')
+                    OR nspowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))) OR
+            EXISTS(SELECT 1 FROM pg_class WHERE oid IN (
+                'public.ai_provider_pools'::regclass,'public.ai_provider_accounts'::regclass,'public.ai_registry_schema'::regclass)
+                AND (has_table_privilege(current_user,oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,SELECT WITH GRANT OPTION')
+                    OR has_any_column_privilege(current_user,oid,'INSERT,UPDATE,REFERENCES,SELECT WITH GRANT OPTION')
+                    OR relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))) AS allowed""").fetchone()
         if writable["allowed"]:
             raise ValueError("private registry runtime role must be read-only")
 

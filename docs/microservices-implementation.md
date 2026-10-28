@@ -517,3 +517,24 @@ database cutover has been verified by this task.
 - Database schema/grants and actual-host rehearsal remain separate requirements.
   Production stays paused pending AWS and confirmed VPS capacity. The local
   machine still has about 10.2 GiB free, below the 20 GiB CPU model gate.
+
+## Private registry privilege gate (2026-10-28)
+
+- Strengthened the existing AI runtime verifier instead of adding a second
+  database bootstrap path. The operator CLI already owns schema initialization
+  and registry copy; production database creation/grants remain explicit.
+- A read-only connection is insufficient to prove that its credential cannot
+  reconnect read-write. The verifier now rejects database CREATE/ownership,
+  application-schema CREATE/ownership (including PUBLIC grants), registry
+  table ownership, column-level writes/references, TRIGGER and SELECT grant
+  options at table/column level. Existing elevated-role and membership checks
+  remain. Runtime failures stay redacted and never use environment fallback.
+- The real disposable PostgreSQL 18 registry smoke passed nine added privilege
+  scenarios, each rejected while unsafe and accepted again after revocation.
+  Copy/restore/parity and existing runtime isolation checks still passed; 21
+  focused Python operator/registry tests passed. No production grants changed.
+  The existing protected local AI runtime also passed the new verifier using
+  its current credentials. UTF-8, compilation and diff checks passed.
+- A fresh read-only SSH RAM check still found 953,704,448 bytes total on the VPS,
+  with 510,820,352 bytes available and 204,095,488 bytes swap used. The 2 GB upgrade
+  remains unverified; no extra services were installed or started there.
