@@ -55,6 +55,7 @@ jobs:
         if: always()
         with:
           name: progress-service-evidence
+          retention-days: 7
           path: |
             services/progress/target/surefire-reports/
             target/surefire-reports/

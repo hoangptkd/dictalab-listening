@@ -117,6 +117,7 @@ jobs:
         if: always()
         with:
           name: ai-platform-evidence
+          retention-days: 7
           path: |
             artifacts/reports/ai-platform-*.json
             target/surefire-reports/
