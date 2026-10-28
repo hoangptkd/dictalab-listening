@@ -202,6 +202,8 @@ def trusted_directory(path):
         path.mkdir(mode=0o755)
     except FileExistsError:
         pass
+    else:
+        path.chmod(0o755)  # A root umask of 0077 must not block service traversal.
     info = path.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
         raise ValueError('Release ancestors must be root-owned directories without group/world write access')

@@ -431,3 +431,32 @@ database cutover has been verified by this task.
   they are not duplicated or rewound. Ownership/ACL grants must be reapplied to
   fresh restore targets. AWS schema/data restore, provisioning, coordinated
   activation/rollback and actual VPS capacity remain required before rollout.
+
+## Initial Linux host preparation (2026-10-28)
+
+- Added `service-provision.py` for a first installation from an already staged
+  v2 bundle. It rechecks archive/payload/marker provenance, root ownership,
+  service readability and isolated venv links before preparing the host.
+- Creates or inspects separate locked system identities, private AI state and
+  root-only service backups. Existing ledger/config/Core artifact bytes remain
+  unchanged. Core's parent gains traversal (0750 to 0751), while `app/`/`tools/`
+  remain root:dictalab 0750. The initial `current` link and units are exclusive;
+  existing releases, installed units and overrides are rejected.
+- Fixed staging's creation of new parent directories under root umask 0077:
+  new code ancestors explicitly receive 0755; existing directory permissions
+  remain unchanged. A Linux staging regression exercises that root umask.
+- Installation invokes unit validation and daemon reload, verifies inactive
+  zero-PID units, and never starts/enables/restarts/stops processes. Partial
+  preparation is retained for inspection rather than automatically deleted.
+- Eleven checks passed in a network-disabled disposable Linux container, with
+  actual locked users/groups and unprivileged filesystem access. Tests cover
+  existing state preservation, tampered payload/marker, unsafe permissions and
+  links, running/overridden units, inherited environment injection, validation
+  failure and unexpected post-reload activation. Live systemd calls are mocked;
+  existing real unit syntax tests remain separate. CI repeats these checks.
+- The combined Linux operations suite passed 68 checks with 2 explicit skips
+  (live systemd availability and the separately executed PostgreSQL opt-in test).
+  Windows explicitly skips the 11 disposable Linux identity tests.
+- This is filesystem/inactive-unit preparation only. Runtime config semantics,
+  initialized private databases/ledger, actual-host install, coordinated
+  activation/rollback, AWS/VPS acceptance and fresh R13 generation remain open.

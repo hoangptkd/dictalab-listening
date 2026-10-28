@@ -274,6 +274,49 @@ After the main-release, AWS database and capacity gates pass, provisioning must:
    with backup, migrations and health checks; unit installation alone is not
    authorization to cut over reads or claim deployment success.
 
+For the first installation, `service-provision.py` implements the identity,
+filesystem and inactive-unit parts above using an already staged v2 bundle:
+
+```text
+sudo python3 scripts/linux/service-provision.py /path/to/microservices-release.tar.gz --sha256 BUNDLE_SHA256
+```
+
+Keep this script beside `service-bundle.py`. The established Core account/group,
+root:dictalab 0750 `app/` and `tools/`, and the three root-only environment files
+must already exist. The command rechecks the verified bundle against the staged
+manifest/payload and staging marker. Root ownership, writable paths, unsafe venv
+links and unreadable code are rejected before host changes. Runtime config
+contents and database grants still require the service ownership/TLS checks
+above; checking file permissions does not validate credentials or routing.
+
+It creates or validates locked, separate system identities without supplementary
+groups; creates private AI state and root-only service backups; changes only the
+Core parent from 0750 to 0751; and creates the initial `current` link exclusively.
+Existing AI ledger bytes/ownership are preserved. It copies the exact verified
+units, runs `systemd-analyze verify` and `daemon-reload`, and requires the three
+new processes to remain loaded/inactive with zero PIDs. It never starts, enables,
+stops or restarts a service, replaces Core's JAR/config, or initializes/migrates
+databases. The existing Core process can continue using its original JAR.
+
+An existing `current`, installed unit, startup link or unit override is rejected. Subsequent
+upgrades need coordinated activation. Failure after preparation begins can leave
+accounts/files/the initial link in place; it reports no success and never deletes
+those paths to retry. Inspect partial state before proceeding. The acceptance
+result is `initial-filesystem-and-inactive-units-only-not-deployment`. Initialize
+and verify the private databases and AI ledger under their dedicated identities
+before attempting a coordinated backup or activation.
+
+Repeat the isolated identity/filesystem checks with the AI image built by CI:
+
+```text
+docker run --rm --network none --env TEST_SERVICE_PROVISION_DISPOSABLE=1 --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace/scripts/linux dictalab-ai-check python -m unittest -v test_service_provision
+```
+
+These tests create real locked identities and test unprivileged read/write
+access inside the disposable container. Live systemd calls are simulated; the
+separate unit syntax check above uses real `systemd-analyze`. This is not service
+startup, actual-host provisioning, database or VPS capacity acceptance.
+
 The unit limits are 256 MiB each for API/worker and 384 MiB for Progress. They
 are initial measured-process guardrails, not acceptance of the complete 2 GB
 VPS. Strict filesystem protection and separate identities restrict access;

@@ -257,6 +257,18 @@ class ServiceStageTest(unittest.TestCase):
             bundle.stage(self.fixture.output, checksum)
         self.assertFalse(self.releases.exists())
 
+    def test_private_root_umask_preserves_existing_permissions_and_new_traversal(self):
+        previous = os.umask(0o077)
+        before = stat.S_IMODE(self.root.stat().st_mode)
+        try:
+            with patch.object(bundle, 'runtime_check'):
+                self.stage()
+        finally:
+            os.umask(previous)
+        self.assertEqual(before, stat.S_IMODE(self.root.stat().st_mode))
+        for path in (self.releases.parent, self.releases, self.releases / self.fixture.revision):
+            self.assertEqual(0o755, stat.S_IMODE(path.stat().st_mode))
+
     def test_source_changed_during_transfer_is_rejected_before_extraction(self):
         original = bundle.verify_bundle
         def change_after_first_check(path, expected):
