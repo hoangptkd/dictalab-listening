@@ -21,7 +21,7 @@ permissions:
 
 concurrency:
   group: dictalab-${{ github.event_name == 'pull_request' && github.ref || (github.event_name == 'schedule' || inputs.full_compatibility) && 'compatibility' || 'production' }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   progress:

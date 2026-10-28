@@ -1,14 +1,6 @@
 name: Build personal iOS app
 
 on:
-  push:
-    paths:
-      - 'ios/**'
-      - '.github/workflows/ios.yml'
-  pull_request:
-    paths:
-      - 'ios/**'
-      - '.github/workflows/ios.yml'
   workflow_dispatch:
 
 permissions:

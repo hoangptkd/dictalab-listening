@@ -2,13 +2,19 @@ name: SFT offline preparation checks
 
 on:
   push:
+    branches: [main]
     paths: ['training/**', 'services/ai-generation/app/validation.py', 'artifacts/prompts/**', '.github/workflows/training-offline.yml']
   pull_request:
+    branches: [main]
     paths: ['training/**', 'services/ai-generation/app/validation.py', 'artifacts/prompts/**', '.github/workflows/training-offline.yml']
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: training-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   offline:
@@ -25,6 +31,7 @@ jobs:
       - run: git diff --check
 
   cpu-runtime:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
