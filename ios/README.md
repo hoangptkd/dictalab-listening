@@ -3,6 +3,19 @@
 Ứng dụng iOS viết bằng SwiftUI, phát âm thanh qua AVFoundation và gọi HTTPS API của DictaLab.
 Không dùng WebView. Hỗ trợ iPhone chạy iOS 16 trở lên. Cần Internet để đăng nhập, chấm bài và đồng bộ.
 
+## Giao diện (cập nhật 2026-10)
+
+Giao diện được thiết kế lại theo phong cách **Academic Editorial Light** tối giản:
+
+- **CatalogView**: Filter pill A1–B2 nằm ngang; card bài nghe với level badge, progress bar teal,
+  skeleton shimmer khi tải; floating frosted glass tab bar icon-only.
+- **PracticeView**: Toàn màn hình — waveform visualizer 7 cột teal ở trung tâm (bấm để phát/dừng),
+  speed chips `0.75× · 1× · 1.25×`, lưới word tile (đúng/đang nhập/chờ), nút Câu tiếp theo hiện
+  khi hoàn thành câu, chỉ báo tải vòng teal góc phải.
+- **Splash**: Waveform animation khi khởi động.
+- **Màu**: `#FDF9EF` cream · `#001516` ink · `#42D3B0` teal accent.
+- `DesignSystem.swift` chứa tất cả tokens màu, components dùng chung (shimmer, tab bar, waveform…).
+
 ## Chức năng bản đầu
 
 - Đăng nhập và đăng ký bằng email; dùng chung tài khoản với website. Người dùng Google có thể đặt mật khẩu qua trang Quên mật khẩu.
@@ -17,22 +30,30 @@ Không dùng WebView. Hỗ trợ iPhone chạy iOS 16 trở lên. Cần Internet
 Nghe hiểu, Conversation, Coach, phòng gọi thoại và quản trị chưa có giao diện iOS trong bản đầu.
 Dữ liệu trên website được giữ nguyên. Bản nháp chưa gửi chỉ nằm trên thiết bị; không gỡ app nếu cần giữ bản nháp đó.
 
-## Build `.ipa` từ Windows
+## Build `.ipa`
 
-Workflow [Build personal iOS app](https://github.com/hoangptkd/dictalab-listening/actions/workflows/ios.yml)
-chạy khi push thay đổi trong `ios/`. Workflow dùng Xcode trên `macos-15` để:
+Workflow `ios.yml` chỉ chạy khi đẩy tag `ios-build-*` hoặc chọn **Run workflow** trên GitHub.
+Push code thông thường không chạy macOS để tiết kiệm hạn mức GitHub Actions.
+Workflow chạy kiểm tra, XCTest, build arm64 và tạo bản phát hành riêng tư kèm IPA, SHA-256,
+ảnh simulator và log. IPA vẫn cần được ký để cài trên iPhone.
+
+Cũng có thể build bằng script cục bộ trên máy Mac có Xcode:
+
+```bash
+bash ios/scripts/build.sh
+```
+
+Script sẽ:
 
 1. Kiểm tra project, cấu hình HTTPS và icon.
 2. Build và chạy XCTest trên iPhone Simulator.
-3. Build Release cho iPhone arm64, đóng gói `DictaLab-unsigned.ipa` và SHA-256.
-4. Khởi chạy app trên simulator, lưu ảnh màn hình.
+3. Build Release cho iPhone arm64, đóng gói `ios/build/DictaLab-unsigned.ipa` và SHA-256.
+4. Khởi chạy app trên simulator, lưu ảnh màn hình và log.
 
-Mở run tương ứng với commit của bạn, đợi thành công, mở liên kết Release trong phần Summary và tải `DictaLab-unsigned.ipa`.
-Các bản build được lưu ở [Releases của repository](https://github.com/hoangptkd/dictalab-listening/releases).
+Chép `DictaLab-unsigned.ipa` sang iPhone để cài. Các bản build cũ vẫn nằm ở
+[Releases của repository](https://github.com/hoangptkd/dictalab-listening/releases).
 Repository đang riêng tư, nên chỉ tài khoản có quyền truy cập mới tải được.
 File `.ipa` chưa ký; không thể cài bằng cách bấm trực tiếp vào file trên iPhone.
-Build trên repository riêng sử dụng hạn mức GitHub Actions; kiểm tra ngân sách/hạn mức còn lại và không bật chi tiêu trả phí nếu cần giữ chi phí bằng 0.
-IPA và bằng chứng kiểm thử dùng GitHub Releases, không dùng hạn mức Actions artifacts đang đầy trên tài khoản.
 
 Kiểm tra cấu trúc trên Windows:
 

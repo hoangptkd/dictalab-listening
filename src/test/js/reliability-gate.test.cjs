@@ -177,14 +177,16 @@ test('branch service checks exclude unrelated frontend files while full main gat
     assert.doesNotMatch(mainEvents, /paths(?:-ignore)?:/, 'Main and PR integration gates must not use component path filters');
 });
 
-test('optional builds are manual while lightweight training checks remain automatic', () => {
+test('optional builds require an explicit request while lightweight training checks remain automatic', () => {
     const fs = require('node:fs');
     const path = require('node:path');
     const read = name => fs.readFileSync(path.join(__dirname, '../../../.github/workflows/', name + '.yml'), 'utf8');
     const ios = read('ios');
     const iosEvents = ios.split(/^permissions:/m)[0];
     assert.match(iosEvents, /workflow_dispatch:/);
-    assert.doesNotMatch(iosEvents, /^  (?:push|pull_request|schedule):/m);
+    assert.doesNotMatch(iosEvents, /^  (?:pull_request|schedule):/m);
+    assert.match(iosEvents, /push:\r?\n    tags:\r?\n      - 'ios-build-\*'/);
+    assert.doesNotMatch(iosEvents, /branches:|paths:/, 'Ordinary branch changes must not start a macOS build');
     assert.ok(ios.includes('bash ios/scripts/build.sh'), 'Manual iOS compilation and tests must remain available');
     const training = read('training-offline');
     for (const event of ['push', 'pull_request']) {
