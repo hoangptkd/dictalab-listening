@@ -1,7 +1,7 @@
 # Aurora databases for the EC2 microservices
 
 Application activation and on-demand operations were subsequently completed;
-see [EC2 on-demand demo](ec2-on-demand-demo.md) for the newer deployment,
+see [EC2 production](ec2-production.md) for the newer deployment,
 RAM measurements and coordinated backup/restore evidence. The inactive-service
 statements below describe the earlier database-only preparation handoff.
 

@@ -11,6 +11,13 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class DatabaseAccessTest(unittest.TestCase):
+    def test_operations_policy_only_controls_the_existing_cluster(self):
+        policy = json.loads((ROOT / 'ops/aws/aurora-operations-policy.json').read_text(encoding='utf-8'))
+        self.assertEqual([{'Effect': 'Allow',
+                          'Action': ['rds:DescribeDBClusters', 'rds:StartDBCluster', 'rds:StopDBCluster'],
+                          'Resource': 'arn:aws:rds:ap-southeast-1:042407443847:cluster:dictalab-aurora-demo'}],
+                         policy['Statement'])
+
     @unittest.skipUnless(os.environ.get('TEST_AWS_DATABASE_BOOTSTRAP') == '1', 'Opt-in isolated PostgreSQL 17')
     def test_bootstrap_isolation_and_existing_target_rejection(self):
         name = 'dictalab-aws-bootstrap-' + secrets.token_hex(4)

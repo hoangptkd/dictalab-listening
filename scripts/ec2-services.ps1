@@ -9,5 +9,5 @@ $ErrorActionPreference = 'Stop'
 if ($HostName -notmatch '^[a-zA-Z0-9][a-zA-Z0-9.-]*$' -or -not (Test-Path -LiteralPath $IdentityFile -PathType Leaf)) {
     throw 'Provide a valid EC2 host and existing SSH identity file.'
 }
-& ssh -i $IdentityFile -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 "ubuntu@$HostName" "sudo /usr/local/sbin/dictalab-demo $Action"
+& ssh -i $IdentityFile -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 "ubuntu@$HostName" "sudo /usr/local/sbin/dictalab-services $Action"
 if ($LASTEXITCODE -ne 0) { throw 'EC2 operation failed; inspect its protected configuration and service logs.' }

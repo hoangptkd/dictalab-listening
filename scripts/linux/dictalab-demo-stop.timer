@@ -1,7 +1,0 @@
-[Unit]
-Description=Limit each DictaLab demo session to one hour
-
-[Timer]
-OnActiveSec=1h
-AccuracySec=1s
-Unit=dictalab-demo-stop.service
