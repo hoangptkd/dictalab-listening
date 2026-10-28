@@ -1,0 +1,8 @@
+[Unit]
+Description=Stop and back up the on-demand DictaLab stack
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dictalab-demo stop
+TimeoutStartSec=1800
+UMask=0077

@@ -35,6 +35,10 @@ on:
       - 'scripts/linux/test_service_provision.py'
       - 'scripts/linux/service-release.py'
       - 'scripts/linux/test_service_release.py'
+      - 'scripts/linux/service-demo.py'
+      - 'scripts/linux/test_service_demo.py'
+      - 'scripts/linux/dictalab-demo-stop.*'
+      - 'scripts/ec2-demo.ps1'
       - 'scripts/linux/release.py'
       - 'scripts/linux/test_service_units.py'
       - 'scripts/linux/cloud-backup.py'
@@ -126,7 +130,7 @@ jobs:
       - name: Verify initial host identities and inactive installation
         run: docker run --rm --network none --env TEST_SERVICE_PROVISION_DISPOSABLE=1 --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace/scripts/linux dictalab-ai-check python -m unittest -v test_service_provision
       - name: Verify coordinated activation and application rollback
-        run: docker run --rm --network none --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace/scripts/linux dictalab-ai-check python -m unittest -v test_service_release
+        run: docker run --rm --network none --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace/scripts/linux dictalab-ai-check python -m unittest -v test_service_release test_service_demo
       - name: Verify coordinated backup and disposable restores
         run: |
           docker build --tag dictalab-backup-check - <<'DOCKERFILE'

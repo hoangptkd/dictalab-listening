@@ -226,6 +226,28 @@ class ServiceReleaseTest(unittest.TestCase):
         self.assertEqual({'active'}, set(self.state.values()))
         self.assertEqual('complete', self.record()['phase'])
 
+    def test_initial_cold_host_snapshots_before_starting_and_records_inactive_baseline(self):
+        release.backup.CURRENT.unlink()
+        release.backup.CURRENT.symlink_to(self.candidate)
+        self.state = {name: 'inactive' for name in self.state}
+        self.activate(initial=True)
+        self.assertEqual({'active'}, set(self.state.values()))
+        self.assertEqual('complete', self.record()['phase'])
+        self.assertTrue(self.saved.is_dir())
+        self.assertEqual({'inactive'}, set(self.record()['previousStates'].values()))
+
+    def test_on_demand_configuration_can_resume_verified_remote_reads(self):
+        self.configs['core']['DICTALAB_PROGRESS_READ_MODE'] = 'remote'
+        release.configurations(require_legacy_reads=False)
+        with self.assertRaises(ValueError):
+            release.configurations()
+
+    def test_first_start_does_not_reset_a_never_loaded_inactive_unit(self):
+        self.state = {name: 'inactive' for name in self.state}
+        release.start(list(release.START_ORDER))
+        self.assertFalse(any(c[:2] == ['systemctl', 'reset-failed'] for c in self.calls))
+        self.assertEqual({'active'}, set(self.state.values()))
+
     def test_real_health_http_rejects_redirects_and_requires_worker_heartbeat(self):
         worker_up = True
         redirect = False
@@ -234,6 +256,10 @@ class ServiceReleaseTest(unittest.TestCase):
                 if redirect:
                     handler.send_response(302)
                     handler.send_header('Location', '/redirected')
+                    handler.end_headers()
+                    return
+                if handler.path == '/metrics' and handler.headers.get('X-Service-Token') != 't' * 32:
+                    handler.send_response(401)
                     handler.end_headers()
                     return
                 handler.send_response(200)
@@ -252,6 +278,9 @@ class ServiceReleaseTest(unittest.TestCase):
             with patch.dict(release.URLS, {'dictalab-ai': (url, 'ready')}):
                 self.assertTrue(self.real_health(['dictalab-ai', 'dictalab-ai-worker']))
                 worker_up = False
+                self.assertFalse(self.real_health(['dictalab-ai', 'dictalab-ai-worker']))
+                worker_up = True
+                self.configs['ai'].pop('DICTALAB_AI_SERVICE_TOKEN')
                 self.assertFalse(self.real_health(['dictalab-ai', 'dictalab-ai-worker']))
                 redirect = True
                 self.assertFalse(self.real_health(['dictalab-ai']))

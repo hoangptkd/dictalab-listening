@@ -20,6 +20,7 @@ SYSTEM_ENV = frozenset(('PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'T
 CORE_PROVIDER_SECRETS = frozenset(('AI_PROVIDER_DATABASE_URL', 'AI_PROVIDER_CONTAINER_DATABASE_URL',
     'AI_PROVIDER_ENCRYPTION_KEY', 'GEMINI_API_KEY', 'GEMINI_PROVIDERS_JSON', 'CARTESIA_API_KEY',
     'DEEPSEEK_API_KEY', 'OPENAI_API_KEY', 'DICTALAB_AI_MODEL_SERVING_TOKEN', 'DICTALAB_MODEL_SERVICE_TOKEN'))
+AWS_PROFILE_SETTINGS = frozenset(('AWS_PROFILE', 'AWS_SHARED_CREDENTIALS_FILE', 'AWS_REGION'))
 
 
 def validate_config(component, config):
@@ -36,10 +37,10 @@ def validate_config(component, config):
                     or upper.startswith('AI_PROVIDER_') and (upper != 'AI_PROVIDER_CONFIG_SOURCE' or value != 'env')):
                 raise ValueError('Core runtime must not receive provider or management credentials')
         elif component in ('ai', 'worker'):
-            if not upper.startswith(('DICTALAB_AI_', 'AI_PROVIDER_', 'GEMINI_')) and upper != 'DICTALAB_OPERATIONAL_LIMITS_ENABLED':
+            if not upper.startswith(('DICTALAB_AI_', 'AI_PROVIDER_', 'GEMINI_')) and upper not in AWS_PROFILE_SETTINGS | {'DICTALAB_OPERATIONAL_LIMITS_ENABLED'}:
                 raise ValueError('AI runtime configuration contains another service setting')
         elif component == 'progress':
-            if not upper.startswith(('PROGRESS_', 'RABBITMQ_')):
+            if not upper.startswith(('PROGRESS_', 'RABBITMQ_')) and upper not in AWS_PROFILE_SETTINGS | {'AURORA_DB_HOST', 'SPRING_PROFILES_ACTIVE'}:
                 raise ValueError('Progress runtime configuration contains another service setting')
         elif component == 'model':
             if not upper.startswith('DICTALAB_MODEL_'):

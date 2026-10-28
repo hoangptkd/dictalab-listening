@@ -5,7 +5,8 @@ import subprocess
 import tempfile
 import unittest
 
-UNITS = ('dictalab-ai.service', 'dictalab-ai-worker.service', 'dictalab-progress.service')
+UNITS = ('dictalab-ai.service', 'dictalab-ai-worker.service', 'dictalab-progress.service',
+         'dictalab-demo-stop.service', 'dictalab-demo-stop.timer')
 
 
 @unittest.skipUnless(shutil.which('systemd-analyze'), 'Requires Linux systemd-analyze')
@@ -19,7 +20,7 @@ class ServiceUnitTest(unittest.TestCase):
                 shutil.copyfile(Path(__file__).with_name(name), units / name)
             for name in ('sysinit', 'basic', 'shutdown', 'multi-user', 'network-online'):
                 (units / (name + '.target')).write_text('[Unit]\nDescription=Disposable target\n', encoding='utf-8')
-            for executable in ('usr/bin/java', 'opt/dictalab/services/current/venv/bin/python'):
+            for executable in ('usr/bin/java', 'opt/dictalab/services/current/venv/bin/python', 'usr/local/sbin/dictalab-demo'):
                 path = root / executable
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b'#!/bin/sh\nexit 0\n')

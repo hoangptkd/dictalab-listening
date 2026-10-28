@@ -77,7 +77,7 @@ def states():
     return result
 
 
-def configurations():
+def configurations(*, require_legacy_reads=True):
     configs = {name: launcher.validate_config(name, backup.runtime_settings(name)) for name in ('core', 'ai', 'progress')}
     core, ai, progress = (configs[name] for name in ('core', 'ai', 'progress'))
     for left, right in ((core.get('DICTALAB_AI_SERVICE_TOKEN'), ai.get('DICTALAB_AI_SERVICE_TOKEN')),
@@ -85,7 +85,8 @@ def configurations():
         if not left or left != right or not 32 <= len(left) <= 256 or not all(33 <= ord(c) <= 126 for c in left):
             raise ValueError('Internal service tokens are invalid or inconsistent')
     if (core.get('DICTALAB_AI_TEXT_TRANSPORT') != 'python' or core.get('DICTALAB_PROGRESS_ENABLED') != 'true'
-            or core.get('DICTALAB_PROGRESS_READ_MODE', 'legacy') != 'legacy'
+            or core.get('DICTALAB_PROGRESS_READ_MODE', 'legacy') not in (
+                ('legacy',) if require_legacy_reads else ('legacy', 'shadow', 'remote'))
             or ai.get('DICTALAB_AI_JOBS_ENABLED') != 'true' or ai.get('DICTALAB_AI_TEXT_GATEWAY_ENABLED') != 'true'
             or ai.get('DICTALAB_AI_PRODUCTION_MODE') != 'true'
             or core.get('DICTALAB_MODEL_DEMO_ENABLED', 'false') != 'false'
@@ -122,7 +123,11 @@ def health(names):
                     return False
         if 'dictalab-ai-worker' in names:
             metrics = URLS['dictalab-ai'][0].removesuffix('/health/ready') + '/metrics'
-            with opener.open(metrics, timeout=5) as response:
+            token = backup.runtime_settings('ai').get('DICTALAB_AI_SERVICE_TOKEN')
+            if not token:
+                return False
+            request = urllib.request.Request(metrics, headers={'X-Service-Token': token})
+            with opener.open(request, timeout=5) as response:
                 if response.status != 200 or response.url != metrics or not re.search(
                         r'^dictalab_ai_worker_up 1\s*$', response.read(512000).decode(), re.MULTILINE):
                     return False
@@ -157,7 +162,8 @@ def stop_all():
 def start(names):
     for name in START_ORDER:
         if name in names:
-            run(['systemctl', 'reset-failed', name])
+            if run(['systemctl', 'show', name, '--property=ActiveState']).strip() == 'ActiveState=failed':
+                run(['systemctl', 'reset-failed', name])
             run(['systemctl', 'start', name])
             if name == 'dictalab-ai':
                 wait_ready([n for n in names if n != 'dictalab'], fresh_worker='dictalab-ai-worker' in names)
@@ -243,7 +249,8 @@ def activate_locked(path, expected, *, initial, rollback_compatible):
             raise RuntimeError('Unfinished activation requires inspection before another release')
     before = states()
     required = {name: 'active' if not initial or name == 'dictalab' else 'inactive' for name in STOP_ORDER}
-    if before != required:
+    cold_initial = initial and all(value == 'inactive' for value in before.values())
+    if before != required and not cold_initial:
         raise RuntimeError('Baseline service state/health is not ready for release')
     config_hashes = configurations()
     if not health([n for n in STOP_ORDER if before[n] == 'active']):
