@@ -46,6 +46,17 @@ flowchart LR
 Đối với runtime microservice đã tách credentials, dùng launcher riêng từ gốc repo:
 
 ```powershell
+python scripts/run-service.py stack --config-dir data/microservices --with-model
+```
+
+Một terminal giám sát ba service nghiệp vụ, AI worker và Model Serving.
+PostgreSQL/Redis/RabbitMQ cần hoạt động trước. Thêm `--check-only` để kiểm tra
+khởi động rồi dừng các tiến trình vừa tạo. Kiểm tra Model Serving chỉ xác nhận
+server sống; trọng số nạp ở request inference đầu tiên, vẫn cần đủ 20 GiB RAM.
+
+Có thể chạy từng service riêng để debug:
+
+```powershell
 python scripts/run-service.py model --env-file data/microservices/model.env
 python scripts/run-service.py ai --env-file data/microservices/ai.env
 python scripts/run-service.py worker --env-file data/microservices/ai.env

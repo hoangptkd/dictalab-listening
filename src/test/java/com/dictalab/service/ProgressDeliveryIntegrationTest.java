@@ -42,6 +42,9 @@ class ProgressDeliveryIntegrationTest {
     @Autowired ObjectMapper json;
     @Autowired RabbitTemplate rabbit;
     @Autowired PlatformTransactionManager manager;
+    @Autowired com.dictalab.repository.PracticeSessionRepository sessions;
+    @Autowired RecommendationService recommendations;
+    @Autowired ListeningAssessmentService assessments;
 
     @BeforeAll static void startService() throws Exception {
         Files.createDirectories(evidence);
@@ -114,6 +117,13 @@ class ProgressDeliveryIntegrationTest {
         });
     }
 
+    com.dictalab.dto.ApiDtos.DashboardResponse remoteDashboard(long user, ProgressClient remote) {
+        var reads = new TransactionTemplate(manager);
+        reads.setReadOnly(true);
+        var service = new DashboardService(sessions, recommendations, assessments, remote);
+        return reads.execute(status -> service.dashboard(user));
+    }
+
     @Test void packagedServicePreservesParityThroughDuplicatesOutageRestartAndDeletion() throws Exception {
         String email=UUID.randomUUID()+"@progress-delivery.test";
         db.update("INSERT INTO app_users(email,display_name,password_hash,created_at,updated_at) VALUES (?,'Learner','unused',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)", email);
@@ -129,6 +139,14 @@ class ProgressDeliveryIntegrationTest {
         assertThat(projection.trend()).isEqualTo(local.trend());
         assertThat(projection.byLevel()).isEqualTo(local.byLevel());
         assertThat(projection.errors()).isEqualTo(local.errors());
+        var remotePage = remoteDashboard(user, remote);
+        assertThat(remotePage.summary()).isEqualTo(local.summary());
+        assertThat(remotePage.trend()).isEqualTo(local.trend());
+        assertThat(remotePage.byLevel()).isEqualTo(local.byLevel());
+        assertThat(remotePage.errors()).isEqualTo(local.errors());
+        assertThat(remotePage.recommendation()).isEqualTo(local.recommendation());
+        assertThat(remotePage.assessment()).isEqualTo(local.assessment());
+        assertThat(remotePage.progress().source()).isEqualTo("progress");
 
         // A publisher crash after ACK but before recording SENT leads to a safe duplicate.
         db.update("UPDATE progress_outbox SET status='PENDING',available_at=CURRENT_TIMESTAMP WHERE user_id=?", user);
@@ -146,8 +164,18 @@ class ProgressDeliveryIntegrationTest {
         db.update("UPDATE progress_outbox SET available_at=CURRENT_TIMESTAMP WHERE user_id=?", user);
         drain(second);
         await().atMost(Duration.ofSeconds(20)).until(() -> remote.fetch(user).summary().completedLessons()==2);
-        stopProcess(); launch();
+        stopProcess();
+        assertThatThrownBy(() -> remoteDashboard(user, remote))
+                .isInstanceOfSatisfying(org.springframework.web.server.ResponseStatusException.class,
+                        error -> assertThat(error.getStatusCode().value()).isEqualTo(503));
+        String duringOutage = complete(user, 85.5);
+        assertThat(db.queryForObject("SELECT status FROM practice_sessions WHERE id=?", String.class, duringOutage))
+                .isEqualTo("COMPLETED");
+        drain(duringOutage);
+        launch();
+        await().atMost(Duration.ofSeconds(20)).until(() -> remote.fetch(user).summary().completedLessons()==3);
         assertThat(remote.fetch(user).summary()).isEqualTo(dashboard.dashboard(user).summary());
+        assertThat(remoteDashboard(user, remote).summary()).isEqualTo(dashboard.dashboard(user).summary());
 
         new TransactionTemplate(manager).executeWithoutResult(status -> {
             db.queryForList("SELECT id FROM app_users WHERE id=? FOR UPDATE", Long.class, user);
@@ -168,6 +196,8 @@ class ProgressDeliveryIntegrationTest {
         assertThat(db.queryForObject("SELECT COUNT(*) FROM progress_outbox WHERE user_id=? AND event_type='PracticeCompleted.v1'", Integer.class, user)).isZero();
         Files.writeString(evidence.resolve("result.json"), json.writeValueAsString(Map.of(
                 "separateDatabases", true, "dashboardParity", true, "lostAckDuplicate", true,
-                "brokerOutageRecovery", true, "processRestart", true, "deletionPreventsResurrection", true)), StandardCharsets.UTF_8);
+                "brokerOutageRecovery", true, "processRestart", true, "deletionPreventsResurrection", true,
+                "remoteDashboardParity", true, "coreRecommendationAssessmentPreserved", true,
+                "progressOutageDoesNotBlockPractice", true)), StandardCharsets.UTF_8);
     }
 }

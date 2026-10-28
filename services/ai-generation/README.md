@@ -142,6 +142,24 @@ python scripts/run-service.py core --env-file data/microservices/core.env
 python scripts/run-service.py progress --env-file data/microservices/progress.env
 ```
 
+To supervise all three business services and the AI worker in one terminal:
+
+```powershell
+python scripts/run-service.py stack --config-dir data/microservices
+```
+
+Add `--with-model` to start the separate loopback CPU Model Serving process.
+It loads weights only on first inference; its live check does not prove model
+readiness or sufficient RAM. Add `--check-only` to verify startup and stop the
+owned processes. The stack requires existing PostgreSQL, Redis and RabbitMQ;
+it does not start, reset or stop shared infrastructure.
+
+Before spawning, it checks every config/build, matching internal tokens, local
+routes and available ports. Core/API/Progress must pass their health endpoints;
+the worker must remain alive. Logs go to restricted files under the config
+directory's `logs/`. Ctrl+C or a child failure stops the owned process trees.
+Configuration values and service output are never copied to the console.
+
 The launcher excludes inherited application credentials, proxy and JVM injection
 settings; it does not auto-load root `.env`. AI requires `AI_PROVIDER_CONFIG_SOURCE=database`
 and `DICTALAB_AI_REGISTRY_OWNERSHIP=private`, an independent AI database and a
@@ -150,7 +168,7 @@ file. API/worker share one absolute SQLite path. Keep Redis/RabbitMQ and interna
 tokens consistent across the explicit files. Build Core/Progress JARs first.
 
 The local configuration uses Python text/TTS/coach/review routing with Core caller
-budgets enabled and Progress reads in shadow mode. Health and history parity are
+budgets enabled and Progress reads in remote mode after local history parity. Health and cutover evidence are
 recorded in `docs/microservices-implementation.md`; production cutover is pending.
 The [R13 integration](../../docs/model-demo-guided-r13.md) is evaluation-only and
 does not change the production conversation artifact approval gate.

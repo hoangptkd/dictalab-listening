@@ -7,6 +7,21 @@ entity library is present.
 
 ## Local startup
 
+For the isolated native stack, provision the protected service files described
+in `docs/ai-provider-database.md`, build Core/Progress JARs, start the existing
+PostgreSQL/Redis/RabbitMQ infrastructure, then run from the repository root:
+
+```powershell
+python scripts/run-service.py stack --config-dir data/microservices
+```
+
+Add `--check-only` for a startup check that cleans up its owned processes.
+The local Core configuration has completed backfill/parity and now uses `remote`
+reads. New installations and VPS must complete their own backfill/shadow checks;
+local parity does not authorize production cutover. Roll back local reads by
+restoring `DICTALAB_PROGRESS_READ_MODE=legacy` in protected `core.env`, then
+restarting Core; keep publishing enabled. The legacy Compose procedure follows.
+
 Add the Progress settings from the root `.env.example` to your ignored `.env`.
 Set a strong, distinct `PROGRESS_DB_PASSWORD` and a random 32-256 character ASCII
 `PROGRESS_SERVICE_TOKEN`. Core and Progress must receive the same service token.

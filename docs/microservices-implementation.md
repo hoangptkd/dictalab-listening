@@ -26,7 +26,8 @@ An unchecked entry is incomplete, even if supporting code exists.
 - [x] Deliver the Progress service, private database, versioned event contract,
       Core transactional outbox, account deletion propagation, and replay.
 - [ ] Backfill history and verify Core/Progress dashboard parity before cutover.
-- [ ] Separate provider registry ownership from Core database access.
+      Local backfill and remote cutover verified; VPS history/cutover remains.
+- [x] Separate provider registry ownership from Core database access.
 - [x] Make opt-in AI conversation demo jobs durable and restart-safe.
 - [x] Serve the existing base and full07 adapter in a separate local process.
 - [x] Integrate asynchronous conversation demo and the comparison UI.
@@ -249,3 +250,32 @@ The updated wrapper has synthetic/unit/integration evidence; fresh CPU generatio
 still requires 20 GiB free RAM. B1 soft length targets and independent semantic
 evaluation remain open. No production deployment or general adapter superiority
 is claimed.
+
+## Supervised local startup and remote Progress cutover (2026-10-28)
+
+- `scripts/run-service.py stack --config-dir data/microservices` supervises
+  Core, AI API/worker and Progress using their separate protected files. An
+  optional `--with-model` starts the lazy CPU server. Preflight checks all
+  configs/builds, matching internal tokens, loopback routes and free ports.
+  Logs are access-restricted; Ctrl+C/startup failure/child exit cleans up owned
+  processes without touching shared infrastructure or unrelated applications.
+- The actual five-process `--with-model --check-only` run passed Core/AI/Progress
+  health checks and model liveness, with the worker alive, then shut down.
+  No model weights were loaded and no paid request was dispatched by this check.
+  This is lifecycle/startup evidence, not an inference-quality or capacity test.
+- A fresh shadow baseline captured actual Core dashboard JSON for all 7 local
+  users. After a protected configuration backup, Core changed to `remote`.
+  All 7 complete dashboard responses matched, including recommendation and
+  listening assessment; metadata correctly identified source `progress`.
+  One completed solo session was backfilled; repeated backfill was stable and
+  the outbox had 0 pending/failed events. Source numeric types were normalized
+  through JSON before comparing; no application values were changed to pass.
+- `data/microservices/core.env` now retains `remote` locally. Core/AI/Progress
+  health and unauthenticated route checks passed after cutover. The harness
+  stopped only its own runtime processes. Production configuration is unchanged.
+- Verification covers supervised cleanup/config rejection and the packaged
+  Progress process losing connectivity while Core remains the source of truth.
+  All 34 launcher/provider CLI checks and 4 Java remote/recovery checks passed;
+  UTF-8 checks passed for all 6 edited Python/document files.
+  VPS history backfill, full resource/load acceptance, fresh R13 CPU generation
+  and production rollout remain open.
