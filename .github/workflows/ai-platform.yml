@@ -29,6 +29,8 @@ on:
       - 'scripts/test-run-local-env.ps1'
       - 'scripts/run-model-demo.ps1'
       - 'scripts/run-service.py'
+      - 'scripts/linux/service-bundle.py'
+      - 'scripts/linux/test_service_bundle.py'
       - '.env*.example'
       - '.github/workflows/ai-platform.yml'
 
@@ -97,6 +99,10 @@ jobs:
         run: |
           python tools/ai-eval/check_encoding.py
           git diff --check
+      - name: Verify coordinated service release packaging
+        run: |
+          python -m unittest discover -s scripts/linux -p test_service_bundle.py
+          python scripts/linux/service-bundle.py build --revision "$GITHUB_SHA" --output target/microservices-release.tar.gz
       - name: Local dotenv quoting contract
         shell: pwsh
         run: |

@@ -308,3 +308,37 @@ is claimed.
   Architecture, startup, demo narrative, exact commands and evidence limits:
   `docs/microservices-demo.md`. This completes the resource rehearsal tooling,
   not the remaining real-model, production-baseline or VPS deployment gates.
+
+### Follow-up production baseline
+
+A later read-only probe returned HTTP 200 from Core health and Prometheus, but
+the direct PostgreSQL connection was refused because the account/project quota
+was exceeded. Health alone therefore does not establish database readiness.
+The host still reported 931,352 KiB physical RAM; the planned 2 GB upgrade is
+not yet observed. Resolve database availability and verify a backup/restore
+before a production migration. No credentials, production configuration or
+service state were changed. The owner subsequently confirmed that the production
+database is being moved to AWS and will provide an update. Await that completed
+cutover and verify the selected target before deploying this migration; no AWS
+database cutover has been verified by this task.
+
+## Coordinated release package (2026-10-28)
+
+- `scripts/linux/service-bundle.py` exports one Git revision and builds Core
+  with the production S3 profile and Progress from that snapshot. It packages
+  both JARs, the AI source, its pinned requirements and prompt artifacts with a
+  SHA-256/length manifest. Protected configs, state and model weights stay out.
+- The verifier rejects checksum drift, missing files, duplicate names, links,
+  traversal and unexpected file types. A pre-existing release is preserved.
+  AI Platform CI now runs the integrity checks and builds the same package.
+- Actual source `98a340f5ad8144dfd67963b6d3b5c6c1914debfa` produced a 55-file,
+  128,679,086-byte package. Bundle SHA-256:
+  `486b79fa1df9761a52eacd209996c35959a6ab35581f9d15c0c3305ce6c38857`.
+  The Core S3/published-page check passed. Both JARs passed internal ZIP CRC
+  checks. Extracted AI code compiled/imported in a network-disabled Linux
+  container and loaded the existing conversation artifact, R13 demo artifact
+  and private registry migration checksum without starting services.
+- Nine integrity tests passed on Windows and Linux. This proves package
+  preparation and integrity only. Production installation, coordinated rollback,
+  AWS database availability, actual-host load/recovery and fresh CPU generation
+  remain open. Existing main-only deployment gates continue to apply.

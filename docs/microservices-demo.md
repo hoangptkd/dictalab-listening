@@ -154,6 +154,42 @@ Core was active with restart count zero; Redis responded. PostgreSQL probing and
 Prometheus scraping were unavailable in that bounded check, so the production
 baseline is incomplete. No VPS state was changed.
 
+## Prepare one release for all three services
+
+The package builder requires Git, Maven, Java 17 and Python 3.12 or later.
+It exports the selected Git commit into a temporary source tree and builds both
+JARs there. Core uses the existing `production-s3` profile and published-page
+verifier. Uncommitted source changes and existing local JARs are not build inputs.
+
+```powershell
+python scripts/linux/service-bundle.py build --revision HEAD --output target/microservices-release.tar.gz
+python -m unittest discover -s scripts/linux -p test_service_bundle.py
+```
+
+Choose a new output name for each build; existing releases cannot be overwritten.
+The output contains `dictalab.jar`, `progress.jar`, `ai/app/`, pinned
+`ai/requirements.lock`, `artifacts/prompts/` and `manifest.json`. The manifest
+records the source commit plus every payload's byte length and SHA-256.
+Configuration, provider credentials, SQLite ledgers, model weights and caches
+are excluded. AI still needs its pinned dependencies installed in an isolated
+Linux runtime and its registry directory explicitly set to the extracted
+`artifacts/prompts` directory.
+
+Pass the SHA-256 emitted by the build through the established SSH channel for
+verification of the transferred copy:
+
+```text
+python3 scripts/linux/service-bundle.py verify RELEASE.tar.gz --sha256 BUILD_SHA256
+```
+
+Verification rejects missing/corrupted files, duplicate paths, links, traversal
+and unexpected payload types. Build skips tests to produce artifacts; the
+existing test/CI gates remain required. AI Platform CI runs the integrity checks
+and builds the bundle from its checked-out commit. This is offline packaging.
+The current `release.py` activates Core only; coordinated installation, isolated
+runtime configuration, state backup and full-service rollback remain deployment
+work. Do not use a Core-only activation as proof all three services were deployed.
+
 ## VPS deployment gates
 
 The existing VPS has about 0.89 GiB physical RAM, and current baseline samples
@@ -170,6 +206,12 @@ deploy all three services, backfill the VPS's own history, compare shadow reads,
 then enable remote reads. Verify health, existing practice/AI workflows, restart
 recovery, database isolation and rollback on the actual host. Cloud inference
 credentials stay in AI. The fine-tuned model remains local.
+
+The owner is migrating the production database to AWS and will provide the
+updated state. That cutover and the VPS RAM upgrade are not yet verified here.
+The last direct Neon probe was refused due to account/project quota. Core health
+and Prometheus subsequently returned HTTP 200; production database availability,
+backup and restore still need fresh verification against the selected AWS target.
 
 GitHub Actions artifact storage quota currently prevents evidence upload; a
 workflow with a failed upload is not green CI. Fresh CPU R13 generation and
