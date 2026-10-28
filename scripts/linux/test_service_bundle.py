@@ -1,6 +1,7 @@
 """Release integrity checks use synthetic archives and disposable directories."""
 import importlib.util
 import io
+import json
 from pathlib import Path
 import shutil
 import tarfile
@@ -36,6 +37,10 @@ class ServiceBundleTest(unittest.TestCase):
         verifier = self.source / 'scripts/verify-production-jar.py'
         verifier.parent.mkdir()
         shutil.copyfile(bundle.ROOT / 'scripts/verify-production-jar.py', verifier)
+        for name in bundle.UNIT_FILES:
+            target = self.source / 'scripts/linux' / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(bundle.ROOT / 'scripts/linux' / name, target)
         core = self.source / 'target/english-dictation-0.1.0-SNAPSHOT.jar'
         core.parent.mkdir()
         names = ['BOOT-INF/classes/db/migration/V35__all_audio_s3.sql']
@@ -70,6 +75,7 @@ class ServiceBundleTest(unittest.TestCase):
         self.assertIn('ai/app/sql/001_provider_registry.sql', names)
         self.assertIn('ai/app/quota.lua', names)
         self.assertIn('artifacts/prompts/conversation.json', names)
+        self.assertTrue({'systemd/' + name for name in bundle.UNIT_FILES} <= names)
         with tarfile.open(self.output) as archive:
             self.assertFalse(any(b'PRIVATE_MUST_NOT_SHIP' in archive.extractfile(m).read() for m in archive.getmembers()))
         self.assertFalse(any('.env' in n or '__pycache__' in n or n.startswith('data/') for n in names))
@@ -141,6 +147,38 @@ class ServiceBundleTest(unittest.TestCase):
     def test_missing_manifest_payload_is_rejected(self):
         self.create()
         self.mutate(lambda rows: [(m, d) for m, d in rows if m.name != 'ai/app/main.py'])
+        with self.assertRaisesRegex(ValueError, 'Missing release payload'):
+            bundle.verify_bundle(self.output, bundle.digest(self.output))
+
+    def test_previous_v1_release_can_still_be_verified(self):
+        self.create()
+        def change(rows):
+            for member, data in rows:
+                if member.name.startswith('systemd/'):
+                    continue
+                if member.name == 'manifest.json':
+                    manifest = json.loads(data)
+                    manifest['schemaVersion'] = 1
+                    manifest['files'] = {k: v for k, v in manifest['files'].items() if not k.startswith('systemd/')}
+                    data = json.dumps(manifest).encode()
+                    member.size = len(data)
+                yield member, data
+        self.mutate(change)
+        self.assertEqual(1, bundle.verify_bundle(self.output, bundle.digest(self.output))['schemaVersion'])
+
+    def test_new_release_requires_all_three_systemd_units(self):
+        self.create()
+        def change(rows):
+            for member, data in rows:
+                if member.name == 'systemd/dictalab-progress.service':
+                    continue
+                if member.name == 'manifest.json':
+                    manifest = json.loads(data)
+                    del manifest['files']['systemd/dictalab-progress.service']
+                    data = json.dumps(manifest).encode()
+                    member.size = len(data)
+                yield member, data
+        self.mutate(change)
         with self.assertRaisesRegex(ValueError, 'Missing release payload'):
             bundle.verify_bundle(self.output, bundle.digest(self.output))
 

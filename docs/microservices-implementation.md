@@ -342,3 +342,22 @@ database cutover has been verified by this task.
   preparation and integrity only. Production installation, coordinated rollback,
   AWS database availability, actual-host load/recovery and fresh CPU generation
   remain open. Existing main-only deployment gates continue to apply.
+
+## Linux service supervision package (2026-10-28)
+
+- Added systemd units for the AI API, AI worker and Progress. The AI processes
+  share one dedicated Unix account/0700 persistent ledger directory; Progress
+  uses its own account. Units bind HTTP to loopback, isolate configuration/state
+  from Core and use read-only release files, restart limits and memory caps.
+  No cross-service stop/restart dependency was introduced.
+- Bundle format v2 includes and requires all three unit files with payload
+  checksums. Existing format-v1 bundles remain verifiable. The package still
+  excludes credentials/state and does not activate services.
+- Eleven bundle-integrity tests passed locally, including old-bundle
+  verification and missing-unit rejection. Linux systemd accepted the real
+  units in a disposable root with stub executable paths; this is syntax and
+  dependency evidence, not application runtime or permission acceptance.
+- Provisioning paths, protected config ownership, Python venv installation,
+  parent-directory traversal and activation boundaries are documented in
+  `docs/microservices-demo.md`. Actual installation, state backup, coordinated
+  rollback, AWS/VPS acceptance and new R13 CPU generation remain incomplete.

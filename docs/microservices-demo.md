@@ -168,7 +168,8 @@ python -m unittest discover -s scripts/linux -p test_service_bundle.py
 
 Choose a new output name for each build; existing releases cannot be overwritten.
 The output contains `dictalab.jar`, `progress.jar`, `ai/app/`, pinned
-`ai/requirements.lock`, `artifacts/prompts/` and `manifest.json`. The manifest
+`ai/requirements.lock`, `artifacts/prompts/`, three `systemd/` units and
+`manifest.json`. The manifest
 records the source commit plus every payload's byte length and SHA-256.
 Configuration, provider credentials, SQLite ledgers, model weights and caches
 are excluded. AI still needs its pinned dependencies installed in an isolated
@@ -189,6 +190,76 @@ and builds the bundle from its checked-out commit. This is offline packaging.
 The current `release.py` activates Core only; coordinated installation, isolated
 runtime configuration, state backup and full-service rollback remain deployment
 work. Do not use a Core-only activation as proof all three services were deployed.
+
+### Linux process layout
+
+Release format v2 carries `dictalab-ai.service`, `dictalab-ai-worker.service` and
+`dictalab-progress.service`. The verifier continues to accept existing v1 bundles;
+v2 requires all three units. A v2 build needs a source commit containing these
+units. Each unit has its own restart policy; none requires another business
+service to stop or restart with it. Ordering, draining and health checks remain
+the release operator's responsibility.
+
+| Process | Unix account | Protected environment | Persistent writes | Endpoint |
+| --- | --- | --- | --- | --- |
+| Core, existing unit | `dictalab` | `/etc/dictalab/app.env` | Existing Core state | Loopback 18082 |
+| AI API | `dictalab-ai` | `/etc/dictalab/ai.env` | `/var/lib/dictalab-ai` | Loopback 8091 |
+| AI worker | `dictalab-ai` | Same AI file | Same private AI ledger | No HTTP listener |
+| Progress | `dictalab-progress` | `/etc/dictalab/progress.env` | None; separate PostgreSQL | Loopback 8092 |
+
+After the main-release, AWS database and capacity gates pass, provisioning must:
+
+1. Create the two dedicated system accounts with no interactive login. Do not
+   add them to the existing `dictalab` group. If an account already exists,
+   inspect its identity and permissions before reusing it.
+2. Keep runtime files in a root-owned release directory under
+   `/opt/dictalab/services/releases/<commit>/`, exposed through
+   `/opt/dictalab/services/current`. New accounts need directory traversal:
+   the existing `/opt/dictalab` is 0750, so set that parent to 0751, leaving
+   Core's `app/` and `tools/` directories 0750. Use 0755 for the new service/code
+   directories, 0644 for public payload files, and preserve executable modes in
+   the venv. No service account may modify release code, the venv or `current`.
+3. Create a Python 3.12+ venv at `<release>/venv` and install only
+   `<release>/ai/requirements.lock`. The bundle contains source and pinned
+   direct requirements, not a dependency wheelhouse or a preinstalled venv.
+   Verify imports and artifact hashes before activation.
+4. Prepare the three environment files as root-owned 0600 files. PID 1 reads
+   them before changing identity; service accounts do not need permission to
+   read them. Apply the same service ownership rules as the local launcher:
+   Core receives no provider/master keys, AI receives no Core database access,
+   Progress receives only its database/broker/token settings. Use private AI
+   registry ownership, production guards, shared Redis quotas and consistent
+   internal tokens. Keep model demo disabled on VPS. Management/owner credentials
+   stay outside runtime files.
+5. In `ai.env`, retain the unit's absolute registry and ledger paths if those
+   keys are present: `/opt/dictalab/services/current/artifacts/prompts` and
+   `/var/lib/dictalab-ai/jobs.sqlite3`. systemd environment files override
+   `Environment=` defaults. API and worker must share the same ledger; keep its
+   database/WAL/SHM files together during quiescent backup. `StateDirectory=`
+   creates the 0700 AI state directory without deleting it on stop.
+6. Install the exact verified units under `/etc/systemd/system/` as root-owned
+   0644 files. Run `systemd-analyze verify` against the installed paths after the
+   executable paths exist, then `systemctl daemon-reload`. Coordinate activation
+   with backup, migrations and health checks; unit installation alone is not
+   authorization to cut over reads or claim deployment success.
+
+The unit limits are 256 MiB each for API/worker and 384 MiB for Progress. They
+are initial measured-process guardrails, not acceptance of the complete 2 GB
+VPS. Strict filesystem protection and separate identities restrict access;
+database isolation and authentication remain independently required. AI gets
+up to 650 seconds to drain bounded provider work before a forced stop. Drain
+jobs before changing the release pointer; the local CPU demo's longer deadline
+does not belong on these VPS units.
+
+Repeatable syntax/dependency validation on Linux:
+
+```text
+python3 -m unittest discover -s scripts/linux -p test_service_units.py
+```
+
+The check uses a temporary filesystem root and stub executable paths with the
+actual unit files. It does not start services or prove production permissions,
+health, graceful drain or reboot recovery. Those still require the real host.
 
 ## VPS deployment gates
 

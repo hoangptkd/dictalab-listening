@@ -18,9 +18,11 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
+UNIT_FILES = ('dictalab-ai.service', 'dictalab-ai-worker.service', 'dictalab-progress.service')
 SOURCE_PATHS = ('pom.xml', 'src', 'services/progress/pom.xml', 'services/progress/src',
                 'services/ai-generation/app', 'services/ai-generation/requirements.lock',
-                'artifacts/prompts', 'scripts/verify-production-jar.py')
+                'artifacts/prompts', 'scripts/verify-production-jar.py',
+                *('scripts/linux/' + name for name in UNIT_FILES))
 MAX_BYTES = 512 * 1024**2
 MAX_FILES = 5000
 
@@ -39,7 +41,7 @@ def safe_name(value):
 
 
 def payload_name(name):
-    if name in ('dictalab.jar', 'progress.jar', 'ai/requirements.lock'):
+    if name in ('dictalab.jar', 'progress.jar', 'ai/requirements.lock') or name in ('systemd/' + n for n in UNIT_FILES):
         return True
     path = safe_name(name)
     if name.startswith('ai/app/'):
@@ -66,6 +68,7 @@ def write_bundle(source, revision, destination):
     check_jars(core, progress, source / 'scripts/verify-production-jar.py')
     files = {'dictalab.jar': core, 'progress.jar': progress,
              'ai/requirements.lock': source / 'services/ai-generation/requirements.lock'}
+    files.update({'systemd/' + name: source / 'scripts/linux' / name for name in UNIT_FILES})
     for prefix, folder in (('ai/app', source / 'services/ai-generation/app'),
                            ('artifacts/prompts', source / 'artifacts/prompts')):
         for path in sorted(folder.rglob('*')):
@@ -74,7 +77,7 @@ def write_bundle(source, revision, destination):
                 raise ValueError('Symlink in release source')
             if path.is_file() and payload_name(name):
                 files[name] = path
-    manifest = {'schemaVersion': 1, 'sourceRevision': revision,
+    manifest = {'schemaVersion': 2, 'sourceRevision': revision,
                 'scope': 'Core, Progress and AI; excludes runtime configuration and model weights',
                 'files': {name: {'bytes': p.stat().st_size, 'sha256': digest(p)} for name, p in sorted(files.items())}}
     if not re.fullmatch('[a-f0-9]{40}', revision) or len(files) > MAX_FILES or sum(p.stat().st_size for p in files.values()) > MAX_BYTES:
@@ -125,11 +128,13 @@ def verify_bundle(path, expected):
         if entry.size > 1024**2:
             raise ValueError('Release manifest exceeds bounds')
         manifest = json.load(archive.extractfile(entry))
-        if manifest.get('schemaVersion') != 1 or not re.fullmatch('[a-f0-9]{40}', manifest.get('sourceRevision', '')):
+        if manifest.get('schemaVersion') not in (1, 2) or not re.fullmatch('[a-f0-9]{40}', manifest.get('sourceRevision', '')):
             raise ValueError('Invalid release manifest')
         files = manifest['files']
-        if set(names) != set(files) | {'manifest.json'} or not {
-                'dictalab.jar', 'progress.jar', 'ai/requirements.lock', 'ai/app/main.py', 'ai/app/worker.py'} <= set(files):
+        required = {'dictalab.jar', 'progress.jar', 'ai/requirements.lock', 'ai/app/main.py', 'ai/app/worker.py'}
+        if manifest['schemaVersion'] == 2:
+            required.update('systemd/' + n for n in UNIT_FILES)
+        if set(names) != set(files) | {'manifest.json'} or not required <= set(files):
             raise ValueError('Missing release payload')
         for member in members:
             if member.name == 'manifest.json':
