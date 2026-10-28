@@ -507,13 +507,12 @@ databases are used in CI.
 
 ## VPS deployment gates
 
-The existing VPS has about 0.89 GiB physical RAM, and current baseline samples
-show little available RAM plus substantial swap use. Complete Linux resource
-measurements before selecting a RAM upgrade. Do not deploy extra services into
-that remaining memory or assume managed databases remove all process overhead.
-The owner selected upgrading the existing VPS to 2 GB on 28 October. This is a
-deployment prerequisite and must be confirmed on the host; it is not evidence
-that a 2 GB VPS has already passed acceptance.
+The old Lightsail VPS has about 0.89 GiB physical RAM. On 28 October, the owner
+authorized a new Singapore EC2 `t3.small` with 2 GiB RAM, Ubuntu 24.04 amd64,
+40 GiB encrypted gp3 storage, public IPv4 and Standard CPU credits. The host
+reports 1,998,573,568 bytes physical RAM and has 1 GiB swap. This verifies the
+infrastructure upgrade; complete workload measurements before accepting all
+three services on it. Managed databases do not remove process overhead.
 
 After capacity is resolved, use the established main-branch release gates.
 Provision separate runtime roles/config files, back up and verify restores,
@@ -523,7 +522,7 @@ recovery, database isolation and rollback on the actual host. Cloud inference
 credentials stay in AI. The fine-tuned model remains local.
 
 The owner is migrating the production database to AWS and will provide the
-updated state. That cutover and the VPS RAM upgrade are not yet verified here.
+updated state. That database cutover is not yet verified here.
 The last direct Neon probe was refused due to account/project quota. Core health
 and Prometheus subsequently returned HTTP 200; production database availability,
 backup and restore still need fresh verification against the selected AWS target.
@@ -547,3 +546,36 @@ Earlier isolated local rehearsal databases using the old V42/V43 numbering are
 not compatible production baselines. Preserve their data and use a fresh isolated
 rehearsal database or an explicitly reviewed migration procedure; do not repair
 checksums or rewrite production Flyway history.
+
+## EC2 host preparation (2026-10-28)
+
+- Instance `i-0445c7aa9180107c6`, Singapore, current public IPv4 `54.254.221.170`.
+  This is an automatically assigned address and can change after stop/start.
+  Both EC2 status checks passed. SSH host identity was matched to the AWS
+  console system-log fingerprint before using strict host-key verification.
+- The security group permits SSH only from the approved management IPv4 /32
+  and public HTTP/HTTPS. IMDSv2 is required; CPU credit mode is Standard.
+  EBS `vol-09fb669c777c39a52` is 40 GiB and encrypted with the AWS EBS key.
+- Reused `scripts/linux/prepare-vps.sh`; installed Java 17, Python 3.12/venv,
+  Redis and rsync. Copied the source's checksum-verified Caddy 2.11.7 to
+  `/usr/local/bin/caddy` with a systemd override, preserving the Ubuntu package
+  binary. The source configuration requires its short-lived ACME support.
+- With both source backends and the demo Redis inactive, captured application
+  code/tools, protected configuration, current local files, service units and
+  the Caddy binary. The 411,642,824-byte archive has SHA-256
+  `0f1179cea23044a2823ed8c45d8c24fc8be898bd1fd22101591ec6c9ab2d5018`.
+  Archive and all 272 regular-file hashes matched after SSH transfer and host
+  restoration. Source historical backups remain on Lightsail.
+- Only the public URL/origin settings in the two environment files and the
+  Caddy hostnames were adapted to the new address. The 269 other payload files
+  were independently reverified. Environment files are root-owned 0600.
+  `systemd-analyze verify` and Caddy configuration validation passed.
+- Protected archives/manifests and `migration-receipt.json` are under
+  `/var/backups/dictalab-ec2-migration-20261028/` on the new host. The source
+  archive is retained at the same protected path on Lightsail.
+- Core, the Aurora demo/private Redis, Caddy and the backup timer on EC2 remain
+  inactive and disabled. No database restore, application activation, DNS or
+  GitHub deployment-target cutover occurred. The live Lightsail broker and
+  training relay remain there; their state was not moved. Aurora network access,
+  fresh database backup/restore, broker state, three-service capacity and the
+  established release gates still apply before application cutover.

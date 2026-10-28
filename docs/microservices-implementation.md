@@ -538,3 +538,23 @@ database cutover has been verified by this task.
 - A fresh read-only SSH RAM check still found 953,704,448 bytes total on the VPS,
   with 510,820,352 bytes available and 204,095,488 bytes swap used. The 2 GB upgrade
   remains unverified; no extra services were installed or started there.
+
+## EC2 2 GiB infrastructure upgrade (2026-10-28)
+
+- After action-time approval, created Singapore EC2 `i-0445c7aa9180107c6`
+  (`t3.small`, Ubuntu 24.04 amd64) with encrypted 40 GiB gp3, required IMDSv2,
+  Standard CPU credits, management-IP-only SSH and public HTTP/HTTPS.
+- Both EC2 status checks passed. Strict SSH connected after matching the host
+  fingerprint to AWS system logs. The guest reports 1,998,573,568 physical RAM
+  bytes and a 42,949,672,960-byte disk; configured 1 GiB swap.
+- Reused the Linux runtime preparation script and copied a protected,
+  checksum-verified source snapshot with 272 regular files. All source payload
+  hashes matched before updating the new host's public URL/origin settings and
+  Caddy hostnames. Independently reverified the other 269 files. Environment
+  files retain root ownership and 0600 permissions; systemd and Caddy validation
+  passed. Details and protected receipt locations are in the demo runbook.
+- This completes host provisioning and application-file preparation. Production
+  and the Aurora demo remain inactive on EC2 pending the existing database and
+  release gates. No database restore, DNS/deployment-target cutover or complete
+  three-service workload acceptance occurred. Lightsail, its historical backups,
+  broker and training relay are retained. The fine-tuned model remains local.
