@@ -109,7 +109,7 @@ jobs:
           python -m unittest discover -s scripts/linux -p test_service_units.py
           python scripts/linux/service-bundle.py build --revision "$GITHUB_SHA" --output target/microservices-release.tar.gz
           bundle_sha256=$(sha256sum target/microservices-release.tar.gz | cut -d ' ' -f 1)
-          sudo "$(command -v python)" scripts/linux/service-bundle.py stage target/microservices-release.tar.gz --sha256 "$bundle_sha256"
+          docker run --rm --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace dictalab-ai-check python scripts/linux/service-bundle.py stage target/microservices-release.tar.gz --sha256 "$bundle_sha256"
       - name: Local dotenv quoting contract
         shell: pwsh
         run: |

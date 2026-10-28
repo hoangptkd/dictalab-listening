@@ -237,6 +237,7 @@ def stage(path, expected):
     manifest = verify_bundle(path, expected)
     if manifest['schemaVersion'] != 2:
         raise ValueError('Staging requires release format v2')
+    print('SERVICE_STAGE: checking protected release ancestors', flush=True)
     trusted_directory(RELEASES)
     # A private verified copy prevents mutation of a transferred bundle during extraction.
     with tempfile.TemporaryDirectory(prefix='.incoming-', dir=RELEASES) as directory:
@@ -251,6 +252,7 @@ def stage(path, expected):
         manifest = verify_bundle(snapshot, expected)
         release = RELEASES / manifest['sourceRevision']
         release.mkdir(mode=0o700)  # Exclusive: preserve every existing release, including failed staging.
+        print('SERVICE_STAGE: extracting verified private snapshot', flush=True)
         try:
             with tarfile.open(snapshot, 'r:gz') as archive:
                 for member in archive.getmembers():
@@ -260,7 +262,9 @@ def stage(path, expected):
                         shutil.copyfileobj(source, output)
                     target.chmod(0o600)
             # Venv scripts embed absolute paths, so install at the final immutable release path.
+            print('SERVICE_STAGE: installing and checking isolated AI runtime', flush=True)
             runtime_check(release)
+            print('SERVICE_STAGE: rechecking installed payload and publishing staging marker', flush=True)
             for name, info in manifest['files'].items():
                 target = release / name
                 if target.is_symlink() or target.stat().st_size != info['bytes'] or digest(target) != info['sha256']:

@@ -185,8 +185,9 @@ python3 scripts/linux/service-bundle.py verify RELEASE.tar.gz --sha256 BUILD_SHA
 Verification rejects missing/corrupted files, duplicate paths, links, traversal
 and unexpected payload types. Build skips tests to produce artifacts; the
 existing test/CI gates remain required. AI Platform CI runs the integrity checks,
-builds the bundle from its checked-out commit and stages it on its disposable
-Linux runner.
+builds the bundle from its checked-out commit and stages it in a disposable
+Linux container. This gives the rehearsal its own root filesystem while keeping
+the installer's production ownership/permission checks intact.
 
 ### Stage the Linux runtime
 

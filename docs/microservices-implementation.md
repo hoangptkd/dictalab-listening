@@ -383,9 +383,14 @@ database cutover has been verified by this task.
   UID/GID 65534 process imported actual API/worker and loaded both prompt
   versions; the venv's executable `pip` script passed dependency checks.
   No current-release pointer or protected application config was created.
-- AI Platform CI now repeats privileged filesystem tests and stages its own
-  bundle on the disposable runner. Local checks and UTF-8 validation passed;
-  remote CI status must be checked after delivery.
+- AI Platform CI repeats privileged filesystem tests and stages its own bundle
+  in a disposable Linux container. The first remote run `40651769992` passed
+  all 18 integrity/staging tests, systemd validation and both JAR builds, then
+  failed actual staging with `ValueError` on the hosted runner. Rehearsal now
+  uses the already-built AI container with its own root filesystem; production
+  directory protections remain intact. Stage progress messages identify the
+  failing gate without exposing command output or credentials. That run also
+  confirmed the separate artifact storage quota still blocks uploads.
 - This is runtime preparation only. No service, schema migration, cloud model
   request or production deployment ran. Coordinated activation/backups/rollback,
   verified AWS configuration, actual VPS capacity and fresh R13 CPU generation
