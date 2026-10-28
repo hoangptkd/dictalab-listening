@@ -172,9 +172,8 @@ The output contains `dictalab.jar`, `progress.jar`, `ai/app/`, pinned
 `manifest.json`. The manifest
 records the source commit plus every payload's byte length and SHA-256.
 Configuration, provider credentials, SQLite ledgers, model weights and caches
-are excluded. AI still needs its pinned dependencies installed in an isolated
-Linux runtime and its registry directory explicitly set to the extracted
-`artifacts/prompts` directory.
+are excluded. The Linux staging command installs AI's pinned dependencies in a
+separate venv and checks imports using the extracted prompt registry.
 
 Pass the SHA-256 emitted by the build through the established SSH channel for
 verification of the transferred copy:
@@ -185,9 +184,38 @@ python3 scripts/linux/service-bundle.py verify RELEASE.tar.gz --sha256 BUILD_SHA
 
 Verification rejects missing/corrupted files, duplicate paths, links, traversal
 and unexpected payload types. Build skips tests to produce artifacts; the
-existing test/CI gates remain required. AI Platform CI runs the integrity checks
-and builds the bundle from its checked-out commit. This is offline packaging.
-The current `release.py` activates Core only; coordinated installation, isolated
+existing test/CI gates remain required. AI Platform CI runs the integrity checks,
+builds the bundle from its checked-out commit and stages it on its disposable
+Linux runner.
+
+### Stage the Linux runtime
+
+On Linux with root access and Python 3.12 or later, use the independently supplied
+build checksum. Python must support `venv`/`ensurepip`; package installation needs
+access to the configured Python package index.
+
+```text
+sudo python3 scripts/linux/service-bundle.py stage RELEASE.tar.gz --sha256 BUILD_SHA256
+```
+
+This creates `/opt/dictalab/services/releases/<sourceRevision>/`. It rejects
+symlinked, non-root-owned or group/world-writable release ancestors and preserves
+existing release directories. A private copied bundle is verified again before
+extraction. The venv is created at its final path because its scripts contain
+absolute paths. Dependency installation, `pip check`, API/worker imports and both
+conversation prompt loaders must succeed. Runtime subprocesses receive no
+inherited application secrets or Python/pip injection settings. No service is
+started and no database/provider is contacted by the import check.
+
+After payload checks pass again, `stage-ready.json` records the commit and bundle
+checksum. Root-owned directories become 0755 and files 0644, retaining executable
+bits for venv tools. Failed staging stays 0700 without a ready marker for operator
+inspection; an existing failed directory is also never overwritten. Its removal
+or replacement requires a separate operator decision. Staging does not change
+`current`, systemd units/accounts, protected configuration or persistent state.
+It does not establish health, resource capacity or rollback safety.
+
+The current `release.py` activates Core only. Coordinated activation, isolated
 runtime configuration, state backup and full-service rollback remain deployment
 work. Do not use a Core-only activation as proof all three services were deployed.
 

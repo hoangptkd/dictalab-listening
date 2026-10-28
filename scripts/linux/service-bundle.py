@@ -1,6 +1,6 @@
-"""Build all three business-service artifacts from one Git revision; verify before transfer.
+"""Build, verify and stage three business-service artifacts from one Git revision.
 
-This prepares an offline release. It does not install, start or migrate services.
+Staging installs the AI runtime but never activates, starts or migrates services.
 Build/CI acceptance and real-host resource/backup gates remain separate.
 """
 import argparse
@@ -12,7 +12,9 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import stat
 import subprocess
+import sys
 import tarfile
 import tempfile
 import zipfile
@@ -25,6 +27,7 @@ SOURCE_PATHS = ('pom.xml', 'src', 'services/progress/pom.xml', 'services/progres
                 *('scripts/linux/' + name for name in UNIT_FILES))
 MAX_BYTES = 512 * 1024**2
 MAX_FILES = 5000
+RELEASES = Path('/opt/dictalab/services/releases')
 
 
 def digest(path):
@@ -189,17 +192,111 @@ def build(revision, destination):
     return manifest
 
 
+def trusted_directory(path):
+    """Only root may modify release ancestors, including newly created parents."""
+    if not path.is_absolute() or '..' in path.parts:
+        raise ValueError('Release directory must be an absolute canonical path')
+    if path.parent != path:
+        trusted_directory(path.parent)
+    try:
+        path.mkdir(mode=0o755)
+    except FileExistsError:
+        pass
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+        raise ValueError('Release ancestors must be root-owned directories without group/world write access')
+
+
+def runtime_check(release):
+    # Do not pass production credentials, application settings or Python/pip injection variables.
+    env = {'PATH': '/usr/local/bin:/usr/bin:/bin', 'HOME': str(release), 'LANG': 'C.UTF-8',
+           'DICTALAB_AI_REGISTRY_DIR': str(release / 'artifacts/prompts')}
+    python = release / 'venv/bin/python'
+    commands = [
+        [sys.executable, '-I', '-m', 'venv', str(release / 'venv')],
+        [str(python), '-I', '-m', 'pip', '--isolated', '--disable-pip-version-check',
+         'install', '--no-input', '--no-cache-dir', '-r', str(release / 'ai/requirements.lock')],
+        [str(python), '-I', '-m', 'pip', '--isolated', '--disable-pip-version-check', 'check'],
+        [str(python), '-I', '-B', '-c',
+         'import os, sys; sys.path.insert(0, os.getcwd()); '
+         'import app.main, app.worker; from app.config import Settings; '
+         'from app.registry import load_artifact; from app.conversation_demo import artifact; '
+         'from app.registry_migration import schema_checksum; '
+         'load_artifact(Settings()); artifact(Settings()); schema_checksum()'],
+    ]
+    for command in commands:
+        result = subprocess.run(command, cwd=release / 'ai', env=env,
+                                capture_output=True, timeout=900)
+        if result.returncode:
+            raise RuntimeError('Isolated AI runtime installation/check failed; release remains private')
+
+
+def stage(path, expected):
+    if sys.platform != 'linux' or os.geteuid() != 0 or sys.version_info < (3, 12):
+        raise RuntimeError('Staging requires Linux root and Python 3.12 or later')
+    manifest = verify_bundle(path, expected)
+    if manifest['schemaVersion'] != 2:
+        raise ValueError('Staging requires release format v2')
+    trusted_directory(RELEASES)
+    # A private verified copy prevents mutation of a transferred bundle during extraction.
+    with tempfile.TemporaryDirectory(prefix='.incoming-', dir=RELEASES) as directory:
+        snapshot = Path(directory) / 'bundle.tar.gz'
+        with path.open('rb') as source, snapshot.open('xb') as output:
+            remaining = MAX_BYTES + 2 * 1024**2
+            while block := source.read(min(1024**2, remaining + 1)):
+                remaining -= len(block)
+                if remaining < 0:
+                    raise ValueError('Compressed bundle exceeds bounds')
+                output.write(block)
+        manifest = verify_bundle(snapshot, expected)
+        release = RELEASES / manifest['sourceRevision']
+        release.mkdir(mode=0o700)  # Exclusive: preserve every existing release, including failed staging.
+        try:
+            with tarfile.open(snapshot, 'r:gz') as archive:
+                for member in archive.getmembers():
+                    target = release / member.name
+                    target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    with archive.extractfile(member) as source, target.open('xb') as output:
+                        shutil.copyfileobj(source, output)
+                    target.chmod(0o600)
+            # Venv scripts embed absolute paths, so install at the final immutable release path.
+            runtime_check(release)
+            for name, info in manifest['files'].items():
+                target = release / name
+                if target.is_symlink() or target.stat().st_size != info['bytes'] or digest(target) != info['sha256']:
+                    raise ValueError('Installed release payload checksum mismatch')
+            ready = {'sourceRevision': manifest['sourceRevision'], 'bundleSha256': expected,
+                     'acceptance': 'staged_runtime_only_not_deployment'}
+            with (release / 'stage-ready.json').open('x', encoding='utf-8') as output:
+                output.write(json.dumps(ready, sort_keys=True) + '\n')
+                output.flush()
+                os.fsync(output.fileno())
+            for target in release.rglob('*'):
+                if not target.is_symlink():
+                    target.chmod(0o755 if target.is_dir() or target.stat().st_mode & 0o111 else 0o644)
+            release.chmod(0o755)  # Publish only after every check succeeds.
+        except BaseException:
+            release.chmod(0o700)
+            (release / 'stage-ready.json').unlink(missing_ok=True)
+            raise
+    return ready
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
     prepare = commands.add_parser('build')
     prepare.add_argument('--revision', default='HEAD')
     prepare.add_argument('--output', type=Path, required=True)
-    verify = commands.add_parser('verify')
-    verify.add_argument('bundle', type=Path)
-    verify.add_argument('--sha256', required=True)
+    for name in ('verify', 'stage'):
+        command = commands.add_parser(name)
+        command.add_argument('bundle', type=Path)
+        command.add_argument('--sha256', required=True)
     args = parser.parse_args()
     try:
+        if args.command == 'stage':
+            print(json.dumps(stage(args.bundle, args.sha256)))
+            return
         manifest = build(args.revision, args.output) if args.command == 'build' else verify_bundle(args.bundle, args.sha256)
         path = args.output if args.command == 'build' else args.bundle
         print(json.dumps({'sourceRevision': manifest['sourceRevision'], 'sha256': digest(path),

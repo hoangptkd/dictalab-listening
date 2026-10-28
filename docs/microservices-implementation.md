@@ -361,3 +361,32 @@ database cutover has been verified by this task.
   parent-directory traversal and activation boundaries are documented in
   `docs/microservices-demo.md`. Actual installation, state backup, coordinated
   rollback, AWS/VPS acceptance and new R13 CPU generation remain incomplete.
+
+## Linux release staging (2026-10-28)
+
+- `service-bundle.py stage` verifies a private copy of the v2 bundle, extracts
+  into a new root-owned release directory and creates AI's venv at its final
+  absolute path. It installs requirements, runs `pip check`, imports API/worker
+  and validates conversation/R13 prompt artifacts with sanitized environment.
+- Release ancestors must be root-owned and protected against group/world writes
+  and symlinks. Existing releases are never overwritten. Failure leaves a private
+  0700 directory without a ready marker; successful payload rechecks publish
+  read-only application files and a commit/checksum-linked staging marker.
+- All 18 bundle/staging tests passed on Linux, including a real empty-dependency
+  venv with networking disabled, transfer mutation, failed runtime checks,
+  altered payload, unsafe ancestors and unchanged current-release pointer.
+  Windows passed 12 portable tests and explicitly skipped 6 Linux-root checks.
+- A real 58-file bundle from main `df881e864150323206d775076e178dc039abfe35`
+  (135,455,792 bytes, SHA-256
+  `a645470705d20be991ec547343d36a4b11a544df3866b7f7c874debf32a7b8d7`)
+  staged in a disposable Python 3.12 Linux container in 32.6 seconds. A separate
+  UID/GID 65534 process imported actual API/worker and loaded both prompt
+  versions; the venv's executable `pip` script passed dependency checks.
+  No current-release pointer or protected application config was created.
+- AI Platform CI now repeats privileged filesystem tests and stages its own
+  bundle on the disposable runner. Local checks and UTF-8 validation passed;
+  remote CI status must be checked after delivery.
+- This is runtime preparation only. No service, schema migration, cloud model
+  request or production deployment ran. Coordinated activation/backups/rollback,
+  verified AWS configuration, actual VPS capacity and fresh R13 CPU generation
+  remain outstanding.
