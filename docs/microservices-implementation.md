@@ -279,3 +279,32 @@ is claimed.
   UTF-8 checks passed for all 6 edited Python/document files.
   VPS history backfill, full resource/load acceptance, fresh R13 CPU generation
   and production rollout remain open.
+
+## Linux mixed-load rehearsal and demo guide (2026-10-28)
+
+- `tools/ai-eval/stack_capacity.py` creates only disposable, labeled Linux
+  containers and synthetic databases/configuration. It retains auth/CSRF/rate
+  limits, uses the existing k6 practice/read journeys, and concurrently runs
+  Coach jobs through API/RabbitMQ/worker against a private fake cloud registry.
+  It measures simultaneous working sets and kernel cgroup events, verifies
+  per-user practice/projection/outbox accounting and cross-service database
+  access denial, and removes only owned resources.
+- 5 users/30 seconds: 117 journeys, 396 HTTP requests, 5 completed practices,
+  5 matching projections, 20 AI jobs, zero HTTP/business failures and no pending
+  outbox. Core reached its 512 MiB limit; this does not prove memory headroom.
+- 20 users/60 seconds, Core limit raised to 640 MiB: 964 journeys, 3,168 HTTP
+  requests, 36 completed practices/matching projections, 36 AI jobs, zero
+  HTTP/business failures, no pending outbox and no cgroup max/oom/oom-kill events.
+  Working-set peak was 1,137.2 MiB for all containers and 1,006.8 MiB for the four
+  business processes plus broker alone. The host OS is excluded. Docker had
+  16 CPUs, so latency/throughput is not a two-vCPU VPS claim or a scaling study.
+- A fresh bounded read-only VPS sample found the same 0.89 GiB physical RAM,
+  only 181-192 MiB available and substantial swap use. Redis responded and Core
+  remained active without restarts. Database statistics and Prometheus could not
+  be retrieved in the bounded probe; the full production baseline remains open.
+- The owner selected a 2 GB VPS upgrade, followed by actual-host measurement
+  before full rollout. Hardware upgrade completion has not been verified.
+- Sanitized report: `artifacts/reports/microservices-stack-20261028.json`.
+  Architecture, startup, demo narrative, exact commands and evidence limits:
+  `docs/microservices-demo.md`. This completes the resource rehearsal tooling,
+  not the remaining real-model, production-baseline or VPS deployment gates.

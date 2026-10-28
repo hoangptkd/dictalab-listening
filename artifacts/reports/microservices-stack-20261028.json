@@ -1,0 +1,226 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-28",
+  "scope": "local Linux containers, unpaid synthetic provider",
+  "notProven": [
+    "VPS throughput/capacity",
+    "real model quality/latency",
+    "long-duration soak",
+    "production deployment"
+  ],
+  "harness": "tools/ai-eval/stack_capacity.py",
+  "latestHarnessCanonicalSha256": "d0267676c04fc97f80e3071b2931d2db1819205520e0a3f8ba182957b16a771f",
+  "workingSetMetric": "Docker stats rounded units, simultaneous complete samples; excludes host OS",
+  "runs": [
+    {
+      "startedAt": "2026-10-28T04:20:01.730195+00:00",
+      "finishedAt": "2026-10-28T04:21:27.999773+00:00",
+      "baseCommit": "10bd5e9f54946bce980a3b00ffbf83ca21ea5b24",
+      "artifactSha256": {
+        "core": "f9b7d6234832b86801b8abf7a6aba532e4d9bf53d8c0d4f90629b0dae5d1d7af",
+        "progress": "f4359ba1e783c9ee75c28fe176ac937b2d96b81b5d7abc53e5fa013d62161c4a"
+      },
+      "dockerHost": {
+        "cpus": 16,
+        "memoryBytes": 16403554304,
+        "architecture": "x86_64"
+      },
+      "users": 5,
+      "seconds": 30,
+      "coreLimitMiB": 512,
+      "journeys": 117,
+      "httpRequests": 396,
+      "businessFailureRate": 0,
+      "httpFailureRate": 0,
+      "workP95Ms": 62.1788,
+      "dashboardP95Ms": 65.40230499999997,
+      "completedPractices": 5,
+      "projectedPractices": 5,
+      "completedAiJobs": 20,
+      "pendingOutbox": 0,
+      "totalContainerWorkingSetPeakBytes": 1101400113,
+      "businessAndBrokerSimultaneousPeakBytes": 970488545,
+      "componentWorkingSetPeakBytes": {
+        "postgres": 111883059,
+        "redis": 8265925,
+        "rabbit": 114504499,
+        "provider": 15109980,
+        "ai": 65189970,
+        "worker": 51401196,
+        "progress": 230896435,
+        "core": 536870912
+      },
+      "completeSamples": 19,
+      "sampleErrors": 0,
+      "cgroups": null,
+      "authGuards": true,
+      "genericAiText": true,
+      "privateDatabaseGuards": null,
+      "perUserProjectionParity": null,
+      "aiWorkloadErrors": [],
+      "cleanupVerified": true
+    },
+    {
+      "startedAt": "2026-10-28T04:30:49.132106+00:00",
+      "finishedAt": "2026-10-28T04:32:49.652252+00:00",
+      "baseCommit": "10bd5e9f54946bce980a3b00ffbf83ca21ea5b24",
+      "artifactSha256": {
+        "core": "f9b7d6234832b86801b8abf7a6aba532e4d9bf53d8c0d4f90629b0dae5d1d7af",
+        "progress": "f4359ba1e783c9ee75c28fe176ac937b2d96b81b5d7abc53e5fa013d62161c4a"
+      },
+      "dockerHost": {
+        "cpus": 16,
+        "memoryBytes": 16403554304,
+        "architecture": "x86_64"
+      },
+      "users": 20,
+      "seconds": 60,
+      "coreLimitMiB": 640,
+      "journeys": 964,
+      "httpRequests": 3168,
+      "businessFailureRate": 0,
+      "httpFailureRate": 0,
+      "workP95Ms": 29.9574,
+      "dashboardP95Ms": 35.62723499999999,
+      "completedPractices": 36,
+      "projectedPractices": 36,
+      "completedAiJobs": 36,
+      "pendingOutbox": 0,
+      "totalContainerWorkingSetPeakBytes": 1192423850,
+      "businessAndBrokerSimultaneousPeakBytes": 1055664374,
+      "componentWorkingSetPeakBytes": {
+        "postgres": 117859942,
+        "redis": 8253342,
+        "rabbit": 110310195,
+        "provider": 15183380,
+        "ai": 65923973,
+        "worker": 51705283,
+        "progress": 231001293,
+        "core": 634598195
+      },
+      "completeSamples": 27,
+      "sampleErrors": 0,
+      "cgroups": {
+        "postgres": {
+          "peakBytesIncludingCache": 176373760,
+          "events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "limitBytes": 268435456
+        },
+        "redis": {
+          "peakBytesIncludingCache": 9986048,
+          "events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "limitBytes": 67108864
+        },
+        "rabbit": {
+          "peakBytesIncludingCache": 132677632,
+          "events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "limitBytes": 268435456
+        },
+        "provider": {
+          "peakBytesIncludingCache": 18399232,
+          "events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "limitBytes": 67108864
+        },
+        "ai": {
+          "peakBytesIncludingCache": 67223552,
+          "events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "limitBytes": 268435456
+        },
+        "worker": {
+          "peakBytesIncludingCache": 53968896,
+          "events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "limitBytes": 268435456
+        },
+        "progress": {
+          "peakBytesIncludingCache": 231448576,
+          "events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "limitBytes": 402653184
+        },
+        "core": {
+          "peakBytesIncludingCache": 639295488,
+          "events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "limitBytes": 671088640
+        }
+      },
+      "authGuards": true,
+      "genericAiText": true,
+      "privateDatabaseGuards": true,
+      "perUserProjectionParity": true,
+      "aiWorkloadErrors": [],
+      "cleanupVerified": true
+    }
+  ],
+  "vpsReadOnlyBaseline": {
+    "sampledAt": "2026-10-28T04:15:31.509908+00:00",
+    "samples": 2,
+    "cpuCount": 2,
+    "ramTotalBytes": 953704448,
+    "minimumAvailableBytes": 189698048,
+    "maximumSwapUsedBytes": 560840704,
+    "minimumCoreRssBytes": 404635648,
+    "maximumCoreRssBytes": 423149568,
+    "coreRestarts": "0",
+    "coreState": "active",
+    "redisOk": true,
+    "metricsAvailable": false,
+    "postgresProbeAvailable": false,
+    "productionModified": false
+  },
+  "conclusion": "Existing VPS RAM is below measured business+broker footprint even before OS overhead. Owner selected a 2 GB upgrade; hardware completion and actual VPS acceptance remain unverified. Runs use different Core limits and are not a scaling comparison."
+}
