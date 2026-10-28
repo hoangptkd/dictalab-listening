@@ -1,7 +1,8 @@
 """Prepare the initial Linux service identities/layout and install inactive units.
 
-Uses an already staged, checksum-verified bundle. Never starts/enables services,
-changes Core's JAR/config, migrates databases, or replaces an existing current link.
+Uses an already staged, checksum-verified bundle. The separate --initialize-ledger
+step creates a missing AI job ledger as its service identity. Never starts/enables
+services, changes Core's JAR/config, or replaces an existing current link.
 """
 import argparse
 import importlib.util
@@ -190,14 +191,87 @@ def prepare(path, expected):
             'acceptance': 'initial-filesystem-and-inactive-units-only-not-deployment'}
 
 
+def initialize_ledger(path, expected):
+    if sys.platform != 'linux' or os.geteuid() != 0 or sys.version_info < (3, 12):
+        raise RuntimeError('Ledger preparation requires Linux root and Python 3.12+')
+    manifest = bundle.verify_bundle(path, expected)
+    release = verify_stage(manifest, expected)
+    current = BASE / 'services/current'
+    if not current.is_symlink() or current.lstat().st_uid != 0 or current.resolve(strict=True) != release:
+        raise ValueError('Ledger preparation requires the verified prepared current release')
+    user = account('dictalab-ai')
+    info = STATE.lstat()
+    if (not user or not stat.S_ISDIR(info.st_mode) or info.st_uid != user.pw_uid
+            or info.st_gid != user.pw_gid or stat.S_IMODE(info.st_mode) != 0o700):
+        raise ValueError('Ledger preparation requires the private AI state directory')
+    ancestors(STATE.parent)
+    ancestors(CONFIG)
+    ancestors(UNITS)
+    spec = importlib.util.spec_from_file_location('ledger_backup_config', Path(__file__).with_name('cloud-backup.py'))
+    backup = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(backup)
+    backup.SERVICE_ENVS = CONFIG
+    ledger = STATE / 'jobs.sqlite3'
+    if backup.runtime_settings('ai').get('DICTALAB_AI_JOBS_DATABASE', str(ledger)) != str(ledger):
+        raise ValueError('AI configuration must use the installed unit ledger path')
+    members = [ledger.with_name(ledger.name + suffix) for suffix in ('', '-wal', '-shm', '-journal')]
+    if any(member.exists() or member.is_symlink() for member in members):
+        raise ValueError('Existing ledger or sidecar requires inspection; initialization never overwrites it')
+    def inactive():
+        for name in ('dictalab-ai.service', 'dictalab-ai-worker.service'):
+            protected(UNITS / name)
+            if bundle.digest(UNITS / name) != manifest['files']['systemd/' + name]['sha256']:
+                raise ValueError('Ledger initialization requires exact installed AI units')
+            result = run(['systemctl', 'show', name,
+                '--property=LoadState,ActiveState,MainPID,FragmentPath,DropInPaths,NeedDaemonReload'])
+            if dict(line.split('=', 1) for line in result.splitlines() if '=' in line) != {
+                    'LoadState': 'loaded', 'ActiveState': 'inactive', 'MainPID': '0',
+                    'FragmentPath': str(UNITS / name), 'DropInPaths': '', 'NeedDaemonReload': 'no'}:
+                raise ValueError('AI processes must be loaded, unchanged and inactive for ledger preparation')
+    inactive()
+    # Import the verified release as the unprivileged account; never load runtime
+    # credentials or instantiate Settings just to create the existing JobStore schema.
+    code = '''import os, sys
+os.umask(0o077)
+sys.path.insert(0, sys.argv[1])
+from app.jobs import JobStore
+fd = os.open(sys.argv[2], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+os.close(fd)
+store = JobStore(sys.argv[2])
+with store.connect() as db:
+    if db.execute("PRAGMA integrity_check").fetchall()[0][0] != "ok":
+        raise RuntimeError("New ledger integrity failed")
+'''
+    run(['runuser', '-u', user.pw_name, '--', str(release / 'venv/bin/python'), '-I', '-B', '-c', code,
+         str(release / 'ai'), str(ledger)])
+    inactive()
+    verify_stage(manifest, expected)
+    if current.resolve(strict=True) != release:
+        raise RuntimeError('Current release changed during ledger preparation')
+    for member in members:
+        if member.exists() or member.is_symlink():
+            info = member.lstat()
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_uid != user.pw_uid or info.st_gid != user.pw_gid
+                    or stat.S_IMODE(info.st_mode) != 0o600):
+                raise RuntimeError('Ledger ownership or private permissions were not preserved')
+    if not ledger.is_file() or ledger.stat().st_size == 0:
+        raise RuntimeError('Ledger was not initialized')
+    return {'sourceRevision': manifest['sourceRevision'], 'bundleSha256': expected,
+            'acceptance': 'new-private-ledger-only-not-database-or-deployment-acceptance'}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('bundle', type=Path)
     parser.add_argument('--sha256', required=True)
+    parser.add_argument('--initialize-ledger', action='store_true',
+                        help='After host preparation, exclusively initialize a missing private AI ledger')
     args = parser.parse_args()
     os.umask(0o077)
     try:
-        print(json.dumps(prepare(args.bundle, args.sha256)))
+        action = initialize_ledger if args.initialize_ledger else prepare
+        print(json.dumps(action(args.bundle, args.sha256)))
     except Exception as error:
         raise SystemExit('SERVICE_PROVISION_FAILED: ' + type(error).__name__ +
                          '; preparation may be partial; no services started or enabled; inspect before retry') from None

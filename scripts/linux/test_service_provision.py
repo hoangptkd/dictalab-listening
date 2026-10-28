@@ -7,6 +7,8 @@ docker run --rm --network none -e TEST_SERVICE_PROVISION_DISPOSABLE=1 \
 import importlib.util
 import os
 from pathlib import Path
+import shutil
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -87,6 +89,9 @@ class ServiceProvisionTest(unittest.TestCase):
     def run_command(self, command):
         self.calls.append(command)
         if command[:2] == ['systemctl', 'show']:
+            if 'NeedDaemonReload' in command[-1]:
+                return ('LoadState=loaded\nActiveState=inactive\nMainPID=0\nDropInPaths=\n'
+                        'NeedDaemonReload=no\nFragmentPath=' + str(self.units / command[2]) + '\n')
             if 'DropInPaths' in command[-1]:
                 return 'LoadState=not-found\nActiveState=inactive\nMainPID=0\nDropInPaths=\n'
             return 'LoadState=loaded\nActiveState=inactive\nMainPID=0\n'
@@ -264,6 +269,98 @@ class ServiceProvisionTest(unittest.TestCase):
         self.assertEqual(3, len(list(self.units.iterdir())))
         self.assertFalse(any(c[0] == 'systemctl' and any(x in c for x in ('daemon-reload', 'start', 'enable')) for c in self.calls))
         self.assertEqual(self.initial, {p: p.read_bytes() for p in self.config.iterdir()})
+
+    def prepare_real_ledger_release(self):
+        self.fixture.output.unlink()
+        self.fixture.revision = 'c' * 40
+        shutil.copytree(fixtures.bundle.ROOT / 'services/ai-generation/app',
+                        self.fixture.source / 'services/ai-generation/app', dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+        self.fixture.create()
+        self.checksum = provision.bundle.digest(self.fixture.output)
+        def runtime(path):
+            python = path / 'venv/bin/python'
+            python.parent.mkdir(parents=True)
+            python.symlink_to(Path(sys.executable).resolve())
+        with patch.object(provision.bundle, 'runtime_check', side_effect=runtime):
+            provision.bundle.stage(self.fixture.output, self.checksum)
+        self.release = self.base / 'services/releases' / self.fixture.revision
+        self.prepare()
+        # This is the unit default; no database, provider or model credentials are needed.
+        (self.config / 'ai.env').write_bytes(b'# no override of the unit ledger path\n')
+
+    def initialize_ledger(self):
+        return provision.initialize_ledger(self.fixture.output, self.checksum)
+
+    def test_real_jobstore_initialization_uses_service_identity_and_preserves_existing_ledger(self):
+        self.prepare_real_ledger_release()
+        with patch.dict(os.environ, {'PYTHONPATH': 'injected', 'AI_PROVIDER_DATABASE_URL': 'private',
+                                     'LD_PRELOAD': 'injected'}):
+            result = self.initialize_ledger()
+        self.assertEqual('new-private-ledger-only-not-database-or-deployment-acceptance', result['acceptance'])
+        ledger = self.state / 'jobs.sqlite3'
+        user = provision.account('dictalab-ai')
+        self.assertEqual((user.pw_uid, user.pw_gid, 0o600),
+            (ledger.stat().st_uid, ledger.stat().st_gid, stat.S_IMODE(ledger.stat().st_mode)))
+        with sqlite3.connect(ledger.as_uri() + '?immutable=1', uri=True) as db:
+            tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            self.assertTrue({'jobs', 'worker_health', 'demo_budget', 'demo_reservations', 'text_admissions'} <= tables)
+            self.assertEqual([('ok',)], db.execute('PRAGMA integrity_check').fetchall())
+        before = ledger.read_bytes(), ledger.stat().st_mtime_ns
+        with self.assertRaisesRegex(ValueError, 'never overwrites'):
+            self.initialize_ledger()
+        self.assertEqual(before, (ledger.read_bytes(), ledger.stat().st_mtime_ns))
+        self.assertFalse(any(c[0] == 'systemctl' and any(x in c for x in ('start', 'stop', 'enable', 'restart')) for c in self.calls))
+
+    def test_ledger_sidecars_and_dangling_links_are_preserved(self):
+        self.prepare()
+        for suffix in ('', '-wal', '-shm', '-journal'):
+            path = self.state / ('jobs.sqlite3' + suffix)
+            path.symlink_to(self.state / 'unresolved-private-target')
+            with self.assertRaisesRegex(ValueError, 'never overwrites'):
+                self.initialize_ledger()
+            self.assertTrue(path.is_symlink())
+            path.unlink()
+
+    def test_ledger_wrong_config_permissions_and_active_units_rejected_before_creation(self):
+        self.prepare()
+        (self.config / 'ai.env').write_bytes(b'DICTALAB_AI_JOBS_DATABASE=/wrong/ledger.sqlite3\n')
+        with self.assertRaisesRegex(ValueError, 'unit ledger path'):
+            self.initialize_ledger()
+        (self.config / 'ai.env').write_bytes(b'# unit default\n')
+        self.state.chmod(0o755)
+        with self.assertRaisesRegex(ValueError, 'private AI state'):
+            self.initialize_ledger()
+        self.state.chmod(0o700)
+        def active(command):
+            return self.run_command(command).replace('ActiveState=inactive', 'ActiveState=active')
+        with patch.object(provision, 'run', side_effect=active), self.assertRaisesRegex(ValueError, 'inactive'):
+            self.initialize_ledger()
+        self.assertFalse((self.state / 'jobs.sqlite3').exists())
+
+    def test_failed_ledger_initialization_retains_partial_file_for_inspection(self):
+        self.prepare()
+        def failed(command):
+            if command[0] == 'runuser':
+                (self.state / 'jobs.sqlite3').write_bytes(b'partial fixture')
+                raise RuntimeError('fixture child failed')
+            return self.run_command(command)
+        with patch.object(provision, 'run', side_effect=failed), self.assertRaisesRegex(RuntimeError, 'fixture child failed'):
+            self.initialize_ledger()
+        self.assertEqual(b'partial fixture', (self.state / 'jobs.sqlite3').read_bytes())
+        with self.assertRaisesRegex(ValueError, 'never overwrites'):
+            self.initialize_ledger()
+
+    def test_concurrent_ledger_creation_cannot_be_overwritten(self):
+        self.prepare_real_ledger_release()
+        ledger = self.state / 'jobs.sqlite3'
+        def race(command):
+            if command[0] == 'runuser':
+                ledger.write_bytes(b'concurrent operator state')
+            return self.run_command(command)
+        with patch.object(provision, 'run', side_effect=race), self.assertRaises(RuntimeError):
+            self.initialize_ledger()
+        self.assertEqual(b'concurrent operator state', ledger.read_bytes())
 
 
 if __name__ == '__main__':

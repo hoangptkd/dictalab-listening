@@ -308,6 +308,29 @@ result is `initial-filesystem-and-inactive-units-only-not-deployment`. Initializ
 and verify the private databases and AI ledger under their dedicated identities
 before attempting a coordinated backup or activation.
 
+After initial host preparation, initialize a missing AI ledger separately:
+
+```text
+sudo python3 scripts/linux/service-provision.py /path/to/microservices-release.tar.gz --sha256 BUNDLE_SHA256 --initialize-ledger
+```
+
+Keep `cloud-backup.py` beside the provisioning script for its protected config
+parser. This command rechecks the prepared release, locked AI identity, private
+state directory, configured ledger path and exact inactive API/worker units.
+The verified release's Python creates the existing `JobStore` schema as
+`dictalab-ai`, using exclusive file creation and umask 0077. It checks SQLite
+integrity and service ownership/mode 0600 without loading runtime credentials
+or calling a database/provider. Core may remain active. No service is started
+or stopped, and existing PostgreSQL schema/data/configuration stay unchanged.
+
+An existing ledger, orphan WAL/SHM/journal or dangling link is rejected without
+modification. Do not use this command to upgrade or repair an existing ledger;
+back up and inspect that state separately. Failure after exclusive creation can
+leave a partial private file, retained for inspection. The acceptance result is
+`new-private-ledger-only-not-database-or-deployment-acceptance`. Separate
+PostgreSQL owner/runtime/backup grants, schema setup and restore verification
+are still required before activation.
+
 Repeat the isolated identity/filesystem checks with the AI image built by CI:
 
 ```text

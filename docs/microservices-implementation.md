@@ -496,3 +496,24 @@ database cutover has been verified by this task.
   VPS RAM/capacity, complete application acceptance and fresh R13 CPU quality
   evidence are still required. Process readiness alone does not complete the
   migration or establish safe production rollback.
+
+## Initial private AI ledger (2026-10-28)
+
+- Added the separate `service-provision.py --initialize-ledger` step after host
+  preparation. It verifies the staged/current release, protected AI config,
+  locked identity, private state directory and exact inactive API/worker units.
+- Uses the staged Python/`JobStore` under the real AI identity, with an isolated
+  environment, exclusive file creation, private permissions and integrity check.
+  Runtime credentials are not loaded; PostgreSQL, broker and cloud calls are
+  unnecessary. Existing ledger bytes/sidecars/links are never overwritten.
+  Partial initialization is retained and rejected on retry for inspection.
+- Five added Linux checks exercise the actual unprivileged application schema,
+  ownership/modes, integrity, repeated invocation, sidecar links, incorrect
+  config/state permissions, active units, partial failure and concurrent creation.
+  Systemd remains simulated. CI's existing provisioning step runs these checks.
+- All 88 Linux operations checks passed with 2 explicit skips (live systemd
+  availability and the separately exercised PostgreSQL opt-in restore check).
+  Python compilation, UTF-8 and diff checks passed.
+- Database schema/grants and actual-host rehearsal remain separate requirements.
+  Production stays paused pending AWS and confirmed VPS capacity. The local
+  machine still has about 10.2 GiB free, below the 20 GiB CPU model gate.
