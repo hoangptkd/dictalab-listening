@@ -16,7 +16,7 @@ const chrome = [process.env.CHROME_BIN,
 
 // Real DOM removal emits focusout in Chrome; the VM input harness cannot model that behavior.
 test('native practice rendering preserves active inputs and does not grade partial drafts', {
-    timeout: 30000, skip: chrome ? false : 'Set CHROME_BIN to run the native browser regression'
+    timeout: 60000, skip: chrome ? false : 'Set CHROME_BIN to run the native browser regression'
 }, async t => {
     const functions = ['renderWordSlots', 'captureWordFocus', 'restoreWordFocus', 'focusNextWord', 'focusWord', 'escapeHtml', 'escapeAttribute',
         'practiceElapsedSeconds', 'startTimer', 'resetTimer', 'stopTimer']
@@ -237,15 +237,24 @@ test('native practice rendering preserves active inputs and does not grade parti
             child.once('exit', resolve);
             child.once('error', error => {browserError = error; resolve();});
         });
-        const deadline = Date.now() + 20000;
+        const startupDeadline = Date.now() + 30000;
         const portFile = path.join(profile, 'DevToolsActivePort');
-        while (!fs.existsSync(portFile) && Date.now() < deadline && !browserError && child.exitCode === null) await delay(25);
+        while (!fs.existsSync(portFile) && Date.now() < startupDeadline && !browserError && child.exitCode === null) await delay(25);
         if (browserError) throw browserError;
         assert.ok(fs.existsSync(portFile), 'Chrome did not open its temporary debugger');
         const port = Number(fs.readFileSync(portFile, 'utf8').split('\n')[0]);
         assert.ok(port > 0 && port <= 65535);
-        const targets = await (await fetch('http://127.0.0.1:' + port + '/json/list', {signal: AbortSignal.timeout(5000)})).json();
-        socket = new WebSocket(targets.find(target => target.type === 'page').webSocketDebuggerUrl);
+        // The port file can appear before the HTTP debugger and its first page are ready.
+        let page, readinessError;
+        while (!page && Date.now() < startupDeadline && child.exitCode === null) {
+            try {
+                const response = await fetch('http://127.0.0.1:' + port + '/json/list', {signal: AbortSignal.timeout(1000)});
+                if (response.ok) page = (await response.json()).find(target => target.type === 'page');
+            } catch (error) { readinessError = error; }
+            if (!page) await delay(50);
+        }
+        assert.ok(page, 'Chrome debugger did not become ready: ' + (readinessError?.message || 'no page target'));
+        socket = new WebSocket(page.webSocketDebuggerUrl);
         await once(socket, 'open', {signal: AbortSignal.timeout(5000)});
         let sequence = 0;
         const pending = new Map();
@@ -269,6 +278,7 @@ test('native practice rendering preserves active inputs and does not grade parti
         // Headless pages may be unfocused when another Chrome window is active on the test machine.
         await send('Emulation.setFocusEmulationEnabled', {enabled: true});
         await send('Page.navigate', {url: 'http://127.0.0.1:' + server.address().port});
+        const deadline = Date.now() + 20000;
         let result;
         do {
             try {
