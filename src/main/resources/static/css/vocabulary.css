@@ -1,0 +1,25 @@
+.vocab-page { max-width: 1120px; margin-inline: auto; }
+.vocab-toolbar, .vocab-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:16px 0; }
+.vocab-toolbar { padding-bottom:12px; border-bottom:1px solid var(--line); }
+.vocab-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); gap:16px; }
+.vocab-panel { padding:24px; border:1px solid var(--line); border-radius:12px; background:var(--panel,#fdf9ef); margin-bottom:16px; overflow-wrap:anywhere; min-width:0; }
+.vocab-panel h2, .vocab-panel h3 { margin-top:0; }
+.vocab-panel p { line-height:1.6; }
+.vocab-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:24px 0; }
+.vocab-stats article { display:grid; gap:8px; padding:20px; border-bottom:2px solid var(--ink); }
+.vocab-stats strong { font-size:2rem; }
+.vocab-form { display:grid; gap:16px; max-width:680px; margin:16px 0; }
+.vocab-form label { display:grid; gap:7px; color:var(--ink-soft); font-size:.9rem; }
+.vocab-form input, .vocab-form textarea, .vocab-form select { width:100%; min-width:0; padding:12px; border:1px solid var(--line); border-radius:7px; background:var(--paper,#fffdf5); color:var(--ink); font:inherit; }
+.vocab-form textarea { min-height:90px; resize:vertical; }
+.vocab-form .vocab-check { display:flex; align-items:center; }
+.vocab-check input { width:20px; height:20px; }
+.vocab-study { max-width:760px; margin:32px auto; }
+.vocab-study > h2 { font-size:clamp(1.5rem,4vw,2.4rem); line-height:1.4; }
+.vocab-study progress { width:100%; height:8px; accent-color:var(--ink); margin:12px 0 28px; }
+.vocab-feedback { padding-top:20px; border-top:1px solid var(--line); }
+#vocabulary-status:not(:empty) { padding:14px 0; }
+#vocabulary-view :focus-visible { outline:3px solid var(--ink); outline-offset:3px; }
+#vocabulary-view button { min-height:44px; }
+#vocabulary-view [aria-busy=true] { cursor:progress; }
+@media(max-width:600px) { .vocab-panel {padding:18px;} .vocab-stats {gap:8px;} .vocab-stats article {padding:10px;} .vocab-stats span {font-size:.8rem;} }

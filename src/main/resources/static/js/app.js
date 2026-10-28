@@ -38,6 +38,7 @@
             if (s0 === "catalog") return { route: "catalog", params: {level: q.get("level") || "A1", page, sort: q.get("sort") || "", lesson: q.get("lesson") || "", start: q.get("start") || ""}, query: q };
             if (s0 === "listening")            return { route: "listening", params: { sessionId: s1 || null, page, level: q.get("level") || "", view: q.get("view") || "", edit: q.get("edit") || "" }, query: q };
             if (s0 === "conversation")         return { route: "conversation", params: { sessionId: s1 || null }, query: q };
+            if (s0 === "vocabulary")           return { route: "vocabulary", params: { sessionId: s1 || null }, query: q };
             if (s0 === "dashboard")            return { route: "dashboard", params: {}, query: q };
             if (s0 === "practice" && s1)       return { route: "practice", params: { sessionId: s1 }, query: q };
             if (s0 === "history" && !s1)       return { route: "history",  params: { level: q.get("level") || "all", page }, query: q };
@@ -56,6 +57,7 @@
         /** Map route key + params → pathname để gọi pushState/replaceState */
         toPath(route, params = {}) {
             switch (route) {
+                case "vocabulary": return `/vocabulary${params.sessionId ? "/" + encodeURIComponent(params.sessionId) : ""}`;
                 case "login":       return "/login";
                 case "register":    return "/register";
                 case "account":     return "/account";
@@ -781,6 +783,12 @@
             return;
         }
         switch (route) {
+            case "vocabulary": {
+                if (pushHistory) router.push("vocabulary", params);
+                _showView("vocabulary");
+                await window.DictaLabVocabulary?.show(params.sessionId);
+                return;
+            }
             case "admin-listening": {
                 if (pushHistory) router.push(route, params);
                 _showView(route);
@@ -1086,7 +1094,7 @@
         // Map route key → view id
         const viewId = {
             catalog: "catalog", practice: "practice", result: "result",
-            history: "history", dashboard: "dashboard", listening: "listening", conversation: "conversation",
+            history: "history", dashboard: "dashboard", listening: "listening", conversation: "conversation", vocabulary: "vocabulary",
             room: "room", admin: "admin", account: "account", support: "support",
             "admin-users": "admin-users", "admin-support": "admin-support", "admin-listening": "admin-listening", login: null, register: null
         }[route] || "catalog";
@@ -1102,6 +1110,7 @@
         }
         if (["result", "dashboard"].includes(document.body.dataset.route) && viewId !== document.body.dataset.route) window.DictaLabCoach?.leave();
         if (document.body.dataset.route === "conversation" && viewId !== "conversation") window.DictaLabConversation?.leave();
+        if (document.body.dataset.route === "vocabulary" && viewId !== "vocabulary") window.DictaLabVocabulary?.leave();
         if (isAdminArea) {
             stopRecordedAudio();
             const title = {admin: "Bài nghe", "admin-users": "Người dùng", "admin-support": "Yêu cầu hỗ trợ", "admin-listening": "Nghe hiểu"}[viewId];
@@ -1158,6 +1167,7 @@
         window.DictaLabListening?.leave();
         window.DictaLabConversation?.leave();
         window.DictaLabConversation?.clearDrafts();
+        window.DictaLabVocabulary?.leave();
         stopRecordedAudio();
         document.body.dataset.route = "login";
         stopTimer();
@@ -1326,6 +1336,7 @@
             catalog:   { route: "catalog",   params: { level: params.level || state.selectedLevel } },
             listening: { route: "listening", params: { sessionId: params.sessionId || null, level: params.level || "", page: params.page || 1, view: params.view || "", edit: params.edit || "" } },
             conversation: { route: "conversation", params: { sessionId: params.sessionId || null } },
+            vocabulary: { route: "vocabulary", params: { sessionId: params.sessionId || null } },
             history:   { route: "history",   params: { level: params.level || state.historyFilter || "all", page: params.page || 1 } },
             dashboard: { route: "dashboard", params: {} },
             account:   { route: "account", params: {} },

@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="/css/fonts.css">
     <link rel="stylesheet" href="/css/fidelity.css">
     <link rel="stylesheet" href="/css/library.css">
+    <link rel="stylesheet" href="/css/vocabulary.css">
 </head>
 <body>
 <main id="app-loading" class="app-loading" role="status">Đang mở DictaLab…</main>
@@ -113,6 +114,7 @@
                 Nghe hiểu
             </a>
             <a class="nav-link" href="/conversation" data-route="conversation" data-mobile-label="Tình huống">Nghe hiểu tình huống</a>
+            <a class="nav-link mobile-nav-secondary" href="/vocabulary" data-route="vocabulary" data-mobile-label="Từ vựng">Từ vựng</a>
             </div>
             <div class="nav-group" role="group" aria-label="Dữ liệu và tiến trình">
             <a class="nav-link mobile-nav-secondary" href="/history?level=all&page=1" data-route="history" data-mobile-label="Lịch sử">
@@ -132,6 +134,7 @@
             <button id="mobile-nav-more" class="nav-link mobile-nav-more" type="button"
                     popovertarget="mobile-nav-menu" aria-expanded="false" aria-controls="mobile-nav-menu">Thêm</button>
             <div id="mobile-nav-menu" class="mobile-nav-menu" popover="auto" aria-label="Điều hướng bổ sung">
+                <a class="nav-link" href="/vocabulary" data-route="vocabulary">Từ vựng</a>
                 <a class="nav-link" href="/history?level=all&page=1" data-route="history" autofocus>Lịch sử</a>
                 <a class="nav-link" href="/rooms" data-route="room">Luyện cùng bạn</a>
                 <a class="nav-link" href="/support" data-route="support">Hỗ trợ</a>
@@ -157,6 +160,14 @@
     </header>
 
     <main id="main-content" tabindex="-1">
+        <section id="vocabulary-view" class="view" hidden aria-labelledby="vocabulary-heading">
+            <div class="lesson-browser vocab-page">
+                <p class="section-index">Nhớ từ · dùng đúng ngữ cảnh</p>
+                <h1 id="vocabulary-heading">Từ vựng của bạn.</h1>
+                <div id="vocabulary-status" role="status" aria-live="polite"></div>
+                <div id="vocabulary-content"></div>
+            </div>
+        </section>
         <section id="account-view" class="view" hidden aria-labelledby="account-heading">
             <div class="lesson-browser account-page"><p class="section-index">Hồ sơ học tập</p>
                 <h1 id="account-heading">Tài khoản của bạn.</h1><div id="account-content" aria-live="polite"></div></div>
@@ -800,6 +811,7 @@
 <script src="/js/practice-sync.js" defer></script>
 <script src="/js/app.js" defer></script>
 <script src="/js/library.js" defer></script>
+<script src="/js/vocabulary.js" defer></script>
 <script src="/js/coach.js" defer></script>
 <script src="/js/listening.js" defer></script>
 <script src="/js/conversation.js" defer></script>
