@@ -2,58 +2,21 @@ name: AI Platform checks
 
 on:
   workflow_call:
+    inputs:
+      core-unit-covered:
+        type: boolean
+        default: false
+      publish-bundle:
+        type: boolean
+        default: false
   workflow_dispatch:
-  push:
-    branches: ['codex/**']
-    paths:
-      - 'services/ai-generation/**'
-      - 'services/model-serving/**'
-      - 'training/generate_teacher_data.py'
-      - 'training/benchmark_teacher.py'
-      - 'training/semantic_rubric.py'
-      - 'training/freeze_candidate.py'
-      - 'training/prepare_dataset.py'
-      - 'training/tests/test_generate_teacher_data.py'
-      - 'training/tests/test_benchmark_teacher.py'
-      - 'training/tests/test_prepare_dataset.py'
-      - 'training/requirements-prepare.lock'
-      - 'tools/ai-eval/**'
-      - 'artifacts/prompts/**'
-      - 'artifacts/reports/ai-platform-*.json'
-      - 'src/**'
-      - 'compose.yaml'
-      - '.dockerignore'
-      - 'pom.xml'
-      - 'ops/observability/**'
-      - 'scripts/run-local.ps1'
-      - 'scripts/test-run-local-env.ps1'
-      - 'scripts/run-model-demo.ps1'
-      - 'scripts/run-service.py'
-      - 'scripts/linux/service-bundle.py'
-      - 'scripts/linux/test_service_bundle.py'
-      - 'scripts/linux/service-provision.py'
-      - 'scripts/linux/test_service_provision.py'
-      - 'scripts/linux/service-release.py'
-      - 'scripts/linux/test_service_release.py'
-      - 'scripts/linux/service-lifecycle.py'
-      - 'scripts/linux/test_service_lifecycle.py'
-      - 'scripts/linux/dictalab-production.service'
-      - 'scripts/linux/dictalab-maintenance.caddy'
-      - 'scripts/ec2-services.ps1'
-      - 'scripts/cloudflare/**'
-      - 'scripts/linux/release.py'
-      - 'scripts/linux/test_service_units.py'
-      - 'scripts/linux/cloud-backup.py'
-      - 'scripts/linux/test_cloud_backup.py'
-      - 'scripts/linux/test_aws_database_access.py'
-      - 'ops/aws/**'
-      - 'scripts/linux/dictalab-ai*.service'
-      - 'scripts/linux/dictalab-progress.service'
-      - '.env*.example'
-      - '.github/workflows/ai-platform.yml'
 
 permissions:
   contents: read
+
+concurrency:
+  group: ai-platform-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
 
 jobs:
   contracts:
@@ -77,6 +40,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            services/ai-generation/requirements.lock
+            training/requirements-prepare.lock
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -88,10 +55,13 @@ jobs:
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
         run: python -m pytest -q services/ai-generation/tests services/model-serving/test_server.py tools/ai-eval training/tests/test_generate_teacher_data.py training/tests/test_benchmark_teacher.py training/tests/test_prepare_dataset.py
-      - name: Java routing and contract tests
+      - name: Java unit contracts when not covered by Core CI
+        if: ${{ !inputs.core-unit-covered }}
+        run: mvn --batch-mode --no-transfer-progress -Dtest=AuroraSchemaValidationTest,ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,AiPlatformClientTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,AiProviderRegistryTest test
+      - name: Java integration and Redis contracts
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
-        run: mvn --batch-mode --no-transfer-progress -Dtest=AuroraSchemaValidationTest,ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,ModelDemoIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,AiProviderRegistryTest,ListeningComprehensionIntegrationTest test
+        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationIntegrationTest,ConversationUxIntegrationTest,ModelDemoIntegrationTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiQuotaRedisIntegrationTest,ListeningComprehensionIntegrationTest test
       - name: Java to Python to fake Ollama smoke
         run: python tools/ai-eval/smoke.py
       - name: Private registry migration, backup restore and database isolation
@@ -128,9 +98,9 @@ jobs:
           sudo "$(command -v python)" -m unittest discover -s scripts/linux -p test_service_bundle.py
           command -v systemd-analyze
           python -m unittest discover -s scripts/linux -p test_service_units.py
-          python scripts/linux/service-bundle.py build --revision "$GITHUB_SHA" --output target/microservices-release.tar.gz
-          bundle_sha256=$(sha256sum target/microservices-release.tar.gz | cut -d ' ' -f 1)
-          docker run --rm --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace dictalab-ai-check python scripts/linux/service-bundle.py stage target/microservices-release.tar.gz --sha256 "$bundle_sha256"
+          python scripts/linux/service-bundle.py build --revision "$GITHUB_SHA" --output target/services.tar.gz
+          bundle_sha256=$(sha256sum target/services.tar.gz | cut -d ' ' -f 1)
+          docker run --rm --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace dictalab-ai-check python scripts/linux/service-bundle.py stage target/services.tar.gz --sha256 "$bundle_sha256"
       - name: Verify initial host identities and inactive installation
         run: docker run --rm --network none --env TEST_SERVICE_PROVISION_DISPOSABLE=1 --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace/scripts/linux dictalab-ai-check python -m unittest -v test_service_provision
       - name: Verify coordinated activation and application rollback
@@ -148,11 +118,20 @@ jobs:
         run: |
           ./scripts/test-run-local-env.ps1
           ./scripts/test-run-local-env.ps1 -LauncherName run-model-demo.ps1
+      - name: Save the same verified bundle for deployment
+        if: inputs.publish-bundle && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: application
+          retention-days: 7
+          path: target/services.tar.gz
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && (github.event_name != 'pull_request' || failure())
+        continue-on-error: ${{ github.ref != 'refs/heads/main' || github.event_name == 'pull_request' }}
         with:
           name: ai-platform-evidence
-          retention-days: 7
+          retention-days: 3
           path: |
             artifacts/reports/ai-platform-*.json
             target/surefire-reports/

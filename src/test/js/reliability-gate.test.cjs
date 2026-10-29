@@ -63,7 +63,7 @@ test('CI retains concurrency CSV and rejects missing evidence before allowing de
     const upload = reliability.slice(reliability.indexOf('      - name: Save reliability evidence'));
     assert.match(upload, /if: always\(\)/);
     assert.ok(upload.split(/\r?\n/).some(line => line.trim() === evidence), 'Concurrency CSV must be uploaded even after a failed run');
-    assert.match(workflow.slice(workflow.indexOf('  deploy:')), /needs: \[test-build, postgres-tests, reliability, ai-platform, progress\]/);
+    assert.match(workflow.slice(workflow.indexOf('  deploy:')), /needs: \[changes, required-checks, test-build, postgres-tests, reliability, ai-platform, progress\]/);
 });
 
 test('CI runs shared checks once and PostgreSQL suites independently before deployment', () => {
@@ -87,8 +87,10 @@ test('CI runs shared checks once and PostgreSQL suites independently before depl
         assert.ok(build.includes(command), `Missing shared check: ${command}`);
         assert.equal(workflow.split(command).length - 1, 1);
     }
-    assert.match(build, /name: application\r?\n\s+retention-days: 14\r?\n\s+path: target\/services\.tar\.gz/);
-    assert.ok(build.includes('service-bundle.py build --revision "$GITHUB_SHA"'));
+    const ai = fs.readFileSync(path.join(__dirname, '../../../.github/workflows/ai-platform.yml'), 'utf8');
+    assert.match(ai, /name: application\r?\n\s+retention-days: 7\r?\n\s+path: target\/services\.tar\.gz/);
+    assert.ok(ai.includes('service-bundle.py build --revision "$GITHUB_SHA"'));
+    assert.ok(!build.includes('service-bundle.py build'), 'Reuse the AI packaging gate bundle instead of rebuilding it');
     assert.ok(build.includes('TEST_CORE_SCHEMA_JAR: target/english-dictation-0.1.0-SNAPSHOT.jar'));
     assert.ok(deploy.includes("vars.PRODUCTION_DEPLOY_TARGET == 'ec2-services'"));
     assert.ok(deploy.includes('test "$VPS_HOST" = 54.254.221.170'));
@@ -103,23 +105,21 @@ test('CI runs shared checks once and PostgreSQL suites independently before depl
     assert.doesNotMatch(deploy, /sudo -n python3 .*\/release\.py/);
     for (const section of [postgres, reliability]) {
         assert.match(section, /fail-fast: false/, 'One failed PostgreSQL variant must not cancel the other variant');
-        assert.ok(section.includes(`postgres: \${{ fromJSON((github.event_name == 'schedule' || inputs.full_compatibility) && '["17.11-alpine","18.4-alpine"]' || '["18.4-alpine"]') }}`));
-        assert.doesNotMatch(section, /^    needs:/m, 'Database tests must start independently of H2/build');
+        assert.ok(section.includes(`postgres: \${{ fromJSON((github.event_name == 'schedule' || inputs.full_compatibility) && '["17.11-alpine","18.4-alpine"]' || '["17.11-alpine"]') }}`));
+        assert.match(section, /^    needs: changes$/m, 'Database tests depend only on scope selection, not on H2/build');
     }
     assert.match(postgres, /-Dspring\.profiles\.active=postgres-test/);
     assert.match(postgres, /-Pci-integration/);
     assert.match(postgres, /-Dspring\.datasource\.hikari\.minimum-idle=0 -Dspring\.test\.context\.cache\.maxSize=4 test/);
     assert.match(postgres, /name: postgres-test-reports-\$\{\{ matrix\.postgres \}\}/);
     assert.match(reliability, /-Ddictalab\.race-evidence=target\/reliability\/concurrency-matrix\.csv test/);
-    assert.match(deploy, /needs: \[test-build, postgres-tests, reliability, ai-platform, progress\]/);
-    for (const section of [build, deploy]) {
-        assert.ok(section.includes("if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main'"));
-    }
+    assert.match(deploy, /needs: \[changes, required-checks, test-build, postgres-tests, reliability, ai-platform, progress\]/);
+    assert.ok(deploy.includes("needs.changes.outputs.release == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main'"));
     assert.ok(deploy.includes("&& vars.PRODUCTION_DEPLOY_ENABLED == 'true'"), 'Production activation requires explicit opt-in while AWS migration is pending');
     assert.doesNotMatch(build + postgres + reliability, /vars\.PRODUCTION_DEPLOY_ENABLED/, 'Pausing deployment must not skip any test gate');
     assert.match(workflow, /cron: '23 20 \* \* 6'/);
     assert.match(workflow, /full_compatibility:[\s\S]*?type: boolean/);
-    assert.ok(workflow.includes("&& 'compatibility' || 'production'"), 'Compatibility checks must not block the production concurrency group');
+    assert.ok(workflow.includes("&& 'compatibility' || github.ref == 'refs/heads/main' && 'production'"), 'Compatibility checks must not block the production concurrency group');
 });
 
 test('CI Java test partition covers every Spring context suite without duplicating unit tests', () => {

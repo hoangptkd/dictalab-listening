@@ -3,20 +3,13 @@ name: Progress service checks
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches: ['codex/**']
-    paths:
-      - 'services/progress/**'
-      - 'src/**'
-      - 'docs/progress-*.json'
-      - 'docs/progress-*.yaml'
-      - 'compose.yaml'
-      - '.env.example'
-      - 'pom.xml'
-      - '.github/workflows/progress.yml'
 
 permissions:
   contents: read
+
+concurrency:
+  group: progress-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
 
 jobs:
   contracts-and-recovery:
@@ -29,13 +22,13 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
-      - name: Verify Progress against PostgreSQL 18 and RabbitMQ
-        run: mvn -f services/progress/pom.xml --batch-mode --no-transfer-progress verify
+      - name: Verify Progress against production PostgreSQL 17 and RabbitMQ
+        run: mvn -f services/progress/pom.xml --batch-mode --no-transfer-progress -Ddictalab.testcontainers.postgres-image=postgres:17.11-alpine verify
       - name: Verify Core outbox and packaged service recovery
         run: >-
           mvn --batch-mode --no-transfer-progress
           -Ddictalab.testcontainers=true
-          -Ddictalab.testcontainers.postgres-image=postgres:18-alpine
+          -Ddictalab.testcontainers.postgres-image=postgres:17.11-alpine
           -Dspring.profiles.active=postgres-test
           -Dtest=ProgressOutboxIntegrationTest,ProgressDeliveryIntegrationTest,ProgressClientTest test
       - name: Validate image and Compose packaging
@@ -52,10 +45,11 @@ jobs:
           docker build -t dictalab-progress-check services/progress
           git diff --check
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && (github.event_name != 'pull_request' || failure())
+        continue-on-error: ${{ github.ref != 'refs/heads/main' || github.event_name == 'pull_request' }}
         with:
           name: progress-service-evidence
-          retention-days: 7
+          retention-days: 3
           path: |
             services/progress/target/surefire-reports/
             target/surefire-reports/

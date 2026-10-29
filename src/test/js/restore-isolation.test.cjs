@@ -55,7 +55,7 @@ test('restore requires a verified empty dedicated endpoint and checks it before 
 test('EC2 CI deploy uses the coordinated release helper and retains live state on rollback',()=>{
     const workflow=fs.readFileSync(path.join(__dirname,'../../../.github/workflows/deploy.yml'),'utf8');
     const deploy=workflow.slice(workflow.indexOf('  deploy:'));
-    assert.ok(deploy.includes('needs: [test-build, postgres-tests, reliability, ai-platform, progress]'));
+    assert.ok(deploy.includes('needs: [changes, required-checks, test-build, postgres-tests, reliability, ai-platform, progress]'));
     assert.ok(deploy.includes('scripts/linux/service-release.py'));
     assert.ok(deploy.includes('sudo -n "$python"'));
     assert.ok(deploy.includes('sha256sum target/services.tar.gz'));

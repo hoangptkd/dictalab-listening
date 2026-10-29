@@ -27,7 +27,7 @@ import static org.awaitility.Awaitility.await;
 @SpringBootTest(properties="dictalab.progress.service-token=progress-test-token-at-least-32-chars")
 @AutoConfigureMockMvc
 class ProgressIntegrationTest {
-    static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18-alpine");
+    static final PostgreSQLContainer postgres = new PostgreSQLContainer(System.getProperty("dictalab.testcontainers.postgres-image", "postgres:18-alpine"));
     static final RabbitMQContainer broker = new RabbitMQContainer("rabbitmq:4.3.6-management-alpine");
     static {
         Startables.deepStart(Stream.of(postgres, broker)).join();
