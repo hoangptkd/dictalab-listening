@@ -30,7 +30,7 @@ test('isolated services and their workflows select the relevant contracts', () =
     }
 });
 
-test('shared, renamed, deleted, unknown and mixed changes retain all backend gates', () => {
+test('shared, renamed, deleted, unknown and mixed changes select every source scope', () => {
     for (const files of [['src/main/java/com/dictalab/Service.java'], ['src/main/resources/db/migration/V99.sql'],
         ['pom.xml'], ['compose.yaml'], ['.env.example'], ['scripts/linux/service-release.py'],
         ['.github/workflows/deploy.yml'], ['scripts/ci-changes.cjs'], ['new-module/config.json'],
@@ -42,7 +42,7 @@ test('shared, renamed, deleted, unknown and mixed changes retain all backend gat
     }
 });
 
-test('every application release runs all gates, including UI-only releases', () => {
+test('every application release builds every source scope, including UI-only releases', () => {
     for (const files of [['src/main/resources/static/js/app.js'], ['services/progress/src/Main.java'],
         ['services/ai-generation/app/main.py'], ['pom.xml'], ['unknown-initial-push']]) {
         const scope = plan('push', main, files);
@@ -52,9 +52,9 @@ test('every application release runs all gates, including UI-only releases', () 
     assert.equal(plan('push', main, ['ios/App.swift']).release, false);
 });
 
-test('scheduled and manual validation cannot skip backend gates or deploy a branch', () => {
+test('manual validation builds all source scopes and cannot deploy a branch', () => {
     for (const [event, ref, compatibility, release] of [
-        ['schedule', main, false, false], ['workflow_dispatch', main, true, false],
+        ['workflow_dispatch', main, true, false],
         ['workflow_dispatch', 'refs/heads/codex/topic', false, false], ['workflow_dispatch', main, false, true]]) {
         const scope = plan(event, ref, [], compatibility);
         for (const gate of ['backend', 'ai', 'progress']) assert.equal(scope[gate], true);
@@ -90,15 +90,17 @@ test('actual final gate rejects failed, cancelled and unexpectedly skipped depen
     assert.ok(source, 'Missing final gate');
     const needs = backend => ({changes: {result: 'success', outputs: {
         backend: String(backend), ai: String(backend), progress: String(backend), release: 'false'}},
-        'test-build': {result: 'success'}, 'postgres-tests': {result: backend ? 'success' : 'skipped'},
-        reliability: {result: backend ? 'success' : 'skipped'},
-        'ai-platform': {result: backend ? 'success' : 'skipped'}, progress: {result: backend ? 'success' : 'skipped'}});
+        'test-build': {result: 'success'}});
     const run = checks => spawnSync(process.execPath, ['-e', source], {
         encoding: 'utf8', env: {...process.env, NEEDS: JSON.stringify(checks)}});
     assert.equal(run(needs(false)).status, 0);
     assert.equal(run(needs(true)).status, 0);
-    for (const result of ['failure', 'cancelled', 'skipped']) {
-        const checks = needs(true); checks.reliability.result = result;
+    for (const name of ['changes','test-build']) {
+        for (const result of ['failure', 'cancelled', 'skipped']) {
+            const checks = needs(true); checks[name].result = result;
+            assert.notEqual(run(checks).status, 0);
+        }
+        const checks = needs(true); delete checks[name];
         assert.notEqual(run(checks).status, 0);
     }
     const checks = needs(false); checks.changes.result = 'failure';
@@ -123,17 +125,19 @@ test('deployment revision validation rejects a different source revision, even w
     assert.notEqual(run(undefined).status, 0);
 });
 
-test('reusable workflows have one automatic caller and share the verified release bundle', () => {
+test('demo releases package in test-build while service checks remain manual', () => {
     const read = name => fs.readFileSync(path.join(root, '.github/workflows', name), 'utf8');
     const ai = read('ai-platform.yml'), progress = read('progress.yml'), deploy = read('deploy.yml');
     for (const workflow of [ai, progress]) {
         assert.match(workflow, /  workflow_call:/);
         assert.doesNotMatch(workflow, /^  (push|pull_request):/m);
     }
-    assert.equal((ai + deploy).split('service-bundle.py build --revision').length - 1, 1);
-    assert.match(ai, /--output target\/services\.tar\.gz/);
-    assert.match(ai, /stage target\/services\.tar\.gz/);
-    assert.match(ai, /name: application\r?\n\s+retention-days: 7/);
+    assert.doesNotMatch(deploy, /uses: \.\/\.github\/workflows\/(ai-platform|progress)\.yml/);
+    assert.doesNotMatch(deploy, /^  (postgres-tests|reliability|ai-platform|progress|schedule):/m);
+    assert.equal(deploy.split('service-bundle.py build --revision').length - 1, 1);
+    assert.match(deploy, /--output target\/services\.tar\.gz/);
+    assert.match(deploy, /service-bundle\.py verify target\/services\.tar\.gz/);
+    assert.match(deploy, /name: application\r?\n\s+retention-days: 3/);
     assert.match(deploy, /Release revision mismatch/);
     assert.match(ai, /if: \$\{\{ !inputs.core-unit-covered \}\}/);
     assert.match(ai, /if: inputs.publish-bundle && github.ref == 'refs\/heads\/main'/);

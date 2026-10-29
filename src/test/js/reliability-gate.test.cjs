@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const {required, parseReport, verifySuites} = require('../../../scripts/verify-reliability-tests.cjs');
 const passing = () => Object.entries(required).map(([name, tests]) => ({name, tests, failures: 0, errors: 0, skipped: 0}));
 
-test('learning concurrency and broker recovery evidence cannot be skipped in CI', () => {
+test('learning concurrency and broker recovery verifier still rejects missing evidence', () => {
     for(const name of ['ListeningLearningIntegrationTest','LearningJobsIntegrationTest'])
         assert.throws(()=>verifySuites(passing().filter(suite=>suite.name!==name)),new RegExp('Missing or duplicate suite: '+name));
 });
@@ -30,7 +30,7 @@ test('reliability gate requires every suite and no skipped, failed or missing ca
     assert.throws(() => verifySuites(suites), /Missing cases/);
 });
 
-test('compact word grading and retry races remain mandatory in PostgreSQL CI', () => {
+test('compact word grading and retry races remain in the optional reliability profile', () => {
     const fs = require('node:fs');
     const path = require('node:path');
     const pom = fs.readFileSync(path.join(__dirname, '../../../pom.xml'), 'utf8');
@@ -49,49 +49,37 @@ test('Surefire parser rejects malformed, truncated and missing-count reports', (
     assert.throws(() => parseReport(xml.replace('</testsuite>', '')), /Truncated/);
 });
 
-test('CI retains concurrency CSV and rejects missing evidence before allowing deployment', () => {
+test('demo CI has no automatic database, service or reliability jobs', () => {
     const fs = require('node:fs');
     const path = require('node:path');
     const workflow = fs.readFileSync(path.join(__dirname, '../../../.github/workflows/deploy.yml'), 'utf8');
-    const reliability = workflow.match(/^  reliability:\r?\n([\s\S]*?)(?=^  deploy:)/m)?.[1];
-    assert.ok(reliability, 'Missing reliability job');
-    const evidence = 'target/reliability/concurrency-matrix.csv';
-    const run = reliability.match(/      - name: Run mandatory concurrency and messaging tests[\s\S]*?(?=      - name:)/)?.[0];
-    assert.ok(run?.includes(`-Ddictalab.race-evidence=${evidence}`), 'Concurrency CSV must use the uploaded build directory');
-    const gate = reliability.match(/      - name: Reject missing or skipped reliability tests[\s\S]*?(?=      - name:)/)?.[0];
-    assert.ok(gate?.includes(`test -s ${evidence}`), 'Missing or empty concurrency evidence must fail CI');
-    const upload = reliability.slice(reliability.indexOf('      - name: Save reliability evidence'));
-    assert.match(upload, /if: always\(\)/);
-    assert.ok(upload.split(/\r?\n/).some(line => line.trim() === evidence), 'Concurrency CSV must be uploaded even after a failed run');
-    assert.match(workflow.slice(workflow.indexOf('  deploy:')), /needs: \[changes, required-checks, test-build, postgres-tests, reliability, ai-platform, progress\]/);
+    const jobs = workflow.slice(workflow.indexOf('jobs:'));
+    assert.deepEqual([...jobs.matchAll(/^  ([\w-]+):$/gm)].map(match => match[1]),
+        ['changes', 'test-build', 'required-checks', 'deploy']);
+    assert.doesNotMatch(workflow, /schedule:|cron:|matrix:|services:|Testcontainers|TEST_CORE_SCHEMA_JAR/);
+    assert.doesNotMatch(workflow, /uses: \.\/\.github\/workflows\/(ai-platform|progress)\.yml/);
 });
 
-test('CI runs shared checks once and PostgreSQL suites independently before deployment', () => {
+test('demo CI retains local checks, immutable packaging and coordinated deployment guards', () => {
     const fs = require('node:fs');
     const path = require('node:path');
     const workflow = fs.readFileSync(path.join(__dirname, '../../../.github/workflows/deploy.yml'), 'utf8');
     const job = name => workflow.split(`  ${name}:`)[1]?.split(/\r?\n  [\w-]+:\r?\n/)[0];
-    const build = job('test-build');
-    const postgres = job('postgres-tests');
-    const reliability = job('reliability');
-    const deploy = job('deploy');
-    for (const section of [build, postgres, reliability, deploy]) assert.ok(section, 'Missing CI job');
-    assert.doesNotMatch(build, /matrix:|services:|postgres-test/);
-    assert.ok(build.indexOf('Resolve and scan runtime dependencies') > build.indexOf('Run tests and build executable JAR'),
-        'Maven clean must finish before dependency evidence is generated');
-    assert.ok(build.indexOf('Save dependency scan evidence') > build.indexOf('Verify S3 production packaging'),
-        'An artifact quota failure must not prevent tests and package verification from running');
+    const build = job('test-build'), deploy = job('deploy');
+    assert.ok(build && deploy, 'Missing demo build or deployment job');
+    assert.ok(build.indexOf('Resolve and scan runtime dependencies') > build.indexOf('Run tests and build executable JAR'));
+    assert.ok(build.indexOf('Save dependency scan evidence') > build.indexOf('Verify S3 production packaging'));
     for (const command of ['node --test src/test/js/*.cjs', 'node scripts/test-b1-expansion.cjs',
         "python3 -m unittest discover -s scripts/linux -p 'test_*.py'", 'python3 scripts/scan-dependencies.py',
         '-Pproduction-s3,ci-unit clean verify', 'python3 scripts/verify-production-jar.py']) {
         assert.ok(build.includes(command), `Missing shared check: ${command}`);
         assert.equal(workflow.split(command).length - 1, 1);
     }
-    const ai = fs.readFileSync(path.join(__dirname, '../../../.github/workflows/ai-platform.yml'), 'utf8');
-    assert.match(ai, /name: application\r?\n\s+retention-days: 7\r?\n\s+path: target\/services\.tar\.gz/);
-    assert.ok(ai.includes('service-bundle.py build --revision "$GITHUB_SHA"'));
-    assert.ok(!build.includes('service-bundle.py build'), 'Reuse the AI packaging gate bundle instead of rebuilding it');
-    assert.ok(build.includes('TEST_CORE_SCHEMA_JAR: target/english-dictation-0.1.0-SNAPSHOT.jar'));
+    assert.match(build, /name: application\r?\n\s+retention-days: 3\r?\n\s+path: target\/services\.tar\.gz/);
+    assert.ok(build.includes('service-bundle.py build --revision "$GITHUB_SHA"'));
+    assert.ok(build.includes('service-bundle.py verify target/services.tar.gz'));
+    assert.match(deploy, /name: application/);
+    assert.match(deploy, /Release revision mismatch/);
     assert.ok(deploy.includes("vars.PRODUCTION_DEPLOY_TARGET == 'ec2-services'"));
     assert.ok(deploy.includes('test "$VPS_HOST" = 54.254.221.170'));
     assert.ok(deploy.includes('--postgres-major 17 --migrate-core --rollback-compatible'));
@@ -103,23 +91,10 @@ test('CI runs shared checks once and PostgreSQL suites independently before depl
     assert.ok(deploy.includes('--security-group-rule-ids "$RUNNER_SSH_RULE"'));
     assert.doesNotMatch(deploy, /0\.0\.0\.0\/0|AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID/);
     assert.doesNotMatch(deploy, /sudo -n python3 .*\/release\.py/);
-    for (const section of [postgres, reliability]) {
-        assert.match(section, /fail-fast: false/, 'One failed PostgreSQL variant must not cancel the other variant');
-        assert.ok(section.includes(`postgres: \${{ fromJSON((github.event_name == 'schedule' || inputs.full_compatibility) && '["17.11-alpine","18.4-alpine"]' || '["17.11-alpine"]') }}`));
-        assert.match(section, /^    needs: changes$/m, 'Database tests depend only on scope selection, not on H2/build');
-    }
-    assert.match(postgres, /-Dspring\.profiles\.active=postgres-test/);
-    assert.match(postgres, /-Pci-integration/);
-    assert.match(postgres, /-Dspring\.datasource\.hikari\.minimum-idle=0 -Dspring\.test\.context\.cache\.maxSize=4 test/);
-    assert.match(postgres, /name: postgres-test-reports-\$\{\{ matrix\.postgres \}\}/);
-    assert.match(reliability, /-Ddictalab\.race-evidence=target\/reliability\/concurrency-matrix\.csv test/);
-    assert.match(deploy, /needs: \[changes, required-checks, test-build, postgres-tests, reliability, ai-platform, progress\]/);
+    assert.match(deploy, /needs: \[changes, required-checks, test-build\]/);
     assert.ok(deploy.includes("needs.changes.outputs.release == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main'"));
-    assert.ok(deploy.includes("&& vars.PRODUCTION_DEPLOY_ENABLED == 'true'"), 'Production activation requires explicit opt-in while AWS migration is pending');
-    assert.doesNotMatch(build + postgres + reliability, /vars\.PRODUCTION_DEPLOY_ENABLED/, 'Pausing deployment must not skip any test gate');
-    assert.match(workflow, /cron: '23 20 \* \* 6'/);
+    assert.ok(deploy.includes("&& vars.PRODUCTION_DEPLOY_ENABLED == 'true'"));
     assert.match(workflow, /full_compatibility:[\s\S]*?type: boolean/);
-    assert.ok(workflow.includes("&& 'compatibility' || github.ref == 'refs/heads/main' && 'production'"), 'Compatibility checks must not block the production concurrency group');
 });
 
 test('CI Java test partition covers every Spring context suite without duplicating unit tests', () => {

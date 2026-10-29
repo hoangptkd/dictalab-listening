@@ -10,18 +10,16 @@ on:
   workflow_dispatch:
     inputs:
       full_compatibility:
-        description: Check both PostgreSQL versions without deploying
+        description: Validate the demo build without deploying (legacy input name)
         type: boolean
         default: false
-  schedule:
-    - cron: '23 20 * * 6'
 
 permissions:
   contents: read
 
 concurrency:
-  group: dictalab-${{ github.event_name == 'pull_request' && github.ref || (github.event_name == 'schedule' || inputs.full_compatibility) && 'compatibility' || github.ref == 'refs/heads/main' && 'production' || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.ref != 'refs/heads/main' && github.event_name != 'schedule') }}
+  group: dictalab-${{ github.event_name == 'pull_request' && github.ref || inputs.full_compatibility && 'compatibility' || github.ref == 'refs/heads/main' && 'production' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
 
 jobs:
   changes:
@@ -34,7 +32,7 @@ jobs:
       release: ${{ steps.scope.outputs.release }}
     steps:
       - uses: actions/checkout@v4
-      - name: Select affected checks, keeping every release gate
+      - name: Select affected builds and demo releases
         id: scope
         env:
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -47,19 +45,6 @@ jobs:
             fi
           fi
           node scripts/ci-changes.cjs
-
-  progress:
-    needs: changes
-    if: needs.changes.outputs.progress == 'true'
-    uses: ./.github/workflows/progress.yml
-
-  ai-platform:
-    needs: changes
-    if: needs.changes.outputs.ai == 'true'
-    uses: ./.github/workflows/ai-platform.yml
-    with:
-      core-unit-covered: ${{ needs.changes.outputs.backend == 'true' }}
-      publish-bundle: ${{ needs.changes.outputs.release == 'true' && vars.PRODUCTION_DEPLOY_ENABLED == 'true' && vars.PRODUCTION_DEPLOY_TARGET == 'ec2-services' }}
 
   test-build:
     needs: changes
@@ -96,17 +81,27 @@ jobs:
         if: needs.changes.outputs.backend == 'true'
         run: python3 scripts/verify-production-jar.py target/english-dictation-0.1.0-SNAPSHOT.jar
 
-      - name: Rehearse owner migration and runtime grants on isolated PostgreSQL 17
-        if: needs.changes.outputs.backend == 'true'
-        env:
-          TEST_CORE_SCHEMA_JAR: target/english-dictation-0.1.0-SNAPSHOT.jar
-        run: python3 -m unittest discover -s scripts/linux -p test_service_schema.py -v
-
       - name: Resolve and scan runtime dependencies
         if: needs.changes.outputs.backend == 'true'
         run: |
           mvn --batch-mode --no-transfer-progress dependency:list -DincludeScope=runtime -DoutputFile=target/runtime-dependencies.txt
           python3 scripts/scan-dependencies.py target/runtime-dependencies.txt target/dependency-scan.json
+
+      - name: Build and verify the immutable three-service release bundle
+        if: needs.changes.outputs.release == 'true' && vars.PRODUCTION_DEPLOY_ENABLED == 'true' && vars.PRODUCTION_DEPLOY_TARGET == 'ec2-services'
+        run: |
+          python3 scripts/linux/service-bundle.py build --revision "$GITHUB_SHA" --output target/services.tar.gz
+          bundle_sha256="$(sha256sum target/services.tar.gz | awk '{print $1}')"
+          python3 scripts/linux/service-bundle.py verify target/services.tar.gz --sha256 "$bundle_sha256"
+
+      - name: Save the verified demo release bundle for deployment
+        if: needs.changes.outputs.release == 'true' && vars.PRODUCTION_DEPLOY_ENABLED == 'true' && vars.PRODUCTION_DEPLOY_TARGET == 'ec2-services'
+        uses: actions/upload-artifact@v4
+        with:
+          name: application
+          retention-days: 3
+          path: target/services.tar.gz
+          if-no-files-found: error
 
       - name: Save dependency scan evidence
         if: always() && needs.changes.outputs.backend == 'true' && (github.event_name != 'pull_request' || failure())
@@ -128,103 +123,9 @@ jobs:
           retention-days: 3
           path: target/surefire-reports/
 
-  postgres-tests:
-    needs: changes
-    if: needs.changes.outputs.backend == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        postgres: ${{ fromJSON((github.event_name == 'schedule' || inputs.full_compatibility) && '["17.11-alpine","18.4-alpine"]' || '["17.11-alpine"]') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:${{ matrix.postgres }}
-        env:
-          POSTGRES_DB: dictalab_test
-          POSTGRES_USER: dictalab_test
-          POSTGRES_PASSWORD: test-only-password
-        ports:
-          - 5432/tcp
-        options: >-
-          --health-cmd "pg_isready -U dictalab_test -d dictalab_test"
-          --health-interval 5s --health-timeout 5s --health-retries 20
-    steps:
-      - name: Check out source code
-        uses: actions/checkout@v4
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-          cache: maven
-      - name: Run the integration suite on PostgreSQL with Flyway
-        id: postgres-tests
-        env:
-          TEST_DB_URL: jdbc:postgresql://localhost:${{ job.services.postgres.ports['5432'] }}/dictalab_test
-          TEST_DB_USERNAME: dictalab_test
-          TEST_DB_PASSWORD: test-only-password
-        run: >-
-          mvn --batch-mode --no-transfer-progress -Pci-integration -Dspring.profiles.active=postgres-test
-          -Dspring.datasource.hikari.minimum-idle=0 -Dspring.test.context.cache.maxSize=4 test
-
-      - name: Save PostgreSQL test reports
-        if: always() && steps.postgres-tests.outcome != 'skipped' && (github.event_name != 'pull_request' || failure())
-        continue-on-error: ${{ github.ref != 'refs/heads/main' || github.event_name == 'pull_request' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: postgres-test-reports-${{ matrix.postgres }}
-          retention-days: 3
-          path: target/surefire-reports/
-
-  reliability:
-    needs: changes
-    if: needs.changes.outputs.backend == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        postgres: ${{ fromJSON((github.event_name == 'schedule' || inputs.full_compatibility) && '["17.11-alpine","18.4-alpine"]' || '["17.11-alpine"]') }}
-    steps:
-      - name: Check out source code
-        uses: actions/checkout@v4
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-          cache: maven
-      - name: Run mandatory concurrency and messaging tests with Testcontainers
-        run: >-
-          mvn --batch-mode --no-transfer-progress -Preliability,production-s3
-          -Ddictalab.testcontainers.postgres-image=postgres:${{ matrix.postgres }}
-          -Ddictalab.build.directory=target/reliability
-          -Ddictalab.race-evidence=target/reliability/concurrency-matrix.csv test
-      - name: Reject missing or skipped reliability tests
-        run: |
-          node scripts/verify-reliability-tests.cjs target/reliability/surefire-reports
-          test -s target/reliability/concurrency-matrix.csv
-      - name: Save reliability evidence
-        if: always() && (github.event_name != 'pull_request' || failure())
-        continue-on-error: ${{ github.ref != 'refs/heads/main' || github.event_name == 'pull_request' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: reliability-${{ matrix.postgres }}
-          retention-days: ${{ github.event_name == 'pull_request' && 3 || 7 }}
-          path: |
-            target/reliability/surefire-reports/
-            target/reliability/worker-recovery-*/
-            target/reliability/ai-worker-recovery/
-            target/reliability/restore-isolation/
-            target/reliability/payment-restore/
-            target/reliability/payment-concurrency.json
-            target/reliability/concurrency-matrix.csv
-          if-no-files-found: error
-
   required-checks:
     if: always()
-    needs: [changes, test-build, postgres-tests, reliability, ai-platform, progress]
+    needs: [changes, test-build]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -241,13 +142,9 @@ jobs:
           }
           if (checks.changes.outputs.release === 'true'
               && ['backend', 'ai', 'progress'].some(flag => checks.changes.outputs[flag] !== 'true')) {
-            throw new Error('A release requires every backend gate');
+            throw new Error('A release requires a complete source build');
           }
-          const expected = {'changes': true, 'test-build': true,
-            'postgres-tests': checks.changes.outputs.backend === 'true',
-            'reliability': checks.changes.outputs.backend === 'true',
-            'ai-platform': checks.changes.outputs.ai === 'true',
-            'progress': checks.changes.outputs.progress === 'true'};
+          const expected = {'changes': true, 'test-build': true};
           for (const [name, required] of Object.entries(expected)) {
             if (checks[name].result !== (required ? 'success' : 'skipped')) {
               throw new Error(`${name}: ${checks[name].result}`);
@@ -256,7 +153,7 @@ jobs:
           NODE
 
   deploy:
-    needs: [changes, required-checks, test-build, postgres-tests, reliability, ai-platform, progress]
+    needs: [changes, required-checks, test-build]
     if: needs.changes.outputs.release == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main' && vars.PRODUCTION_DEPLOY_ENABLED == 'true' && vars.PRODUCTION_DEPLOY_TARGET == 'ec2-services'
     runs-on: ubuntu-latest
     timeout-minutes: 20

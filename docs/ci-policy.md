@@ -1,85 +1,80 @@
-# CI/CD execution policy
+# Demo CI/CD execution policy
 
-## Entry points
+## Automatic pipeline
 
-- `deploy.yml` coordinates PRs into `main`, pushes to `main`, manual validation,
-  and weekly PostgreSQL compatibility checks.
-- AI and Progress are reusable workflows. They do not also run on feature-branch
-  pushes. Use a PR or manual dispatch to validate work before merging.
-- PR checks cancel obsolete runs. Production activation is never interrupted by
-  this cancellation policy. Compatibility runs have a separate concurrency group.
-- `required-checks` fails for failed, cancelled, or unexpectedly skipped jobs.
-  It accepts only the skips selected by the scope job. This is the stable aggregate
-  check to require when configuring branch protection; existing settings are not
-  changed by this commit.
+The owner selected a smaller pipeline for the demo on 2026-10-29. `deploy.yml`
+runs on PRs into `main`, pushes to `main`, or manual dispatch. It has four jobs:
 
-## Scope selection
+1. `changes`: compare exact Git revisions and select affected source scopes.
+2. `test-build`: browser tests, Linux helper tests, Core Java unit tests/package,
+   production JAR verification, and runtime dependency scanning.
+3. `required-checks`: reject failed, cancelled, missing or unexpectedly skipped
+   scope/build jobs. A release must select a complete source build.
+4. `deploy`: deploy only a release on `main`, with both production variables set.
 
-`scripts/ci-changes.cjs` compares the exact base and checked-out commit using Git,
-including both sides of renames and deleted files. A failed comparison fails CI.
+AI Platform, Progress, PostgreSQL integration and reliability jobs are not part of
+this automatic pipeline. The PostgreSQL owner-migration rehearsal and weekly
+schedule are also removed. Demo releases therefore do not claim fresh coverage
+of database integration, concurrency, broker recovery or AI service contracts.
 
-| Change in a PR | Heavy checks |
-| --- | --- |
-| Static HTML/CSS/JS | No backend services; browser and script checks still run |
-| Documentation Markdown, iOS, JS tests | No backend services |
-| Progress source or contract | Progress |
-| AI services, prompts, training, AI evaluation | AI |
-| Java, migrations, shared config, deployment scripts, unknown paths | Core unit, PostgreSQL, reliability, AI and Progress |
+## Scope and manual runs
 
-All application releases run every mandatory backend/service gate, even for a
-UI-only release. Documentation-only and iOS-only pushes to `main` do not deploy the
-backend. Weekly/manual validation runs all gates. Manual dispatch from a feature
-branch never activates production. `full_compatibility: true` never deploys.
+`scripts/ci-changes.cjs` retains source classification for Core, AI, Progress and
+frontend files. These flags describe source dependencies, not separate demo jobs.
+Every application release builds all components, including a UI-only release.
+PRs containing only static files or documentation avoid Java/backend builds.
+Documentation-only and iOS-only main pushes do not deploy the backend.
 
-New source/config paths default to all checks. Extend the classifier only with a
-test showing that cross-service changes and releases remain covered.
+The existing `full_compatibility` manual input is retained for compatibility with
+saved dispatch commands. When true it validates the demo build without deploying;
+it no longer starts PostgreSQL 17/18 matrices. A manual run from a feature branch
+never deploys. Obsolete PR runs cancel; production activation is not interrupted.
 
-## Build and database gates
+AI and Progress workflow files remain available for explicit manual checks, with
+no push or PR triggers. The Maven integration/reliability profiles and their
+evidence validators remain available for local or future opt-in validation.
 
-- Routine Core integration/reliability and Progress tests use PostgreSQL 17, as
-  production does. The weekly/explicit full Core matrix also checks PostgreSQL 18.
-- The reliability suite still requires real containers, concurrency CSV, and all
-  required suites without missing/skipped cases. Migration permissions, backup,
-  restore, and rollback checks remain in place.
-- AI pure Java unit contracts are not repeated when Core CI runs them. Redis and
-  AI integration contracts keep their separate environment coverage.
-- AI packaging builds and stages one immutable three-service bundle from the Git
-  revision. If deployment is enabled, this same file is uploaded as `application`.
-  The deploy job checks its contents, checksums and source revision before use.
-- Core unit packaging and the Progress Docker build remain distinct checks;
-  this change does not claim every component compiles only once.
+## Release packaging and activation
 
-## Reports and storage
+`test-build` builds the immutable three-service bundle from the exact Git commit
+using `service-bundle.py`. This compiles Core and Progress and includes the pinned
+AI source/runtime requirements; it does not run the removed service suites. Core
+unit tests and the isolated bundle build remain separate Maven invocations.
 
-- Successful PRs use normal check/log output without uploading full test reports.
-- Failed PR reports are retained for 3 days. Upload failures are diagnostic only;
-  test commands and evidence validation still fail normally.
-- Manual feature-branch report upload failures are also diagnostic only.
-- Main/weekly evidence uploads remain required: routine reports 3 days,
-  reliability evidence 7 days. Release bundles are retained for 7 days and are
-  uploaded only when the established production deployment variables enable them.
-- These rules do not delete existing artifacts, change billing limits, or recover
-  compute already used. A full storage quota can still block an actual release.
+The bundle is built, verified and uploaded only when production deployment is
+enabled for `ec2-services`. `deploy` downloads that same artifact and rejects an
+unexpected source revision or checksum. EC2 installs/checks the isolated AI runtime
+before activation. Staging alone does not count as deployment success.
 
-## iOS and training
+Activation retains protected-file checks, installed systemd unit verification,
+service quiescence, a private backup, owner-only Flyway migration, reviewed
+application rollback, and readiness checks. Live databases are never restored
+automatically. The workflow verifies public health and always revokes its
+temporary runner SSH rule. OIDC and ingress remain scoped to the existing target.
 
-- iOS builds on affected PRs, affected `main` pushes, `ios-build-*` tags, or manual
-  dispatch. Packages are published only for those tags or manual dispatch.
-- Training has one PR/main trigger path; Linux checks run on PRs, and the heavier
-  Windows CPU runtime runs on `main` or manual dispatch. Python downloads use the
-  Actions pip cache.
-- Workflow enable/disable settings on GitHub are unchanged. In particular, editing
-  `training-offline.yml` does not enable a disabled training workflow.
+## Reports, costs and other workflows
 
-## Local checks
+- The application bundle and routine reports are retained for 3 days.
+- Successful PRs do not upload complete reports; failed PR evidence is diagnostic.
+- iOS and training triggers/enablement are unchanged by this demo policy.
+- This change does not alter billing limits or delete existing artifacts.
+- A branch push is GitHub delivery, not production deployment. Only a successful
+  main workflow plus application verification confirms a deployment.
+
+## Local verification
 
 ```powershell
-node --test src/test/js/ci-scope.test.cjs src/test/js/reliability-gate.test.cjs src/test/js/restore-isolation.test.cjs
-mvn -f services/progress/pom.xml --batch-mode --no-transfer-progress '-Ddictalab.testcontainers.postgres-image=postgres:17.11-alpine' verify
+node --test src/test/js/*.cjs
+mvn --batch-mode --no-transfer-progress -Pproduction-s3,ci-unit clean verify
 $workflowPaths = Get-ChildItem .github/workflows/*.yml | ForEach-Object { $_.FullName }
 go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes= @workflowPaths
 ```
 
-These checks validate routing, final-gate failure behavior, workflow syntax and the
-changed Progress database configuration. Only a successful workflow on `main`
-followed by application verification confirms a production deployment.
+Run the Linux helper suite on Linux/WSL or in a disposable Linux container:
+
+```bash
+python3 -m unittest discover -s scripts/linux -p 'test_*.py'
+```
+
+CI policy tests exercise the actual final-gate program and check that packaging,
+revision verification, migration, rollback and scoped SSH cleanup remain wired.

@@ -13,7 +13,7 @@ function classify(paths) {
         else if (/^(ios\/|src\/test\/js\/)/.test(path) || /^docs\/.*\.(md|png|jpg|svg|pdf)$/.test(path)
             || /^[^/]+\.md$/.test(path)
             || /^\.github\/workflows\/(ios|training-offline)\.yml$/.test(path)) continue;
-        // Unknown/shared changes fail safe to all backend and service checks.
+        // Unknown/shared changes require all source scopes to be built.
         else Object.assign(flags, {backend: true, ai: true, progress: true});
     }
     return flags;
@@ -24,7 +24,7 @@ function plan(event, ref, paths, fullCompatibility = false) {
     const changed = Object.values(flags).some(Boolean);
     const release = ref === 'refs/heads/main' && !fullCompatibility
         && (event === 'workflow_dispatch' || event === 'push' && changed);
-    // Every release and explicit/weekly validation retains all mandatory gates.
+    // Every release and explicit validation builds the complete source revision.
     if (release || !['pull_request', 'push'].includes(event)) {
         Object.assign(flags, {backend: true, ai: true, progress: true, frontend: true});
     }
