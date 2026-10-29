@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const source = fs.readFileSync(path.resolve(__dirname, '../../main/resources/static/js/vocabulary.js'), 'utf8');
 const tick = () => new Promise(resolve => setImmediate(resolve));
-function harness(api) {
+function harness(api, {admin=false}={}) {
     const elements = new Map(), inserted = [];
     const element = () => ({dataset:{},disabled:false,classList:{add() {}},setAttribute() {},focus() {this.focused=true;},
         insertAdjacentElement(position,node) {inserted.push(node);},querySelector() {return null;}});
@@ -14,7 +14,7 @@ function harness(api) {
         querySelector(selector) {const value=elements.get(selector);return (Array.isArray(value)?value[0]:value) ?? (selector==='#vocab-import-preview'?preview:selector==='[name="answer"]'?input:null);},
         querySelectorAll(selector) {return elements.get(selector) ?? [];}};
     let current = {id: 11}; const calls = [],storage = new Map();
-    const window = {DictaLabListeningBridge: {currentUser: () => current,isAdmin: () => false,
+    const window = {DictaLabListeningBridge: {currentUser: () => current,isAdmin: () => admin,
         navigate() {}, async api(url,options) {calls.push({url,options});return api(url,options);}}};
     vm.runInNewContext(source,{window,document:{querySelector: selector => selector==='#vocabulary-content'?root:status,createElement:element},
         AbortController,DOMException,TextDecoder,requestAnimationFrame:fn=>fn(),crypto:{randomUUID:()=>require('node:crypto').randomUUID()},
@@ -264,4 +264,30 @@ test('context translation mode starts the existing backend flow for the selected
     const write=h.calls.find(c=>c.url.endsWith('/sessions') && c.options.method==='POST');
     assert.equal(write.options.body.mode,'CONTEXT_TRANSLATION');
     assert.equal(write.options.body.deckId,'deck');
+});
+
+test('system decks expose editing or copying while only personal decks expose study modes',async()=>{
+    const h=harness(async url=>{
+        if(url.includes('/decks?'))return {items:[],hasMore:false};
+        if(url.endsWith('/summary'))return summary;
+        if(url.endsWith('/mastery-levels'))return mastery;
+        if(url.includes('/decks/deck?'))return {deck:{id:'deck',title:'Test',level:'A1'},notes:{items:notes,page:1,hasMore:false}};
+        throw new Error(`Unexpected request: ${url}`);
+    },{admin:true});
+    await h.module.show();
+    for(const scope of ['admin','catalog','mine']) {
+        await click(h,{vocabAction:scope});
+        await click(h,{vocabAction:'deck',id:'deck'});
+        assert.equal(h.status.textContent,'');
+        if(scope==='mine') {
+            assert.match(h.root.innerHTML,/data-vocab-action="choose-mode"/);
+            await click(h,{vocabAction:'choose-mode'});
+            assert.match(h.root.innerHTML,/data-mode="SRS"/);
+            assert.match(h.root.innerHTML,/data-mode="CONTEXT_TRANSLATION"/);
+        } else {
+            assert.doesNotMatch(h.root.innerHTML,/data-vocab-action="(?:start|choose-mode|mode-select)"/);
+            assert.match(h.root.innerHTML,scope==='admin'?/data-vocab-action="new-note"/:/data-vocab-form="copy"/);
+        }
+    }
+    assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
 });

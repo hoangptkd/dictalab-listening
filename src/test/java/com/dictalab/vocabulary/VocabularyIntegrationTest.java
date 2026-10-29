@@ -72,6 +72,30 @@ class VocabularyIntegrationTest {
         content.membership(user,key(),one,id,true);
         assertThat(repo.note(user,id)).isNotEmpty();
     }
+    @Test void catalogDeckCanBeStudiedOnlyAfterCopyingToAPersonalDeck() throws Exception {
+        long learner=user(); var authenticated=user(principal(learner));
+        String catalog="vocab-starter-daily",personal=deck(learner);
+        mvc.perform(get("/api/v1/vocabulary/catalog/decks/"+catalog).with(authenticated))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/vocabulary/decks/"+catalog).with(authenticated))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/api/v1/vocabulary/sessions").with(authenticated).with(csrf())
+                .header("Idempotency-Key",key()).contentType("application/json")
+                .content(repo.encode(new SessionStart("SRS",catalog))))
+                .andExpect(status().isNotFound());
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM vocab_study_sessions WHERE user_id=?",Integer.class,learner)).isZero();
+        mvc.perform(post("/api/v1/vocabulary/catalog/decks/"+catalog+"/add").with(authenticated).with(csrf())
+                .header("Idempotency-Key",key()).contentType("application/json")
+                .content(repo.encode(new VocabularyController.Copy(personal))))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/vocabulary/decks/"+personal).with(authenticated))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.notes.items").isNotEmpty());
+        mvc.perform(post("/api/v1/vocabulary/sessions").with(authenticated).with(csrf())
+                .header("Idempotency-Key",key()).contentType("application/json")
+                .content(repo.encode(new SessionStart("SRS",personal))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.items").isNotEmpty());
+    }
     @Test void masteryLevelsCountOnlyTheAuthenticatedUsersActiveCards() throws Exception {
         long owner=user(),other=user(); String deck=deck(owner);
         for (int repetitions : new int[]{0,1,2,3,4,5,6,7,8,50}) {
