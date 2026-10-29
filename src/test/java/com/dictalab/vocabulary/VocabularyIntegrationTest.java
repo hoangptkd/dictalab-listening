@@ -86,6 +86,27 @@ class VocabularyIntegrationTest {
         assertThat(db.queryForObject("SELECT interval_days FROM vocab_cards WHERE note_id=?",Integer.class,note)).isEqualTo(1);
         assertThat(db.queryForObject("SELECT COUNT(*) FROM vocab_review_logs WHERE user_id=?",Integer.class,user)).isEqualTo(1);
     }
+    @Test void switchingDecksStartsTheRequestedScopeAndKeepsSavedReviews() {
+        long user=user(); String one=deck(user),two=deck(user),empty=deck(user);
+        note(user,one,"coffee",false); note(user,one,"bicycle",false); note(user,two,"galaxy",false);
+        var first=start(user,one);
+        assertThat(start(user,one).id()).isEqualTo(first.id());
+        var item=first.items().get(0);
+        correct(user,item,item.prompt().substring("nghĩa ".length()));
+        assertThat(start(user,empty).items()).isEmpty();
+        assertThat(study.session(user,first.id()).status()).isEqualTo("ACTIVE");
+        var second=start(user,two);
+        assertThat(second.id()).isNotEqualTo(first.id());
+        assertThat(second.items()).extracting(Item::prompt).containsExactly("nghĩa galaxy");
+        assertThat(study.session(user,first.id()).status()).isEqualTo("ABANDONED");
+        assertThat(study.session(user,first.id()).items().get(0).gradedAt()).isNotNull();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM vocab_review_logs WHERE user_id=?",Integer.class,user)).isEqualTo(1);
+        assertThat(start(user,two).id()).isEqualTo(second.id());
+        var all=study.start(user,key(),new SessionStart("SRS",null));
+        assertThat(all.id()).isNotEqualTo(second.id());
+        assertThat(study.session(user,second.id()).status()).isEqualTo("ABANDONED");
+        assertThat(study.start(user,key(),new SessionStart("SRS",null)).id()).isEqualTo(all.id());
+    }
     @Test void receiptRejectsChangedPayloadAndConcurrentGradesChangeScheduleOnlyOnce() throws Exception {
         long user=user(); String deck=deck(user); note(user,deck,"borrow",false);
         var item=start(user,deck).items().get(0); String answerKey=key();

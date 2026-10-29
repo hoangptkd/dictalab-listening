@@ -52,8 +52,9 @@ public class VocabularyStudyService {
             if(request.deckId()!=null) repo.deck(user,request.deckId());
             Instant now=clock.instant();
             repo.jdbc().update("UPDATE vocab_study_sessions SET status='ABANDONED' WHERE user_id=? AND status='ACTIVE' AND expires_at<=?",user,Timestamp.from(now));
-            var active=repo.rows("SELECT id FROM vocab_study_sessions WHERE user_id=? AND mode=? AND status='ACTIVE' ORDER BY created_at LIMIT 1",user,request.mode());
-            if(!active.isEmpty()) return session(user,(String)active.get(0).get("id"));
+            var active=repo.rows("SELECT id,deck_id FROM vocab_study_sessions WHERE user_id=? AND mode=? AND status='ACTIVE' ORDER BY created_at LIMIT 1",user,request.mode());
+            if(!active.isEmpty() && Objects.equals(active.get(0).get("deck_id"),request.deckId()))
+                return session(user,(String)active.get(0).get("id"));
             List<Map<String,Object>> cards=List.of();
             List<ContextExerciseProvider.Exercise> exercises=List.of();
             if(request.mode().equals("CONTEXT_TRANSLATION")) exercises=contexts.select(user,request.deckId(),Math.min(10,config.sessionSize()));
@@ -81,6 +82,8 @@ public class VocabularyStudyService {
             }
             if(cards.isEmpty() && exercises.isEmpty()) return new Session("",request.mode(),"COMPLETED",now,List.of(),
                     request.mode().equals("CONTEXT_TRANSLATION") ? "Chưa có câu phù hợp. Hãy thêm từ từ bộ có sẵn hoặc bổ sung ví dụ và bản dịch cho từ của bạn." : "Chưa có thẻ phù hợp hoặc đã đạt giới hạn từ mới hôm nay. Bạn có thể chọn Luyện thêm.");
+            // An explicit scope switch ends the unfinished session; saved reviews keep their schedules.
+            repo.jdbc().update("UPDATE vocab_study_sessions SET status='ABANDONED' WHERE user_id=? AND mode=? AND status='ACTIVE'",user,request.mode());
             String session=id();
             repo.jdbc().update("INSERT INTO vocab_study_sessions(id,user_id,deck_id,mode,created_at,expires_at) VALUES (?,?,?,?,?,?)",
                     session,user,request.deckId(),request.mode(),Timestamp.from(now),Timestamp.from(now.plusSeconds(86400)));

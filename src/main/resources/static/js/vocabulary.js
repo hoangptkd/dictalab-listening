@@ -7,7 +7,7 @@
     const base = "/api/v1/vocabulary", adminBase = "/api/admin/vocabulary";
     const escape = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
     const button = (action,label,extra="") => `<button type="button" class="text-button" data-vocab-action="${action}" ${extra}>${label}</button>`;
-    let generation = 0, controller = null, busy = false, owner = null;
+    let generation = 0, importGeneration = 0, controller = null, busy = false, owner = null;
     let personal = [], visibleNotes = [], selectedDeck = null, currentNote = null, sourceWord = null, session = null, admin = false, catalog = false;
     const pending = new Map();
     function leave() {
@@ -138,6 +138,9 @@
         const item=session.items.find(i=>!i.gradedAt); if(!item) return;
         try { sessionStorage.setItem(`dictalab.vocabulary.${owner}.${item.id}`,JSON.stringify({at:Date.now(),text:event.target.value})); } catch {}
     });
+    root.addEventListener("change",event=> {
+        if(event.target.name==="file") { importGeneration++;root.querySelector("#vocab-import-preview")?.replaceChildren(); }
+    });
     root.addEventListener("click",event=> {
         const target=event.target.closest("[data-vocab-action]"); if(!target) return;
         run(async()=> {
@@ -184,9 +187,14 @@
                 await mutate(`${base}/session-items/${item.id}/grade`,{grade,targets});
                 try{sessionStorage.removeItem(`dictalab.vocabulary.${owner}.${item.id}`);}catch{} await loadSession(session.id);
             } else if(kind==="import") {
+                const previewGeneration=++importGeneration;
+                root.querySelector("#vocab-import-preview").replaceChildren();
                 const file=data.get("file");if(file.size>2097152) throw new Error("File tối đa 2 MB.");
-                const csv=new TextDecoder("utf-8",{fatal:true}).decode(await file.arrayBuffer());
+                let csv;
+                try { csv=new TextDecoder("utf-8",{fatal:true}).decode(await file.arrayBuffer()); }
+                catch { throw new Error("File phải dùng mã hóa UTF-8. Hãy lưu lại dưới dạng CSV UTF-8."); }
                 const result=await mutate(`${base}/imports/preview`,{deckId:selectedDeck.id,csv});
+                if(previewGeneration!==importGeneration) return;
                 root.querySelector("#vocab-import-preview").innerHTML=result.errors.length?`<ul>${result.errors.map(e=>`<li>${escape(e)}</li>`).join("")}</ul>`:`<p>${result.count} mục từ hợp lệ. Các từ trùng chính xác sẽ được dùng lại.</p><ul>${result.preview.map(n=>`<li>${escape(n.term)} — ${escape(n.meaningVi)}</li>`).join("")}</ul>${button("confirm-import","Xác nhận nhập",`data-id="${escape(result.id)}"`)}`;
             } else if(kind==="context") {
                 await mutate(`${adminBase}/contexts`,{prompt:data.get("prompt"),translationVi:data.get("translationVi"),level:selectedDeck.level,alternatives:[],targets:[1,2].map(i=>({noteId:data.get(`note${i}`),surfaceForm:data.get(`surface${i}`)})),published:data.has("published"),revision:0});await openDeck(selectedDeck.id);

@@ -117,8 +117,10 @@ Các quy tắc phải giữ khi đổi thuật toán:
    thẻ mới/ngày và 20 mục/phiên. Số thẻ mới tính bằng review log đã commit.
 6. Không đặt hai chiều của cùng note trong một phiên. Sau khi xem lời giải,
    sibling bị ẩn tới ngày kế tiếp để tránh nhớ đáp án vừa lộ.
-7. Một phiên active cho mỗi user/mode; bắt đầu lại sẽ tiếp tục phiên đó,
-   kể cả khi chọn bộ khác. Kết thúc phiên trước nếu muốn đổi bộ ngay.
+7. Một phiên active cho mỗi user/mode; bắt đầu lại cùng bộ sẽ tiếp tục phiên đó.
+   Chọn bộ khác (hoặc đổi sang toàn thư viện) kết thúc phiên cùng chế độ đang dở
+   sau khi xác nhận có thẻ/câu phù hợp cho phiên mới; mọi lượt đã chấm được giữ.
+   Nếu bộ mới chưa có nội dung phù hợp, phiên cũ vẫn có thể tiếp tục từ Hôm nay.
 8. Phiên hết hạn sau 24 giờ; không nhận trả lời/grade mới sau hạn.
 9. Thay đổi/suspend lịch tăng revision; grade phiên SRS cũ bị từ chối nếu
    revision không khớp. UI yêu cầu kết thúc phiên rồi tải lại.
