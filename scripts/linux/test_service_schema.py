@@ -27,6 +27,19 @@ class SchemaTest(unittest.TestCase):
                     schema.extract(jar, root / str(index))
             self.assertFalse((root / 'escaped.jar').exists())
 
+    def test_extract_preserves_sql_and_compiled_java_migrations(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            jar = root / 'sample.jar'
+            with zipfile.ZipFile(jar, 'w') as archive:
+                archive.writestr('BOOT-INF/lib/runtime.jar', b'jar-payload')
+                archive.writestr('BOOT-INF/classes/db/migration/V1__init.sql', b'select 1;')
+                archive.writestr('BOOT-INF/classes/db/migration/V24__Postgres_uniqueness.class', b'bytecode')
+            destination = root / 'extracted'
+            schema.extract(jar, destination)
+            self.assertTrue((destination / 'classes/db/migration/V1__init.sql').is_file())
+            self.assertTrue((destination / 'classes/db/migration/V24__Postgres_uniqueness.class').is_file())
+
     @unittest.skipUnless(os.environ.get('TEST_CORE_SCHEMA_JAR'), 'Opt-in real owner migration rehearsal')
     def test_owner_migration_grants_and_repeat_run_keep_runtime_isolated(self):
         jar = Path(os.environ['TEST_CORE_SCHEMA_JAR']).resolve(strict=True)

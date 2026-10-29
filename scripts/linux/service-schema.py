@@ -53,7 +53,7 @@ def extract(jar, destination):
             relative = None
             if name.startswith('BOOT-INF/lib/') and name.endswith('.jar'):
                 relative = Path('lib') / name.removeprefix('BOOT-INF/lib/')
-            elif name.startswith('BOOT-INF/classes/db/') and name.endswith('.sql'):
+            elif name.startswith('BOOT-INF/classes/db/') and (name.endswith('.sql') or name.endswith('.class')):
                 relative = Path('classes') / name.removeprefix('BOOT-INF/classes/')
             if relative is None:
                 continue
