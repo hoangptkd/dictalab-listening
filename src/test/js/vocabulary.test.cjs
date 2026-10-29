@@ -7,12 +7,12 @@ const source = fs.readFileSync(path.resolve(__dirname, '../../main/resources/sta
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness(api) {
     const listeners = {}, status = {textContent: ''}, input = {value: '', focus() {this.focused = true;}}, preview = {innerHTML:'',replaceChildren() {this.innerHTML='';}};
-    const root = {innerHTML: '', addEventListener(name,fn) {listeners[name]=fn;}, setAttribute() {},removeAttribute() {},replaceChildren() {this.innerHTML='';},querySelector(selector) {return selector==='#vocab-import-preview'?preview:input;}};
+    const root = {innerHTML: '', addEventListener(name,fn) {listeners[name]=fn;}, setAttribute() {},removeAttribute() {},replaceChildren() {this.innerHTML='';},querySelector(selector) {return selector==='#vocab-import-preview'?preview:selector==='[name="answer"]'?input:null;}};
     let current = {id: 11}; const calls = [],storage = new Map();
     const window = {DictaLabListeningBridge: {currentUser: () => current,isAdmin: () => false,
         navigate() {}, async api(url,options) {calls.push({url,options});return api(url,options);}}};
     vm.runInNewContext(source,{window,document:{querySelector: selector => selector==='#vocabulary-content'?root:status},
-        AbortController,DOMException,TextDecoder,crypto:{randomUUID:()=>require('node:crypto').randomUUID()},
+        AbortController,DOMException,TextDecoder,requestAnimationFrame:fn=>fn(),crypto:{randomUUID:()=>require('node:crypto').randomUUID()},
         FormData: class extends Map {constructor(form) {super(form.values);}},
         sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)}});
     return {module:window.DictaLabVocabulary,root,status,calls,input,preview,listeners,setUser:value=>{current=value;}};
@@ -25,7 +25,21 @@ test('recall hides answer until attempted and escapes feedback markup',async()=>
     let state=session(); const h=harness(async url=>url.includes('/decks?')?{items:[]}:state);
     await h.module.show('session'); assert.match(h.root.innerHTML,/mượn/);assert.doesNotMatch(h.root.innerHTML,/borrow/);assert.ok(h.input.focused);
     state=session('x','INCORRECT');await h.module.show('session');
-    assert.match(h.root.innerHTML,/borrow/);assert.doesNotMatch(h.root.innerHTML,/<script>/);assert.match(h.root.innerHTML,/value="GOOD" disabled/);
+    assert.match(h.root.innerHTML,/borrow/);assert.doesNotMatch(h.root.innerHTML,/<script>/);
+    for (const grade of ['AGAIN','HARD','GOOD','EASY']) {
+        const button = h.root.innerHTML.match(new RegExp(`<button\\b[^>]*\\bvalue="${grade}"[^>]*>`))?.[0];
+        assert.ok(button, `Missing grade button: ${grade}`);
+        assert.equal(/\sdisabled(?:\s|>)/.test(button), grade !== 'AGAIN');
+    }
+    assert.equal(h.status.textContent,'');
+});
+test('correct recall keeps all grade choices available',async()=>{
+    const h=harness(async url=>url.includes('/decks?')?{items:[]}:session('borrow','CORRECT'));
+    await h.module.show('session');
+    const buttons=[...h.root.innerHTML.matchAll(/<button\b[^>]*\bname="grade"[^>]*>/g)];
+    assert.equal(buttons.length,4);
+    assert.ok(buttons.every(([button])=>!/\sdisabled(?:\s|>)/.test(button)));
+    assert.equal(h.status.textContent,'');
 });
 test('late responses cannot render after navigation or an account change',async()=>{
     let resolve;const h=harness(()=>new Promise(done=>{resolve=done;}));

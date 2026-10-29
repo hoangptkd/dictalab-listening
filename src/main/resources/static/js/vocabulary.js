@@ -767,6 +767,13 @@
         try { sessionStorage.setItem(`dictalab.vocabulary.${owner}.${item.id}`, JSON.stringify({ at: Date.now(), text: event.target.value })); } catch {}
     });
 
+    root.addEventListener("change", event => {
+        if (event.target.name === "file") {
+            importGeneration++;
+            root.querySelector("#vocab-import-preview")?.replaceChildren();
+        }
+    });
+
     /* ── Event: click ───────────────────────────────────────────── */
     root.addEventListener("click", event => {
         const card = event.target.closest(".vocab-deck-card[data-vocab-action='deck']");
