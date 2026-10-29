@@ -40,10 +40,12 @@ class SchemaTest(unittest.TestCase):
              '--env', 'POSTGRES_PASSWORD', 'postgres:17-alpine'], env=os.environ | {'POSTGRES_PASSWORD': password})
         try:
             for _ in range(60):
-                if subprocess.run(['docker', 'exec', name, 'pg_isready', '-U', 'postgres'],
+                if subprocess.run(['docker', 'exec', name, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres'],
                                   capture_output=True).returncode == 0:
                     break
                 time.sleep(.5)
+            else:
+                self.fail('PostgreSQL did not accept TCP connections within 30 seconds')
             def sql(text, database='postgres'):
                 return run(['docker', 'exec', '-i', '--user', 'postgres', name, 'psql', '-XqAt',
                             '-v', 'ON_ERROR_STOP=1', database], input=text.encode())

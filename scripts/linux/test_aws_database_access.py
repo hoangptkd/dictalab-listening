@@ -29,9 +29,11 @@ class DatabaseAccessTest(unittest.TestCase):
         self.assertEqual(0, started.returncode)
         try:
             for _ in range(40):
-                if execute(['docker', 'exec', name, 'pg_isready', '-U', 'postgres']).returncode == 0:
+                if execute(['docker', 'exec', name, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres']).returncode == 0:
                     break
                 time.sleep(.25)
+            else:
+                self.fail('PostgreSQL did not accept TCP connections within 10 seconds')
             def sql(statement):
                 return execute(['docker', 'exec', '-i', '--user', 'postgres', name,
                     'psql', '-XqAt', '-v', 'ON_ERROR_STOP=1', 'postgres'], input=statement.encode('utf-8'))
