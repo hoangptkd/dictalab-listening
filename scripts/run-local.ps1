@@ -41,6 +41,9 @@ if ($env:DICTALAB_CONVERSATION_GENERATION_PROVIDER -ne 'python') {
     $env:DICTALAB_CONVERSATION_GENERATION_PROVIDER = 'ollama'
 }
 $env:DICTALAB_COACH_PROVIDER = 'ollama'
+if ([string]::IsNullOrWhiteSpace($env:DICTALAB_VOCABULARY_ENABLED)) {
+    $env:DICTALAB_VOCABULARY_ENABLED = 'true'
+}
 
 Push-Location $projectRoot
 try {

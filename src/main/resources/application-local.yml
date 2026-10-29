@@ -1,5 +1,7 @@
 # Text AI stays on this machine, including legacy grading/review callers.
 dictalab:
+  vocabulary:
+    enabled: ${DICTALAB_VOCABULARY_ENABLED:true}
   ai:
     platform:
       text-provider: ollama
