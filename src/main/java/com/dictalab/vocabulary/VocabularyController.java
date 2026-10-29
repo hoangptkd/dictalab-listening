@@ -20,6 +20,7 @@ public class VocabularyController {
     }
     @ModelAttribute public void enabled() { study.requireEnabled(); }
     @GetMapping("/summary") public Map<String,Object> summary(@AuthenticationPrincipal DictaLabPrincipal user) { return study.summary(user.id()); }
+    @GetMapping("/mastery-levels") public Map<String,Integer> masteryLevels(@AuthenticationPrincipal DictaLabPrincipal user) { return study.masteryLevels(user.id()); }
     @GetMapping("/decks") public Page<Map<String,Object>> decks(@AuthenticationPrincipal DictaLabPrincipal user,@RequestParam(defaultValue="1") int page) { return content.decks(user.id(),false,false,page); }
     @GetMapping("/catalog/decks") public Page<Map<String,Object>> catalog(@AuthenticationPrincipal DictaLabPrincipal user,@RequestParam(defaultValue="1") int page) { return content.decks(user.id(),true,false,page); }
     @GetMapping("/decks/{id}") public Map<String,Object> deck(@AuthenticationPrincipal DictaLabPrincipal user,@PathVariable String id,@RequestParam(defaultValue="1") int page) { return content.detail(user.id(),id,false,false,page); }

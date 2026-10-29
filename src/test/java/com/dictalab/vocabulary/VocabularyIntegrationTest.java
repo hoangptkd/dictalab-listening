@@ -72,6 +72,25 @@ class VocabularyIntegrationTest {
         content.membership(user,key(),one,id,true);
         assertThat(repo.note(user,id)).isNotEmpty();
     }
+    @Test void masteryLevelsCountOnlyTheAuthenticatedUsersActiveCards() throws Exception {
+        long owner=user(),other=user(); String deck=deck(owner);
+        for (int repetitions : new int[]{0,1,2,3,4,5,6,7,8,50}) {
+            String note=note(owner,deck,"word"+repetitions,false);
+            db.update("UPDATE vocab_cards SET successful_repetitions=? WHERE note_id=?",repetitions,note);
+        }
+        String suspended=note(owner,deck,"suspended",false),archived=note(owner,deck,"archived",false);
+        db.update("UPDATE vocab_cards SET suspended=TRUE WHERE note_id=?",suspended);
+        db.update("UPDATE vocab_notes SET archived=TRUE WHERE id=?",archived);
+        mvc.perform(get("/api/v1/vocabulary/mastery-levels")).andExpect(status().isUnauthorized());
+        var own=mvc.perform(get("/api/v1/vocabulary/mastery-levels").param("userId",Long.toString(other)).with(user(principal(owner))))
+                .andExpect(status().isOk());
+        var empty=mvc.perform(get("/api/v1/vocabulary/mastery-levels").with(user(principal(other))))
+                .andExpect(status().isOk());
+        for(int level=1;level<=5;level++) {
+            own.andExpect(jsonPath("$.level"+level).value(2));
+            empty.andExpect(jsonPath("$.level"+level).value(0));
+        }
+    }
     @Test void sessionHidesAnswersUntilAttemptAndKeepsImmutableSnapshot() throws Exception {
         long user=user(); String deck=deck(user); String note=note(user,deck,"borrow",false);
         var session=start(user,deck); var item=session.items().get(0);

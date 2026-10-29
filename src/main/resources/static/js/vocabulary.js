@@ -23,6 +23,8 @@
     let personal = [], visibleNotes = [], selectedDeck = null,
         currentNote = null, sourceWord = null, session = null,
         admin = false, catalog = false;
+    let quizNotes = [], quizIndex = 0, quizScore = 0, quizMode = '', quizDeckId = null;
+    let ctxNotes  = [], ctxIndex  = 0, ctxScore  = 0, ctxDeckId  = null;
     const pending = new Map();
 
     /* ── API helpers ────────────────────────────────────────────── */
@@ -30,6 +32,7 @@
         generation++; importGeneration++; controller?.abort(); controller = null; busy = false;
         personal = []; visibleNotes = []; selectedDeck = null;
         currentNote = null; sourceWord = null; session = null; owner = null;
+        quizNotes = []; ctxNotes = []; quizDeckId = null; ctxDeckId = null;
         root.replaceChildren(); status.textContent = "";
     }
 
@@ -165,133 +168,336 @@
 
     /* ── Home view ─────────────────────────────────────────────── */
     async function home() {
+        const stamp = generation;
         admin = false; catalog = false; selectedDeck = null;
-        // Show skeleton while loading
+        // Skeleton: streak + chart placeholder + goal bar
         root.innerHTML = toolbar() + `
-            <div class="vocab-stats">
-                ${[0,1,2].map(() => `<div class="vocab-stat-card">
-                    <div class="skel skel-num"></div>
-                    <div class="skel skel-line" style="width:70%"></div>
-                    <div class="skel skel-bar" style="margin-top:10px"></div>
-                </div>`).join("")}
+            <div class="skel skel-card" style="height:80px;margin-bottom:24px;border-radius:14px"></div>
+            <div class="vocab-mastery-chart-skeleton vocab-animate-in">
+                ${[40,70,55,85,90].map(h => `<div class="skel" style="height:${h}%;width:36px;border-radius:6px 6px 0 0;align-self:flex-end"></div>`).join("")}
             </div>
-            <div class="skel skel-card" style="margin-bottom:20px"></div>`;
+            <div class="skel skel-card" style="height:64px;margin:24px 0 20px;border-radius:14px"></div>`;
 
-        const summary = await request(`${base}/summary`);
-        const reviewed  = summary.reviewedToday ?? 0;
-        const due       = summary.due ?? 0;
-        const newCards  = summary.new_cards ?? 0;
-        const newLimit  = summary.newLimit ?? 10;
+        const [sumRes, masRes] = await Promise.allSettled([
+            request(`${base}/summary`),
+            request(`${base}/mastery-levels`),
+        ]);
+        const summary = sumRes.status === "fulfilled" ? sumRes.value : null;
+        const mastery = masRes.status === "fulfilled" ? masRes.value : null;
+        if (stamp !== generation || owner !== bridge.currentUser()?.id) return;
+        if (!summary) {
+            root.innerHTML = toolbar() + `<div class="vocab-empty"><p>Không tải được tổng quan từ vựng.</p>${btn("home","Thử lại")}</div>`;
+            throw sumRes.reason || new Error("Không tải được tổng quan từ vựng.");
+        }
+
+        const reviewed   = summary.reviewedToday ?? 0;
+        const due        = summary.due ?? 0;
+        const newCards   = summary.new_cards ?? 0;
+        const newLimit   = summary.newLimit ?? 10;
         const streakDays = summary.streakDays ?? (reviewed > 0 ? 1 : 0);
         const totalGoal  = due + Math.min(newCards, newLimit);
-        const goalPct    = totalGoal > 0 ? Math.min(1, reviewed / totalGoal) : (reviewed > 0 ? 1 : 0);
+
+        /* Mastery counts come only from the server, never estimates. */
+        const lvl = mastery ?? {};
+        const levels = [
+            { n: 1, label: "Mới học",    count: lvl.level1 ?? 0, cls: "lv1" },
+            { n: 2, label: "Đang học",   count: lvl.level2 ?? 0, cls: "lv2" },
+            { n: 3, label: "Ôn lại",     count: lvl.level3 ?? 0, cls: "lv3" },
+            { n: 4, label: "Nhớ tốt",    count: lvl.level4 ?? 0, cls: "lv4" },
+            { n: 5, label: "Thành thạo", count: lvl.level5 ?? 0, cls: "lv5" },
+        ];
+        const maxCount = Math.max(...levels.map(l => l.count), 1);
+
+        const barChart = mastery ? `
+        <div class="vocab-mastery-chart vocab-animate-in" aria-label="Phân cấp độ thuần thục SRS">
+            <div class="vocab-mastery-chart-title">Mức độ ghi nhớ</div>
+            <div class="vocab-mastery-bars">
+                ${levels.map(l => {
+                    const pct = Math.round((l.count / maxCount) * 100);
+                    return `
+                    <div class="vocab-mastery-col">
+                        <span class="vocab-mastery-count">${l.count} thẻ</span>
+                        <div class="vocab-mastery-bar-outer">
+                            <div class="vocab-mastery-bar-fill ${l.cls}" style="height:0%" data-target="${pct}"></div>
+                        </div>
+                        <span class="vocab-mastery-lv">Level ${l.n}</span>
+                        <span class="vocab-mastery-lv-label">${l.label}</span>
+                    </div>`;
+                }).join("")}
+            </div>
+            <div class="vocab-mastery-due">
+                <span>Đến giờ ôn tập: <strong>${due > 0 ? due + " thẻ" : "Đã hoàn thành hôm nay ✓"}</strong></span>
+                ${due > 0 ? `<button class="primary-button" data-vocab-action="start" data-mode="SRS">▷ Bắt đầu ôn tập</button>` : ""}
+            </div>
+        </div>` : `<div class="vocab-empty"><p>Chưa tải được mức độ ghi nhớ.</p>${btn("home","Thử lại")}</div>`;
 
         root.innerHTML = toolbar() + `
-
-        <!-- Streak -->
         ${streakRow(streakDays, reviewed > 0)}
-
-        <!-- Stats -->
-        <div class="vocab-stats">
-            <div class="vocab-stat-card vocab-animate-in">
-                <div class="vocab-stat-number is-teal">${due}</div>
-                <div class="vocab-stat-label">Thẻ cần ôn hôm nay</div>
-                <div class="vocab-stat-bar" style="width:${due>0?'60%':'0%'}"></div>
-            </div>
-            <div class="vocab-stat-card vocab-animate-in">
-                <div class="vocab-stat-number">${reviewed}</div>
-                <div class="vocab-stat-label">Đã học hôm nay</div>
-                <div class="vocab-stat-bar" style="width:${Math.round(goalPct*100)}%"></div>
-            </div>
-            <div class="vocab-stat-card vocab-animate-in">
-                <div class="vocab-stat-number">${newCards}</div>
-                <div class="vocab-stat-label">Thẻ mới trong thư viện</div>
-                <div class="vocab-stat-bar" style="width:${newCards>0?'40%':'0%'}"></div>
-            </div>
-        </div>
-
-        <!-- Daily goal progress -->
+        ${barChart}
         <div class="vocab-goal vocab-animate-in" aria-label="Mục tiêu hôm nay">
             <div class="vocab-goal-header">
                 <strong>Mục tiêu hôm nay</strong>
-                <span>${reviewed} / ${totalGoal} thẻ</span>
+                <span>${reviewed} / ${Math.max(totalGoal, 1)} thẻ</span>
             </div>
             ${progressTrack(reviewed, Math.max(totalGoal, 1), "Tiến độ học hôm nay")}
         </div>
-
-        <!-- Main layout -->
-        <div class="vocab-home-layout">
-            <div class="vocab-home-main">
-                <!-- Practice panel -->
-                <section class="vocab-panel vocab-animate-in" aria-labelledby="practice-heading">
-                    <h2 id="practice-heading" style="font-family:var(--display,serif);font-size:1.3rem;letter-spacing:-.02em">
-                        Nhớ trước, xem đáp án sau.
-                    </h2>
-                    <p style="color:var(--ink-soft);font-size:.9rem;margin:.4rem 0 0">
-                        Ôn từ đến hạn trước, sau đó học tối đa ${newLimit} thẻ mới mỗi ngày.
-                    </p>
-                    <div class="vocab-actions">
-                        <button class="primary-button" data-vocab-action="start" data-mode="SRS">
-                            Bắt đầu ôn →
-                        </button>
-                        ${btn("start", "Luyện thêm", 'data-mode="PRACTICE"')}
-                        ${btn("start", "Dịch câu", 'data-mode="CONTEXT_TRANSLATION"')}
-                    </div>
-                    ${summary.activeSessions?.length ? `
-                    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
-                        ${summary.activeSessions.map(s => `
-                            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                                <span style="font-size:.8rem;color:var(--ink-soft)">Phiên đang dở</span>
-                                ${btn("resume", `Tiếp tục ${s.mode === "CONTEXT_TRANSLATION" ? "dịch câu" : "phiên học"}`, `data-id="${escape(s.id)}"`)}
-                            </div>`).join("")}
-                    </div>` : ""}
-                </section>
-            </div>
-
-            <!-- Aside: Recent activity -->
-            <aside class="vocab-home-aside">
-                <div class="vocab-panel vocab-animate-in" aria-labelledby="recent-heading">
-                    <h3 id="recent-heading" style="margin:0 0 14px;font-size:.95rem;letter-spacing:-.01em">
-                        Lượt học gần đây
-                    </h3>
-                    ${summary.recent?.length ? `
-                    <ul class="vocab-recent-list">
-                        ${summary.recent.slice(0, 8).map(r => `
-                        <li class="vocab-recent-item">
-                            <span class="vocab-grade-pill ${r.grade}">
-                                ${({AGAIN:"Quên",HARD:"Khó",GOOD:"Nhớ",EASY:"Dễ"})[r.grade] ?? r.grade}
-                            </span>
-                            <span style="font-size:.8rem;color:var(--ink-soft);flex:1">
-                                ${r.schedule_changed ? "Ôn lịch" : "Luyện thêm"}
-                            </span>
-                            <span class="vocab-recent-meta">
-                                ${new Date(r.reviewed_at).toLocaleTimeString("vi-VN", {hour:"2-digit",minute:"2-digit"})}
-                            </span>
-                        </li>`).join("")}
-                    </ul>` : `
-                    <div class="vocab-empty" style="padding:30px 10px">
-                        <span class="vocab-empty-icon">📚</span>
-                        <p>Chọn bộ từ có sẵn hoặc thêm từ bạn muốn nhớ.</p>
-                    </div>`}
-                </div>
-            </aside>
+        <div class="vocab-home-cta vocab-animate-in">
+            <button class="primary-button vocab-cta-primary" data-vocab-action="start" data-mode="SRS"${due === 0 ? ' style="opacity:.55"' : ""}>
+                Bắt đầu ôn tập${due > 0 ? ` (${due} thẻ)` : ""}
+            </button>
+            <button class="text-button vocab-cta-secondary" data-vocab-action="start" data-mode="PRACTICE">
+                Luyện thêm
+            </button>
+            ${btn("start", "Dịch câu", 'data-mode="CONTEXT_TRANSLATION"')}
+            ${summary.activeSessions?.length ? summary.activeSessions.slice(0,1).map(s => `
+                <button class="text-button" data-vocab-action="resume" data-id="${escape(s.id)}">
+                    Tiếp tục phiên dở
+                </button>`).join("") : ""}
         </div>`;
 
+        /* Animate bar chart heights after render */
         requestAnimationFrame(() => {
-            root.querySelectorAll(".vocab-progress-fill").forEach(el => {
-                const w = el.style.width;
-                el.style.width = "0%";
-                requestAnimationFrame(() => { el.style.width = w; });
+            root.querySelectorAll(".vocab-mastery-bar-fill[data-target]").forEach(el => {
+                const target = el.dataset.target + "%";
+                requestAnimationFrame(() => { el.style.height = target; });
             });
-            root.querySelectorAll(".vocab-stat-bar").forEach(el => {
-                const w = el.style.width;
-                el.style.width = "0%";
+            root.querySelectorAll(".vocab-progress-fill").forEach(el => {
+                const w = el.style.width; el.style.width = "0%";
                 requestAnimationFrame(() => { el.style.width = w; });
             });
         });
     }
 
     /* ── Deck list ────────────────────────────────────────────── */
+
+    /* ── Mode select ─────────────────────────────────────────── */
+    function renderModeSelect(deckId) {
+        root.innerHTML = toolbar() + `
+        <div class="vocab-mode-select vocab-animate-in">
+            <h2>Chọn chế độ học</h2>
+            <p>Quiz và ngữ cảnh là luyện thêm, chưa lưu kết quả vào lịch ôn.</p>
+            <div class="vocab-mode-cards">
+                <button type="button" class="vocab-mode-card" data-vocab-action="mode-select" data-mode="SRS">
+                    <span class="vocab-mode-card-icon">🃏</span>
+                    <span class="vocab-mode-card-title">Flashcard</span>
+                    <span class="vocab-mode-card-desc">Ôn theo khoảng cách thích hợp</span>
+                </button>
+                <button type="button" class="vocab-mode-card" data-vocab-action="mode-select" data-mode="QUIZ_EN_VI">
+                    <span class="vocab-mode-card-icon">🎯</span>
+                    <span class="vocab-mode-card-title">Quiz EN→VI</span>
+                    <span class="vocab-mode-card-desc">Trắc nghiệm tiếng Anh sang tiếng Việt</span>
+                </button>
+                <button type="button" class="vocab-mode-card" data-vocab-action="mode-select" data-mode="QUIZ_VI_EN">
+                    <span class="vocab-mode-card-icon">🔄</span>
+                    <span class="vocab-mode-card-title">Quiz VI→EN</span>
+                    <span class="vocab-mode-card-desc">Trắc nghiệm tiếng Việt sang tiếng Anh</span>
+                </button>
+                <button type="button" class="vocab-mode-card" data-vocab-action="mode-select" data-mode="CONTEXTUAL">
+                    <span class="vocab-mode-card-icon">📖</span>
+                    <span class="vocab-mode-card-title">Ngữ cảnh</span>
+                    <span class="vocab-mode-card-desc">Học từ qua câu văn thực tế</span>
+                </button>
+                <button type="button" class="vocab-mode-card" data-vocab-action="mode-select" data-mode="CONTEXT_TRANSLATION">
+                    <span class="vocab-mode-card-icon" aria-hidden="true">✍️</span>
+                    <span class="vocab-mode-card-title">Dịch câu</span>
+                    <span class="vocab-mode-card-desc">Chủ động nhớ từ qua câu ngắn</span>
+                </button>
+            </div>
+            <div style="margin-top:24px">${btn("mode-back","← Quay lại")}</div>
+        </div>`;
+    }
+
+    /* ── Quiz mode ──────────────────────────────────────────── */
+    async function renderQuiz(deckId, mode) {
+        quizDeckId = deckId; quizMode = mode; quizIndex = 0; quizScore = 0;
+        root.innerHTML = toolbar() + `<div class="vocab-quiz vocab-animate-in"><div class="skel skel-head" style="width:60%;margin:40px auto"></div></div>`;
+        const allNotes = [];
+        for (let page = 1; page <= 10; page++) {
+            const result = await request(`${base}/decks/${encodeURIComponent(deckId)}?page=${page}`);
+            if (page === 1) selectedDeck = result.deck;
+            allNotes.push(...result.notes.items);
+            if (!result.notes.hasMore) break;
+        }
+        quizNotes = allNotes.sort(() => Math.random() - .5).slice(0, 20);
+        if (new Set(quizNotes.map(n => mode === 'QUIZ_EN_VI' ? n.meaning_vi : n.term)).size < 2) {
+            root.innerHTML = toolbar() + `<div class="vocab-quiz"><p>Bộ từ cần ít nhất 2 đáp án khác nhau để làm quiz.</p>${btn("mode-back","← Quay lại")}</div>`;
+            return;
+        }
+        renderQuizQuestion();
+    }
+
+    function renderQuizQuestion() {
+        if (quizIndex >= quizNotes.length) {
+            root.innerHTML = toolbar() + `
+            <div class="vocab-quiz vocab-animate-in vocab-quiz-result">
+                <div class="vocab-quiz-score">${quizScore}/${quizNotes.length}</div>
+                <div class="vocab-quiz-score-label">câu đúng</div>
+                ${primaryBtn("quiz-retry","Ôn lại")}
+                <br><br>
+                ${btn("home","Về tổng quan")}
+            </div>`;
+            return;
+        }
+        const note    = quizNotes[quizIndex];
+        const pct     = Math.round((quizIndex / quizNotes.length) * 100);
+        const isEnVi  = quizMode === 'QUIZ_EN_VI';
+        const correct = isEnVi ? note.meaning_vi : note.term;
+        const prompt  = isEnVi ? note.term : note.meaning_vi;
+        const pool    = quizNotes.filter((_, i) => i !== quizIndex);
+        const wrong   = [...new Set(pool.map(n => isEnVi ? n.meaning_vi : n.term))]
+            .filter(value => value !== correct).sort(() => Math.random() - .5).slice(0, 3);
+        const opts    = [correct, ...wrong].sort(() => Math.random() - .5);
+        root.innerHTML = toolbar() + `
+        <div class="vocab-quiz vocab-animate-in">
+            <div class="vocab-quiz-header">
+                <div class="vocab-quiz-progress" role="progressbar" aria-label="Tiến độ quiz" aria-valuemin="0" aria-valuemax="${quizNotes.length}" aria-valuenow="${quizIndex}"><div class="vocab-quiz-fill" style="width:0%"></div></div>
+                <span class="vocab-quiz-counter">${quizIndex + 1} / ${quizNotes.length}</span>
+                ${btn("home","✕",'aria-label="Thoát quiz" style="padding:4px 10px;font-size:.8rem"')}
+            </div>
+            <p class="eyebrow">${isEnVi ? "Từ tiếng Anh này nghĩa là gì?" : "Từ tiếng Việt này là gì bằng tiếng Anh?"}</p>
+            <div class="vocab-quiz-prompt" lang="${isEnVi ? 'en' : 'vi'}">${escape(prompt)}</div>
+            <div class="vocab-quiz-grid">
+                ${opts.map(o => `
+                <button type="button" class="vocab-quiz-opt"
+                        data-vocab-action="quiz-answer"
+                        data-correct="${escape(correct)}"
+                        data-value="${escape(o)}">${escape(o)}</button>`).join("")}
+            </div>
+        </div>`;
+        root.querySelector('.vocab-quiz-opt')?.focus();
+        requestAnimationFrame(() => {
+            const fill = root.querySelector(".vocab-quiz-fill");
+            if (fill) { fill.style.width = "0%"; requestAnimationFrame(() => { fill.style.width = `${pct}%`; }); }
+        });
+    }
+
+    function handleQuizAnswer(target) {
+        if (target.disabled) return;
+        const isCorrect = target.dataset.value === target.dataset.correct;
+        if (isCorrect) quizScore++;
+        root.querySelectorAll(".vocab-quiz-opt").forEach(o => {
+            o.disabled = true;
+            if (o.dataset.value === target.dataset.correct) o.classList.add("correct");
+            else if (o === target && !isCorrect) o.classList.add("wrong");
+        });
+        const grid = root.querySelector(".vocab-quiz-grid");
+        if (grid) {
+            const nextBtn = document.createElement("button");
+            nextBtn.type = "button";
+            nextBtn.className = "primary-button vocab-quiz-next";
+            nextBtn.dataset.vocabAction = "quiz-next";
+            nextBtn.textContent = quizIndex + 1 < quizNotes.length ? "Câu tiếp theo →" : "Xem kết quả →";
+            grid.insertAdjacentElement("afterend", nextBtn);
+            const feedback = document.createElement("p");
+            feedback.setAttribute("role", "status");
+            feedback.textContent = isCorrect ? "Chính xác." : `Chưa đúng. Đáp án: ${target.dataset.correct}`;
+            grid.insertAdjacentElement("afterend", feedback);
+            nextBtn.focus();
+        }
+        quizIndex++;
+    }
+
+    /* ── Contextual mode ────────────────────────────────────────── */
+    async function renderContextual(deckId) {
+        ctxDeckId = deckId; ctxIndex = 0; ctxScore = 0;
+        root.innerHTML = toolbar() + `<div class="vocab-ctx vocab-animate-in"><div class="skel skel-head" style="width:70%;margin:40px auto"></div></div>`;
+        const allNotes = [];
+        for (let page = 1; page <= 10; page++) {
+            const result = await request(`${base}/decks/${encodeURIComponent(deckId)}?page=${page}`);
+            if (page === 1) selectedDeck = result.deck;
+            allNotes.push(...result.notes.items);
+            if (!result.notes.hasMore) break;
+        }
+        const withExamples = allNotes.filter(n => n.example_en?.toLowerCase().includes(n.term.toLowerCase()));
+        ctxNotes = withExamples.sort(() => Math.random() - .5).slice(0, 15);
+        if (ctxNotes.length === 0) {
+            root.innerHTML = toolbar() + `<div class="vocab-ctx"><p>Bộ từ chưa có câu ví dụ chứa từ cần học. Hãy thêm câu ví dụ cho các từ trước.</p>${btn("mode-back","← Quay lại")}</div>`;
+            return;
+        }
+        if (new Set(allNotes.map(n => n.meaning_vi)).size < 2) {
+            root.innerHTML = toolbar() + `<div class="vocab-ctx"><p>Bộ từ cần ít nhất 2 nghĩa khác nhau để luyện ngữ cảnh.</p>${btn("mode-back","← Quay lại")}</div>`;
+            return;
+        }
+        ctxNotes._pool = allNotes;
+        renderCtxQuestion();
+    }
+
+    function renderCtxQuestion() {
+        if (ctxIndex >= ctxNotes.length) {
+            root.innerHTML = toolbar() + `
+            <div class="vocab-ctx vocab-animate-in vocab-quiz-result">
+                <div class="vocab-quiz-score">${ctxScore}/${ctxNotes.length}</div>
+                <div class="vocab-quiz-score-label">câu đúng</div>
+                ${primaryBtn("ctx-retry","Ôn lại")}
+                <br><br>
+                ${btn("home","Về tổng quan")}
+            </div>`;
+            return;
+        }
+        const note = ctxNotes[ctxIndex];
+        const pct  = Math.round((ctxIndex / ctxNotes.length) * 100);
+        const termPattern = note.term.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+        const highlighted = note.example_en.split(new RegExp(`(${termPattern})`, "gi"))
+            .map((part, index) => index % 2 ? `<mark>${escape(part)}</mark>` : escape(part)).join("");
+        const pool = (ctxNotes._pool || ctxNotes).filter(n => n.meaning_vi !== note.meaning_vi);
+        const wrong = pool.sort(() => Math.random() - .5)[0];
+        const opts  = wrong ? [[note.meaning_vi, true], [wrong.meaning_vi, false]].sort(() => Math.random() - .5) : [[note.meaning_vi, true]];
+        root.innerHTML = toolbar() + `
+        <div class="vocab-ctx vocab-animate-in">
+            <div class="vocab-quiz-header">
+                <div class="vocab-quiz-progress" role="progressbar" aria-label="Tiến độ ngữ cảnh" aria-valuemin="0" aria-valuemax="${ctxNotes.length}" aria-valuenow="${ctxIndex}"><div class="vocab-quiz-fill" style="width:0%"></div></div>
+                <span class="vocab-quiz-counter">${ctxIndex + 1} / ${ctxNotes.length}</span>
+                ${btn("home","✕",'aria-label="Thoát ngữ cảnh" style="padding:4px 10px;font-size:.8rem"')}
+            </div>
+            <p class="eyebrow">Hiểu nghĩa từ trong ngữ cảnh</p>
+            <div class="vocab-ctx-sentence" lang="en">${highlighted}</div>
+            <p style="font-size:.88rem;color:var(--ink-soft);margin:0 0 12px">Từ được tô sáng nghĩa là gì?</p>
+            <div class="vocab-ctx-choices">
+                ${opts.map(([meaning, isCorrect]) => `
+                <button type="button" class="vocab-ctx-opt"
+                        data-vocab-action="ctx-answer"
+                        data-is-correct="${isCorrect ? 'true' : 'false'}"
+                        data-note-term="${escape(note.term)}"
+                        data-note-meaning="${escape(note.meaning_vi)}"
+                        data-note-example-vi="${escape(note.example_vi || '')}">${escape(meaning)}</button>`).join("")}
+            </div>
+            <div id="ctx-reveal"></div>
+        </div>`;
+        root.querySelector('.vocab-ctx-opt')?.focus();
+        requestAnimationFrame(() => {
+            const fill = root.querySelector(".vocab-quiz-fill");
+            if (fill) { fill.style.width = "0%"; requestAnimationFrame(() => { fill.style.width = `${pct}%`; }); }
+        });
+    }
+
+    function handleCtxAnswer(target) {
+        if (target.disabled) return;
+        const isCorrect = target.dataset.isCorrect === "true";
+        if (isCorrect) ctxScore++;
+        root.querySelectorAll(".vocab-ctx-opt").forEach(o => {
+            o.disabled = true;
+            if (o.dataset.isCorrect === "true") o.classList.add("correct");
+            else if (o === target && !isCorrect) o.classList.add("wrong");
+        });
+        const reveal = root.querySelector("#ctx-reveal");
+        if (reveal) {
+            reveal.innerHTML = `
+            <div class="vocab-ctx-reveal vocab-animate-in">
+                <p role="status">${isCorrect ? "Chính xác." : "Chưa đúng. Hãy xem nghĩa bên dưới."}</p>
+                <h3 lang="en">${escape(target.dataset.noteTerm)}</h3>
+                <p>${escape(target.dataset.noteMeaning)}</p>
+                ${target.dataset.noteExampleVi ? `<p lang="vi" style="font-style:italic">${escape(target.dataset.noteExampleVi)}</p>` : ""}
+            </div>
+            <div style="margin-top:16px;text-align:right">
+                ${ctxIndex + 1 < ctxNotes.length
+                    ? `<button type="button" class="primary-button" data-vocab-action="ctx-next">Tiếp theo →</button>`
+                    : `<button type="button" class="primary-button" data-vocab-action="ctx-next">Xem kết quả →</button>`}
+            </div>`;
+            reveal.querySelector('button')?.focus();
+        }
+        ctxIndex++;
+    }
+
     async function listDecks(page = 1) {
         selectedDeck = null;
         const endpoint = admin ? `${adminBase}/decks` : catalog ? `${base}/catalog/decks` : `${base}/decks`;
@@ -403,11 +609,10 @@
 
         <!-- Deck actions -->
         <div class="vocab-actions vocab-animate-in" style="margin-bottom:24px">
-            ${catalog ? "" : `
-                <button class="primary-button" data-vocab-action="start"
-                    data-mode="SRS" data-deck="true">Ôn bộ này →</button>
-                ${btn("start","Dịch câu",'data-mode="CONTEXT_TRANSLATION" data-deck="true"')}
-                ${btn("new-note","Thêm từ")}`}
+            ${catalog || admin ? "" : `
+                <button class="primary-button" data-vocab-action="choose-mode"
+                    >Chọn chế độ học →</button>`}
+            ${catalog ? "" : btn("new-note","Thêm từ")}
             ${admin ? `
                 ${btn("publish", selectedDeck.status === "PUBLISHED" ? "Ẩn khỏi thư viện" : "Xuất bản")}
                 ${btn("new-context","Thêm câu kết hợp")}` : ""}
@@ -805,6 +1010,20 @@
             else if (action === "abandon")      { await mutate(`${base}/sessions/${session.id}/abandon`); await bridge.navigate("vocabulary"); }
             else if (action === "reveal")       { const item = session.items.find(i => !i.gradedAt); await mutate(`${base}/session-items/${item.id}/reveal`); await loadSession(session.id); }
             else if (action === "confirm-import") { await mutate(`${base}/imports/${target.dataset.id}/confirm`); await openDeck(selectedDeck.id); }
+            else if (action === "choose-mode")  renderModeSelect(selectedDeck.id);
+            else if (action === "mode-select") {
+                const mode = target.dataset.mode;
+                if (mode === "QUIZ_EN_VI" || mode === "QUIZ_VI_EN") await renderQuiz(selectedDeck.id, mode);
+                else if (mode === "CONTEXTUAL") await renderContextual(selectedDeck.id);
+                else { session = await mutate(`${base}/sessions`, { mode, deckId: selectedDeck.id }); if (session.id) await bridge.navigate("vocabulary", { sessionId: session.id }); else renderSession(); }
+            }
+            else if (action === "quiz-answer")  handleQuizAnswer(target);
+            else if (action === "quiz-next")    renderQuizQuestion();
+            else if (action === "quiz-retry")   await renderQuiz(quizDeckId, quizMode);
+            else if (action === "ctx-answer")   handleCtxAnswer(target);
+            else if (action === "ctx-next")     renderCtxQuestion();
+            else if (action === "ctx-retry")    await renderContextual(ctxDeckId);
+            else if (action === "mode-back")    await openDeck(selectedDeck?.id || target.dataset.id);
             else if (action === "new-context")  await contextForm();
         });
     });

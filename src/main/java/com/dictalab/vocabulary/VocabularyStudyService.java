@@ -27,6 +27,21 @@ public class VocabularyStudyService {
                            AnswerEvaluator evaluator,ContextExerciseProvider contexts,Clock clock) {
         this.repo=repo; this.config=config; this.scheduler=scheduler; this.evaluator=evaluator; this.contexts=contexts; this.clock=clock;
     }
+    public Map<String,Integer> masteryLevels(long user) {
+        var counts = repo.one("""
+                SELECT COALESCE(SUM(CASE WHEN c.successful_repetitions<2 THEN 1 ELSE 0 END),0) AS level1,
+                COALESCE(SUM(CASE WHEN c.successful_repetitions BETWEEN 2 AND 3 THEN 1 ELSE 0 END),0) AS level2,
+                COALESCE(SUM(CASE WHEN c.successful_repetitions BETWEEN 4 AND 5 THEN 1 ELSE 0 END),0) AS level3,
+                COALESCE(SUM(CASE WHEN c.successful_repetitions BETWEEN 6 AND 7 THEN 1 ELSE 0 END),0) AS level4,
+                COALESCE(SUM(CASE WHEN c.successful_repetitions>=8 THEN 1 ELSE 0 END),0) AS level5
+                FROM vocab_cards c
+                JOIN vocab_notes n ON n.id=c.note_id
+                WHERE c.user_id=? AND c.suspended=FALSE AND n.archived=FALSE
+                """, user);
+        var result=new LinkedHashMap<String,Integer>();
+        for (int level=1;level<=5;level++) result.put("level"+level,Math.toIntExact(number(counts,"level"+level)));
+        return result;
+    }
     public void requireEnabled() {
         if(!config.enabled()) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"Tính năng từ vựng chưa được bật.");
     }
