@@ -441,11 +441,13 @@
     background: var(--ink);
     color: var(--cream);
     align-self: flex-start;
+    overflow-wrap: anywhere;
 }
-.vocab-level-badge.A1 { background: var(--green,#13775d); }
-.vocab-level-badge.A2 { background: #2e7d8c; }
-.vocab-level-badge.B1 { background: #935805; }
-.vocab-level-badge.B2 { background: #a8323e; }
+.vocab-tags { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 8px 0; }
+.vocab-tags li { padding: 3px 9px; border: 1px solid var(--line); border-radius: 99px; font-size: .8rem; overflow-wrap: anywhere; max-width: 100%; }
+.vocab-deck-filter { margin-bottom: 24px; }
+.vocab-catalog-help { color: var(--ink-soft); font-size: .875rem; margin-bottom: 24px; }
+.vocab-copy-panel summary { cursor: pointer; margin-bottom: 14px; }
 
 /* Deck card gradient accent */
 .vocab-deck-card::before {

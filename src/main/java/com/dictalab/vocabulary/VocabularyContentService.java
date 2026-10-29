@@ -2,6 +2,7 @@ package com.dictalab.vocabulary;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.text.Normalizer;
 import java.util.*;
 import static com.dictalab.vocabulary.VocabularyRepository.*;
 import static com.dictalab.vocabulary.VocabularyDtos.*;
@@ -13,14 +14,61 @@ public class VocabularyContentService {
     public VocabularyContentService(VocabularyRepository repo) { this.repo=repo; }
     static int page(int page) { if (page<1 || page>10000) throw invalid("Trang không hợp lệ."); return page; }
     static String ownerClause(Long owner) { return owner==null ? "owner_user_id IS NULL" : "owner_user_id=?"; }
-    public Page<Map<String,Object>> decks(long user,boolean catalog,boolean admin,int page) {
-        int offset=(page(page)-1)*20;
-        String filter=catalog ? "d.owner_user_id IS NULL AND d.status='PUBLISHED'"
+    static String deckScope(boolean catalog,boolean admin) {
+        return catalog ? "d.owner_user_id IS NULL AND d.status='PUBLISHED'"
                 : admin ? "d.owner_user_id IS NULL AND d.status<>'ARCHIVED'" : "d.owner_user_id=? AND d.status<>'ARCHIVED'";
-        var args=new ArrayList<Object>(); if (!catalog && !admin) args.add(user); args.add(offset);
+    }
+    public Page<Map<String,Object>> decks(long user,boolean catalog,boolean admin,int page) {
+        return decks(user,catalog,admin,page,"","");
+    }
+    public Page<Map<String,Object>> decks(long user,boolean catalog,boolean admin,int page,String query,String tag) {
+        int offset=(page(page)-1)*20;
+        if(query==null || query.length()>120 || tag==null || tag.length()>80
+                || query.codePoints().anyMatch(Character::isISOControl) || tag.codePoints().anyMatch(Character::isISOControl))
+            throw invalid("Bộ lọc từ vựng quá dài hoặc không hợp lệ.");
+        String filter=deckScope(catalog,admin);
+        var args=new ArrayList<Object>(); if (!catalog && !admin) args.add(user);
+        if(!query.isBlank()) {
+            filter+=" AND (LOWER(d.title) LIKE ? ESCAPE '!' OR LOWER(d.description) LIKE ? ESCAPE '!' OR LOWER(d.level) LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM vocab_deck_tags t WHERE t.deck_id=d.id AND t.tag_key LIKE ? ESCAPE '!'))";
+            String pattern="%"+tagKey(query).replace("!","!!").replace("%","!%").replace("_","!_")+"%";
+            for(int i=0;i<4;i++) args.add(pattern);
+        }
+        if(!tag.isBlank()) { filter+=" AND EXISTS (SELECT 1 FROM vocab_deck_tags t WHERE t.deck_id=d.id AND t.tag_key=?)"; args.add(tagKey(tag)); }
+        args.add(offset);
         var rows=repo.rows("SELECT d.*,(SELECT COUNT(*) FROM vocab_deck_notes x JOIN vocab_notes n ON n.id=x.note_id WHERE x.deck_id=d.id AND n.archived=FALSE) AS note_count FROM vocab_decks d WHERE "
                 +filter+" ORDER BY d.created_at DESC,d.id LIMIT 21 OFFSET ?",args.toArray());
-        return new Page<>(rows.stream().limit(20).toList(),page,20,rows.size()>20);
+        return new Page<>(deckViews(rows.stream().limit(20).toList()),page,20,rows.size()>20);
+    }
+    public List<String> tags(long user,boolean catalog,boolean admin) {
+        return repo.jdbc().queryForList("SELECT MIN(t.tag_name) AS name FROM vocab_deck_tags t JOIN vocab_decks d ON d.id=t.deck_id WHERE "
+                +deckScope(catalog,admin)+" GROUP BY t.tag_key ORDER BY name LIMIT 200",String.class,
+                !catalog && !admin ? new Object[]{user} : new Object[]{});
+    }
+    private List<Map<String,Object>> deckViews(List<Map<String,Object>> decks) {
+        if(decks.isEmpty()) return decks;
+        Map<String,List<String>> tags=new HashMap<>();
+        var ids=decks.stream().map(d->d.get("id")).toArray();
+        for(var row:repo.rows("SELECT deck_id,tag_name FROM vocab_deck_tags WHERE deck_id IN ("
+                +String.join(",",Collections.nCopies(ids.length,"?"))+") ORDER BY tag_key",ids))
+            tags.computeIfAbsent((String)row.get("deck_id"),ignored->new ArrayList<>()).add((String)row.get("tag_name"));
+        for(var deck:decks) deck.put("tags",tags.getOrDefault((String)deck.get("id"),List.of()));
+        return decks;
+    }
+    private Map<String,Object> deckView(Map<String,Object> deck) { return deckViews(List.of(deck)).get(0); }
+    private static String tagKey(String tag) { return Normalizer.normalize(tag.strip(),Normalizer.Form.NFC).toLowerCase(Locale.ROOT); }
+    private void saveTags(String deck,List<String> values) {
+        if(values==null) return; // Older clients preserve metadata they do not send.
+        if(values.size()>20) throw invalid("Mỗi bộ có tối đa 20 nhãn.");
+        var normalized=new TreeMap<String,String>();
+        for(String value:values) {
+            if(value==null) throw invalid("Nhãn không hợp lệ.");
+            String name=Normalizer.normalize(value.strip(),Normalizer.Form.NFC);
+            if(name.isBlank() || name.length()>80 || name.codePoints().anyMatch(Character::isISOControl)) throw invalid("Nhãn phải có từ 1 đến 80 ký tự và không chứa ký tự điều khiển.");
+            normalized.putIfAbsent(tagKey(name),name);
+        }
+        repo.jdbc().update("DELETE FROM vocab_deck_tags WHERE deck_id=?",deck);
+        if(!normalized.isEmpty()) repo.jdbc().batchUpdate("INSERT INTO vocab_deck_tags(deck_id,tag_key,tag_name) VALUES (?,?,?)",
+                normalized.entrySet().stream().map(t->new Object[]{deck,t.getKey(),t.getValue()}).toList());
     }
     public Map<String,Object> detail(long user,String id,boolean catalog,boolean admin,int page) {
         var deck=repo.deck(catalog || admin ? null : user,id);
@@ -29,7 +77,7 @@ public class VocabularyContentService {
                 SELECT n.* FROM vocab_notes n JOIN vocab_deck_notes x ON x.note_id=n.id
                 WHERE x.deck_id=? AND n.archived=FALSE ORDER BY n.created_at,n.id LIMIT 51 OFFSET ?
                 """,id,(page(page)-1)*50);
-        return Map.of("deck",deck,"notes",new Page<>(notes.stream().limit(50).map(this::noteView).toList(),page,50,notes.size()>50));
+        return Map.of("deck",deckView(deck),"notes",new Page<>(notes.stream().limit(50).map(this::noteView).toList(),page,50,notes.size()>50));
     }
     Map<String,Object> noteView(Map<String,Object> note) {
         var result=new LinkedHashMap<>(note);
@@ -47,21 +95,28 @@ public class VocabularyContentService {
     public Map<String,Object> createDeck(long user,String key,DeckEdit edit,boolean system) {
         return repo.receipt(user,key,"create-deck/"+system,edit,Map.class,()-> {
             Long owner=system ? null : user;
-            if (repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_decks WHERE "+ownerClause(owner),Integer.class,owner==null ? new Object[]{}:new Object[]{owner})>=200)
-                throw conflict("Đã đạt giới hạn 200 bộ từ.");
-            String id=id();
-            repo.jdbc().update("INSERT INTO vocab_decks(id,owner_user_id,title,description,level) VALUES (?,?,?,?,?)",id,owner,edit.title().strip(),edit.description().strip(),edit.level());
-            return repo.deck(owner,id);
+            String id=insertDeck(owner,edit,null);
+            return deckView(repo.deck(owner,id));
         });
+    }
+    private String insertDeck(Long owner,DeckEdit edit,String source) {
+        if (repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_decks WHERE "+ownerClause(owner),Integer.class,owner==null ? new Object[]{}:new Object[]{owner})>=200)
+            throw conflict("Đã đạt giới hạn 200 bộ từ.");
+        String id=id();
+        repo.jdbc().update("INSERT INTO vocab_decks(id,owner_user_id,title,description,level,source_deck_id) VALUES (?,?,?,?,?,?)",
+                id,owner,edit.title().strip(),edit.description().strip(),edit.level().strip(),source);
+        saveTags(id,edit.tags());
+        return id;
     }
     @Transactional(timeout=20)
     public Map<String,Object> updateDeck(long user,String key,String id,DeckEdit edit,boolean system) {
         return repo.receipt(user,key,"edit-deck/"+id,edit,Map.class,()-> {
             Long owner=system ? null : user; var deck=repo.deck(owner,id);
             if (number(deck,"revision")!=edit.revision()) throw conflict("Bộ từ đã thay đổi. Hãy tải lại.");
-            if(repo.jdbc().update("UPDATE vocab_decks SET title=?,description=?,level=?,revision=revision+1 WHERE id=? AND revision=?",edit.title().strip(),edit.description().strip(),edit.level(),id,edit.revision())!=1)
+            if(repo.jdbc().update("UPDATE vocab_decks SET title=?,description=?,level=?,revision=revision+1 WHERE id=? AND revision=?",edit.title().strip(),edit.description().strip(),edit.level().strip(),id,edit.revision())!=1)
                 throw conflict("Bộ từ đã thay đổi.");
-            return repo.deck(owner,id);
+            saveTags(id,edit.tags());
+            return deckView(repo.deck(owner,id));
         });
     }
     @Transactional(timeout=20)
@@ -140,24 +195,46 @@ public class VocabularyContentService {
     public Map<String,Object> copy(long user,String key,String sourceDeck,String targetDeck) {
         return repo.receipt(user,key,"copy/"+sourceDeck,Map.of("deckId",targetDeck),Map.class,()-> {
             repo.deck(user,targetDeck);
-            var source=repo.deck(null,sourceDeck);
-            if (!"PUBLISHED".equals(source.get("status"))) throw new com.dictalab.exception.ResourceNotFoundException("Không tìm thấy bộ từ.");
-            var notes=repo.rows("SELECT n.* FROM vocab_notes n JOIN vocab_deck_notes x ON x.note_id=n.id WHERE x.deck_id=? AND n.archived=FALSE ORDER BY n.id LIMIT 1001",sourceDeck);
-            if (notes.size()>1000) throw invalid("Bộ từ vượt giới hạn 1.000 mục mỗi lần thêm.");
-            Map<String,String> copies=new HashMap<>();
-            for(var row:repo.rows("SELECT id,source_note_id FROM vocab_notes WHERE owner_user_id=? AND source_note_id IS NOT NULL",user))
-                copies.put((String)row.get("source_note_id"),(String)row.get("id"));
-            Set<String> members=new HashSet<>(repo.jdbc().queryForList("SELECT note_id FROM vocab_deck_notes WHERE deck_id=?",String.class,targetDeck));
-            List<NewNote> additions=new ArrayList<>(); List<Object[]> links=new ArrayList<>();
-            for (var note:notes) {
-                String copy=copies.get((String)note.get("id"));
-                if(copy==null) additions.add(new NewNote(id(),editFrom(note),"CATALOG",(String)note.get("id"),number(note,"revision")));
-                else if(members.add(copy)) links.add(new Object[]{targetDeck,copy});
-            }
-            insertBatch(user,targetDeck,additions);
-            if(!links.isEmpty()) repo.jdbc().batchUpdate("INSERT INTO vocab_deck_notes(deck_id,note_id) VALUES (?,?)",links);
-            return Map.of("added",notes.size(),"deckId",targetDeck);
+            publishedDeck(sourceDeck);
+            return copyNotes(user,sourceDeck,targetDeck);
         });
+    }
+    private Map<String,Object> publishedDeck(String id) {
+        var source=repo.deck(null,id);
+        if (!"PUBLISHED".equals(source.get("status"))) throw new com.dictalab.exception.ResourceNotFoundException("Không tìm thấy bộ từ.");
+        return source;
+    }
+    @Transactional(timeout=20)
+    public Map<String,Object> enroll(long user,String key,String sourceDeck) {
+        return repo.receipt(user,key,"enroll/"+sourceDeck,Map.of(),Map.class,()-> {
+            var source=deckView(publishedDeck(sourceDeck));
+            var existing=repo.rows("SELECT * FROM vocab_decks WHERE owner_user_id=? AND source_deck_id=?",user,sourceDeck);
+            if(!existing.isEmpty()) {
+                if("ARCHIVED".equals(existing.get(0).get("status"))) throw conflict("Bộ học này đã được lưu trữ. Bạn vẫn có thể thêm từ vào một bộ khác.");
+                return deckView(existing.get(0));
+            }
+            @SuppressWarnings("unchecked") var tags=(List<String>)source.get("tags");
+            String target=insertDeck(user,new DeckEdit((String)source.get("title"),(String)source.get("description"),(String)source.get("level"),0,tags),sourceDeck);
+            copyNotes(user,sourceDeck,target);
+            return deckView(repo.deck(user,target));
+        });
+    }
+    private Map<String,Object> copyNotes(long user,String sourceDeck,String targetDeck) {
+        var notes=repo.rows("SELECT n.* FROM vocab_notes n JOIN vocab_deck_notes x ON x.note_id=n.id WHERE x.deck_id=? AND n.archived=FALSE ORDER BY n.id LIMIT 1001",sourceDeck);
+        if (notes.size()>1000) throw invalid("Bộ từ vượt giới hạn 1.000 mục mỗi lần thêm.");
+        Map<String,String> copies=new HashMap<>();
+        for(var row:repo.rows("SELECT id,source_note_id FROM vocab_notes WHERE owner_user_id=? AND source_note_id IS NOT NULL",user))
+            copies.put((String)row.get("source_note_id"),(String)row.get("id"));
+        Set<String> members=new HashSet<>(repo.jdbc().queryForList("SELECT note_id FROM vocab_deck_notes WHERE deck_id=?",String.class,targetDeck));
+        List<NewNote> additions=new ArrayList<>(); List<Object[]> links=new ArrayList<>();
+        for (var note:notes) {
+            String copy=copies.get((String)note.get("id"));
+            if(copy==null) additions.add(new NewNote(id(),editFrom(note),"CATALOG",(String)note.get("id"),number(note,"revision")));
+            else if(members.add(copy)) links.add(new Object[]{targetDeck,copy});
+        }
+        insertBatch(user,targetDeck,additions);
+        if(!links.isEmpty()) repo.jdbc().batchUpdate("INSERT INTO vocab_deck_notes(deck_id,note_id) VALUES (?,?)",links);
+        return Map.of("added",notes.size(),"deckId",targetDeck);
     }
     NoteEdit editFrom(Map<String,Object> row) {
         return new NoteEdit((String)row.get("term"),(String)row.get("meaning_vi"),(String)row.get("part_of_speech"),

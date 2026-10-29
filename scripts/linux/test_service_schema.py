@@ -78,12 +78,13 @@ class SchemaTest(unittest.TestCase):
                     return directory, [shutil.which('java'), '--class-path', str(directory / 'lib/*') + os.pathsep
                                        + str(directory / 'classes'), str(source)]
                 baseline, command = program('baseline45')
-                for filename in ('V46__vocabulary.sql', 'V47__vocabulary_starter_content.sql'):
+                for filename in ('V46__vocabulary.sql', 'V47__vocabulary_starter_content.sql',
+                                 'V48__vocabulary_catalog_learning_and_tags.sql'):
                     (baseline / 'classes/db/migration' / filename).unlink()
                 self.assertIn('CORE_SCHEMA_READY', run(command, env=environment))
                 checksum_sql = "SELECT version,checksum FROM flyway_schema_history WHERE version::int <= 45 ORDER BY installed_rank;"
                 before = sql(checksum_sql, 'dictalab_core')
-                _, command = program('candidate47')
+                _, command = program('candidate48')
                 for _ in range(2):
                     self.assertIn('CORE_SCHEMA_READY', run(command, env=environment))
                 self.assertEqual(before, sql(checksum_sql, 'dictalab_core'))
@@ -91,11 +92,14 @@ class SchemaTest(unittest.TestCase):
                 "SELECT has_table_privilege('dictalab_core_runtime','vocab_cards','INSERT'),"
                 "has_table_privilege('dictalab_core_backup','vocab_cards','SELECT'),"
                 "has_table_privilege('dictalab_core_backup','vocab_cards','UPDATE');"
+                "SELECT has_table_privilege('dictalab_core_runtime','vocab_deck_tags','INSERT'),"
+                "has_table_privilege('dictalab_core_backup','vocab_deck_tags','SELECT'),"
+                "has_table_privilege('dictalab_core_backup','vocab_deck_tags','UPDATE');"
                 "SELECT has_table_privilege('dictalab_core_runtime','flyway_schema_history','SELECT'),"
                 "has_table_privilege('dictalab_core_runtime','flyway_schema_history','UPDATE'),"
                 "has_table_privilege('dictalab_core_runtime','ai_provider_accounts','SELECT'),"
                 "has_schema_privilege('dictalab_core_runtime','public','CREATE');", 'dictalab_core')
-            self.assertEqual(['47', 't|t|f', 't|f|f|f'], checks.splitlines())
+            self.assertEqual(['48', 't|t|f', 't|t|f', 't|f|f|f'], checks.splitlines())
         finally:
             run(['docker', 'rm', '--force', name])
 

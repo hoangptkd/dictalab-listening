@@ -25,6 +25,7 @@
         admin = false, catalog = false;
     let quizNotes = [], quizIndex = 0, quizScore = 0, quizMode = '', quizDeckId = null;
     let ctxNotes  = [], ctxIndex  = 0, ctxScore  = 0, ctxDeckId  = null;
+    let deckFilters = {q:"",tag:""};
     const pending = new Map();
 
     /* ── API helpers ────────────────────────────────────────────── */
@@ -33,6 +34,7 @@
         personal = []; visibleNotes = []; selectedDeck = null;
         currentNote = null; sourceWord = null; session = null; owner = null;
         quizNotes = []; ctxNotes = []; quizDeckId = null; ctxDeckId = null;
+        deckFilters = {q:"",tag:""};
         root.replaceChildren(); status.textContent = "";
     }
 
@@ -76,8 +78,17 @@
             ${bridge.isAdmin() ? btn("admin", "Quản trị") : ""}
         </nav>`;
 
-    const levelBadge = lvl =>
-        `<span class="vocab-level-badge ${escape(lvl)}">${escape(lvl)}</span>`;
+    const levelBadge = lvl => lvl ? `<span class="vocab-level-badge">${escape(lvl)}</span>` : "";
+    const deckTags = deck => (deck.tags || []).length ? `<ul class="vocab-tags" aria-label="Nhãn bộ từ">${deck.tags.map(tag => `<li>${escape(tag)}</li>`).join("")}</ul>` : "";
+    const metadataFields = (deck = {}) => `
+        <label>Mức độ / mục tiêu (không bắt buộc)
+            <input name="level" maxlength="80" value="${escape(deck.level || "")}" placeholder="Ví dụ: C1, 650–800, cơ bản" aria-describedby="vocab-level-help">
+        </label>
+        <small id="vocab-level-help">Nhập theo thang bạn dùng hoặc để trống.</small>
+        <label>Nhãn phân loại (không bắt buộc)
+            <textarea name="tags" maxlength="1619" rows="3" placeholder="Ví dụ: TOEIC&#10;Giao tiếp công việc&#10;Y khoa" aria-describedby="vocab-tags-help">${escape((deck.tags || []).join("\n"))}</textarea>
+        </label>
+        <small id="vocab-tags-help">Tự đặt nhãn, mỗi dòng một nhãn; tối đa 20 nhãn, mỗi nhãn 80 ký tự.</small>`;
 
     const deckOptions = () => personal.map(d =>
         `<option value="${escape(d.id)}">${escape(d.title)}</option>`).join("");
@@ -499,6 +510,7 @@
     }
 
     async function listDecks(page = 1) {
+        const stamp = generation;
         selectedDeck = null;
         const endpoint = admin ? `${adminBase}/decks` : catalog ? `${base}/catalog/decks` : `${base}/decks`;
         const title    = admin ? "Quản trị bộ từ" : catalog ? "Bộ từ có sẵn" : "Bộ của tôi";
@@ -510,13 +522,20 @@
             </div>
             ${skeletonGrid(6)}`;
 
-        const result = await request(`${endpoint}?page=${page}`);
+        const filters = `&q=${encodeURIComponent(deckFilters.q)}&tag=${encodeURIComponent(deckFilters.tag)}`;
+        const [result, tagResult] = await Promise.all([
+            request(`${endpoint}?page=${page}${filters}`),
+            request(`${endpoint.replace(/\/decks$/, "/tags")}`).catch(() => []),
+        ]);
+        if (stamp !== generation || owner !== bridge.currentUser()?.id) return;
+        const tagSuggestions = Array.isArray(tagResult) ? tagResult : [];
 
         const deckCards = result.items.length ? result.items.map(d => `
             <article class="vocab-deck-card vocab-animate-in" role="button" tabindex="0"
                      data-vocab-action="deck" data-id="${escape(d.id)}"
                      aria-label="Mở bộ từ ${escape(d.title)}">
                 ${levelBadge(d.level)}
+                ${deckTags(d)}
                 ${admin ? `<span class="vocab-word-pos">${escape(d.status)}</span>` : ""}
                 <h3>${escape(d.title)}</h3>
                 <p>${escape(d.description)}</p>
@@ -524,13 +543,20 @@
             </article>`).join("") :
             `<div class="vocab-empty" style="grid-column:1/-1">
                 <span class="vocab-empty-icon">🗂️</span>
-                <p>${catalog ? "Chưa có bộ từ công khai." : "Chưa có bộ từ. Tạo một bộ để bắt đầu."}</p>
+                <p>${deckFilters.q || deckFilters.tag ? "Không có bộ phù hợp. Hãy đổi từ khóa hoặc nhãn." : catalog ? "Chưa có bộ từ công khai." : "Chưa có bộ từ. Tạo một bộ để bắt đầu."}</p>
              </div>`;
 
         root.innerHTML = toolbar() + `
             <div class="vocab-section-heading vocab-animate-in">
                 <h2>${title}</h2>
             </div>
+
+            <form data-vocab-form="deck-filter" class="vocab-form vocab-deck-filter" role="search" aria-label="Tìm bộ từ">
+                <label>Tìm bộ từ <input name="q" maxlength="120" value="${escape(deckFilters.q)}" placeholder="Tên, mô tả, mức độ hoặc nhãn"></label>
+                <label>Nhãn <input name="tag" maxlength="80" list="vocab-tag-options" value="${escape(deckFilters.tag)}" placeholder="Tất cả nhãn"></label>
+                <datalist id="vocab-tag-options">${tagSuggestions.map(tag => `<option value="${escape(tag)}"></option>`).join("")}</datalist>
+                <div class="vocab-actions"><button class="primary-button">Tìm kiếm</button>${btn("clear-filters","Xóa bộ lọc")}</div>
+            </form>
 
             ${!catalog ? `
             <details class="vocab-details vocab-animate-in">
@@ -539,12 +565,7 @@
                     <form data-vocab-form="deck" class="vocab-form">
                         <label>Tên bộ <input name="title" required maxlength="120"></label>
                         <label>Mô tả   <input name="description" maxlength="1000"></label>
-                        <label>Mức
-                            <select name="level">
-                                <option>A1</option><option>A2</option>
-                                <option>B1</option><option>B2</option>
-                            </select>
-                        </label>
+                        ${metadataFields()}
                         <div><button class="primary-button">Tạo bộ từ</button></div>
                     </form>
                 </div>
@@ -598,6 +619,7 @@
         <!-- Deck header -->
         <div class="vocab-deck-header vocab-animate-in">
             ${levelBadge(selectedDeck.level)}
+            ${deckTags(selectedDeck)}
             <h2>${escape(selectedDeck.title)}</h2>
             <p>${escape(selectedDeck.description)}</p>
             <div class="vocab-deck-meta">
@@ -609,6 +631,7 @@
 
         <!-- Deck actions -->
         <div class="vocab-actions vocab-animate-in" style="margin-bottom:24px">
+            ${catalog || (admin && selectedDeck.status === "PUBLISHED") ? primaryBtn("enroll","Học bộ này →") : ""}
             ${catalog || admin ? "" : `
                 <button class="primary-button" data-vocab-action="choose-mode"
                     >Chọn chế độ học →</button>`}
@@ -618,9 +641,12 @@
                 ${btn("new-context","Thêm câu kết hợp")}` : ""}
         </div>
 
+        ${catalog || (admin && selectedDeck.status === "PUBLISHED") ? `<p class="vocab-catalog-help">Chọn học để lưu bộ học và tiến độ riêng. Học lại tiếp tục dùng bộ đã lưu; bạn có thể sửa bản học trong Bộ của tôi. Thay đổi của bộ gốc không tự ghi đè bản học của bạn.</p>` : ""}
+
         ${catalog ? `
-        <!-- Copy to my deck -->
-        <div class="vocab-copy-panel vocab-animate-in">
+        <!-- Optional copy to an existing deck -->
+        <details class="vocab-copy-panel vocab-animate-in">
+            <summary>Hoặc thêm từ vào một bộ đang có</summary>
             <form data-vocab-form="copy" class="vocab-form" style="margin:0;gap:12px">
                 <label>Thêm vào bộ của tôi
                     <select name="deckId" required>
@@ -637,26 +663,23 @@
                     </p>` : ""}
                 </div>
             </form>
-        </div>` : ""}
+        </details>` : ""}
 
-        ${!admin && !catalog ? `
+        ${!catalog ? `
         <!-- Edit deck details -->
         <details class="vocab-details vocab-animate-in">
-            <summary>Sửa tên và mô tả</summary>
+            <summary>Sửa thông tin và phân loại</summary>
             <div class="vocab-details-body">
                 <form data-vocab-form="edit-deck" class="vocab-form">
                     <label>Tên bộ <input name="title" required maxlength="120" value="${escape(selectedDeck.title)}"></label>
                     <label>Mô tả  <textarea name="description" maxlength="1000">${escape(selectedDeck.description)}</textarea></label>
-                    <label>Mức
-                        <select name="level">
-                            ${["A1","A2","B1","B2"].map(l => `<option ${l===selectedDeck.level?"selected":""}>${l}</option>`).join("")}
-                        </select>
-                    </label>
+                    ${metadataFields(selectedDeck)}
                     <div><button class="primary-button">Lưu thay đổi</button></div>
                 </form>
             </div>
-        </details>
+        </details>` : ""}
 
+        ${!admin && !catalog ? `
         <!-- CSV import/export -->
         <details class="vocab-details vocab-animate-in">
             <summary>Nhập và xuất CSV</summary>
@@ -988,10 +1011,11 @@
             const action = target.dataset.vocabAction;
             if (action === "home") { await bridge.navigate("vocabulary"); return; }
             if (["mine","catalog","admin"].includes(action)) {
-                admin = action === "admin"; catalog = action === "catalog"; selectedDeck = null;
+                admin = action === "admin"; catalog = action === "catalog"; selectedDeck = null; deckFilters = {q:"",tag:""};
                 await listDecks();
             }
             else if (action === "decks-page")  await listDecks(Number(target.dataset.page));
+            else if (action === "clear-filters") { deckFilters = {q:"",tag:""}; await listDecks(); }
             else if (action === "deck")         await openDeck(target.dataset.id);
             else if (action === "notes-page")   await openDeck(selectedDeck.id, Number(target.dataset.page));
             else if (action === "sources" || action === "sources-page") await sources(Number(target.dataset.page || 1));
@@ -1011,6 +1035,11 @@
             else if (action === "reveal")       { const item = session.items.find(i => !i.gradedAt); await mutate(`${base}/session-items/${item.id}/reveal`); await loadSession(session.id); }
             else if (action === "confirm-import") { await mutate(`${base}/imports/${target.dataset.id}/confirm`); await openDeck(selectedDeck.id); }
             else if (action === "choose-mode")  renderModeSelect(selectedDeck.id);
+            else if (action === "enroll") {
+                const deck = await mutate(`${base}/catalog/decks/${encodeURIComponent(selectedDeck.id)}/enroll`);
+                admin = false; catalog = false;
+                await refreshPersonal(); await openDeck(deck.id); renderModeSelect(deck.id);
+            }
             else if (action === "mode-select") {
                 const mode = target.dataset.mode;
                 if (mode === "QUIZ_EN_VI" || mode === "QUIZ_VI_EN") await renderQuiz(selectedDeck.id, mode);
@@ -1034,8 +1063,12 @@
         event.preventDefault();
         const data = new FormData(form), kind = form.dataset.vocabForm, grade = event.submitter?.value;
         run(async () => {
-            if (kind === "deck" || kind === "edit-deck") {
-                const payload = { title: data.get("title"), description: data.get("description"), level: data.get("level"), revision: kind === "edit-deck" ? selectedDeck.revision : 0 };
+            if (kind === "deck-filter") {
+                deckFilters = {q:String(data.get("q") || "").trim(),tag:String(data.get("tag") || "").trim()};
+                await listDecks();
+            }
+            else if (kind === "deck" || kind === "edit-deck") {
+                const payload = { title: data.get("title"), description: data.get("description"), level: data.get("level") || "", tags: String(data.get("tags") || "").split(/\r?\n/).map(t => t.trim()).filter(Boolean), revision: kind === "edit-deck" ? selectedDeck.revision : 0 };
                 const result = await mutate(`${admin ? adminBase : base}/decks${kind === "edit-deck" ? "/" + selectedDeck.id : ""}`, payload, kind === "edit-deck" ? "PATCH" : "POST");
                 if (!admin) await refreshPersonal(); await openDeck(result.id);
             }

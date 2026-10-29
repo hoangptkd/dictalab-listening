@@ -266,7 +266,7 @@ test('context translation mode starts the existing backend flow for the selected
     assert.equal(write.options.body.deckId,'deck');
 });
 
-test('system decks expose editing or copying while only personal decks expose study modes',async()=>{
+test('system decks expose editing or copying while only personal decks expose direct study modes',async()=>{
     const h=harness(async url=>{
         if(url.includes('/decks?'))return {items:[],hasMore:false};
         if(url.endsWith('/summary'))return summary;
@@ -290,4 +290,85 @@ test('system decks expose editing or copying while only personal decks expose st
         }
     }
     assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
+});
+
+test('catalog and published admin decks enroll before choosing a personal study mode',async()=>{
+    for(const scope of ['catalog','admin']) {
+        const h=harness(async (url,options)=>{
+            if(url.includes('/decks?'))return {items:[],hasMore:false};
+            if(url.endsWith('/tags'))return [];
+            if(url.endsWith('/summary'))return summary;
+            if(url.endsWith('/mastery-levels'))return mastery;
+            if(url.endsWith('/catalog/decks/source/enroll'))return {id:'personal'};
+            if(url.includes('/decks/source?'))return {deck:{id:'source',title:'Public',level:'C2',status:'PUBLISHED'},notes:{items:notes,page:1}};
+            if(url.includes('/decks/personal?'))return {deck:{id:'personal',title:'Public',level:'C2'},notes:{items:notes,page:1}};
+            if(url.endsWith('/sessions') && options.method==='POST')return {id:'study-session'};
+            throw new Error(`Unexpected request: ${url}`);
+        },{admin:true});
+        await h.module.show();await click(h,{vocabAction:scope});await click(h,{vocabAction:'deck',id:'source'});
+        assert.match(h.root.innerHTML,/data-vocab-action="enroll"/);
+        await click(h,{vocabAction:'enroll'});
+        assert.equal(h.status.textContent,'');
+        assert.match(h.root.innerHTML,/data-mode="QUIZ_EN_VI"/);
+        assert.equal(h.calls.filter(c=>c.url.endsWith('/sessions')).length,0);
+        await click(h,{vocabAction:'mode-select',mode:'SRS'});
+        const write=h.calls.find(c=>c.url.endsWith('/sessions'));
+        assert.equal(write.options.body.deckId,'personal');
+        assert.equal(write.options.body.mode,'SRS');
+        assert.equal(h.status.textContent,'');
+    }
+});
+
+test('dynamic metadata renders safely and deck forms submit custom labels and optional levels',async()=>{
+    const h=harness(async url=>{
+        if(url.includes('/decks?'))return {items:[],hasMore:false};
+        if(url.endsWith('/tags'))return ['Custom <tag>'];
+        if(url.endsWith('/summary'))return summary;
+        if(url.endsWith('/mastery-levels'))return mastery;
+        if(url.endsWith('/decks'))return {id:'custom'};
+        if(url.includes('/decks/custom?'))return {deck:{id:'custom',title:'Custom',level:'C2 / chuyên ngành',tags:['Custom <tag>','THPT']},notes:{items:[],page:1}};
+        throw new Error(`Unexpected request: ${url}`);
+    });
+    await h.module.show();await click(h,{vocabAction:'mine'});
+    assert.match(h.root.innerHTML,/Nhập theo thang bạn dùng hoặc để trống/);
+    assert.doesNotMatch(h.root.innerHTML,/<select name="level">/);
+    assert.match(h.root.innerHTML,/Custom &lt;tag&gt;/);
+    const form={dataset:{vocabForm:'deck'},values:[['title','Custom'],['description',''],['level','C2 / chuyên ngành'],['tags','THPT\nCustom <tag>\n']]};
+    h.listeners.submit({target:{closest:()=>form},preventDefault(){}});await tick();await tick();
+    const write=h.calls.find(c=>c.options.method==='POST');
+    assert.equal(write.options.body.level,'C2 / chuyên ngành');
+    assert.deepEqual(Array.from(write.options.body.tags),['THPT','Custom <tag>']);
+    assert.equal(h.status.textContent,'');
+    assert.match(h.root.innerHTML,/C2 \/ chuyên ngành/);
+    assert.match(h.root.innerHTML,/<li>Custom &lt;tag&gt;<\/li>/);
+    assert.doesNotMatch(h.root.innerHTML,/<tag>/);
+});
+
+test('deck search encodes custom filters, retains them through pagination and resets on scope change',async()=>{
+    const h=deckHarness();await h.module.show();await click(h,{vocabAction:'catalog'});
+    const form={dataset:{vocabForm:'deck-filter'},values:[['q','y khoa & C2'],['tag','Chuyên ngành / mới']]};
+    h.listeners.submit({target:{closest:()=>form},preventDefault(){}});await tick();await tick();
+    await click(h,{vocabAction:'decks-page',page:'2'});
+    const filtered=h.calls.filter(c=>c.url.includes('/catalog/decks?')).at(-1).url;
+    assert.match(filtered,/page=2/);
+    assert.ok(filtered.includes(`q=${encodeURIComponent('y khoa & C2')}`));
+    assert.ok(filtered.includes(`tag=${encodeURIComponent('Chuyên ngành / mới')}`));
+    assert.match(h.root.innerHTML,/Không có bộ phù hợp/);
+    await click(h,{vocabAction:'mine'});
+    assert.equal(h.calls.filter(c=>c.url.includes('/decks?')).at(-1).url,'/api/v1/vocabulary/decks?page=1&q=&tag=');
+    assert.equal(h.status.textContent,'');
+});
+
+test('pending tag suggestions cannot repaint deck results after leaving the page',async()=>{
+    let resolveTags;
+    const h=harness(async url=>{
+        if(url.endsWith('/tags'))return new Promise(resolve=>{resolveTags=resolve;});
+        if(url.includes('/decks?'))return {items:[{id:'private',title:'Private vocabulary'}],hasMore:false};
+        if(url.endsWith('/summary'))return summary;
+        return mastery;
+    });
+    await h.module.show();
+    h.listeners.click({target:{closest:selector=>selector==='[data-vocab-action]'?{dataset:{vocabAction:'mine'}}:null}});
+    await tick();h.module.leave();resolveTags(['Private label']);await tick();await tick();
+    assert.equal(h.root.innerHTML,'');
 });

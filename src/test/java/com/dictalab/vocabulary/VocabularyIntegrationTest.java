@@ -115,6 +115,118 @@ class VocabularyIntegrationTest {
             empty.andExpect(jsonPath("$.level"+level).value(0));
         }
     }
+    @Test void enrollmentIsConcurrentSafeAndPreservesPersonalContentAndSchedules() throws Exception {
+        long learner=user(); String existing=deck(learner);
+        content.copy(learner,key(),"vocab-starter-daily",existing);
+        int cards=db.queryForObject("SELECT COUNT(*) FROM vocab_cards WHERE user_id=?",Integer.class,learner);
+        var pool=Executors.newFixedThreadPool(4); var gate=new CountDownLatch(1);
+        Set<String> enrolled=new HashSet<>();
+        try {
+            List<Future<Map<String,Object>>> futures=new ArrayList<>();
+            for(int i=0;i<4;i++) futures.add(pool.submit(()->{gate.await();return content.enroll(learner,key(),"vocab-starter-daily");}));
+            gate.countDown();
+            for(var future:futures) enrolled.add((String)future.get(30,TimeUnit.SECONDS).get("id"));
+        } finally { pool.shutdownNow(); }
+        assertThat(enrolled).hasSize(1); String deck=enrolled.iterator().next();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM vocab_cards WHERE user_id=?",Integer.class,learner)).isEqualTo(cards);
+        var item=start(learner,deck).items().get(0);
+        var original=repo.one("SELECT n.* FROM vocab_notes n JOIN vocab_cards c ON c.note_id=n.id JOIN vocab_session_items i ON i.card_id=c.id WHERE i.id=?",item.id());
+        correct(learner,item,(String)original.get("term"));
+        var schedules=repo.rows("SELECT * FROM vocab_cards WHERE user_id=? ORDER BY id",learner);
+        content.updateNote(learner,key(),(String)original.get("id"),edit("personal edit","nghĩa riêng",false),false);
+        String receipt=key();
+        assertThat(content.enroll(learner,receipt,"vocab-starter-daily").get("id")).isEqualTo(deck);
+        assertThat(content.enroll(learner,receipt,"vocab-starter-daily").get("id")).isEqualTo(deck);
+        assertThat(repo.note(learner,(String)original.get("id")).get("term")).isEqualTo("personal edit");
+        assertThat(repo.rows("SELECT * FROM vocab_cards WHERE user_id=? ORDER BY id",learner)).isEqualTo(schedules);
+        long other=user(); String otherDeck=(String)content.enroll(other,key(),"vocab-starter-daily").get("id");
+        assertThat(otherDeck).isNotEqualTo(deck);
+        mvc.perform(get("/api/v1/vocabulary/decks/"+deck).with(user(principal(other)))).andExpect(status().isNotFound());
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM vocab_notes WHERE owner_user_id=?",Integer.class,other)).isEqualTo(14);
+    }
+    @Test void enrollmentApiEnforcesAuthenticationCsrfAndPublicationAndStartsStudy() throws Exception {
+        long learner=user(); var authenticated=user(principal(learner));
+        String url="/api/v1/vocabulary/catalog/decks/vocab-starter-daily/enroll";
+        mvc.perform(post(url).with(csrf()).header("Idempotency-Key",key())).andExpect(status().isUnauthorized());
+        mvc.perform(post(url).with(authenticated).header("Idempotency-Key",key())).andExpect(status().isForbidden());
+        String privateDeck=deck(user());
+        String draft=(String)content.createDeck(learner,key(),new DeckEdit("Draft","","",0),true).get("id");
+        for(String hidden:List.of(privateDeck,draft,"missing")) {
+            mvc.perform(post("/api/v1/vocabulary/catalog/decks/"+hidden+"/enroll").with(authenticated).with(csrf())
+                    .header("Idempotency-Key",key())).andExpect(status().isNotFound());
+        }
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM vocab_decks WHERE owner_user_id=?",Integer.class,learner)).isZero();
+        var response=mvc.perform(post(url).with(authenticated).with(csrf()).header("Idempotency-Key",key()))
+                .andExpect(status().isOk()).andReturn();
+        String deck=(String)repo.object(response.getResponse().getContentAsString()).get("id");
+        for(String mode:List.of("SRS","PRACTICE","CONTEXT_TRANSLATION")) {
+            mvc.perform(post("/api/v1/vocabulary/sessions").with(authenticated).with(csrf()).header("Idempotency-Key",key())
+                    .contentType("application/json").content(repo.encode(new SessionStart(mode,deck))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.items").isNotEmpty());
+        }
+    }
+    @Test void enrollmentRollsBackTheNewDeckWhenCopyingExceedsItsLimit() {
+        long learner=user();
+        String source=(String)content.createDeck(learner,key(),new DeckEdit("Too large","","",0),true).get("id");
+        var values=new ArrayList<Object[]>(); var links=new ArrayList<Object[]>();
+        for(int i=0;i<1001;i++) {String id=key();values.add(new Object[]{id});links.add(new Object[]{source,id});}
+        db.batchUpdate("INSERT INTO vocab_notes(id,term,meaning_vi,source_kind) VALUES (?,'word','nghĩa','MANUAL')",values);
+        db.batchUpdate("INSERT INTO vocab_deck_notes(deck_id,note_id) VALUES (?,?)",links);
+        content.publish(learner,key(),source,new Publication(true,0));
+        assertThatThrownBy(()->content.enroll(learner,key(),source)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM vocab_decks WHERE owner_user_id=?",Integer.class,learner)).isZero();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM vocab_notes WHERE owner_user_id=?",Integer.class,learner)).isZero();
+    }
+    @Test void dynamicMetadataIsEditableSearchableAndScopedWithoutFixedExamOrLevelEnums() throws Exception {
+        long owner=user(),other=user(); var authenticated=user(principal(owner));
+        String label="Chuyên ngành "+key();
+        var request=new DeckEdit("Clinical 100%_ vocabulary","Words for any learning goal","650–800 / nâng cao",0,
+                List.of("TOEIC","toeic"," IELTS ",label));
+        var created=mvc.perform(post("/api/v1/vocabulary/decks").with(authenticated).with(csrf()).header("Idempotency-Key",key())
+                .contentType("application/json").content(repo.encode(request)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.tags.length()").value(3)).andReturn();
+        String deck=(String)repo.object(created.getResponse().getContentAsString()).get("id");
+        mvc.perform(get("/api/v1/vocabulary/decks").with(authenticated).param("tag",label.toUpperCase(Locale.ROOT)).param("q","100%_"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].id").value(deck));
+        mvc.perform(get("/api/v1/vocabulary/decks").with(authenticated).param("q","' OR 1=1 --"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items").isEmpty());
+        mvc.perform(get("/api/v1/vocabulary/decks").with(user(principal(other))).param("tag",label))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items").isEmpty());
+        assertThat(content.tags(other,false,false)).doesNotContain(label);
+        assertThat(content.tags(owner,true,false)).doesNotContain(label);
+        // A legacy client omitting tags must not erase newer metadata.
+        content.updateDeck(owner,key(),deck,new DeckEdit("Clinical","","C2",0),false);
+        assertThat(content.detail(owner,deck,false,false,1).get("deck")).asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("level","C2");
+        assertThat(content.tags(owner,false,false)).contains(label);
+        content.updateDeck(owner,key(),deck,new DeckEdit("THPT","","",1,List.of("THPT",label)),false);
+        mvc.perform(get("/api/v1/vocabulary/decks/"+deck).with(authenticated))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.deck.level").value(""));
+        mvc.perform(post("/api/v1/vocabulary/decks").with(authenticated).with(csrf()).header("Idempotency-Key",key())
+                .contentType("application/json").content("{\"title\":\"No scale\",\"description\":\"\",\"revision\":0}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.level").value(""));
+        for(var invalid:List.of(new DeckEdit("Bad","","x".repeat(81),0,List.of()),
+                new DeckEdit("Bad","","invalid\u0000level",0,List.of()),
+                new DeckEdit("Bad","","",0,Collections.nCopies(21,"tag")),
+                new DeckEdit("Bad","","",0,List.of("x".repeat(81))),
+                new DeckEdit("Bad","","",0,List.of("line\nbreak")))) {
+            mvc.perform(post("/api/v1/vocabulary/decks").with(authenticated).with(csrf()).header("Idempotency-Key",key())
+                    .contentType("application/json").content(repo.encode(invalid))).andExpect(status().isBadRequest());
+        }
+        mvc.perform(get("/api/v1/vocabulary/decks").with(authenticated).param("q","x".repeat(121))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/vocabulary/decks").with(authenticated).param("tag","x".repeat(81))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/vocabulary/decks").with(authenticated).param("q","invalid\u0000query")).andExpect(status().isBadRequest());
+        String system=(String)content.createDeck(owner,key(),new DeckEdit("Medicine","","Advanced medical vocabulary",0,List.of(label)),true).get("id");
+        content.addNote(owner,key(),system,edit("clinical","lâm sàng",false),true);
+        assertThat(content.tags(owner,true,false)).doesNotContain(label);
+        content.publish(owner,key(),system,new Publication(true,0));
+        assertThat(content.tags(owner,true,false)).contains(label);
+        var learned=content.enroll(other,key(),system);
+        assertThat(learned).containsEntry("level","Advanced medical vocabulary").containsEntry("tags",List.of(label));
+        content.publish(owner,key(),system,new Publication(false,1));
+        assertThat(content.tags(other,true,false)).doesNotContain(label);
+        assertThat(content.detail(other,(String)learned.get("id"),false,false,1)).isNotEmpty();
+    }
     @Test void sessionHidesAnswersUntilAttemptAndKeepsImmutableSnapshot() throws Exception {
         long user=user(); String deck=deck(user); String note=note(user,deck,"borrow",false);
         var session=start(user,deck); var item=session.items().get(0);
@@ -325,7 +437,7 @@ class VocabularyIntegrationTest {
         String deck=(String)repo.object(created.getResponse().getContentAsString()).get("id");
         String one=(String)content.addNote(admin,key(),deck,edit("bring","mang theo",false),true).get("id");
         String two=(String)content.addNote(admin,key(),deck,edit("coat","áo khoác",false),true).get("id");
-        var context=new ContextEdit("Bring your coat.","Hãy mang theo áo khoác của bạn.","A1",List.of(),List.of(new ContextTarget(one,"Bring"),new ContextTarget(two,"coat")),true,0);
+        var context=new ContextEdit("Bring your coat.","Hãy mang theo áo khoác của bạn.","Chuyên ngành tùy chọn",List.of(),List.of(new ContextTarget(one,"Bring"),new ContextTarget(two,"coat")),true,0);
         mvc.perform(post("/api/admin/vocabulary/contexts").with(user(principal)).with(csrf()).header("Idempotency-Key",key()).contentType("application/json").content(repo.encode(context)))
                 .andExpect(status().isOk());
         var invalid=new ContextEdit("Bring your coat.","Hãy mang theo áo khoác.","A1",List.of(),List.of(new ContextTarget(one,"missing"),new ContextTarget(two,"coat")),true,0);

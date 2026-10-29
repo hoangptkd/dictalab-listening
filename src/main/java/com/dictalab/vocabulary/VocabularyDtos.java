@@ -9,7 +9,11 @@ import java.util.Map;
 public final class VocabularyDtos {
     private VocabularyDtos() {}
     public record DeckEdit(@NotBlank @Size(max=120) String title, @NotNull @Size(max=1000) String description,
-                           @Pattern(regexp="A1|A2|B1|B2") @NotNull String level, @Min(0) long revision) {}
+                           @Size(max=80) @Pattern(regexp="[^\\p{Cntrl}]*") String level, @Min(0) long revision,
+                           @Size(max=20) List<@NotBlank @Size(max=80) String> tags) {
+        public DeckEdit { level=level==null ? "" : level; }
+        public DeckEdit(String title,String description,String level,long revision) { this(title,description,level,revision,null); }
+    }
     public record NoteEdit(@NotBlank @Size(max=200) String term, @NotBlank @Size(max=1000) String meaningVi,
                            @NotNull @Size(max=40) String partOfSpeech, @NotNull @Size(max=1000) String exampleEn,
                            @NotNull @Size(max=1000) String exampleVi, @NotNull @Size(max=500) String tags,
@@ -27,10 +31,12 @@ public final class VocabularyDtos {
     public record ContextTarget(@NotBlank String noteId, @NotBlank @Size(max=200) String surfaceForm) {}
     public record ContextEdit(@NotBlank @Size(max=1000) String prompt,
                               @NotBlank @Size(max=1000) String translationVi,
-                              @Pattern(regexp="A1|A2|B1|B2") @NotNull String level,
+                              @Size(max=80) @Pattern(regexp="[^\\p{Cntrl}]*") String level,
                               @NotNull @Size(max=10) List<@NotBlank @Size(max=1000) String> alternatives,
                               @NotNull @Size(min=2,max=3) List<@NotNull @Valid ContextTarget> targets,
-                              boolean published, @Min(0) long revision) {}
+                              boolean published, @Min(0) long revision) {
+        public ContextEdit { level=level==null ? "" : level; }
+    }
     public record Item(String id, int position, String kind, String prompt, String answer, String evaluation,
                        boolean assisted, Instant gradedAt, Map<String,Object> feedback, Map<String,Object> result) {}
     public record Session(String id, String mode, String status, Instant expiresAt, List<Item> items, String message) {}
