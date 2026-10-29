@@ -74,6 +74,7 @@ class ServiceReleaseTest(unittest.TestCase):
         self.calls = []
         self.real_run = release.run
         self.real_health = release.health
+        self.real_wait_ready = release.wait_ready
         self.saved = self.backups / 'services-fixture'
         self.original_snapshot = {'backupDirectory': str(self.saved), 'manifestSha256': 'f' * 64,
                                   'acceptance': 'archive-and-sqlite-integrity-only'}
@@ -179,7 +180,7 @@ class ServiceReleaseTest(unittest.TestCase):
         release.backup.CURRENT.symlink_to(self.candidate)
         for name in self.state:
             self.state[name] = 'active' if name == 'dictalab' else 'inactive'
-        with patch.object(release, 'wait_ready', side_effect=[RuntimeError('new unhealthy'), None]), \
+        with patch.object(release, 'wait_ready', side_effect=[None, RuntimeError('new unhealthy'), None]), \
                 self.assertRaisesRegex(RuntimeError, 'previous application state resumed'):
             self.activate(initial=True, rollback_compatible=True)
         self.assertEqual(b'original Core binary', release.backup.CORE_JAR.read_bytes())
@@ -188,7 +189,7 @@ class ServiceReleaseTest(unittest.TestCase):
         self.assertEqual({'inactive'}, {s for n, s in self.state.items() if n != 'dictalab'})
 
     def test_reviewed_upgrade_failure_rolls_back_pointer_and_binary_without_state_restore(self):
-        with patch.object(release, 'wait_ready', side_effect=[RuntimeError('new unhealthy'), None, None]), \
+        with patch.object(release, 'wait_ready', side_effect=[None, RuntimeError('new unhealthy'), None, None]), \
                 self.assertRaisesRegex(RuntimeError, 'previous application state resumed'):
             self.activate(rollback_compatible=True)
         self.assertEqual(self.previous, release.backup.CURRENT.resolve())
@@ -197,7 +198,7 @@ class ServiceReleaseTest(unittest.TestCase):
         self.assertTrue(all(c[0] == 'systemctl' or c[0] == sys.executable for c in self.calls))
 
     def test_unreviewed_or_financially_unsafe_rollback_keeps_candidate_stopped(self):
-        with patch.object(release, 'wait_ready', side_effect=RuntimeError('new unhealthy')), \
+        with patch.object(release, 'wait_ready', side_effect=[None, RuntimeError('new unhealthy')]), \
                 self.assertRaisesRegex(RuntimeError, 'Activation/rollback failed'):
             self.activate()
         self.assertEqual('forward-repair-required', self.record()['phase'])
@@ -207,7 +208,7 @@ class ServiceReleaseTest(unittest.TestCase):
             self.activate(initial=True)
 
     def test_financial_guard_cannot_be_bypassed_by_compatibility_assertion(self):
-        with patch.object(release, 'wait_ready', side_effect=RuntimeError('new unhealthy')), \
+        with patch.object(release, 'wait_ready', side_effect=[None, RuntimeError('new unhealthy')]), \
                 patch.object(release, 'financial_rollback_safe', return_value=False) as guard, \
                 self.assertRaisesRegex(RuntimeError, 'Activation/rollback failed'):
             self.activate(rollback_compatible=True)
@@ -216,7 +217,7 @@ class ServiceReleaseTest(unittest.TestCase):
         self.assertEqual({'inactive'}, set(self.state.values()))
 
     def test_financial_guard_unknown_outcome_fails_closed(self):
-        with patch.object(release, 'wait_ready', side_effect=RuntimeError('new unhealthy')), \
+        with patch.object(release, 'wait_ready', side_effect=[None, RuntimeError('new unhealthy')]), \
                 patch.object(release, 'financial_rollback_safe', side_effect=RuntimeError('database unavailable')), \
                 self.assertRaisesRegex(RuntimeError, 'Activation/rollback failed'):
             self.activate(rollback_compatible=True)
@@ -235,6 +236,26 @@ class ServiceReleaseTest(unittest.TestCase):
         self.assertEqual(self.previous, release.backup.CURRENT.resolve())
         self.assertEqual(b'original Core binary', release.backup.CORE_JAR.read_bytes())
         self.assertEqual('recovered-before-switch', self.record()['phase'])
+
+    def test_baseline_readiness_retries_a_transient_failure(self):
+        with patch.object(release, 'health', side_effect=[False, True]) as health, \
+                patch.object(release.time, 'sleep') as sleep:
+            self.real_wait_ready(['dictalab'])
+        self.assertEqual(2, health.call_count)
+        sleep.assert_called_once_with(3)
+
+    def test_baseline_readiness_deadline_rejects_before_receipt_or_maintenance(self):
+        with patch.object(release, 'wait_ready', side_effect=self.real_wait_ready), \
+                patch.object(release, 'health', return_value=False), \
+                patch.object(release.time, 'monotonic', side_effect=[0, 0, 181]), \
+                patch.object(release.time, 'sleep'), \
+                patch.object(release, 'MAINTENANCE', self.root / 'maintenance'), \
+                self.assertRaisesRegex(RuntimeError, 'readiness deadline'):
+            self.activate(maintenance=True)
+        self.assertFalse((self.root / 'maintenance').exists())
+        self.assertFalse(list(self.backups.glob('activation-*')))
+        self.assertFalse(any(c[:2] == ['systemctl', 'stop'] for c in self.calls))
+        self.assertEqual(self.previous, release.backup.CURRENT.resolve())
 
     def test_uncertain_stop_is_recovered_without_switching(self):
         failed = False

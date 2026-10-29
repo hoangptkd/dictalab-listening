@@ -213,6 +213,7 @@ def receipt(directory, data, phase):
 def activate(path, expected, *, initial=False, rollback_compatible=False, migrate_core=False, maintenance=False):
     if sys.platform != 'linux' or os.geteuid() != 0 or sys.version_info < (3, 12):
         raise RuntimeError('Coordinated activation requires Linux root and Python 3.12+')
+    print('SERVICE_RELEASE: acquiring exclusive release lock', file=sys.stderr, flush=True)
     with release_lock():
         return activate_locked(path, expected, initial=initial, rollback_compatible=rollback_compatible,
                                migrate_core=migrate_core, maintenance=maintenance)
@@ -223,6 +224,7 @@ def activate_locked(path, expected, *, initial, rollback_compatible, migrate_cor
         raise ValueError('Owner migrations require a reviewed compatible upgrade')
     if maintenance and (MAINTENANCE.exists() or MAINTENANCE.is_symlink()):
         raise RuntimeError('Production must be running before a maintenance release')
+    print('SERVICE_RELEASE: verifying candidate and previous release provenance', file=sys.stderr, flush=True)
     candidate_manifest = provision.bundle.verify_bundle(path, expected)
     candidate = provision.verify_stage(candidate_manifest, expected)
     if not backup.CURRENT.is_symlink():
@@ -253,14 +255,15 @@ def activate_locked(path, expected, *, initial, rollback_compatible, migrate_cor
         if json.loads(record.read_text(encoding='utf-8')).get('phase') not in (
                 'complete', 'rolled-back', 'recovered-before-switch'):
             raise RuntimeError('Unfinished activation requires inspection before another release')
+    print('SERVICE_RELEASE: checking baseline service states and protected configuration', file=sys.stderr, flush=True)
     before = states()
     required = {name: 'active' if not initial or name == 'dictalab' else 'inactive' for name in STOP_ORDER}
     cold_initial = initial and all(value == 'inactive' for value in before.values())
     if before != required and not cold_initial:
         raise RuntimeError('Baseline service state/health is not ready for release')
     config_hashes = configurations(require_legacy_reads=initial)
-    if not health([n for n in STOP_ORDER if before[n] == 'active']):
-        raise RuntimeError('Baseline service state/health is not ready for release')
+    print('SERVICE_RELEASE: waiting for baseline readiness before maintenance', file=sys.stderr, flush=True)
+    wait_ready([n for n in STOP_ORDER if before[n] == 'active'])
     baseline_hash = backup.digest(backup.CORE_JAR)
     directory = Path(tempfile.mkdtemp(prefix='activation-', dir=backup.SERVICE_BACKUPS))
     data = {'candidateRevision': candidate.name, 'previousRevision': previous.name, 'bundleSha256': expected,
