@@ -1,0 +1,250 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Isolated IAM database identities for Core, AI, Progress, migrations and backups on an existing Aurora cluster. Creates no database cluster or compute.",
+  "Parameters": {
+    "ClusterResourceId": {
+      "Type": "String",
+      "AllowedPattern": "cluster-[A-Z0-9]+",
+      "Description": "Aurora resource ID, not the friendly cluster name."
+    },
+    "CoreIamUserName": {
+      "Type": "String",
+      "Default": "dictalab-audio-vps",
+      "AllowedPattern": "[A-Za-z0-9+=,.@_-]+"
+    },
+    "UserPrefix": {
+      "Type": "String",
+      "Default": "dictalab-ec2",
+      "AllowedPattern": "[a-z][a-z0-9-]{2,39}"
+    },
+    "KeySerial": {
+      "Type": "Number",
+      "Default": 1,
+      "MinValue": 1,
+      "Description": "Increment only for an explicitly requested key rotation."
+    }
+  },
+  "Resources": {
+    "AiUser": {
+      "Type": "AWS::IAM::User",
+      "Properties": {
+        "UserName": {
+          "Fn::Sub": "${UserPrefix}-ai"
+        },
+        "Policies": [
+          {
+            "PolicyName": "AuroraDatabaseConnectOnly",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "rds-db:connect"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${ClusterResourceId}/dictalab_ai_runtime"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "AiKey": {
+      "Type": "AWS::IAM::AccessKey",
+      "Properties": {
+        "UserName": {
+          "Ref": "AiUser"
+        },
+        "Serial": {
+          "Ref": "KeySerial"
+        }
+      }
+    },
+    "ProgressUser": {
+      "Type": "AWS::IAM::User",
+      "Properties": {
+        "UserName": {
+          "Fn::Sub": "${UserPrefix}-progress"
+        },
+        "Policies": [
+          {
+            "PolicyName": "AuroraDatabaseConnectOnly",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "rds-db:connect"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${ClusterResourceId}/dictalab_progress_runtime"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "ProgressKey": {
+      "Type": "AWS::IAM::AccessKey",
+      "Properties": {
+        "UserName": {
+          "Ref": "ProgressUser"
+        },
+        "Serial": {
+          "Ref": "KeySerial"
+        }
+      }
+    },
+    "MigrationUser": {
+      "Type": "AWS::IAM::User",
+      "Properties": {
+        "UserName": {
+          "Fn::Sub": "${UserPrefix}-migration"
+        },
+        "Policies": [
+          {
+            "PolicyName": "AuroraDatabaseConnectOnly",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "rds-db:connect"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${ClusterResourceId}/dictalab_core_owner"
+                    },
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${ClusterResourceId}/dictalab_ai_owner"
+                    },
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${ClusterResourceId}/dictalab_progress_owner"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "MigrationKey": {
+      "Type": "AWS::IAM::AccessKey",
+      "Properties": {
+        "UserName": {
+          "Ref": "MigrationUser"
+        },
+        "Serial": {
+          "Ref": "KeySerial"
+        }
+      }
+    },
+    "BackupUser": {
+      "Type": "AWS::IAM::User",
+      "Properties": {
+        "UserName": {
+          "Fn::Sub": "${UserPrefix}-backup"
+        },
+        "Policies": [
+          {
+            "PolicyName": "AuroraDatabaseConnectOnly",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "rds-db:connect"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${ClusterResourceId}/dictalab_core_backup"
+                    },
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${ClusterResourceId}/dictalab_ai_backup"
+                    },
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${ClusterResourceId}/dictalab_progress_backup"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "BackupKey": {
+      "Type": "AWS::IAM::AccessKey",
+      "Properties": {
+        "UserName": {
+          "Ref": "BackupUser"
+        },
+        "Serial": {
+          "Ref": "KeySerial"
+        }
+      }
+    },
+    "CoreDatabasePolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "DictaLabEc2CoreDatabaseConnect",
+        "Users": [
+          {
+            "Ref": "CoreIamUserName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "rds-db:connect"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${ClusterResourceId}/dictalab_core_runtime"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "OperatorCredentialStore": {
+      "Type": "AWS::SecretsManager::Secret",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${UserPrefix}/database-credentials"
+        },
+        "Description": "Operator-only delivery of isolated EC2 database credentials. No runtime identity can read this secret.",
+        "SecretString": {
+          "Fn::Sub": "{\"ai\":{\"accessKeyId\":\"${AiKey}\",\"secretAccessKey\":\"${AiKey.SecretAccessKey}\"},\"progress\":{\"accessKeyId\":\"${ProgressKey}\",\"secretAccessKey\":\"${ProgressKey.SecretAccessKey}\"},\"migration\":{\"accessKeyId\":\"${MigrationKey}\",\"secretAccessKey\":\"${MigrationKey.SecretAccessKey}\"},\"backup\":{\"accessKeyId\":\"${BackupKey}\",\"secretAccessKey\":\"${BackupKey.SecretAccessKey}\"}}"
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "OperatorCredentialSecretArn": {
+      "Description": "Retrieve only as the operator; credentials are never stack outputs.",
+      "Value": {
+        "Ref": "OperatorCredentialStore"
+      }
+    }
+  }
+}

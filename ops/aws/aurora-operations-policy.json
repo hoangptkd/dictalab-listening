@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "rds:DescribeDBClusters",
+        "rds:StartDBCluster",
+        "rds:StopDBCluster"
+      ],
+      "Resource": "arn:aws:rds:ap-southeast-1:042407443847:cluster:dictalab-aurora-demo"
+    }
+  ]
+}

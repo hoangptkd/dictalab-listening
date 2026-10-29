@@ -172,9 +172,8 @@ The output contains `dictalab.jar`, `progress.jar`, `ai/app/`, pinned
 `manifest.json`. The manifest
 records the source commit plus every payload's byte length and SHA-256.
 Configuration, provider credentials, SQLite ledgers, model weights and caches
-are excluded. AI still needs its pinned dependencies installed in an isolated
-Linux runtime and its registry directory explicitly set to the extracted
-`artifacts/prompts` directory.
+are excluded. The Linux staging command installs AI's pinned dependencies in a
+separate venv and checks imports using the extracted prompt registry.
 
 Pass the SHA-256 emitted by the build through the established SSH channel for
 verification of the transferred copy:
@@ -185,11 +184,43 @@ python3 scripts/linux/service-bundle.py verify RELEASE.tar.gz --sha256 BUILD_SHA
 
 Verification rejects missing/corrupted files, duplicate paths, links, traversal
 and unexpected payload types. Build skips tests to produce artifacts; the
-existing test/CI gates remain required. AI Platform CI runs the integrity checks
-and builds the bundle from its checked-out commit. This is offline packaging.
-The current `release.py` activates Core only; coordinated installation, isolated
-runtime configuration, state backup and full-service rollback remain deployment
-work. Do not use a Core-only activation as proof all three services were deployed.
+existing test/CI gates remain required. AI Platform CI runs the integrity checks,
+builds the bundle from its checked-out commit and stages it in a disposable
+Linux container. This gives the rehearsal its own root filesystem while keeping
+the installer's production ownership/permission checks intact.
+
+### Stage the Linux runtime
+
+On Linux with root access and Python 3.12 or later, use the independently supplied
+build checksum. Python must support `venv`/`ensurepip`; package installation needs
+access to the configured Python package index.
+
+```text
+sudo python3 scripts/linux/service-bundle.py stage RELEASE.tar.gz --sha256 BUILD_SHA256
+```
+
+This creates `/opt/dictalab/services/releases/<sourceRevision>/`. It rejects
+symlinked, non-root-owned or group/world-writable release ancestors and preserves
+existing release directories. A private copied bundle is verified again before
+extraction. The venv is created at its final path because its scripts contain
+absolute paths. Dependency installation, `pip check`, API/worker imports and both
+conversation prompt loaders must succeed. Runtime subprocesses receive no
+inherited application secrets or Python/pip injection settings. No service is
+started and no database/provider is contacted by the import check.
+
+After payload checks pass again, `stage-ready.json` records the commit and bundle
+checksum. Root-owned directories become 0755 and files 0644, retaining executable
+bits for venv tools. Failed staging stays 0700 without a ready marker for operator
+inspection; an existing failed directory is also never overwritten. Its removal
+or replacement requires a separate operator decision. Staging does not change
+`current`, systemd units/accounts, protected configuration or persistent state.
+It does not establish health, resource capacity or rollback safety.
+
+The existing automated `release.py` flow activates Core only. The manual
+`service-release.py` command below coordinates all four business processes with
+a verified snapshot and optional reviewed application rollback. Actual-host
+activation and workflow acceptance remain deployment gates. Do not use a
+Core-only activation as proof all three services were deployed.
 
 ### Linux process layout
 
@@ -235,13 +266,153 @@ After the main-release, AWS database and capacity gates pass, provisioning must:
    keys are present: `/opt/dictalab/services/current/artifacts/prompts` and
    `/var/lib/dictalab-ai/jobs.sqlite3`. systemd environment files override
    `Environment=` defaults. API and worker must share the same ledger; keep its
-   database/WAL/SHM files together during quiescent backup. `StateDirectory=`
+   committed database and WAL pages together during quiescent backup. The
+   coordinated backup consolidates private copies into a standalone SQLite file
+   and leaves the original DB/WAL/SHM ownership untouched. `StateDirectory=`
    creates the 0700 AI state directory without deleting it on stop.
 6. Install the exact verified units under `/etc/systemd/system/` as root-owned
    0644 files. Run `systemd-analyze verify` against the installed paths after the
    executable paths exist, then `systemctl daemon-reload`. Coordinate activation
    with backup, migrations and health checks; unit installation alone is not
    authorization to cut over reads or claim deployment success.
+
+For the first installation, `service-provision.py` implements the identity,
+filesystem and inactive-unit parts above using an already staged v2 bundle:
+
+```text
+sudo python3 scripts/linux/service-provision.py /path/to/microservices-release.tar.gz --sha256 BUNDLE_SHA256
+```
+
+Keep this script beside `service-bundle.py`. The established Core account/group,
+root:dictalab 0750 `app/` and `tools/`, and the three root-only environment files
+must already exist. The command rechecks the verified bundle against the staged
+manifest/payload and staging marker. Root ownership, writable paths, unsafe venv
+links and unreadable code are rejected before host changes. Runtime config
+contents and database grants still require the service ownership/TLS checks
+above; checking file permissions does not validate credentials or routing.
+
+It creates or validates locked, separate system identities without supplementary
+groups; creates private AI state and root-only service backups; changes only the
+Core parent from 0750 to 0751; and creates the initial `current` link exclusively.
+Existing AI ledger bytes/ownership are preserved. It copies the exact verified
+units, runs `systemd-analyze verify` and `daemon-reload`, and requires the three
+new processes to remain loaded/inactive with zero PIDs. It never starts, enables,
+stops or restarts a service, replaces Core's JAR/config, or initializes/migrates
+databases. The existing Core process can continue using its original JAR.
+
+An existing `current`, installed unit, startup link or unit override is rejected. Subsequent
+upgrades need coordinated activation. Failure after preparation begins can leave
+accounts/files/the initial link in place; it reports no success and never deletes
+those paths to retry. Inspect partial state before proceeding. The acceptance
+result is `initial-filesystem-and-inactive-units-only-not-deployment`. Initialize
+and verify the private databases and AI ledger under their dedicated identities
+before attempting a coordinated backup or activation.
+
+After initial host preparation, initialize a missing AI ledger separately:
+
+```text
+sudo python3 scripts/linux/service-provision.py /path/to/microservices-release.tar.gz --sha256 BUNDLE_SHA256 --initialize-ledger
+```
+
+Keep `cloud-backup.py` beside the provisioning script for its protected config
+parser. This command rechecks the prepared release, locked AI identity, private
+state directory, configured ledger path and exact inactive API/worker units.
+The verified release's Python creates the existing `JobStore` schema as
+`dictalab-ai`, using exclusive file creation and umask 0077. It checks SQLite
+integrity and service ownership/mode 0600 without loading runtime credentials
+or calling a database/provider. Core may remain active. No service is started
+or stopped, and existing PostgreSQL schema/data/configuration stay unchanged.
+
+An existing ledger, orphan WAL/SHM/journal or dangling link is rejected without
+modification. Do not use this command to upgrade or repair an existing ledger;
+back up and inspect that state separately. Failure after exclusive creation can
+leave a partial private file, retained for inspection. The acceptance result is
+`new-private-ledger-only-not-database-or-deployment-acceptance`. Separate
+PostgreSQL owner/runtime/backup grants, schema setup and restore verification
+are still required before activation.
+
+Repeat the isolated identity/filesystem checks with the AI image built by CI:
+
+```text
+docker run --rm --network none --env TEST_SERVICE_PROVISION_DISPOSABLE=1 --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace/scripts/linux dictalab-ai-check python -m unittest -v test_service_provision
+```
+
+These tests create real locked identities and test unprivileged read/write
+access inside the disposable container. Live systemd calls are simulated; the
+separate unit syntax check above uses real `systemd-analyze`. This is not service
+startup, actual-host provisioning, database or VPS capacity acceptance.
+
+### Coordinated activation and application rollback
+
+After the AWS database, restore, main-release and VPS capacity gates pass, use
+the staged bundle with the manual release command. Keep `service-release.py`,
+`service-provision.py`, `service-bundle.py`, `cloud-backup.py` and `release.py`
+together under `scripts/linux/`, with `run-service.py` in its parent `scripts/`
+directory. Run from a protected checkout using Linux root and Python 3.12+.
+
+The private databases, migrations/grants, AI ledger and runtime configuration
+must already be prepared and verified. This command does not bootstrap them or
+roll out configuration changes. It requires the exact candidate units installed
+and loaded without drop-ins or pending daemon reloads. All three databases and
+runtime roles must be distinct, and backup roles must match their runtime targets
+with verified TLS. Internal tokens must agree. AI uses the private registry,
+durable jobs and cloud inference; Core routes text/jobs to AI and publishes
+Progress events while dashboard reads remain `legacy`. Model demo stays disabled.
+
+For the first activation, `current` must already point to the candidate prepared
+by `service-provision.py`; Core must be active and the other processes inactive:
+
+```text
+sudo python3 scripts/linux/service-release.py /path/to/microservices-release.tar.gz --sha256 BUNDLE_SHA256 --initial
+```
+
+For an upgrade, stage a different release and require all four original processes
+active and healthy. Omit `--initial`:
+
+```text
+sudo python3 scripts/linux/service-release.py /path/to/microservices-release.tar.gz --sha256 BUNDLE_SHA256
+```
+
+An exclusive root-only release lock prevents overlapping uses of this command.
+Coordinate separately with the existing Core release flow, operators and backup
+jobs; they do not share this lock. The command stops Core, AI API, AI worker and
+Progress in that order, allowing bounded worker drain. It takes and verifies the
+coordinated snapshot, rechecks immutable payload/configuration, atomically
+replaces `current` and Core's JAR, then starts Progress, worker, API and Core.
+HTTP readiness and a fresh worker heartbeat are required. A root-private,
+fsynced `activation-*/activation.json` receipt records the phase and snapshot.
+Services are not enabled at boot by this command. Remote Progress read cutover
+and learner/payment workflow acceptance remain separate steps.
+
+Before a switch, a failed preparation attempts to resume the original process
+set and verify readiness. After a switch, automatic application rollback requires
+adding `--rollback-compatible` to the command. This flag is an operator assertion
+after reviewing/testing backwards-compatible migrations, contracts and durable
+state; it is not proof of compatibility. The independent existing financial-write
+guard still rejects unsafe or uncertain rollback even with the flag. If rollback
+is permitted, only the old Core JAR and previous release link are restored and
+the original active processes restarted. Databases, SQLite jobs/budgets, media,
+Redis and RabbitMQ retain their current state. Keep the previous release/venv.
+
+Without that review, or if rollback/verification fails, the tool attempts to
+leave the processes stopped and records `forward-repair-required`. Inspect actual
+service state and the protected receipt/snapshot before forward repair. A failed
+stop can leave process state uncertain. An interrupted or incomplete receipt
+blocks subsequent releases; do not delete receipts, restore old data or rerun
+blindly. Resolve the recorded phase and reconcile code/config/state first.
+
+The success result is `process-readiness-only-not-production-workflow-acceptance`.
+Repeat its isolated regression checks with:
+
+```text
+docker run --rm --network none --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace/scripts/linux dictalab-ai-check python -m unittest -v test_service_release
+```
+
+These tests use real staged files, atomic replacements, locks, an HTTP server
+and the isolated financial helper, while systemd and snapshot composition are
+simulated. The separate backup suite below performs real PostgreSQL/SQLite
+restore checks. Neither suite replaces activation, recovery and capacity
+acceptance on the intended host.
 
 The unit limits are 256 MiB each for API/worker and 384 MiB for Progress. They
 are initial measured-process guardrails, not acceptance of the complete 2 GB
@@ -261,15 +432,87 @@ The check uses a temporary filesystem root and stub executable paths with the
 actual unit files. It does not start services or prove production permissions,
 health, graceful drain or reboot recovery. Those still require the real host.
 
+### Coordinated application-state backup
+
+`cloud-backup.py --services` is separate from the existing Core-only backup and
+timer. It requires Linux root, PostgreSQL 18 clients at
+`/usr/lib/postgresql/18/bin/`, the installed four units already inactive with
+zero main PIDs, three initialized private databases, the existing AI job ledger
+and an explicit `current` release symlink. Provision initial databases/ledger and
+units before the first rollout; missing state is rejected rather than interpreted
+as an empty backup. No command in this section stops/starts services or changes
+the release pointer. Keep ingress, batch writers and registry edits quiescent
+throughout the snapshot; systemd checks cannot exclude unrelated writers.
+
+Create `/var/lib/dictalab-service-backups` as root:root 0700. This separate path
+keeps provider credentials and AI state inaccessible to the Core Unix account.
+Protect `/etc/dictalab/{app,ai,progress}.env` and
+`/etc/dictalab/backup.pg_service.conf` as root-owned 0600 files. The latter is a
+libpq service file with exactly `[core]`, `[ai]` and `[progress]`. Each section
+must explicitly contain these eight keys:
+
+```ini
+[core]
+host=DIRECT_DATABASE_HOST
+port=5432
+dbname=CORE_DATABASE_NAME
+user=CORE_BACKUP_ROLE
+password=SET_IN_PROTECTED_FILE_ONLY
+sslmode=verify-full
+sslrootcert=/etc/dictalab/verified-database-ca.pem
+channel_binding=require
+```
+
+Add the `[ai]` and `[progress]` sections with their own database names and backup
+roles. No defaults or implicit credential sources are accepted. Endpoints must
+match the corresponding protected runtime configuration; a proxy/alias change
+needs an explicit configuration review. Backup roles must differ from runtime
+roles and have enough access to dump their database, without cross-service
+permissions. Provision those grants against the selected AWS target before use.
+Install the verified database CA separately; keep TLS and channel binding enabled.
+The backup command supplies each child only its selected libpq service name and
+bounded connection/statement settings, never inherited PG/provider credentials.
+
+```text
+sudo python3 scripts/linux/cloud-backup.py --services
+sudo python3 scripts/linux/cloud-backup.py --verify-services /var/lib/dictalab-service-backups/services-ID --sha256 MANIFEST_SHA256
+```
+
+Retain the emitted manifest checksum independently. The snapshot includes three
+custom PostgreSQL dumps, consolidated SQLite jobs/budgets/reservations/admission
+data, both Core media directories including empty directories, protected runtime
+and backup configs, the Core/Progress JARs, release provenance and installed units.
+Files are root-owned 0600 beneath 0700 directories. Verification rejects checksum,
+membership, permission or link changes and checks PostgreSQL archive structure
+and SQLite integrity. Failed attempts remain private and do not emit success.
+
+Keep the previous immutable release directory and its venv: the snapshot records
+its revision but does not duplicate the AI runtime. Retain live RabbitMQ and
+Redis state during deployment/rollback. They are not captured or rewound here;
+resetting them can lose messages, admissions, sessions or provider quota state.
+PostgreSQL dumps omit ownership/ACL so restore can target a fresh database;
+reapply reviewed owner/runtime grants before reconnecting service processes.
+Keep restored configs root-only and restore the ledger with the dedicated AI
+account's ownership. Do not automatically rewind live databases, reservations
+or queues after new writes. This is an application-state snapshot prerequisite,
+not a complete disaster-recovery or coordinated rollback implementation.
+
+CI restores all three dumps into separate databases in a disposable PostgreSQL
+18 instance with verified TLS/SCRAM channel binding, compares fixture rows, and
+checks WAL-backed jobs/reservations/budgets/admissions. Only systemd states are
+simulated; the PostgreSQL dump/restore and SQLite operations are real. That
+evidence does not replace a restore drill using the actual AWS schema/data,
+least-privilege grants and measured recovery time. No production credentials or
+databases are used in CI.
+
 ## VPS deployment gates
 
-The existing VPS has about 0.89 GiB physical RAM, and current baseline samples
-show little available RAM plus substantial swap use. Complete Linux resource
-measurements before selecting a RAM upgrade. Do not deploy extra services into
-that remaining memory or assume managed databases remove all process overhead.
-The owner selected upgrading the existing VPS to 2 GB on 28 October. This is a
-deployment prerequisite and must be confirmed on the host; it is not evidence
-that a 2 GB VPS has already passed acceptance.
+The old Lightsail VPS has about 0.89 GiB physical RAM. On 28 October, the owner
+authorized a new Singapore EC2 `t3.small` with 2 GiB RAM, Ubuntu 24.04 amd64,
+40 GiB encrypted gp3 storage, public IPv4 and Standard CPU credits. The host
+reports 1,998,573,568 bytes physical RAM and has 1 GiB swap. This verifies the
+infrastructure upgrade; complete workload measurements before accepting all
+three services on it. Managed databases do not remove process overhead.
 
 After capacity is resolved, use the established main-branch release gates.
 Provision separate runtime roles/config files, back up and verify restores,
@@ -279,7 +522,7 @@ recovery, database isolation and rollback on the actual host. Cloud inference
 credentials stay in AI. The fine-tuned model remains local.
 
 The owner is migrating the production database to AWS and will provide the
-updated state. That cutover and the VPS RAM upgrade are not yet verified here.
+updated state. That database cutover is not yet verified here.
 The last direct Neon probe was refused due to account/project quota. Core health
 and Prometheus subsequently returned HTTP 200; production database availability,
 backup and restore still need fresh verification against the selected AWS target.
@@ -303,3 +546,36 @@ Earlier isolated local rehearsal databases using the old V42/V43 numbering are
 not compatible production baselines. Preserve their data and use a fresh isolated
 rehearsal database or an explicitly reviewed migration procedure; do not repair
 checksums or rewrite production Flyway history.
+
+## EC2 host preparation (2026-10-28)
+
+- Instance `i-0445c7aa9180107c6`, Singapore, current public IPv4 `54.254.221.170`.
+  This is an automatically assigned address and can change after stop/start.
+  Both EC2 status checks passed. SSH host identity was matched to the AWS
+  console system-log fingerprint before using strict host-key verification.
+- The security group permits SSH only from the approved management IPv4 /32
+  and public HTTP/HTTPS. IMDSv2 is required; CPU credit mode is Standard.
+  EBS `vol-09fb669c777c39a52` is 40 GiB and encrypted with the AWS EBS key.
+- Reused `scripts/linux/prepare-vps.sh`; installed Java 17, Python 3.12/venv,
+  Redis and rsync. Copied the source's checksum-verified Caddy 2.11.7 to
+  `/usr/local/bin/caddy` with a systemd override, preserving the Ubuntu package
+  binary. The source configuration requires its short-lived ACME support.
+- With both source backends and the demo Redis inactive, captured application
+  code/tools, protected configuration, current local files, service units and
+  the Caddy binary. The 411,642,824-byte archive has SHA-256
+  `0f1179cea23044a2823ed8c45d8c24fc8be898bd1fd22101591ec6c9ab2d5018`.
+  Archive and all 272 regular-file hashes matched after SSH transfer and host
+  restoration. Source historical backups remain on Lightsail.
+- Only the public URL/origin settings in the two environment files and the
+  Caddy hostnames were adapted to the new address. The 269 other payload files
+  were independently reverified. Environment files are root-owned 0600.
+  `systemd-analyze verify` and Caddy configuration validation passed.
+- Protected archives/manifests and `migration-receipt.json` are under
+  `/var/backups/dictalab-ec2-migration-20261028/` on the new host. The source
+  archive is retained at the same protected path on Lightsail.
+- Core, the Aurora demo/private Redis, Caddy and the backup timer on EC2 remain
+  inactive and disabled. No database restore, application activation, DNS or
+  GitHub deployment-target cutover occurred. The live Lightsail broker and
+  training relay remain there; their state was not moved. Aurora network access,
+  fresh database backup/restore, broker state, three-service capacity and the
+  established release gates still apply before application cutover.

@@ -361,3 +361,200 @@ database cutover has been verified by this task.
   parent-directory traversal and activation boundaries are documented in
   `docs/microservices-demo.md`. Actual installation, state backup, coordinated
   rollback, AWS/VPS acceptance and new R13 CPU generation remain incomplete.
+
+## Linux release staging (2026-10-28)
+
+- `service-bundle.py stage` verifies a private copy of the v2 bundle, extracts
+  into a new root-owned release directory and creates AI's venv at its final
+  absolute path. It installs requirements, runs `pip check`, imports API/worker
+  and validates conversation/R13 prompt artifacts with sanitized environment.
+- Release ancestors must be root-owned and protected against group/world writes
+  and symlinks. Existing releases are never overwritten. Failure leaves a private
+  0700 directory without a ready marker; successful payload rechecks publish
+  read-only application files and a commit/checksum-linked staging marker.
+- All 18 bundle/staging tests passed on Linux, including a real empty-dependency
+  venv with networking disabled, transfer mutation, failed runtime checks,
+  altered payload, unsafe ancestors and unchanged current-release pointer.
+  Windows passed 12 portable tests and explicitly skipped 6 Linux-root checks.
+- A real 58-file bundle from main `df881e864150323206d775076e178dc039abfe35`
+  (135,455,792 bytes, SHA-256
+  `a645470705d20be991ec547343d36a4b11a544df3866b7f7c874debf32a7b8d7`)
+  staged in a disposable Python 3.12 Linux container in 32.6 seconds. A separate
+  UID/GID 65534 process imported actual API/worker and loaded both prompt
+  versions; the venv's executable `pip` script passed dependency checks.
+  No current-release pointer or protected application config was created.
+- AI Platform CI repeats privileged filesystem tests and stages its own bundle
+  in a disposable Linux container. The first remote run `40651769992` passed
+  all 18 integrity/staging tests, systemd validation and both JAR builds, then
+  failed actual staging with `ValueError` on the hosted runner. Rehearsal now
+  uses the already-built AI container with its own root filesystem; production
+  directory protections remain intact. Stage progress messages identify the
+  failing gate without exposing command output or credentials. That run also
+  confirmed the separate artifact storage quota still blocks uploads.
+- This is runtime preparation only. No service, schema migration, cloud model
+  request or production deployment ran. Coordinated activation/backups/rollback,
+  verified AWS configuration, actual VPS capacity and fresh R13 CPU generation
+  remain outstanding.
+
+## Coordinated application-state snapshots (2026-10-28)
+
+- Added an explicit `cloud-backup.py --services` mode and checksum-based
+  `--verify-services` command. The existing Core-only mode/timer remains separate.
+  All four installed systemd processes must be inactive with zero PIDs before
+  and after the snapshot. The utility never changes service state or writes to
+  production databases.
+- Three independent libpq backup services use protected configuration, verified
+  TLS/channel binding and distinct backup roles. Targets must match runtime
+  database identities and differ from runtime roles; inherited PG/provider
+  settings are excluded. AI requires private registry ownership and its actual
+  unit ledger path. Configuration/CA ownership and permissions are checked.
+- Snapshots contain Core/AI/Progress dumps, consolidated SQLite jobs/budgets/
+  reservations/admissions, media, protected configs, Core/Progress artifacts,
+  release provenance and installed units. A separate root-only backup directory
+  keeps AI credentials outside Core's filesystem access. Source DB/WAL copies
+  are consolidated privately to avoid creating root-owned SQLite lock files
+  alongside the AI account's original ledger. Original bytes/ownership/modes
+  were verified unchanged.
+- Nine focused checks passed in a network-disabled disposable Linux container.
+  The opt-in test started its own PostgreSQL 18 cluster with TLS/SCRAM channel
+  binding, dumped three independent databases, restored into three different
+  databases and compared fixture rows. SQLite WAL state, failed dumps, resumed
+  writers, wrong targets/roles/ledger paths, permissions, CA writability,
+  symlinks and snapshot corruption/membership checks are covered. No real
+  production data, application credentials or paid providers were used.
+- The broader Linux operations suite passed 56 tests with 2 explicit skips
+  (systemd availability and the separately executed PostgreSQL opt-in test).
+  AI Platform CI now repeats the full TLS restore rehearsal. Windows explicitly
+  skips the 9 Linux-root checks; this is not Windows backup acceptance.
+- Snapshot verification proves archive/SQLite integrity, not production restore
+  acceptance. Previous AI release/venv, Redis and RabbitMQ must remain intact;
+  they are not duplicated or rewound. Ownership/ACL grants must be reapplied to
+  fresh restore targets. AWS schema/data restore, provisioning, coordinated
+  activation/rollback and actual VPS capacity remain required before rollout.
+
+## Initial Linux host preparation (2026-10-28)
+
+- Added `service-provision.py` for a first installation from an already staged
+  v2 bundle. It rechecks archive/payload/marker provenance, root ownership,
+  service readability and isolated venv links before preparing the host.
+- Creates or inspects separate locked system identities, private AI state and
+  root-only service backups. Existing ledger/config/Core artifact bytes remain
+  unchanged. Core's parent gains traversal (0750 to 0751), while `app/`/`tools/`
+  remain root:dictalab 0750. The initial `current` link and units are exclusive;
+  existing releases, installed units and overrides are rejected.
+- Fixed staging's creation of new parent directories under root umask 0077:
+  new code ancestors explicitly receive 0755; existing directory permissions
+  remain unchanged. A Linux staging regression exercises that root umask.
+- Installation invokes unit validation and daemon reload, verifies inactive
+  zero-PID units, and never starts/enables/restarts/stops processes. Partial
+  preparation is retained for inspection rather than automatically deleted.
+- Eleven checks passed in a network-disabled disposable Linux container, with
+  actual locked users/groups and unprivileged filesystem access. Tests cover
+  existing state preservation, tampered payload/marker, unsafe permissions and
+  links, running/overridden units, inherited environment injection, validation
+  failure and unexpected post-reload activation. Live systemd calls are mocked;
+  existing real unit syntax tests remain separate. CI repeats these checks.
+- The combined Linux operations suite passed 68 checks with 2 explicit skips
+  (live systemd availability and the separately executed PostgreSQL opt-in test).
+  Windows explicitly skips the 11 disposable Linux identity tests.
+- This is filesystem/inactive-unit preparation only. Runtime config semantics,
+  initialized private databases/ledger, actual-host install, coordinated
+  activation/rollback, AWS/VPS acceptance and fresh R13 generation remain open.
+
+## Coordinated Linux activation (2026-10-28)
+
+- Added manual `service-release.py` for the four business processes using a
+  verified staged bundle. It checks exact installed/loaded units, pending daemon
+  reloads, isolated service configuration, distinct runtime DBs/roles, protected
+  backup targets, internal tokens and cloud/VPS routing before stopping writers.
+  Shared configuration validation reuses the local launcher without requiring
+  third-party Python packages in the privileged operations runtime.
+- Uses an exclusive release lock and private fsynced phase receipts. Stops Core,
+  API, worker and Progress, verifies the coordinated snapshot, replaces the
+  release link/Core JAR atomically, then starts in reverse order. HTTP readiness
+  and a worker heartbeat beyond the stale window are required. Configuration,
+  unit and payload drift prevent a successful activation.
+- Before-switch failures resume and verify the original process set. After-switch
+  rollback requires explicit operator-reviewed compatibility and the independent
+  financial-write guard. It restores only application artifacts/link; live DBs,
+  SQLite jobs/budgets, media, Redis and RabbitMQ are never rewound. Unsafe,
+  uncertain or failed recovery retains evidence and blocks another release for
+  forward repair. No boot enablement or Progress read cutover is performed.
+- Fifteen focused Linux checks cover upgrades/initial activation, atomic file
+  replacement, preparation recovery, reviewed/unreviewed rollback, financial
+  rejection/unknown outcome, config/unit/payload drift, stale loaded units,
+  unfinished receipts, concurrent locks, real HTTP redirects/worker heartbeat
+  and the isolated financial helper. Systemd and release snapshot composition
+  are simulated; real PostgreSQL dump/restore remains in the backup suite.
+- The combined Linux suite passed 83 checks with 2 explicit skips (live systemd
+  availability and the PostgreSQL opt-in check). All 9 backup checks passed
+  separately with real TLS/SCRAM PostgreSQL dump/restore. The 29 Windows launcher
+  regressions, Python compilation, UTF-8 and diff checks passed.
+- The manual command is documented in `docs/microservices-demo.md`; CI repeats
+  its checks. Existing automated deployment remains Core-only and paused.
+  Initialized private DBs/ledger, actual-host activation/recovery, AWS restore,
+  VPS RAM/capacity, complete application acceptance and fresh R13 CPU quality
+  evidence are still required. Process readiness alone does not complete the
+  migration or establish safe production rollback.
+
+## Initial private AI ledger (2026-10-28)
+
+- Added the separate `service-provision.py --initialize-ledger` step after host
+  preparation. It verifies the staged/current release, protected AI config,
+  locked identity, private state directory and exact inactive API/worker units.
+- Uses the staged Python/`JobStore` under the real AI identity, with an isolated
+  environment, exclusive file creation, private permissions and integrity check.
+  Runtime credentials are not loaded; PostgreSQL, broker and cloud calls are
+  unnecessary. Existing ledger bytes/sidecars/links are never overwritten.
+  Partial initialization is retained and rejected on retry for inspection.
+- Five added Linux checks exercise the actual unprivileged application schema,
+  ownership/modes, integrity, repeated invocation, sidecar links, incorrect
+  config/state permissions, active units, partial failure and concurrent creation.
+  Systemd remains simulated. CI's existing provisioning step runs these checks.
+- All 88 Linux operations checks passed with 2 explicit skips (live systemd
+  availability and the separately exercised PostgreSQL opt-in restore check).
+  Python compilation, UTF-8 and diff checks passed.
+- Database schema/grants and actual-host rehearsal remain separate requirements.
+  Production stays paused pending AWS and confirmed VPS capacity. The local
+  machine still has about 10.2 GiB free, below the 20 GiB CPU model gate.
+
+## Private registry privilege gate (2026-10-28)
+
+- Strengthened the existing AI runtime verifier instead of adding a second
+  database bootstrap path. The operator CLI already owns schema initialization
+  and registry copy; production database creation/grants remain explicit.
+- A read-only connection is insufficient to prove that its credential cannot
+  reconnect read-write. The verifier now rejects database CREATE/ownership,
+  application-schema CREATE/ownership (including PUBLIC grants), registry
+  table ownership, column-level writes/references, TRIGGER and SELECT grant
+  options at table/column level. Existing elevated-role and membership checks
+  remain. Runtime failures stay redacted and never use environment fallback.
+- The real disposable PostgreSQL 17 and 18 registry smoke passed nine added privilege
+  scenarios, each rejected while unsafe and accepted again after revocation.
+  Copy/restore/parity and existing runtime isolation checks still passed; 21
+  focused Python operator/registry tests passed. No production grants changed.
+  The existing protected local AI runtime also passed the new verifier using
+  its current credentials. UTF-8, compilation and diff checks passed.
+- A fresh read-only SSH RAM check still found 953,704,448 bytes total on the VPS,
+  with 510,820,352 bytes available and 204,095,488 bytes swap used. The 2 GB upgrade
+  remains unverified; no extra services were installed or started there.
+
+## EC2 2 GiB infrastructure upgrade (2026-10-28)
+
+- After action-time approval, created Singapore EC2 `i-0445c7aa9180107c6`
+  (`t3.small`, Ubuntu 24.04 amd64) with encrypted 40 GiB gp3, required IMDSv2,
+  Standard CPU credits, management-IP-only SSH and public HTTP/HTTPS.
+- Both EC2 status checks passed. Strict SSH connected after matching the host
+  fingerprint to AWS system logs. The guest reports 1,998,573,568 physical RAM
+  bytes and a 42,949,672,960-byte disk; configured 1 GiB swap.
+- Reused the Linux runtime preparation script and copied a protected,
+  checksum-verified source snapshot with 272 regular files. All source payload
+  hashes matched before updating the new host's public URL/origin settings and
+  Caddy hostnames. Independently reverified the other 269 files. Environment
+  files retain root ownership and 0600 permissions; systemd and Caddy validation
+  passed. Details and protected receipt locations are in the demo runbook.
+- This completes host provisioning and application-file preparation. Production
+  and the Aurora demo remain inactive on EC2 pending the existing database and
+  release gates. No database restore, DNS/deployment-target cutover or complete
+  three-service workload acceptance occurred. Lightsail, its historical backups,
+  broker and training relay are retained. The fine-tuned model remains local.

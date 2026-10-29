@@ -12,8 +12,6 @@ import tempfile
 import time
 import urllib.request
 
-from dotenv import dotenv_values
-
 ROOT = Path(__file__).resolve().parents[1]
 # Preserve platform/runtime discovery, never inherited application secrets or JVM injection flags.
 SYSTEM_ENV = frozenset(('PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'TEMP', 'TMP',
@@ -22,13 +20,10 @@ SYSTEM_ENV = frozenset(('PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'T
 CORE_PROVIDER_SECRETS = frozenset(('AI_PROVIDER_DATABASE_URL', 'AI_PROVIDER_CONTAINER_DATABASE_URL',
     'AI_PROVIDER_ENCRYPTION_KEY', 'GEMINI_API_KEY', 'GEMINI_PROVIDERS_JSON', 'CARTESIA_API_KEY',
     'DEEPSEEK_API_KEY', 'OPENAI_API_KEY', 'DICTALAB_AI_MODEL_SERVING_TOKEN', 'DICTALAB_MODEL_SERVICE_TOKEN'))
+AWS_PROFILE_SETTINGS = frozenset(('AWS_PROFILE', 'AWS_SHARED_CREDENTIALS_FILE', 'AWS_REGION'))
 
 
-def child_environment(component, path, inherited=None):
-    if not path.is_file():
-        raise ValueError('Explicit runtime configuration file is missing')
-    # interpolate=False prevents ${...} from silently importing credentials from the parent.
-    config = dict(dotenv_values(path, interpolate=False))
+def validate_config(component, config):
     for key, value in config.items():
         if value is None or '\n' in value or '\r' in value or '${' in value:
             raise ValueError('Runtime configuration requires literal single-line values')
@@ -42,10 +37,10 @@ def child_environment(component, path, inherited=None):
                     or upper.startswith('AI_PROVIDER_') and (upper != 'AI_PROVIDER_CONFIG_SOURCE' or value != 'env')):
                 raise ValueError('Core runtime must not receive provider or management credentials')
         elif component in ('ai', 'worker'):
-            if not upper.startswith(('DICTALAB_AI_', 'AI_PROVIDER_', 'GEMINI_')) and upper != 'DICTALAB_OPERATIONAL_LIMITS_ENABLED':
+            if not upper.startswith(('DICTALAB_AI_', 'AI_PROVIDER_', 'GEMINI_')) and upper not in AWS_PROFILE_SETTINGS | {'DICTALAB_OPERATIONAL_LIMITS_ENABLED'}:
                 raise ValueError('AI runtime configuration contains another service setting')
         elif component == 'progress':
-            if not upper.startswith(('PROGRESS_', 'RABBITMQ_')):
+            if not upper.startswith(('PROGRESS_', 'RABBITMQ_')) and upper not in AWS_PROFILE_SETTINGS | {'AURORA_DB_HOST', 'SPRING_PROFILES_ACTIVE'}:
                 raise ValueError('Progress runtime configuration contains another service setting')
         elif component == 'model':
             if not upper.startswith('DICTALAB_MODEL_'):
@@ -57,6 +52,15 @@ def child_environment(component, path, inherited=None):
             raise ValueError('Isolated AI runtime requires the private registry')
         jobs = Path(config.get('DICTALAB_AI_JOBS_DATABASE', 'data/ai-jobs.sqlite3'))
         config['DICTALAB_AI_JOBS_DATABASE'] = str(jobs if jobs.is_absolute() else ROOT / jobs)
+    return config
+
+
+def child_environment(component, path, inherited=None):
+    from dotenv import dotenv_values
+    if not path.is_file():
+        raise ValueError('Explicit runtime configuration file is missing')
+    # interpolate=False prevents ${...} from silently importing credentials from the parent.
+    config = validate_config(component, dict(dotenv_values(path, interpolate=False)))
     inherited = os.environ if inherited is None else inherited
     result = {key: value for key, value in inherited.items() if key.upper() in SYSTEM_ENV}
     return result | config | {'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8'}

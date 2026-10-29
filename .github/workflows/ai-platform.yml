@@ -31,7 +31,22 @@ on:
       - 'scripts/run-service.py'
       - 'scripts/linux/service-bundle.py'
       - 'scripts/linux/test_service_bundle.py'
+      - 'scripts/linux/service-provision.py'
+      - 'scripts/linux/test_service_provision.py'
+      - 'scripts/linux/service-release.py'
+      - 'scripts/linux/test_service_release.py'
+      - 'scripts/linux/service-lifecycle.py'
+      - 'scripts/linux/test_service_lifecycle.py'
+      - 'scripts/linux/dictalab-production.service'
+      - 'scripts/linux/dictalab-maintenance.caddy'
+      - 'scripts/ec2-services.ps1'
+      - 'scripts/cloudflare/**'
+      - 'scripts/linux/release.py'
       - 'scripts/linux/test_service_units.py'
+      - 'scripts/linux/cloud-backup.py'
+      - 'scripts/linux/test_cloud_backup.py'
+      - 'scripts/linux/test_aws_database_access.py'
+      - 'ops/aws/**'
       - 'scripts/linux/dictalab-ai*.service'
       - 'scripts/linux/dictalab-progress.service'
       - '.env*.example'
@@ -76,11 +91,17 @@ jobs:
       - name: Java routing and contract tests
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
-        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,ModelDemoIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,AiProviderRegistryTest,ListeningComprehensionIntegrationTest test
+        run: mvn --batch-mode --no-transfer-progress -Dtest=AuroraSchemaValidationTest,ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,ModelDemoIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,AiProviderRegistryTest,ListeningComprehensionIntegrationTest test
       - name: Java to Python to fake Ollama smoke
         run: python tools/ai-eval/smoke.py
       - name: Private registry migration, backup restore and database isolation
         run: python tools/ai-eval/registry_smoke.py
+      - name: Aurora IAM policies and PostgreSQL 17 privilege boundaries
+        env:
+          TEST_AWS_DATABASE_BOOTSTRAP: '1'
+        run: python -m unittest discover -s scripts/linux -p test_aws_database_access.py -v
+      - name: Cloudflare proxy forwarding contracts
+        run: node scripts/cloudflare/check-worker.mjs
       - name: Java API RabbitMQ worker smoke, local/cloud routing and capacity sweep
         env:
           AI_TEST_RABBITMQ_URL: amqp://guest:guest@127.0.0.1:5672/%2F
@@ -104,10 +125,24 @@ jobs:
           git diff --check
       - name: Verify coordinated service release packaging
         run: |
-          python -m unittest discover -s scripts/linux -p test_service_bundle.py
+          sudo "$(command -v python)" -m unittest discover -s scripts/linux -p test_service_bundle.py
           command -v systemd-analyze
           python -m unittest discover -s scripts/linux -p test_service_units.py
           python scripts/linux/service-bundle.py build --revision "$GITHUB_SHA" --output target/microservices-release.tar.gz
+          bundle_sha256=$(sha256sum target/microservices-release.tar.gz | cut -d ' ' -f 1)
+          docker run --rm --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace dictalab-ai-check python scripts/linux/service-bundle.py stage target/microservices-release.tar.gz --sha256 "$bundle_sha256"
+      - name: Verify initial host identities and inactive installation
+        run: docker run --rm --network none --env TEST_SERVICE_PROVISION_DISPOSABLE=1 --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace/scripts/linux dictalab-ai-check python -m unittest -v test_service_provision
+      - name: Verify coordinated activation and application rollback
+        run: docker run --rm --network none --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace/scripts/linux dictalab-ai-check python -m unittest -v test_service_release test_service_lifecycle
+      - name: Verify coordinated backup and disposable restores
+        run: |
+          docker build --tag dictalab-backup-check - <<'DOCKERFILE'
+          FROM postgres:18-alpine
+          RUN apk add --no-cache python3 openssl
+          WORKDIR /checks
+          DOCKERFILE
+          docker run --rm --network none --env TEST_SERVICE_BACKUP_POSTGRES=1 --mount "type=bind,source=$PWD/scripts/linux,target=/checks,readonly" dictalab-backup-check python3 -m unittest -v test_cloud_backup
       - name: Local dotenv quoting contract
         shell: pwsh
         run: |

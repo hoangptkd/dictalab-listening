@@ -35,13 +35,22 @@ def verify_private(db, *, runtime=False):
         raise ValueError("private registry migration checksum mismatch")
     if runtime:
         if db.execute("""SELECT EXISTS(SELECT 1 FROM pg_roles parent WHERE parent.rolname<>current_user
+                AND parent.rolname<>'rds_iam'
                 AND pg_has_role(current_user,parent.oid,'MEMBER')) AS allowed""").fetchone()["allowed"]:
-            # NOINHERIT still permits SET ROLE; runtime credentials must have no alternate role.
+            # rds_iam enables authentication only; all data/owner role memberships remain forbidden.
             raise ValueError("private registry runtime role must not have role memberships")
         writable = db.execute("""SELECT
-            has_table_privilege(current_user,'ai_provider_pools','INSERT,UPDATE,DELETE,TRUNCATE') OR
-            has_table_privilege(current_user,'ai_provider_accounts','INSERT,UPDATE,DELETE,TRUNCATE') OR
-            has_table_privilege(current_user,'ai_registry_schema','INSERT,UPDATE,DELETE,TRUNCATE') AS allowed""").fetchone()
+            has_database_privilege(current_user,current_database(),'CREATE') OR
+            EXISTS(SELECT 1 FROM pg_database WHERE datname=current_database()
+                AND datdba=(SELECT oid FROM pg_roles WHERE rolname=current_user)) OR
+            EXISTS(SELECT 1 FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname<>'information_schema'
+                AND (has_schema_privilege(current_user,oid,'CREATE')
+                    OR nspowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))) OR
+            EXISTS(SELECT 1 FROM pg_class WHERE oid IN (
+                'public.ai_provider_pools'::regclass,'public.ai_provider_accounts'::regclass,'public.ai_registry_schema'::regclass)
+                AND (has_table_privilege(current_user,oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,SELECT WITH GRANT OPTION')
+                    OR has_any_column_privilege(current_user,oid,'INSERT,UPDATE,REFERENCES,SELECT WITH GRANT OPTION')
+                    OR relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))) AS allowed""").fetchone()
         if writable["allowed"]:
             raise ValueError("private registry runtime role must be read-only")
 

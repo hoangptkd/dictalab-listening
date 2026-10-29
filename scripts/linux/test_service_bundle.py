@@ -2,11 +2,16 @@
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import shutil
+import stat
+import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 spec = importlib.util.spec_from_file_location('service_bundle', Path(__file__).with_name('service-bundle.py'))
@@ -181,6 +186,153 @@ class ServiceBundleTest(unittest.TestCase):
         self.mutate(change)
         with self.assertRaisesRegex(ValueError, 'Missing release payload'):
             bundle.verify_bundle(self.output, bundle.digest(self.output))
+
+
+    def test_runtime_check_does_not_inherit_secrets_or_injection_settings(self):
+        with patch.dict(os.environ, {'AI_PROVIDER_DATABASE_URL': 'private', 'GEMINI_API_KEY': 'private',
+                                     'PYTHONPATH': 'injected', 'PIP_INDEX_URL': 'private'}), \
+                patch.object(bundle.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as run:
+            bundle.runtime_check(self.root)
+        self.assertEqual(4, run.call_count)
+        for call in run.call_args_list:
+            env = call.kwargs['env']
+            self.assertEqual({'PATH', 'HOME', 'LANG', 'DICTALAB_AI_REGISTRY_DIR'}, set(env))
+            self.assertIn('-I', call.args[0])
+            self.assertEqual(self.root / 'ai', call.kwargs['cwd'])
+
+
+@unittest.skipUnless(sys.platform == 'linux' and hasattr(os, 'geteuid') and os.geteuid() == 0,
+                     'Staging filesystem checks require Linux root')
+class ServiceStageTest(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(dir='/root', prefix='service-stage-test-')
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        # Reuse the archive fixture; its own temporary directory is cleaned independently.
+        fixture = ServiceBundleTest()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        self.fixture = fixture
+        fixture.create()
+        self.releases = self.root / 'services/releases'
+        releases = patch.object(bundle, 'RELEASES', self.releases)
+        releases.start()
+        self.addCleanup(releases.stop)
+
+    def stage(self):
+        return bundle.stage(self.fixture.output, bundle.digest(self.fixture.output))
+
+    def test_success_checks_runtime_before_publishing_and_preserves_current(self):
+        current = self.root / 'services/current'
+        current.parent.mkdir()
+        current.symlink_to('previous-release')
+        release = self.releases / self.fixture.revision
+        def runtime(path):
+            self.assertEqual(0o700, stat.S_IMODE(path.stat().st_mode))
+            self.assertFalse((path / 'stage-ready.json').exists())
+            executable = path / 'venv/bin/python'
+            executable.parent.mkdir(parents=True)
+            executable.write_text('#!/bin/sh\n', encoding='utf-8')
+            executable.chmod(0o700)
+        with patch.object(bundle, 'runtime_check', side_effect=runtime) as check:
+            result = self.stage()
+        check.assert_called_once_with(release)
+        self.assertEqual('staged_runtime_only_not_deployment', result['acceptance'])
+        self.assertEqual(result, json.loads((release / 'stage-ready.json').read_text()))
+        self.assertEqual(Path('previous-release'), current.readlink())
+        for path, mode in ((release, 0o755), (release / 'ai/app', 0o755),
+                           (release / 'ai/app/main.py', 0o644), (release / 'venv/bin/python', 0o755)):
+            self.assertEqual(mode, stat.S_IMODE(path.stat().st_mode))
+            self.assertEqual(0, path.stat().st_uid)
+        with patch.object(bundle, 'runtime_check') as check, self.assertRaises(FileExistsError):
+            self.stage()
+        check.assert_not_called()
+        self.assertEqual(result, json.loads((release / 'stage-ready.json').read_text()))
+
+    def test_corruption_is_rejected_before_creating_release_directories(self):
+        checksum = bundle.digest(self.fixture.output)
+        with self.fixture.output.open('ab') as output:
+            output.write(b'changed')
+        with self.assertRaisesRegex(ValueError, 'Bundle checksum'):
+            bundle.stage(self.fixture.output, checksum)
+        self.assertFalse(self.releases.exists())
+
+    def test_private_root_umask_preserves_existing_permissions_and_new_traversal(self):
+        previous = os.umask(0o077)
+        before = stat.S_IMODE(self.root.stat().st_mode)
+        try:
+            with patch.object(bundle, 'runtime_check'):
+                self.stage()
+        finally:
+            os.umask(previous)
+        self.assertEqual(before, stat.S_IMODE(self.root.stat().st_mode))
+        for path in (self.releases.parent, self.releases, self.releases / self.fixture.revision):
+            self.assertEqual(0o755, stat.S_IMODE(path.stat().st_mode))
+
+    def test_source_changed_during_transfer_is_rejected_before_extraction(self):
+        original = bundle.verify_bundle
+        def change_after_first_check(path, expected):
+            result = original(path, expected)
+            if path == self.fixture.output:
+                with path.open('ab') as output:
+                    output.write(b'changed')
+            return result
+        with patch.object(bundle, 'verify_bundle', side_effect=change_after_first_check), \
+                self.assertRaisesRegex(ValueError, 'Bundle checksum'):
+            self.stage()
+        self.assertEqual([], list(self.releases.iterdir()))
+
+    def test_unsafe_release_ancestors_are_rejected(self):
+        for kind in ('symlink', 'writable'):
+            with self.subTest(kind=kind):
+                parent = self.root / kind
+                if kind == 'symlink':
+                    parent.symlink_to(self.root, target_is_directory=True)
+                else:
+                    parent.mkdir(mode=0o777)
+                    parent.chmod(0o777)
+                with patch.object(bundle, 'RELEASES', parent / 'releases'), \
+                        self.assertRaisesRegex(ValueError, 'root-owned directories'):
+                    self.stage()
+        self.assertFalse((self.root / 'releases').exists())
+
+    def test_runtime_failure_and_payload_changes_leave_private_unready_release(self):
+        for kind in ('runtime', 'payload'):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory(dir=self.root) as directory:
+                releases = Path(directory) / 'releases'
+                def fail_or_tamper(release):
+                    if kind == 'runtime':
+                        raise RuntimeError('fixture pip/import failure')
+                    (release / 'ai/app/main.py').write_bytes(b'changed')
+                with patch.object(bundle, 'RELEASES', releases), \
+                        patch.object(bundle, 'runtime_check', side_effect=fail_or_tamper), \
+                        self.assertRaises((ValueError, RuntimeError)):
+                    self.stage()
+                release = releases / self.fixture.revision
+                self.assertEqual(0o700, stat.S_IMODE(release.stat().st_mode))
+                self.assertFalse((release / 'stage-ready.json').exists())
+
+    def test_real_venv_installation_and_import_without_network(self):
+        self.fixture.output.unlink()
+        source = self.fixture.source / 'services/ai-generation'
+        (source / 'requirements.lock').write_text('', encoding='utf-8')
+        files = {
+            'main.py': 'import os; assert set(os.environ) <= '
+                       '{"PATH", "HOME", "LANG", "DICTALAB_AI_REGISTRY_DIR", "LC_CTYPE"}\napp = object()\n',
+            'config.py': 'class Settings: pass\n',
+            'registry.py': 'def load_artifact(settings): return {}\n',
+            'conversation_demo.py': 'def artifact(settings): return {}\n',
+            'registry_migration.py': 'def schema_checksum(): return "fixture"\n',
+        }
+        for name, content in files.items():
+            (source / 'app' / name).write_text(content, encoding='utf-8')
+        self.fixture.create()
+        self.stage()
+        release = self.releases / self.fixture.revision
+        self.assertTrue((release / 'stage-ready.json').is_file())
+        result = subprocess.run([str(release / 'venv/bin/python'), '-I', '-c',
+                                 'import sys; print(sys.prefix)'], capture_output=True, text=True, check=True)
+        self.assertEqual(str(release / 'venv'), result.stdout.strip())
 
 
 if __name__ == '__main__':

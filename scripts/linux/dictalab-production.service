@@ -1,0 +1,13 @@
+[Unit]
+Description=DictaLab production startup with persistent maintenance state
+Wants=network-online.target caddy.service
+After=network-online.target caddy.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dictalab-services boot
+TimeoutStartSec=1500
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
