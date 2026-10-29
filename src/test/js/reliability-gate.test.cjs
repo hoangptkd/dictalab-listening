@@ -82,12 +82,19 @@ test('CI runs shared checks once and PostgreSQL suites independently before depl
     assert.ok(build.indexOf('Save dependency scan evidence') > build.indexOf('Verify S3 production packaging'),
         'An artifact quota failure must not prevent tests and package verification from running');
     for (const command of ['node --test src/test/js/*.cjs', 'node scripts/test-b1-expansion.cjs',
-        'python3 -m unittest discover', 'python3 scripts/scan-dependencies.py',
+        "python3 -m unittest discover -s scripts/linux -p 'test_*.py'", 'python3 scripts/scan-dependencies.py',
         '-Pproduction-s3,ci-unit clean verify', 'python3 scripts/verify-production-jar.py']) {
         assert.ok(build.includes(command), `Missing shared check: ${command}`);
-        assert.equal(workflow.split(command).length - 1, command.includes('verify-production-jar') ? 2 : 1);
+        assert.equal(workflow.split(command).length - 1, 1);
     }
-    assert.match(build, /name: application\r?\n\s+retention-days: 14\r?\n\s+path: target\/english-dictation-0\.1\.0-SNAPSHOT\.jar/);
+    assert.match(build, /name: application\r?\n\s+retention-days: 14\r?\n\s+path: target\/services\.tar\.gz/);
+    assert.ok(build.includes('service-bundle.py build --revision "$GITHUB_SHA"'));
+    assert.ok(build.includes('TEST_CORE_SCHEMA_JAR: target/english-dictation-0.1.0-SNAPSHOT.jar'));
+    assert.ok(deploy.includes("vars.PRODUCTION_DEPLOY_TARGET == 'ec2-services'"));
+    assert.ok(deploy.includes('test "$VPS_HOST" = 54.254.221.170'));
+    assert.ok(deploy.includes('--postgres-major 17 --migrate-core --rollback-compatible'));
+    assert.ok(deploy.includes('/usr/local/sbin/dictalab-services start'));
+    assert.doesNotMatch(deploy, /sudo -n python3 .*\/release\.py/);
     for (const section of [postgres, reliability]) {
         assert.match(section, /fail-fast: false/, 'One failed PostgreSQL variant must not cancel the other variant');
         assert.ok(section.includes(`postgres: \${{ fromJSON((github.event_name == 'schedule' || inputs.full_compatibility) && '["17.11-alpine","18.4-alpine"]' || '["18.4-alpine"]') }}`));

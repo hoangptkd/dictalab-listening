@@ -142,6 +142,38 @@ class ServiceReleaseTest(unittest.TestCase):
         self.assertEqual(list(release.STOP_ORDER), [c[2] for c in self.calls if c[:2] == ['systemctl', 'stop']])
         self.assertEqual(list(release.START_ORDER), [c[2] for c in self.calls if c[:2] == ['systemctl', 'start']])
 
+    def test_owner_migration_runs_after_snapshot_before_switch_and_preserves_remote_reads(self):
+        self.configs['core']['DICTALAB_PROGRESS_READ_MODE'] = 'remote'
+        def migrate(jar, evidence):
+            self.assertTrue(release.MAINTENANCE.exists())
+            self.assertEqual({'inactive'}, set(self.state.values()))
+            self.assertTrue((self.saved / 'dictalab.jar').exists())
+            self.assertEqual(self.previous, release.backup.CURRENT.resolve())
+            self.assertEqual(self.candidate / 'dictalab.jar', jar)
+            return {'coreSchema': 'migrated-and-granted'}
+        real_module = release.module
+        from types import SimpleNamespace
+        with patch.object(release, 'MAINTENANCE', self.root / 'maintenance'), \
+                patch.object(release, 'module', side_effect=lambda name, path:
+                SimpleNamespace(migrate=migrate) if name == 'service_release_schema' else real_module(name, path)):
+            self.activate(rollback_compatible=True, migrate_core=True, maintenance=True)
+            self.assertTrue(release.MAINTENANCE.exists())
+        self.assertEqual('complete', self.record()['phase'])
+        self.assertEqual({'coreSchema': 'migrated-and-granted'}, self.record()['schema'])
+
+    def test_owner_migration_requires_review_and_failure_resumes_baseline_without_switch(self):
+        with self.assertRaisesRegex(ValueError, 'reviewed compatible'):
+            self.activate(migrate_core=True)
+        from types import SimpleNamespace
+        def fail(*args):
+            raise RuntimeError('owner migration failed')
+        with patch.object(release, 'module', return_value=SimpleNamespace(migrate=fail)), \
+                self.assertRaisesRegex(RuntimeError, 'Preparation rejected'):
+            self.activate(migrate_core=True, rollback_compatible=True)
+        self.assertEqual('recovered-before-switch', self.record()['phase'])
+        self.assertEqual(self.previous, release.backup.CURRENT.resolve())
+        self.assertEqual({'active'}, set(self.state.values()))
+
     def test_initial_failure_with_review_resumes_only_original_core(self):
         release.backup.CURRENT.unlink()
         release.backup.CURRENT.symlink_to(self.candidate)
@@ -292,7 +324,7 @@ class ServiceReleaseTest(unittest.TestCase):
     def test_checksum_routing_and_unit_drift_rejected_before_stopping(self):
         with self.assertRaises(ValueError):
             release.activate(self.fixture.output, '0' * 64)
-        self.configs['core']['DICTALAB_PROGRESS_READ_MODE'] = 'remote'
+        self.configs['core']['DICTALAB_PROGRESS_READ_MODE'] = 'unsupported'
         with self.assertRaises(ValueError):
             self.activate()
         self.configs['core'].pop('DICTALAB_PROGRESS_READ_MODE')

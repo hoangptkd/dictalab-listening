@@ -19,3 +19,6 @@ spring:
         socketTimeout: 65
         tcpKeepAlive: true
         ApplicationName: dictalab-core
+dictalab:
+  vocabulary:
+    enabled: ${DICTALAB_VOCABULARY_ENABLED:true}

@@ -156,7 +156,10 @@ class VocabularyIntegrationTest {
         db.update("UPDATE vocab_study_sessions SET created_at=? WHERE id=?",java.sql.Timestamp.from(Instant.now().minusSeconds(172800)),session.id());
         assertThat(contexts.select(user,deck,1).get(0).targets().stream().map(t->t.get("noteId"))).containsExactlyInAnyOrderElementsOf(targets.stream().map(t->t.get("noteId")).toList());
     }
-    long oldWord(long user,long lesson,String text) {
+    long oldWord(long user,String text) {
+        String slug=key();
+        db.update("INSERT INTO lessons(slug,title,description,level,topic,estimated_minutes,display_order,active) VALUES (?,'Vocabulary source','Vocabulary source','A1','test',1,1,TRUE)",slug);
+        long lesson=db.queryForObject("SELECT id FROM lessons WHERE slug=?",Long.class,slug);
         String session=key();
         db.update("INSERT INTO practice_sessions(id,learner_id,user_id,lesson_id,status,started_at,completed_at) VALUES (?,'vocab-test',?,?,'COMPLETED',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",session,user,lesson);
         db.update("INSERT INTO lesson_sentences(lesson_id,position_index,transcript) VALUES (?,?,?)",lesson,10000+(int)user,text);
@@ -168,7 +171,7 @@ class VocabularyIntegrationTest {
     }
     @Test void oldLessonsKeepIndependentEvidenceAndCombineCompatibleSenses() {
         long user=user(); String one=deck(user),two=deck(user);
-        long borrow=oldWord(user,1,"borrow"),umbrella=oldWord(user,2,"umbrella");
+        long borrow=oldWord(user,"borrow"),umbrella=oldWord(user,"umbrella");
         var borrowEdit=edit("borrow","mượn",false);
         var saved=sources.save(user,key(),one,new SourceNote(borrow,null,borrowEdit));
         sources.save(user,key(),two,new SourceNote(borrow,null,borrowEdit));
@@ -176,7 +179,7 @@ class VocabularyIntegrationTest {
         assertThat(db.queryForObject("SELECT COUNT(*) FROM vocab_deck_notes WHERE deck_id=? AND note_id=?",Integer.class,two,saved.get("id"))).isEqualTo(1);
         long other=user(); String otherDeck=deck(other);
         assertThatThrownBy(()->sources.save(other,key(),otherDeck,new SourceNote(borrow,null,borrowEdit))).isInstanceOf(com.dictalab.exception.ResourceNotFoundException.class);
-        long repeatedBorrow=oldWord(user,3,"borrow");
+        long repeatedBorrow=oldWord(user,"borrow");
         assertThat(sources.save(user,key(),one,new SourceNote(repeatedBorrow,null,borrowEdit)).get("id")).isEqualTo(saved.get("id"));
         assertThat(sources.suggestions(user,1).items()).allMatch(row->row.get("evidence").equals("LISTENING_MISS"));
         db.update("UPDATE word_attempts SET learner_reported_error_type='UNKNOWN' WHERE id=?",borrow);

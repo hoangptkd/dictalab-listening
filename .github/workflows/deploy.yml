@@ -62,6 +62,11 @@ jobs:
       - name: Verify S3 production packaging and published lesson pages
         run: python3 scripts/verify-production-jar.py target/english-dictation-0.1.0-SNAPSHOT.jar
 
+      - name: Rehearse owner migration and runtime grants on isolated PostgreSQL 17
+        env:
+          TEST_CORE_SCHEMA_JAR: target/english-dictation-0.1.0-SNAPSHOT.jar
+        run: python3 -m unittest discover -s scripts/linux -p test_service_schema.py -v
+
       - name: Resolve and scan runtime dependencies
         run: |
           mvn --batch-mode --no-transfer-progress dependency:list -DincludeScope=runtime -DoutputFile=target/runtime-dependencies.txt
@@ -85,13 +90,17 @@ jobs:
           retention-days: 7
           path: target/surefire-reports/
 
+      - name: Build and verify the immutable three-service bundle
+        if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main'
+        run: python3 scripts/linux/service-bundle.py build --revision "$GITHUB_SHA" --output target/services.tar.gz
+
       - name: Save verified application
         if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: application
           retention-days: 14
-          path: target/english-dictation-0.1.0-SNAPSHOT.jar
+          path: target/services.tar.gz
           if-no-files-found: error
 
   postgres-tests:
@@ -184,7 +193,7 @@ jobs:
 
   deploy:
     needs: [test-build, postgres-tests, reliability, ai-platform, progress]
-    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main' && vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main' && vars.PRODUCTION_DEPLOY_ENABLED == 'true' && vars.PRODUCTION_DEPLOY_TARGET == 'ec2-services'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -197,17 +206,12 @@ jobs:
           name: application
           path: target
 
-      - name: Select deployment artifact
+      - name: Verify deployment bundle
         shell: bash
         run: |
           set -euo pipefail
-          jar_path="$(find target -maxdepth 1 -type f -name '*.jar' \
-            ! -name '*.original' ! -name '*-sources.jar' ! -name '*-javadoc.jar' \
-            -print -quit)"
-          test -n "$jar_path"
-          cp "$jar_path" dictalab-new.jar
-          sha256sum dictalab-new.jar
-          python3 scripts/verify-production-jar.py dictalab-new.jar
+          bundle_sha256="$(sha256sum target/services.tar.gz | awk '{print $1}')"
+          python3 scripts/linux/service-bundle.py verify target/services.tar.gz --sha256 "$bundle_sha256"
 
       - name: Configure SSH authentication
         shell: bash
@@ -223,7 +227,7 @@ jobs:
           printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/ssh/known_hosts"
           chmod 600 "$RUNNER_TEMP/ssh/deploy_key" "$RUNNER_TEMP/ssh/known_hosts"
 
-      - name: Upload release to VPS
+      - name: Upload release to EC2
         shell: bash
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -232,35 +236,51 @@ jobs:
           set -euo pipefail
           test -n "$VPS_HOST"
           test -n "$VPS_USER"
+          test "$VPS_HOST" = 54.254.221.170
           ssh_options=(
             -i "$RUNNER_TEMP/ssh/deploy_key"
             -o BatchMode=yes
             -o ConnectTimeout=15
             -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
             -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts"
           )
           stage="/home/ubuntu/dictalab-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           test "$VPS_USER" = ubuntu
           ssh "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" "install -d -m 700 '$stage'"
-          scp "${ssh_options[@]}" dictalab-new.jar "$VPS_USER@$VPS_HOST:$stage/dictalab.jar"
-          scp "${ssh_options[@]}" scripts/linux/release.py "$VPS_USER@$VPS_HOST:$stage/release.py"
+          scp "${ssh_options[@]}" target/services.tar.gz scripts/linux/service-release.py scripts/linux/service-schema.py "$VPS_USER@$VPS_HOST:$stage/"
 
-      - name: Activate release with automatic rollback
+      - name: Activate coordinated EC2 release with owner migration and rollback
         shell: bash
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           set -euo pipefail
-          artifact_sha256="$(sha256sum dictalab-new.jar | awk '{print $1}')"
+          test "$VPS_HOST" = 54.254.221.170
+          test "$VPS_USER" = ubuntu
+          bundle_sha256="$(sha256sum target/services.tar.gz | awk '{print $1}')"
           ssh \
             -i "$RUNNER_TEMP/ssh/deploy_key" \
             -o BatchMode=yes \
             -o ConnectTimeout=15 \
             -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
             -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" \
             "$VPS_USER@$VPS_HOST" \
-            "sudo -n python3 /home/ubuntu/dictalab-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/release.py /home/ubuntu/dictalab-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT} $artifact_sha256"
+            bash -s -- "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$bundle_sha256" <<'REMOTE'
+          set -euo pipefail
+          stage="/home/ubuntu/dictalab-release-$1-$2"
+          evidence="/var/lib/dictalab-service-backups/deploy-$1-$2"
+          sudo -n test ! -e /etc/caddy/dictalab-maintenance
+          sudo -n install -d -m 700 "$evidence"
+          sudo -n cp -a /opt/dictalab/tools/service-release.py "$evidence/service-release.py.before"
+          sudo -n install -o root -g root -m 644 "$stage/service-release.py" "$stage/service-schema.py" /opt/dictalab/tools/
+          python=/opt/dictalab/services/current/venv/bin/python
+          sudo -n "$python" /opt/dictalab/tools/service-bundle.py stage "$stage/services.tar.gz" --sha256 "$3"
+          sudo -n "$python" /opt/dictalab/tools/service-release.py "$stage/services.tar.gz" --sha256 "$3" --postgres-major 17 --migrate-core --rollback-compatible --maintenance
+          sudo -n /usr/local/sbin/dictalab-services start
+          REMOTE
 
       - name: Verify public health endpoint
         shell: bash

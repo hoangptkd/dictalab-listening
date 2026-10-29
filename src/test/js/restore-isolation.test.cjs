@@ -52,19 +52,21 @@ test('restore requires a verified empty dedicated endpoint and checks it before 
     }
 });
 
-test('Linux CI deploy uses the tested release helper, not the Windows restore workflow',()=>{
+test('EC2 CI deploy uses the coordinated release helper and retains live state on rollback',()=>{
     const workflow=fs.readFileSync(path.join(__dirname,'../../../.github/workflows/deploy.yml'),'utf8');
     const deploy=workflow.slice(workflow.indexOf('  deploy:'));
     assert.ok(deploy.includes('needs: [test-build, postgres-tests, reliability, ai-platform, progress]'));
-    assert.ok(deploy.includes('scripts/linux/release.py'));
-    assert.ok(deploy.includes('sudo -n python3'));
-    assert.ok(deploy.includes('sha256sum dictalab-new.jar'));
+    assert.ok(deploy.includes('scripts/linux/service-release.py'));
+    assert.ok(deploy.includes('sudo -n "$python"'));
+    assert.ok(deploy.includes('sha256sum target/services.tar.gz'));
     assert.ok(!deploy.includes('update-windows-vps.ps1'));
-    const release=fs.readFileSync(path.join(__dirname,'../../../scripts/linux/release.py'),'utf8');
-    assert.ok(release.includes("'--quiescent'"));
-    assert.ok(release.indexOf("'--quiescent'")<release.indexOf('replace(candidate, APP)'));
-    assert.ok(release.includes("replace(backup / 'dictalab.jar', APP)"));
-    assert.ok(release.includes('wait_ready()'));
+    const release=fs.readFileSync(path.join(__dirname,'../../../scripts/linux/service-release.py'),'utf8');
+    assert.ok(release.indexOf('stop_all()')<release.indexOf('snapshot = backup.service_snapshot()'));
+    assert.ok(release.indexOf('snapshot = backup.service_snapshot()')<release.indexOf("schema.migrate(candidate / 'dictalab.jar'"));
+    assert.ok(release.indexOf("schema.migrate(candidate / 'dictalab.jar'")<release.indexOf('switch_pointer(candidate)'));
+    assert.ok(release.includes("legacy.replace(saved / 'dictalab.jar', backup.CORE_JAR)"));
+    assert.ok(release.includes('start(prior_active)'));
+    assert.ok(release.includes("'stateRestore': 'never attempted'"));
 });
 
 test('actual PowerShell configuration isolates DB Redis keys and remote work without putting secrets in arguments',()=>{

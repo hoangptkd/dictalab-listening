@@ -31,6 +31,7 @@ backup = module('service_release_backup', HERE / 'cloud-backup.py')
 legacy = module('service_release_legacy', HERE / 'release.py')
 launcher = module('service_release_launcher', HERE.parent / 'run-service.py')
 LOCK = Path('/var/lib/dictalab-service-backups/.release.lock')
+MAINTENANCE = Path('/etc/caddy/dictalab-maintenance')
 STOP_ORDER = ('dictalab', 'dictalab-ai', 'dictalab-ai-worker', 'dictalab-progress')
 START_ORDER = tuple(reversed(STOP_ORDER))
 URLS = {'dictalab': ('http://127.0.0.1:18082/actuator/health', 'UP'),
@@ -209,14 +210,19 @@ def receipt(directory, data, phase):
         os.close(descriptor)
 
 
-def activate(path, expected, *, initial=False, rollback_compatible=False):
+def activate(path, expected, *, initial=False, rollback_compatible=False, migrate_core=False, maintenance=False):
     if sys.platform != 'linux' or os.geteuid() != 0 or sys.version_info < (3, 12):
         raise RuntimeError('Coordinated activation requires Linux root and Python 3.12+')
     with release_lock():
-        return activate_locked(path, expected, initial=initial, rollback_compatible=rollback_compatible)
+        return activate_locked(path, expected, initial=initial, rollback_compatible=rollback_compatible,
+                               migrate_core=migrate_core, maintenance=maintenance)
 
 
-def activate_locked(path, expected, *, initial, rollback_compatible):
+def activate_locked(path, expected, *, initial, rollback_compatible, migrate_core=False, maintenance=False):
+    if migrate_core and (initial or not rollback_compatible):
+        raise ValueError('Owner migrations require a reviewed compatible upgrade')
+    if maintenance and (MAINTENANCE.exists() or MAINTENANCE.is_symlink()):
+        raise RuntimeError('Production must be running before a maintenance release')
     candidate_manifest = provision.bundle.verify_bundle(path, expected)
     candidate = provision.verify_stage(candidate_manifest, expected)
     if not backup.CURRENT.is_symlink():
@@ -252,7 +258,7 @@ def activate_locked(path, expected, *, initial, rollback_compatible):
     cold_initial = initial and all(value == 'inactive' for value in before.values())
     if before != required and not cold_initial:
         raise RuntimeError('Baseline service state/health is not ready for release')
-    config_hashes = configurations()
+    config_hashes = configurations(require_legacy_reads=initial)
     if not health([n for n in STOP_ORDER if before[n] == 'active']):
         raise RuntimeError('Baseline service state/health is not ready for release')
     baseline_hash = backup.digest(backup.CORE_JAR)
@@ -268,12 +274,29 @@ def activate_locked(path, expected, *, initial, rollback_compatible):
         if any(backup.digest(Path(name)) != value for name, value in config_hashes.items()):
             raise RuntimeError('Runtime configuration changed during release')
     try:
+        if maintenance:
+            provision.ancestors(MAINTENANCE.parent)
+            with MAINTENANCE.open('x', encoding='ascii') as output:
+                output.write('1\n')
+                output.flush()
+                os.fsync(output.fileno())
+            MAINTENANCE.chmod(0o644)
+            descriptor = os.open(MAINTENANCE.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
         stop_all()
         receipt(directory, data, 'quiescent')
         snapshot = backup.service_snapshot()
         data['snapshot'] = snapshot
         receipt(directory, data, 'backed-up')
         unchanged()
+        if migrate_core:
+            receipt(directory, data, 'schema-migrating')
+            schema = module('service_release_schema', HERE / 'service-schema.py')
+            data['schema'] = schema.migrate(candidate / 'dictalab.jar', directory)
+            receipt(directory, data, 'schema-ready')
         provision.verify_stage(candidate_manifest, expected)
         if backup.digest(backup.CORE_JAR) != baseline_hash or backup.CURRENT.resolve(strict=True) != previous:
             raise RuntimeError('Baseline changed during release preparation')
@@ -340,10 +363,15 @@ def main():
     parser.add_argument('--initial', action='store_true')
     parser.add_argument('--rollback-compatible', action='store_true',
                         help='Assert reviewed backward-compatible migrations/contracts/state; financial guard still applies')
+    parser.add_argument('--migrate-core', action='store_true', help='After quiescent backup, run Core Flyway as the isolated Aurora owner')
+    parser.add_argument('--postgres-major', choices=('17', '18'), default='18')
+    parser.add_argument('--maintenance', action='store_true', help='Enter maintenance under the release lock; lifecycle start reopens traffic')
     args = parser.parse_args()
     os.umask(0o077)
+    backup.PG_BIN = Path('/usr/lib/postgresql') / args.postgres_major / 'bin'
     try:
-        print(json.dumps(activate(args.bundle, args.sha256, initial=args.initial, rollback_compatible=args.rollback_compatible)))
+        print(json.dumps(activate(args.bundle, args.sha256, initial=args.initial, rollback_compatible=args.rollback_compatible,
+                                  migrate_core=args.migrate_core, maintenance=args.maintenance)))
     except Exception as error:
         raise SystemExit('SERVICE_RELEASE_FAILED: ' + type(error).__name__ + '; inspect protected activation receipts and service state; values suppressed') from None
 

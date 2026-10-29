@@ -52,7 +52,8 @@ không đọc trực tiếp field trên proxy.
 
 ## 3. Mô hình dữ liệu và bất biến
 
-Flyway V44 tạo bảng mới; V45 thêm nội dung mẫu. Không sửa bảng điểm nghe.
+Flyway V46 tạo bảng mới; V47 thêm nội dung mẫu. V44/V45 thuộc Progress outbox
+và model demo của production EC2. Không sửa bảng điểm nghe.
 
 ```mermaid
 erDiagram
@@ -253,9 +254,12 @@ Rollout:
 
 1. Sao lưu và kiểm tra restore theo runbook hiện có trước migration production.
 2. Deploy qua release flow của dự án; không coi push branch là deploy.
-3. Flag `DICTALAB_VOCABULARY_ENABLED` mặc định false. Chạy Flyway additive
-   khi flag tắt, kiểm tra health và schema V45.
-4. Bật flag trong cấu hình runtime được bảo vệ, restart theo release flow.
+3. Flag `DICTALAB_VOCABULARY_ENABLED` mặc định false ngoài profile `aurora`.
+   Profile Aurora mặc định true cho bản phát hành này; giá trị trong env luôn
+   có ưu tiên cao hơn. Muốn kiểm tra schema trước khi mở tính năng, đặt false
+   trong env được bảo vệ trước deploy và kiểm tra health/schema V47.
+4. Bật flag trong cấu hình runtime được bảo vệ nếu đã chọn rollout hai bước,
+   restart theo release flow.
    Hai biến còn lại: `DICTALAB_VOCABULARY_NEW_CARDS_PER_DAY` (1–100),
    `DICTALAB_VOCABULARY_SESSION_SIZE` (1–50).
 5. Smoke test tài khoản riêng: copy bộ, ôn sai/đúng/reveal, reload, CSV,
@@ -265,8 +269,34 @@ Rollout:
 
 Đánh giá thủ công để sau: người học xác nhận nghĩa và câu dịch phù hợp,
 biên tập viên duyệt nội dung mới, kiểm tra screen reader trên thiết bị thật,
-chọn thời điểm bật production. Không cần người dùng ngồi kiểm tra trong khi
+đánh giá lịch ôn sau sử dụng thực tế. Không cần người dùng ngồi kiểm tra trong khi
 code và kiểm thử tự động đang chạy.
+
+### CI/CD trên EC2/Aurora
+
+Workflow `deploy.yml` giữ đủ năm cổng test và đóng gói Core/AI/Progress từ đúng
+Git SHA. Chỉ deploy từ main khi `PRODUCTION_DEPLOY_ENABLED=true` và
+`PRODUCTION_DEPLOY_TARGET=ec2-services`. Secret `VPS_HOST` phải là EC2
+`54.254.221.170`; `VPS_USER=ubuntu`, SSH key và known-host phải thuộc EC2 này.
+Không tái sử dụng host key của Lightsail đã xóa. Security group phải cho phép
+đúng đường SSH của runner; không mở cổng 22 cho toàn Internet để né cấu hình.
+
+Runner stage bundle có checksum trước khi bật bảo trì. Release giữ khóa liên
+tiến trình, dừng bốn process, backup ba DB/media/config/SQLite, rồi chạy Flyway
+từ chính JAR ứng viên bằng IAM owner trong file root-only
+`/etc/dictalab/database/migration.aws-credentials`. Runtime không nhận credential
+migration. Core grants được áp dụng lại; runtime vẫn không đọc provider secrets
+hoặc sửa Flyway history. Log schema chỉ nằm trong thư mục receipt root-only.
+
+Mỗi migration phải được review tương thích với bản ứng dụng cũ trước khi dùng
+`--rollback-compatible`. V46/V47 chỉ tạo bảng và seed mới. Rollback giữ nguyên
+schema và dữ liệu. Lỗi giữ bảo trì để người vận hành kiểm tra receipt, kể cả
+trường hợp ứng dụng cũ đã phục hồi; lệnh lifecycle `start` mới mở traffic sau
+kiểm tra readiness. Không xóa receipt hoặc repair Flyway để vượt gate.
+
+GitHub Actions đang bị tắt và từng báo hết quota artifact. Thay đổi workflow
+không tự giải quyết quota, cập nhật secrets hay mở kết nối EC2. Chỉ coi deploy
+thành công sau workflow xanh, receipt complete và smoke production đạt.
 
 ## 10. Gói phát triển tiếp cho model nhỏ hơn
 
@@ -278,7 +308,7 @@ và mô tả migration/rollback nếu thay DB. Không sửa lịch nghe hoặc �
 
 1. Chốt TTL receipt tối thiểu dài hơn session/import retry (đề xuất 30 ngày),
    TTL import payload và thời gian giữ lịch sử với chủ sản phẩm.
-2. Thêm migration mới cho index thời gian cần dùng; không sửa V44/V45 đã chạy.
+2. Thêm migration mới cho index thời gian cần dùng; không sửa V46/V47 đã chạy.
 3. Thêm job xóa theo batch nhỏ, nhiều instance an toàn, transaction ngắn,
    có metric số hàng và lỗi; không xóa phiên active hay review lịch sử ngoài policy.
 4. Khi xóa receipt cũ, stale grade vẫn phải bị unique item/revision ngăn chặn.
@@ -366,7 +396,7 @@ vụ của chủ dự án và không tự triển khai production từ một bra
 | JavaScript toàn dự án | 334 pass, 2 fail | `target/vocabulary-js-final.log` |
 | Hai test CI với cấu hình từ HEAD trước tính năng | Cùng 2 lỗi | `target/vocabulary-js-baseline.log` |
 | Syntax app.js/vocabulary.js và UTF-8 | Qua | Encoding kiểm tra đủ 33 file thuộc thay đổi |
-| Đóng gói `-Pproduction-s3 -DskipTests package` | Qua; JAR có class, V44/V45, JS và CSS vocabulary | `target/vocabulary-package.log` |
+| Đóng gói `-Pproduction-s3 -DskipTests package` | Qua trên nhánh phát triển; release EC2 đổi migration vocabulary thành V46/V47 | `target/vocabulary-package.log` |
 
 Lượt hồi quy 664 test chạy trước các ca vocabulary bổ sung cuối cùng. Sau đó
 toàn bộ 20 ca vocabulary đã được biên dịch và chạy lại trên cả H2/PostgreSQL.
