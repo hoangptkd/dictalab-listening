@@ -11,6 +11,23 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class DatabaseAccessTest(unittest.TestCase):
+    def test_github_network_role_trusts_main_and_only_the_production_security_group(self):
+        trust = json.loads((ROOT / 'ops/aws/github-deploy-trust.json').read_text(encoding='utf-8'))
+        self.assertEqual([{
+            'Effect': 'Allow',
+            'Principal': {'Federated': 'arn:aws:iam::042407443847:oidc-provider/token.actions.githubusercontent.com'},
+            'Action': 'sts:AssumeRoleWithWebIdentity',
+            'Condition': {'StringEquals': {
+                'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
+                'token.actions.githubusercontent.com:sub': 'repo:hoangptkd/dictalab-listening:ref:refs/heads/main'}}
+        }], trust['Statement'])
+        policy = json.loads((ROOT / 'ops/aws/github-deploy-network-policy.json').read_text(encoding='utf-8'))
+        self.assertEqual([{
+            'Effect': 'Allow',
+            'Action': ['ec2:AuthorizeSecurityGroupIngress', 'ec2:RevokeSecurityGroupIngress'],
+            'Resource': 'arn:aws:ec2:ap-southeast-1:042407443847:security-group/sg-0e56b7760ff44be60'
+        }], policy['Statement'])
+
     def test_operations_policy_only_controls_the_existing_cluster(self):
         policy = json.loads((ROOT / 'ops/aws/aurora-operations-policy.json').read_text(encoding='utf-8'))
         self.assertEqual([{'Effect': 'Allow',

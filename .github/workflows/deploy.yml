@@ -196,6 +196,9 @@ jobs:
     if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full_compatibility)) && github.ref == 'refs/heads/main' && vars.PRODUCTION_DEPLOY_ENABLED == 'true' && vars.PRODUCTION_DEPLOY_TARGET == 'ec2-services'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Check out deployment scripts
         uses: actions/checkout@v4
@@ -226,6 +229,39 @@ jobs:
           printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > "$RUNNER_TEMP/ssh/deploy_key"
           printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/ssh/known_hosts"
           chmod 600 "$RUNNER_TEMP/ssh/deploy_key" "$RUNNER_TEMP/ssh/known_hosts"
+
+      - name: Assume the scoped EC2 network role through OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          aws-region: ap-southeast-1
+          role-to-assume: arn:aws:iam::042407443847:role/dictalab-github-deploy-network
+          role-session-name: deploy-${{ github.run_id }}-${{ github.run_attempt }}
+          role-duration-seconds: 1800
+          allowed-account-ids: '042407443847'
+
+      - name: Permit SSH from this runner only
+        id: runner-ssh
+        shell: bash
+        run: |
+          set -euo pipefail
+          runner_ip="$(curl --fail --silent --show-error --max-time 15 https://checkip.amazonaws.com)"
+          runner_ip="$(python3 -c 'import ipaddress,sys; print(ipaddress.IPv4Address(sys.argv[1]))' "$runner_ip")"
+          rule_id="$(aws ec2 authorize-security-group-ingress \
+            --group-id sg-0e56b7760ff44be60 \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$runner_ip/32,Description=GitHub-Actions-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT}]" \
+            --query 'SecurityGroupRules[0].SecurityGroupRuleId' --output text)"
+          [[ "$rule_id" =~ ^sgr-[0-9a-f]+$ ]]
+          printf 'rule_id=%s\n' "$rule_id" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the runner SSH rule to propagate
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..12}; do
+            if timeout 5 bash -c 'exec 3<>/dev/tcp/54.254.221.170/22'; then exit 0; fi
+            sleep 3
+          done
+          exit 1
 
       - name: Upload release to EC2
         shell: bash
@@ -291,3 +327,14 @@ jobs:
           curl --fail --silent --show-error \
             --retry 10 --retry-all-errors --retry-delay 5 --max-time 10 \
             "$PUBLIC_BASE_URL/actuator/health" | jq -e '.status == "UP"'
+
+      - name: Revoke this runner SSH rule
+        if: always() && steps.runner-ssh.outputs.rule_id != ''
+        shell: bash
+        env:
+          RUNNER_SSH_RULE: ${{ steps.runner-ssh.outputs.rule_id }}
+        run: |
+          set -euo pipefail
+          [[ "$RUNNER_SSH_RULE" =~ ^sgr-[0-9a-f]+$ ]]
+          aws ec2 revoke-security-group-ingress --group-id sg-0e56b7760ff44be60 \
+            --security-group-rule-ids "$RUNNER_SSH_RULE"

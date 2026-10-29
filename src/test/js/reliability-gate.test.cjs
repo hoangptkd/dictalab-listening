@@ -94,6 +94,12 @@ test('CI runs shared checks once and PostgreSQL suites independently before depl
     assert.ok(deploy.includes('test "$VPS_HOST" = 54.254.221.170'));
     assert.ok(deploy.includes('--postgres-major 17 --migrate-core --rollback-compatible'));
     assert.ok(deploy.includes('/usr/local/sbin/dictalab-services start'));
+    assert.match(deploy, /permissions:\r?\n\s+contents: read\r?\n\s+id-token: write/);
+    assert.ok(deploy.includes('ipaddress.IPv4Address(sys.argv[1])'));
+    assert.ok(deploy.includes('CidrIp=$runner_ip/32'));
+    assert.ok(deploy.includes("if: always() && steps.runner-ssh.outputs.rule_id != ''"));
+    assert.ok(deploy.includes('--security-group-rule-ids "$RUNNER_SSH_RULE"'));
+    assert.doesNotMatch(deploy, /0\.0\.0\.0\/0|AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID/);
     assert.doesNotMatch(deploy, /sudo -n python3 .*\/release\.py/);
     for (const section of [postgres, reliability]) {
         assert.match(section, /fail-fast: false/, 'One failed PostgreSQL variant must not cancel the other variant');

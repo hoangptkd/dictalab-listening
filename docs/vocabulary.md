@@ -281,6 +281,16 @@ Git SHA. Chỉ deploy từ main khi `PRODUCTION_DEPLOY_ENABLED=true` và
 Không tái sử dụng host key của Lightsail đã xóa. Security group phải cho phép
 đúng đường SSH của runner; không mở cổng 22 cho toàn Internet để né cấu hình.
 
+Job deploy dùng GitHub OIDC với role `dictalab-github-deploy-network`, trust và
+policy tại `ops/aws/github-deploy-*.json`. Trust chỉ chấp nhận repo này ở main;
+role chỉ được thêm/thu hồi ingress trên security group EC2 hiện tại. Không
+truyền AWS access key vào GitHub. Tạo OIDC provider với audience
+`sts.amazonaws.com` nếu chưa có, rồi tạo role bằng hai policy đã review.
+Runner xác thực IPv4, chỉ mở TCP 22 từ `/32` của chính nó và thu hồi đúng rule ID
+trong bước `always()`, kể cả deploy thất bại. Khi runner bị mất hoặc buộc dừng
+trước cleanup, kiểm tra CloudTrail và thu hồi rule mô tả
+`GitHub-Actions-<run_id>-<attempt>`; giữ rule quản trị hiện có.
+
 Runner stage bundle có checksum trước khi bật bảo trì. Release giữ khóa liên
 tiến trình, dừng bốn process, backup ba DB/media/config/SQLite, rồi chạy Flyway
 từ chính JAR ứng viên bằng IAM owner trong file root-only
@@ -294,8 +304,8 @@ schema và dữ liệu. Lỗi giữ bảo trì để người vận hành kiểm
 trường hợp ứng dụng cũ đã phục hồi; lệnh lifecycle `start` mới mở traffic sau
 kiểm tra readiness. Không xóa receipt hoặc repair Flyway để vượt gate.
 
-GitHub Actions đang bị tắt và từng báo hết quota artifact. Thay đổi workflow
-không tự giải quyết quota, cập nhật secrets hay mở kết nối EC2. Chỉ coi deploy
+GitHub Actions đã được bật lại nhưng hiện hết quota artifact và budget bằng 0.
+Thay đổi workflow không tự giải quyết quota, cấu hình role hoặc cập nhật secrets. Chỉ coi deploy
 thành công sau workflow xanh, receipt complete và smoke production đạt.
 
 ## 10. Gói phát triển tiếp cho model nhỏ hơn
