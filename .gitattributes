@@ -1,3 +1,6 @@
 # Browser regression fixtures parse function boundaries; keep checkout line endings stable.
 *.js text eol=lf
 *.cjs text eol=lf
+
+# Linux release units must match installed systemd bytes when archived on Windows.
+scripts/linux/*.service text eol=lf
