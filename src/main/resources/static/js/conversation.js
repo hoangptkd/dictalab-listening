@@ -102,8 +102,8 @@
                 <select id="conversation-scenario" name="scenario">${Object.entries(scenarios).filter(([id]) => !selectedGroup || selectedGroup.scenarios.includes(id)).map(([id, label]) => `<option value="${escape(id)}">${escape(label)}</option>`).join("")}</select>
                 <label for="conversation-level">Độ khó</label>
                 <select id="conversation-level" name="difficulty"><option value="A1">A1 · Câu ngắn, thông tin trực tiếp</option><option value="A2">A2 · Nối chi tiết, theo dõi thay đổi</option><option value="B1">B1 · Ý chính, lý do và điều kiện</option></select>
-                <p id="conversation-status" role="status">${data.enabled ? "" : "Luyện nghe tình huống chưa được bật trên máy chủ."}</p>
-                <button class="primary-button" ${data.enabled ? "" : "disabled"}>Bắt đầu nghe →</button>
+                <p id="conversation-status" role="status">${data.premiumRequired ? 'Luyện nghe tình huống dành cho Premium. <a href="/account">Xem tại Tài khoản</a>.' : data.enabled ? "" : "Luyện nghe tình huống chưa được bật trên máy chủ."}</p>
+                <button class="primary-button" ${data.enabled && !data.premiumRequired ? "" : "disabled"} aria-describedby="conversation-status">Bắt đầu nghe →</button>
             </form></section>
             <section class="conversation-card conversation-recent"><h2>Lịch sử</h2><select id="conversation-history-filter" aria-label="Lọc lịch sử trong trang này"><option value="all">Tất cả</option><option value="active">Đang luyện</option><option value="completed">Đã hoàn thành</option></select><div id="conversation-history-list"></div><div class="conversation-history-pages" id="conversation-history-pages"><button type="button" class="secondary-button" id="conversation-history-prev">Trang trước</button><span id="conversation-history-page"></span><button type="button" class="secondary-button" id="conversation-history-next">Trang sau</button></div><p id="conversation-history-status" role="status"></p></section></div>`;
         root().querySelector("#conversation-scenario").value = selection.scenario;
@@ -124,7 +124,7 @@
         root().querySelector("#conversation-history-next").addEventListener("click", () => loadHistory(12));
         renderHistory(data.sessions, data.hasMore ?? data.sessions.length === 12);
         root().querySelector("form").addEventListener("submit", async event => {
-            event.preventDefault(); if (busy) return;
+            event.preventDefault(); if (busy || !data.enabled || data.premiumRequired) return;
             const token = revision, form = event.currentTarget, values = new FormData(form);
             selection = {scenario: values.get("scenario"), difficulty: values.get("difficulty")}; rememberSelection();
             busy = true; form.querySelector('button:not([type="button"])').disabled = true;

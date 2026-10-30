@@ -54,18 +54,28 @@ public class PremiumAccessService {
                     "Bạn đã dùng hết " + config.freeDailyLessons() + " bài miễn phí hôm nay. Nâng cấp Premium tại Tài khoản hoặc quay lại ngày mai.");
     }
 
+    public boolean aiAllowed(long userId) {
+        return !config.enabled() || premium(userId);
+    }
+
+    public void requireAi(long userId) {
+        if (!aiAllowed(userId)) throw new AiUsageBudget.Rejected(
+                HttpStatus.PAYMENT_REQUIRED, "Tính năng AI dành cho Premium. Bạn có thể nâng cấp tại Tài khoản.");
+    }
+
     // Called inside the durable AI budget transaction, before provider I/O.
     public void takeAi(long userId, boolean tts) {
         if (!config.enabled()) return;
         String role = lockUser(userId);
         if ("ADMIN".equals(role)) return;
-        if (!premium(userId)) throw new AiUsageBudget.Rejected("Phân tích AI dành cho Premium. Bài làm và phản hồi cơ bản vẫn được giữ.");
+        requireAi(userId);
         if (tts) return;
         Date today = day();
         ensureUsage(userId, today);
         if (db.update("UPDATE premium_daily_usage SET ai_count=ai_count+1 WHERE user_id=? AND usage_day=? AND ai_count<?",
                 userId, today, config.premiumDailyAi()) != 1)
-            throw new AiUsageBudget.Rejected("Bạn đã dùng hết lượt AI hôm nay. Bạn vẫn có thể luyện bài và xem báo cáo đã tạo.");
+            throw new AiUsageBudget.Rejected(HttpStatus.TOO_MANY_REQUESTS,
+                    "Bạn đã dùng hết lượt AI hôm nay. Bạn vẫn có thể luyện bài và xem báo cáo đã tạo.");
     }
 
     String lockUser(long userId) {

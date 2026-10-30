@@ -27,6 +27,10 @@ public class AiUsageBudget {
     @org.springframework.beans.factory.annotation.Autowired
     void configurePremium(PremiumAccessService premium) { this.premium=premium; }
 
+    public boolean aiAllowed(long userId) { return premium == null || premium.aiAllowed(userId); }
+
+    public void requireAccess(long userId) { if (premium != null) premium.requireAi(userId); }
+
     public AiUsageBudget(JdbcTemplate db, PlatformTransactionManager manager,
                          @Value("${dictalab.ai.budget.enabled:true}") boolean enabled,
                          @Value("${dictalab.ai.budget.global-microusd:5000000}") long globalLimit,
@@ -64,7 +68,7 @@ public class AiUsageBudget {
     private void admit(Long userId, boolean tts, boolean local) {
             if (premium != null && userId != null) premium.takeAi(userId,tts);
             Boolean accepting=db.queryForObject("SELECT enabled FROM ai_budget_control WHERE id=1 FOR UPDATE",Boolean.class);
-            if (!Boolean.TRUE.equals(accepting)) throw rejected("AI đang tạm dừng. Bài làm của bạn vẫn được lưu.");
+            if (!Boolean.TRUE.equals(accepting)) throw new Rejected("AI đang tạm dừng. Bài làm của bạn vẫn được lưu.");
             if (!enabled) return;
             Date day=Date.valueOf(LocalDate.now(ZoneOffset.UTC));
             long amount=local ? 0 : tts?ttsReservation:llmReservation;
@@ -101,8 +105,16 @@ public class AiUsageBudget {
 
     /** Only server-authored budget messages may reach the learner without being generalized. */
     public static final class Rejected extends ProviderGuard.Unavailable {
-        public Rejected(String message) { super(message,60,false); }
+        private final org.springframework.http.HttpStatus status;
+        public Rejected(String message) { this(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, message); }
+        public Rejected(org.springframework.http.HttpStatus status, String message) {
+            super(message,60,false);
+            this.status=status;
+        }
+        public org.springframework.http.HttpStatus status() { return status; }
     }
 
-    private Rejected rejected(String message) { return new Rejected(message); }
+    private Rejected rejected(String message) {
+        return new Rejected(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, message);
+    }
 }

@@ -45,8 +45,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(com.dictalab.service.ProviderGuard.Unavailable.class)
     public ResponseEntity<ApiDtos.ApiError> providerBusy(com.dictalab.service.ProviderGuard.Unavailable failure,
                                                        HttpServletRequest request){
-        return ResponseEntity.status(503).header("Retry-After",Integer.toString(failure.retryAfter()))
-                .body(new ApiDtos.ApiError(503,failure.getMessage(),request.getRequestURI(),Instant.now(),null));
+        int status = failure instanceof com.dictalab.service.AiUsageBudget.Rejected rejected
+                ? rejected.status().value() : 503;
+        var response = ResponseEntity.status(status);
+        if (status != 402) response.header("Retry-After",Integer.toString(failure.retryAfter()));
+        return response.body(new ApiDtos.ApiError(status,failure.getMessage(),request.getRequestURI(),Instant.now(),null));
     }
 
     @ExceptionHandler({org.springframework.dao.DataIntegrityViolationException.class,

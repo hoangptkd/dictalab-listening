@@ -77,6 +77,10 @@ jobs:
         if: needs.changes.outputs.backend == 'true'
         run: mvn --batch-mode --no-transfer-progress -Pproduction-s3,ci-unit clean verify
 
+      - name: Verify conversation access with billing enabled
+        if: needs.changes.outputs.backend == 'true'
+        run: mvn --batch-mode --no-transfer-progress -Pproduction-s3 -Dtest=ConversationAccessIntegrationTest,AiUsageBudgetIntegrationTest,BillingIntegrationTest#freePracticeIsAtomicAndPremiumAndAdminRulesAreEnforced test
+
       - name: Verify S3 production packaging and published lesson pages
         if: needs.changes.outputs.backend == 'true'
         run: python3 scripts/verify-production-jar.py target/english-dictation-0.1.0-SNAPSHOT.jar

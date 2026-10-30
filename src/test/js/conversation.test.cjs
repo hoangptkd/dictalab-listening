@@ -47,6 +47,20 @@ test('navigation ignores a late response and stops conversation audio', async ()
     assert.doesNotMatch(h.root.innerHTML, /Nghe giờ hẹn/); assert.ok(h.stopped() >= 2);
 });
 
+test('premium eligibility is shown before starting and cannot submit a paid session', async () => {
+    const calls = [];
+    const h = harness(async url => {
+        calls.push(url);
+        return {enabled: true, premiumRequired: true, scenarios: {cafe: 'Quán'}, sessions: []};
+    });
+    await h.module.show();
+    assert.match(h.root.innerHTML, /dành cho Premium/);
+    assert.match(h.root.innerHTML, /href="\/account"/);
+    assert.match(h.root.innerHTML, /<button class="primary-button" disabled aria-describedby="conversation-status"/);
+    await h.node('form').listeners.submit({preventDefault() {}});
+    assert.equal(calls.length, 1);
+});
+
 test('only next uses the backend generation budget, including resumed sessions and legacy fallback', async () => {
     for (const generationTimeoutMs of [undefined, 465000, 1305000]) {
         const calls = [];

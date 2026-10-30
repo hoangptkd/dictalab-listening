@@ -35,6 +35,7 @@ class AiBackgroundJobsIntegrationTest {
     @MockitoBean GeminiClient ai;
     @MockitoBean RabbitTemplate rabbit;
     @MockitoBean AiPlatformClient platform;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean AiUsageBudget budget;
     private final List<Long> users = new ArrayList<>();
     private long owner;
 
@@ -45,6 +46,17 @@ class AiBackgroundJobsIntegrationTest {
     }
     @AfterEach void cleanup() {
         users.forEach(id -> { db.update("DELETE FROM practice_sessions WHERE user_id=?", id); db.update("DELETE FROM app_users WHERE id=?", id); });
+    }
+
+    @Test void deniedPlaybackNeverEnqueuesAPaidAudioJob() {
+        String id = audioSession();
+        willThrow(new AiUsageBudget.Rejected(org.springframework.http.HttpStatus.PAYMENT_REQUIRED, "Premium required"))
+                .given(budget).requireAccess(owner);
+        assertThatThrownBy(() -> conversation.play(owner, id, 1, "original", false))
+                .isInstanceOfSatisfying(AiUsageBudget.Rejected.class,
+                        failure -> assertThat(failure.status().value()).isEqualTo(402));
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM ai_background_jobs WHERE conversation_id=?", Integer.class, id)).isZero();
+        then(tts).should(never()).synthesize(anyString());
     }
 
     @Test void playbackAndStatusAreNonblockingAndDuplicateDeliveryNeverRepeatsTts() {

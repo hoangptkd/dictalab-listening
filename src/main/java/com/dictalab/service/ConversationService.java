@@ -156,6 +156,7 @@ public class ConversationService {
     public Map<String, Object> catalog(long userId) {
         var result = new LinkedHashMap<String,Object>();
         result.put("enabled", config.enabled() && ai.configured() && audioConfigured(userId));
+        result.put("premiumRequired", !budget.aiAllowed(userId));
         result.put("scenarios", SCENARIOS); result.put("levels", ConversationLevelProfile.SUPPORTED_LEVELS);
         var page = history(userId, 0, 12);
         result.put("sessions", page.get("sessions")); result.put("hasMore", page.get("hasMore"));
@@ -205,6 +206,7 @@ public class ConversationService {
 
     public ObjectNode create(long userId, String scenario, String difficulty, String sourceSessionId) {
         available(userId);
+        budget.requireAccess(userId);
         if (!SCENARIOS.containsKey(scenario) || !ConversationLevelProfile.SUPPORTED_LEVELS.contains(difficulty)) fail(HttpStatus.BAD_REQUEST, "Tình huống hoặc độ khó không hợp lệ.");
         String practiceFocus = "";
         if (sourceSessionId != null) {
@@ -323,6 +325,7 @@ public class ConversationService {
         var turns = turns(row);
         // Repeated next requests cannot create a second turn.
         if (turns.size() == expectedTurn + 1 || row.state.path("completed").asBoolean()) return view(row);
+        budget.requireAccess(userId);
         checkTurn(row, expectedTurn);
         if (!turns.isEmpty() && !current(row).path("done").asBoolean()) fail(HttpStatus.CONFLICT, "Hãy trả lời nhiệm vụ hiện tại trước.");
         int timeoutSeconds = generationTimeoutSeconds();
@@ -452,6 +455,7 @@ public class ConversationService {
         Row row = load(userId, id);
         ObjectNode turn = playableTurn(row, expectedTurn);
         checkAudioVariant(turn, variant);
+        if (!audioExists(id, expectedTurn, variant)) budget.requireAccess(userId);
         var queue = jobs.getIfAvailable();
         if (queue != null && !audioExists(id, expectedTurn, variant)) {
             String state = queue.audio(id, expectedTurn, variant, audioUtterance(row, expectedTurn, variant), true);
@@ -466,13 +470,21 @@ public class ConversationService {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("Audio interrupted", e);
-            } catch (ExecutionException | TimeoutException e) {
+            } catch (ExecutionException e) {
+                if (e.getCause() instanceof AiUsageBudget.Rejected rejected) throw rejected;
+                throw new IllegalStateException("Audio unavailable", e);
+            } catch (TimeoutException e) {
                 throw new IllegalStateException("Audio unavailable", e);
             }
             turn.put("plays", Math.min(10000, turn.path("plays").asInt() + 1));
             if (slow) turn.put("slow", true);
             commit(row, lease);
-        } catch (RuntimeException e) { release(row.id, lease); unavailable("Chưa tạo được giọng nói. Bạn có thể thử nghe lại."); }
+        } catch (AiUsageBudget.Rejected e) {
+            release(row.id, lease); throw e;
+        } catch (RuntimeException e) {
+            release(row.id, lease); logFailure("play", e);
+            unavailable("Chưa tạo được giọng nói. Bạn có thể thử nghe lại.");
+        }
         var result = get(userId, id);
         result.put("audioUrl", "/api/v1/conversation/sessions/" + id + "/audio/" + expectedTurn + "/" + variant);
         result.put("audioStatus", "READY");
@@ -822,6 +834,7 @@ public class ConversationService {
                     synthesizeAudio(row, number, variant, utterance);
                     future.complete(null);
                 } catch (RuntimeException error) {
+                    logFailure("audio", error);
                     job.error(new IllegalStateException("Audio task failed"));
                     // A caller may retry as soon as it observes this failure.
                     audioJobs.remove(key, future);
