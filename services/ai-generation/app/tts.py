@@ -39,6 +39,29 @@ def validate_wav(audio: bytes):
         raise ValueError("invalid WAV") from exc
 
 
+def finalize_wav(audio: bytes) -> bytes:
+    # Cartesia streams WAV with unknown RIFF/data sizes; finalize only after HTTP EOF.
+    if (44 <= len(audio) <= MAX_AUDIO_BYTES and audio[:4] == b"RIFF"
+            and audio[8:12] == b"WAVE" and audio[4:8] == b"\xff" * 4):
+        offset = 12
+        while offset + 8 <= len(audio):
+            chunk = audio[offset:offset + 4]
+            size = int.from_bytes(audio[offset + 4:offset + 8], "little")
+            if chunk == b"data":
+                if size == 0xFFFFFFFF:
+                    size = len(audio) - offset - 8
+                    if size < 2 or size % 2:
+                        raise ValueError("invalid PCM audio")
+                    finalized = bytearray(audio)
+                    finalized[4:8] = (len(audio) - 8).to_bytes(4, "little")
+                    finalized[offset + 4:offset + 8] = size.to_bytes(4, "little")
+                    audio = bytes(finalized)
+                break
+            offset += 8 + size + size % 2
+    validate_wav(audio)
+    return audio
+
+
 async def synthesize(payload, settings, client, deadline):
     if not settings.cartesia_api_key:
         raise ValueError("TTS is not configured")
@@ -59,5 +82,5 @@ async def synthesize(payload, settings, client, deadline):
             audio.extend(chunk)
             if len(audio) > MAX_AUDIO_BYTES:
                 raise ValueError("audio exceeds limit")
-    validate_wav(bytes(audio))
+    audio = finalize_wav(bytes(audio))
     return {"contentType": "audio/wav", "size": len(audio), "audioBase64": base64.b64encode(audio).decode()}
