@@ -132,9 +132,16 @@ def test_model_selection_does_not_mutate_pool_and_requires_strong_token():
 def test_queue_deadline_keeps_admission_and_releases_no_unacquired_permit(api):
     client, _, main = api
     main.semaphore = asyncio.Semaphore(0)
-    body = request(deadline=(datetime.now(timezone.utc) + timedelta(milliseconds=60)).isoformat())
-    with patch.object(ModelGateway, "complete") as complete:
+    body = request()
+    timeout = asyncio.timeout
+    # Expire at the queue await, after admission, independent of runner/SQLite latency.
+    with patch("app.text_gateway.asyncio.timeout", side_effect=lambda _: timeout(0)) as queue_timeout, \
+            patch.object(ModelGateway, "complete") as complete:
         assert client.post("/v1/text/completions", json=body,
             headers={"X-Service-Token": TOKEN}).status_code == 503
+        queue_timeout.assert_called_once()
+        assert 0 < queue_timeout.call_args.args[0] <= 30
         complete.assert_not_called()
     assert main.semaphore.locked()
+    assert client.post("/v1/text/completions", json=body,
+        headers={"X-Service-Token": TOKEN}).status_code == 409

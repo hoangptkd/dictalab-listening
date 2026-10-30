@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 import time
@@ -177,6 +178,62 @@ def test_wav_validation():
     for invalid in (b"not audio", audio[:-1], audio + b"junk", b"RIFF" + b"x" * 50, b"x" * 3_000_001):
         with pytest.raises(ValueError):
             tts.validate_wav(invalid)
+
+
+def streamed_wav():
+    audio = wav_bytes()
+    # Real provider layout: fmt, LIST metadata, then an unknown-length data chunk.
+    metadata = b"LIST" + (26).to_bytes(4, "little") + b"INFO" + b"\x00" * 22
+    return b"RIFF" + b"\xff" * 4 + audio[8:36] + metadata + b"data" + b"\xff" * 4 + audio[44:]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("audio", [wav_bytes(), streamed_wav()], ids=["finite-wav", "streaming-wav"])
+async def test_tts_finalizes_complete_wav_without_changing_pcm(audio):
+    settings = Settings(cartesia_api_key="test-only")
+    calls = []
+    def respond(req):
+        calls.append(req)
+        return httpx.Response(200, content=audio, headers={"Content-Type": "audio/wav"})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        result = await tts.synthesize(request("tts").payload, settings, client, time.monotonic() + 10)
+    finalized = base64.b64decode(result["audioBase64"])
+    tts.validate_wav(finalized)
+    assert len(calls) == 1
+    assert result["size"] == len(audio) == len(finalized)
+    with wave.open(io.BytesIO(finalized), "rb") as wav:
+        assert wav.getnframes() == 240
+        assert wav.readframes(240) == wav_bytes()[44:]
+    if audio == wav_bytes():
+        assert finalized == audio
+
+
+def test_streamed_wav_keeps_strict_validation():
+    audio = streamed_wav()
+    invalid_format = bytearray(audio)
+    invalid_format[24:28] = (16000).to_bytes(4, "little")
+    invalid_metadata = bytearray(audio)
+    invalid_metadata[40:44] = (len(audio) * 2).to_bytes(4, "little")
+    for invalid in (audio[:-1], audio[:78], bytes(invalid_format), bytes(invalid_metadata),
+                    audio[:74] + (999).to_bytes(4, "little") + audio[78:],
+                    wav_bytes()[:-2], wav_bytes() + b"junk", b"x" * 3_000_001):
+        with pytest.raises(ValueError):
+            tts.finalize_wav(invalid)
+    with pytest.raises(ValueError):
+        tts.validate_wav(audio)
+
+
+@pytest.mark.asyncio
+async def test_tts_never_finalizes_interrupted_stream():
+    class InterruptedStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield streamed_wav()
+            raise httpx.ReadError("connection interrupted")
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(
+            200, stream=InterruptedStream(), headers={"Content-Type": "audio/wav"}))) as client:
+        with pytest.raises(httpx.ReadError):
+            await tts.synthesize(request("tts").payload, Settings(cartesia_api_key="test-only"),
+                                 client, time.monotonic() + 10)
 
 
 @pytest.mark.parametrize("kind", ["coach", "review", "tts"])
