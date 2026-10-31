@@ -7,6 +7,32 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ScenarioContentTest {
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named="scenario.quality.capture",matches=".+")
+    void capturedProviderResultsPassIndependentCoreValidation() throws Exception {
+        var root=java.nio.file.Path.of(System.getProperty("scenario.quality.capture"));
+        var manifest=ScenarioJson.MAPPER.readTree(java.nio.file.Files.readAllBytes(root.resolve("manifest.json")));
+        String pin; try (var in=getClass().getResourceAsStream("/scenario/workflow-v1.sha256")) { pin=new String(in.readAllBytes()).trim(); }
+        assertThat(manifest.path("promptHash").asText()).isEqualTo(pin);
+        assertThat(java.nio.file.Files.exists(root.resolve("finished.json"))).isTrue();
+        var cases=ScenarioJson.MAPPER.readTree(java.nio.file.Files.readAllBytes(root.resolve("cases.json"))).path("cases");
+        assertThat(cases.size()).isPositive();
+        for (var c : cases) {
+            String name=c.path("id").asText(); var folder=root.resolve(name);
+            var extract=ScenarioJson.MAPPER.readTree(java.nio.file.Files.readAllBytes(folder.resolve("EXTRACT/outcome.json")));
+            assertThat(extract.path("status").asText()).as(name+" EXTRACT").isEqualTo("SUCCEEDED");
+            var spec=extract.path("result").path("task"); ScenarioContent.specification(spec);
+            assertThat(spec.path("allowed").asBoolean()).as(name+" allowed").isEqualTo(c.path("expectedAllowed").asBoolean());
+            if (!c.path("expectedAllowed").asBoolean()) {
+                assertThat(java.nio.file.Files.exists(folder.resolve("GENERATE"))).as(name+" no unsafe generation").isFalse();
+                continue;
+            }
+            var generation=ScenarioJson.MAPPER.readTree(java.nio.file.Files.readAllBytes(folder.resolve("GENERATE/outcome.json")));
+            var input=ScenarioJson.MAPPER.readTree(java.nio.file.Files.readAllBytes(folder.resolve("GENERATE/input.json")));
+            assertThat(generation.path("status").asText()).as(name+" GENERATE").isEqualTo("SUCCEEDED");
+            ScenarioContent.content(generation.path("result").path("task"),spec,input.path("profile"));
+        }
+    }
     @Test void explorerReusesAllLegacySuggestionsInSixGroups() {
         var suggestions=com.dictalab.service.ConversationService.scenarioSuggestions();
         assertThat(suggestions).hasSize(24);
@@ -20,6 +46,29 @@ class ScenarioContentTest {
     @Test void sharedFixturePassesIndependentCoreValidation() throws Exception {
         var f=fixture(); ScenarioContent.specification(f.path("specification")); ScenarioContent.content(f.path("content"),f.path("specification"),f.path("profile"));
         ScenarioContent.grade(f.path("grade"),f.path("answers"));
+    }
+    @Test void allowsYesNoPolarityButStillRejectsSubstantiveDisclosures() {
+        assertThat(ScenarioContent.answerLeaked("Vé cũ có được phép dùng tiếp hay không?","Có")).isFalse();
+        assertThat(ScenarioContent.answerLeaked("Khách có được đổi vé không?","Không được")).isFalse();
+        assertThat(ScenarioContent.answerLeaked("Khách có được đổi vé?","Có")).isFalse();
+        assertThat(ScenarioContent.answerLeaked("Có mấy chuyến tàu?","Có")).isTrue();
+        assertThat(ScenarioContent.answerLeaked("Khách đến sân ga số 4 phải không?","4")).isTrue();
+        assertThat(ScenarioContent.answerLeaked("Khách thanh toán bằng thẻ phải không?","Bằng thẻ")).isTrue();
+    }
+    @Test void rejectsNamesOnlyInMetadataAndChangedTranslationDigits() throws Exception {
+        var f=fixture(); var content=f.path("content");
+        ((ObjectNode)content.path("activities").get(0).path("questions").get(0)).put("answerVi","Sam");
+        assertThatThrownBy(() -> ScenarioContent.content(content,f.path("specification"),f.path("profile"))).isInstanceOf(IllegalArgumentException.class);
+        var numbers=fixture();
+        ((ObjectNode)numbers.path("content").path("activities").get(0).path("segments").get(1)).put("textEn","Yes, we open at 9. You can collect your order tomorrow morning.");
+        ((ObjectNode)numbers.path("content").path("activities").get(0).path("questions").get(0).path("evidence").get(0)).put("quoteEn","we open at 9");
+        ((ObjectNode)numbers.path("content").path("translations").get(1)).put("textVi","Chúng tôi mở lúc 8. Bạn có thể nhận đơn sáng mai.");
+        assertThatThrownBy(() -> ScenarioContent.content(numbers.path("content"),numbers.path("specification"),numbers.path("profile"))).isInstanceOf(IllegalArgumentException.class);
+    }
+    @Test void repeatedAnswerCannotRetestAPriorDecision() throws Exception {
+        var f=fixture(); var content=f.path("content");
+        ((ObjectNode)content.path("activities").get(2).path("questions").get(1)).put("answerVi","CHÍN GIỜ!");
+        assertThatThrownBy(() -> ScenarioContent.content(content,f.path("specification"),f.path("profile"))).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void rejectsForgedEvidencePrivateFieldsAndOutOfBoundsContent() throws Exception {
         for (String fault : java.util.List.of("quote","translation","words","unicodeWords","quality","extra")) {

@@ -13,11 +13,15 @@ copy an environment file into the evidence directory. Scenario execution must be
 enabled in that protected configuration. Then run **capture only when fresh calls are intended**:
 
 ```powershell
-python tools/ai-eval/scenario_quality.py capture --output data/scenario-evaluation/run-001 --max-calls 32 --max-seconds 1200
+python tools/ai-eval/scenario_quality.py capture --output data/scenario-evaluation/run-001 --max-calls 64 --max-seconds 1200
 ```
 
-Each case runs EXTRACT once and GENERATE once only when EXTRACT allows it. GENERATE
-uses the real generation, translation and review gates; failed samples are not repaired,
+Each case runs EXTRACT once, including a separate source audit for allowed requests, and
+GENERATE once only when EXTRACT allows it. V2 GENERATE uses six bounded calls: dialogue,
+translation, one question call per activity, then review. The server assigns extraction character IDs
+and requires exact server-owned translation keys. Question calls see only that activity's
+speech, translation and role labels plus previous question meanings and answers; they select segment IDs and the server
+anchors the exact source text. The real validation and semantic gates apply; failed samples are not repaired,
 retried or replaced. The configured shared quota still applies. The budget counts gateway
 calls, not billed tokens; wire usage is retained when supplied by the provider. Cloud output
 has no guaranteed deterministic seed, even with temperature zero.
@@ -49,6 +53,11 @@ python -m pytest -q tools/ai-eval/test_scenario_quality.py services/ai-generatio
 ```
 
 Both commands make **zero provider calls**. Reports include all recorded replies and failures.
+`report --require-pass` writes the report then exits 2 unless every planned case has the correct
+EXTRACT allow/deny outcome, every allowed case passes GENERATE, unsafe cases never generate,
+and the evidence is sealed and finished. This is automatic acceptance, not human or release approval.
+Use `capture --baseline <original-capture>` for a newly authorized candidate: it verifies identical
+corpus hashes and records the original integrity hash without overwriting or resending that run.
 Replay runs those replies through the workflow and compares results/errors. It rejects a
 changed prompt pin or request/schema/options and never falls back to a live provider.
 A provider failure with no parsed reply is `UNREPLAYABLE`, not a reason to resend it.
@@ -68,7 +77,10 @@ until the quality investigation is closed. The tool does not auto-delete evidenc
 is for explicit synthetic evaluation; it does not enable logging real learner content in production.
 
 The first real run and its manual findings are documented in
-`docs/scenario-quality-evaluation-20261031.md`.
+`docs/scenario-quality-evaluation-20261031.md`. After a prompt/schema change, use `report` to inspect
+old evidence; exact replay deliberately refuses a different pin. Previously saved replay results and
+archived workflow/harness sources remain available. V2 changes and candidate results are tracked in
+`docs/scenario-quality-hardening-20261031.md`.
 
 ## Bounded Gemini JSONL batch
 

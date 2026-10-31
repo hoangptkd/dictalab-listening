@@ -71,12 +71,13 @@ class ScenarioEngineIntegrationTest {
         String phase=input.path("phase").asText(); boolean tts=input.path("kind").asText().equals("tts");
         var result=object().put("schemaVersion","1").put("generationId",id).put("requestId",id)
                 .put("provider",tts ? "cartesia" : "ollama").put("model","fixture-model").put("modelDigest","fixture-digest")
-                .put("promptVersion",tts ? "TTS_WAV_V1" : "SCENARIO_LISTENING_V1").put("promptHash",release.promptHash()).put("programHash",input.path("programHash").asText());
+                .put("promptVersion",tts ? "TTS_WAV_V1" : "SCENARIO_LISTENING_V2").put("promptHash",tts ? release.promptHash() : input.path("promptHash").asText()).put("programHash",input.path("programHash").asText());
         if (tts) result.set("task",object().put("contentType","audio/wav").put("size",wave().length).put("audioBase64",Base64.getEncoder().encodeToString(wave())));
         else {
             result.set("task",fixture.path(switch(phase) { case "EXTRACT" -> "specification"; case "GENERATE" -> "content"; default -> "grade"; }).deepCopy());
             var calls=result.putArray("calls");
-            for (String purpose : phase.equals("GENERATE") ? List.of("GENERATE","TRANSLATE","REVIEW") : List.of(phase))
+            for (String purpose : phase.equals("GENERATE") ? List.of("GENERATE","TRANSLATE","QUESTIONS","QUESTIONS","QUESTIONS","REVIEW")
+                    : phase.equals("EXTRACT") ? List.of("EXTRACT","EXTRACT_REVIEW") : List.of(phase))
                 calls.addObject().put("purpose",purpose).put("provider","ollama").put("model","fixture-model");
         }
         var state=object().put("jobId",id).put("schemaVersion","1").put("status","DONE"); state.set("result",result); return state;
@@ -102,6 +103,8 @@ class ScenarioEngineIntegrationTest {
 
     @Test void fullLifecycleKeepsKeysPrivateRecordsSupportCachesAudioAndRemixesWithoutOverwriting() throws Exception {
         JsonNode session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        verify(budget).reserveScenario(eq(user),anyString(),eq(2),eq(false),eq(true));
+        verify(budget).reserveScenario(eq(user),anyString(),eq(6),eq(false),eq(true));
         verify(ai).submitScenario(eq(user),anyString(),any(),argThat(p -> "GENERATE".equals(p.path("phase").asText())
                 && input().inputVi().equals(p.path("inputVi").asText())));
         assertThat(session.toString()).doesNotContain("we open at nine","Chín giờ","quoteEn","textEn","answerVi","provenance_json");
@@ -137,7 +140,7 @@ class ScenarioEngineIntegrationTest {
             assertThat(a.get(15,TimeUnit.SECONDS)).isEqualTo(b.get(15,TimeUnit.SECONDS));
         } finally { executor.shutdownNow(); }
         assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_drafts WHERE user_id=?",Integer.class,user)).isEqualTo(1);
-        assertThat(db.queryForObject("SELECT calls_reserved FROM scenario_operation_budget WHERE user_id=?",Integer.class,user)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT calls_reserved FROM scenario_operation_budget WHERE user_id=?",Integer.class,user)).isEqualTo(2);
         assertThatThrownBy(() -> engine.createDraft(user,key,new ScenarioEngine.DraftRequest("Khác","general-communication",1,"supported")))
                 .isInstanceOfSatisfying(ScenarioFailure.class,e -> assertThat(e.code).isEqualTo("IDEMPOTENCY_CONFLICT"));
         assertThat(engine.createDraft(user,key,input()).path("operationId").asText()).isNotBlank();
@@ -187,6 +190,30 @@ class ScenarioEngineIntegrationTest {
         assertThat(engine.session(user,sid).path("status").asText()).isEqualTo("ACTIVE");
     }
 
+    @Test void missingExtractionAuditCannotPublishAndPinnedLegacyResultCanStillSettle() {
+        doAnswer(call -> {
+            var response=(ObjectNode)done(call.getArgument(1),call.getArgument(3));
+            ((tools.jackson.databind.node.ArrayNode)response.path("result").path("calls")).remove(1);
+            return response;
+        }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        var failed=dispatch(engine.createDraft(user,id(),input()));
+        assertThat(failed.path("status").asText()).isEqualTo("FAILED");
+        assertThat(engine.draft(user,failed.path("draftId").asText()).path("status").asText()).isEqualTo("FAILED");
+
+        String legacyHash="f3a1a93382df50b9e798d9ae9d11e502d3e8eb0c347751195c6d00b7ba88b8a1";
+        var old=engine.createDraft(user,id(),input()); String oid=old.path("operationId").asText();
+        var body=(ObjectNode)tree(db.queryForObject("SELECT payload_json FROM scenario_operations WHERE id=?",String.class,oid));
+        body.put("promptHash",legacyHash);
+        db.update("UPDATE scenario_operations SET payload_json=? WHERE id=?",body.toString(),oid);
+        doAnswer(call -> {
+            var response=(ObjectNode)done(call.getArgument(1),call.getArgument(3));
+            ((ObjectNode)response.path("result")).put("promptVersion","SCENARIO_LISTENING_V1");
+            ((tools.jackson.databind.node.ArrayNode)response.path("result").path("calls")).remove(1);
+            return response;
+        }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        assertThat(dispatch(old).path("status").asText()).isEqualTo("SUCCEEDED");
+    }
+
     @Test void cancellationAndDeletedOwnerCannotPublishLateResults() {
         var op=engine.createDraft(user,id(),input()); String oid=op.path("operationId").asText();
         engine.cancel(user,oid,id(),new ScenarioEngine.VersionRequest(op.path("version").asLong())); operations.dispatch(oid);
@@ -218,14 +245,14 @@ class ScenarioEngineIntegrationTest {
         } finally { db.execute("ALTER TABLE scenario_operation_budget DROP CONSTRAINT "+constraint); }
     }
 
-    @Test void generationReservesAllThreeCallsAndSharedLegacyQuotaCannotBeBypassed() {
+    @Test void generationReservesAllSixCallsAndSharedLegacyQuotaCannotBeBypassed() {
         var extract=dispatch(engine.createDraft(user,id(),input())); var draft=engine.draft(user,extract.path("draftId").asText());
         for (int i=0;i<20;i++) db.update("INSERT INTO ai_conversation_sessions(id,user_id,scenario,difficulty,state_json) VALUES (?,?,'cafe','A1','{}')",id(),user);
         assertThatThrownBy(() -> engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong())))
                 .isInstanceOfSatisfying(ScenarioFailure.class,e -> assertThat(e.status).isEqualTo(429));
         db.update("DELETE FROM ai_conversation_sessions WHERE user_id=?",user);
         var op=engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong()));
-        assertThat(db.queryForObject("SELECT calls_reserved FROM scenario_operation_budget WHERE operation_id=?",Integer.class,op.path("operationId").asText())).isEqualTo(3);
+        assertThat(db.queryForObject("SELECT calls_reserved FROM scenario_operation_budget WHERE operation_id=?",Integer.class,op.path("operationId").asText())).isEqualTo(6);
     }
 
     @Test void accountDeletionDuringProviderIoCannotRecreateLearningData() {

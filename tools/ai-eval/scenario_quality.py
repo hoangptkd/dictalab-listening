@@ -80,15 +80,16 @@ def cases(path):
 def failure(error):
     # Do not persist exception strings from HTTP/database clients: they can contain credentials.
     record = {"type": type(error).__name__}
-    if re.fullmatch(r"[a-z_]+:scenario_(extract|generate|translate|review):[a-z_]+(?::[0-9]+)?", str(error)):
+    if re.fullmatch(r"[a-z_]+:scenario_(extract|extract_review|generate|questions|translate|review):[a-z_]+(?::[0-9]+)?", str(error)):
         record["providerCode"] = str(error)
     if isinstance(error, workflow.QualityRejected):
         record["reason"] = str(error)
         if type(error.__cause__) is ValueError:
             record["validationReason"] = redact_string(str(error.__cause__))[:400]
-    if hasattr(error, "errors"):
+    schema_error = error.__cause__ if hasattr(error.__cause__, "errors") else error
+    if hasattr(schema_error, "errors"):
         record["schemaErrors"] = [{"loc": e["loc"], "type": e["type"]}
-                                  for e in error.errors(include_input=False)]
+                                  for e in schema_error.errors(include_input=False)]
     if isinstance(error, ProviderHttpError):
         record["httpStatus"] = error.status
     return record
@@ -165,7 +166,7 @@ async def phase(folder, payload, settings, budget):
     return outcome
 
 
-async def capture(dataset_path, output, settings, *, max_calls=32, max_seconds=1200):
+async def capture(dataset_path, output, settings, *, max_calls=64, max_seconds=1200, baseline=None):
     dataset = cases(dataset_path)
     if not settings.scenario_enabled:
         raise ValueError("Scenario execution must be explicitly enabled in protected configuration")
@@ -173,6 +174,10 @@ async def capture(dataset_path, output, settings, *, max_calls=32, max_seconds=1
     # Do not write private captures outside ignored data/.
     if not output.is_relative_to(ROOT / "data"):
         raise ValueError("captures must live under ignored repository data/")
+    if baseline is not None:
+        verify(baseline)
+        if read(Path(baseline) / "manifest.json")["datasetHash"] != digest(encoded(dataset)):
+            raise ValueError("baseline corpus differs")
     program = next(p for p in read(PROGRAM) if p["code"] == "general-communication")
     output.mkdir(parents=True, exist_ok=False)
     source = (ROOT / "services/ai-generation/app/scenario_workflow.py").read_bytes()
@@ -188,6 +193,7 @@ async def capture(dataset_path, output, settings, *, max_calls=32, max_seconds=1
                 "gitCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                 "programHash": program["definitionHash"], "settings": settings_safe,
                 "maxCalls": max_calls, "maxSeconds": max_seconds, "seed": None,
+                "baselineIntegrityHash": digest((Path(baseline) / "integrity.json").read_bytes()) if baseline else None,
                 "notice": "Cloud sampling has no guaranteed deterministic seed. Raw captures are immutable evidence, not release approval."}
     write(output / "manifest.json", manifest)
     write(output / "cases.json", dataset)
@@ -244,8 +250,27 @@ def report(output, *, allow_incomplete=False):
             row["phases"][name]["replies"] = [{"artifact": str(p.relative_to(output)), **read(p)}
                                                for p in sorted(folder.glob("*-response.json"))]
         rows.append(row)
+    finished = read(output / "finished.json") if (output / "finished.json").exists() else None
+    failures, generated, expected_generated = [], 0, 0
+    for row in rows:
+        extract = row["phases"].get("EXTRACT", {})
+        allowed = extract.get("result", {}).get("task", {}).get("allowed")
+        correct = extract.get("status") == "SUCCEEDED" and allowed is row["expectedAllowed"]
+        generation = row["phases"].get("GENERATE")
+        if row["expectedAllowed"]:
+            expected_generated += 1
+            passed = bool(generation and generation["status"] == "SUCCEEDED"
+                          and generation.get("result", {}).get("task", {}).get("qualityPassed") is True)
+            generated += int(passed)
+            correct = correct and passed
+        else:
+            correct = correct and generation is None
+        if not correct: failures.append(row["id"])
+    acceptance = {"passed": bool(sealed and finished and not failures), "expectedCases": len(rows),
+                  "failedCaseIds": failures, "generationsExpected": expected_generated,
+                  "generationsSucceeded": generated, "notice": "Automatic gates only; not independent human or release approval."}
     return {"manifest": read(output / "manifest.json"), "evidenceIntegrity": "VERIFIED" if sealed else "UNSEALED_INCOMPLETE",
-            "finished": read(output / "finished.json") if (output / "finished.json").exists() else None, "cases": rows}
+            "finished": finished, "acceptance": acceptance, "cases": rows}
 
 
 async def replay(output):
@@ -305,21 +330,25 @@ def main():
     live = sub.add_parser("capture")
     live.add_argument("--dataset", type=Path, default=DEFAULT_CASES)
     live.add_argument("--output", type=Path, required=True)
-    live.add_argument("--max-calls", type=int, default=32)
+    live.add_argument("--max-calls", type=int, default=64)
+    live.add_argument("--baseline", type=Path)
     live.add_argument("--max-seconds", type=int, default=1200)
     for name in ("report", "replay"):
         command = sub.add_parser(name)
         command.add_argument("--capture", type=Path, required=True)
         command.add_argument("--output", type=Path, required=True)
         if name == "report": command.add_argument("--allow-incomplete", action="store_true")
+        if name == "report": command.add_argument("--require-pass", action="store_true")
     args = parser.parse_args()
     if args.action == "capture":
         if not 1 <= args.max_calls <= 100 or not 1 <= args.max_seconds <= 3600: parser.error("invalid capture budget")
-        asyncio.run(capture(args.dataset, args.output, Settings(), max_calls=args.max_calls, max_seconds=args.max_seconds))
+        asyncio.run(capture(args.dataset, args.output, Settings(), max_calls=args.max_calls, max_seconds=args.max_seconds, baseline=args.baseline))
     else:
         value = report(args.capture, allow_incomplete=args.allow_incomplete) if args.action == "report" else asyncio.run(replay(args.capture))
         write(args.output, value)
         print(args.action, "saved; provider calls 0")
+        if args.action == "report" and args.require_pass and not value["acceptance"]["passed"]:
+            raise SystemExit(2)
 
 
 if __name__ == "__main__":

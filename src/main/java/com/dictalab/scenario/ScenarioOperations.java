@@ -41,7 +41,7 @@ public class ScenarioOperations {
                 VALUES (?,?,?,?,?,?,?,?,?)
                 """,id,user,key(key),scope,ScenarioJson.hash(ScenarioJson.canonical(ScenarioJson.MAPPER.valueToTree(intent))),kind,resource,body,
                 Timestamp.from(Instant.now().plusSeconds(kind.equals("TTS") ? 90 : 240)));
-        budget.reserveScenario(user,id,kind.equals("GENERATE") ? 3 : 1,kind.equals("TTS"),ai.local());
+        budget.reserveScenario(user,id,kind.equals("GENERATE") ? 6 : kind.equals("EXTRACT") ? 2 : 1,kind.equals("TTS"),ai.local());
         return get(user,id);
     }
     public ObjectNode get(long user, String id) {
