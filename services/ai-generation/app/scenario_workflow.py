@@ -47,11 +47,15 @@ Never change the time, place, quantities, requests, relationships or conditions.
 ages, dates, medical conditions, availability or prior agreements. Only assumptionsVi in the confirmed
 specification may supply background assumptions. A new proposal must be spoken as a proposal and explicitly
 accepted or clarified by the other speaker before it becomes an agreed fact. Do not invent extra requirements.
-Write one continuous, natural exchange across three activities: a1 establishes the situation and request;
-a2 discusses and resolves the practical issue; a3 confirms the agreed outcome and next action.
-Carry earlier decisions forward without contradictions or repeated introductions. Distinguish original and
-requested arrangements. Resolve the learner's goal explicitly through the appropriate speaker's response;
-do not declare a request resolved merely because it was asked. A deadline requires a concrete agreed time.
+Write one continuous, natural exchange divided into three connected activities. Choose its progression and
+ending from the actual communicative goal; the activities are lesson sections, not a fixed transaction script.
+Social conversation may develop introductions, experiences, interests or opinions and end naturally, without
+an agreement or next action. A service request needs an appropriate response; confirm an arrangement only
+when the situation involves one. Never invent a problem, booking, commitment or extra task to fill a section.
+Carry established facts and any earlier decisions forward without contradictions or repeated introductions.
+Distinguish original and requested arrangements when relevant. Fulfill the learner's communicative goal
+through what is actually said; asking a service question alone does not answer it. If the brief contains a
+deadline, establish explicitly whether it can be met, using concrete times where needed.
 Aim for writingBudget.targetWordsPerActivity in each activity, within the supplied profile limits and the
 session total. Use meaningful clarification and responses to reach the target, not padding or repeated greetings.
 The backend counts actual whitespace-separated words. Do not output counts, annotations or other fields.
@@ -92,8 +96,11 @@ Do not rewrite the content. valid=true only if issues is empty and every questio
 Check the six extracted facts against their quotes and the questions against those facts. Reject unsupported
 facts, changed roles in question wording, lost precision in an answer, or a question testing a different fact.
 Check scenarioPreserved, coherentProgression and goalResolved separately across all three activities.
-Unconfirmed proposals must not become background facts, later activities must honor earlier decisions,
-and the appropriate speaker must explicitly resolve the user's goal. Any false or uncertain check fails.
+Unconfirmed proposals must not become background facts; later activities must honor earlier decisions.
+Assess goalResolved against the actual communicative goal: social introductions or an exchange of interests
+can fulfill it without an agreement, problem resolution or next action. Service requests still need an
+appropriate explicit response, and any agreed arrangement or stated deadline must be clear and consistent.
+Reject a forced transaction, commitment or extra task unrelated to the brief. Any false or uncertain check fails.
 """,
     "GRADE": SYSTEM + """Grade only the meaning of each submitted English or Vietnamese answer, including mixed-language
 answers. Accept either language equally, accurate paraphrases and minor typos. Never require a Vietnamese

@@ -1,5 +1,8 @@
 # Đánh giá EXTRACT / GENERATE — 31/10/2026
 
+Phần đầu giữ nguyên kết quả baseline 31/10. Kết quả sửa diễn biến và kiểm tra lại ngày 01/11
+nằm ở mục cuối; không dùng số liệu baseline để mô tả bản mới.
+
 ## Kết luận
 
 Chất lượng hiện tại **chưa đủ để coi kết quả qua gate là bài học tốt**. EXTRACT trả đúng
@@ -144,3 +147,68 @@ phong chỉ được đọc bằng `report --allow-incomplete`, không coi là r
   `0a71e40d2e6bbe9bb4dd56003d51a54d18ecf84339dafbe2a575c0efb2f02e91`.
 - Kiểm tra UTF-8 và biên dịch Python được chạy trước commit. CI/delivery được báo riêng,
   không coi kiểm thử local là production đã triển khai.
+
+## Cập nhật 01/11/2026: diễn biến theo mục tiêu giao tiếp
+
+### Thay đổi và phạm vi
+
+GENERATE vẫn chỉ tạo hội thoại; FACTS, QUESTIONS, TRANSLATE và REVIEW chạy sau.
+Ba activity chia hội thoại thành các phần liên kết, không còn bắt buộc đi theo chuỗi
+yêu cầu, giải quyết vấn đề, chốt thỏa thuận. GENERATE và REVIEW đều cho phép hội thoại
+xã hội kết thúc bằng lời chào hoặc trao đổi sở thích. Yêu cầu dịch vụ vẫn cần câu trả lời
+phù hợp; thời hạn và thỏa thuận thực sự có trong tình huống vẫn phải rõ ràng.
+
+Giữ gate về cấu trúc, số từ thực tế, trích dẫn và sáu câu hỏi. Cập nhật prompt pin cả
+Python/Core; kết quả đã gửi với pin V3 trước đó vẫn được nhận theo đúng fingerprint cũ.
+Không thay đổi API, database hoặc khởi động lại ứng dụng đang chạy.
+
+### Một lần chạy lại trên cùng tám input
+
+- Model/provider: `gemini-3.5-flash-lite` / Gemini; temperature 0, không bảo đảm seed cloud.
+- Thời gian: `2026-10-31T18:06:00Z`–`18:08:42Z`, tức 01:06–01:08 ngày 01/11 UTC+7.
+- Corpus giữ nguyên SHA-256 `d641b1b129a031cb7cbe3ec6123c0236dd25a7e9b72e82f9c5c5d7dc785dc377`.
+- Prompt pin: `c8e817015d97850288b8bbe377934602cc1f4df1a4b7ce18a2d5b5de8b28c2b5`.
+- Workflow source SHA-256: `659c3447b32a122806898655854faab4d3ddb158ed862971bbb6fdde1c0fe534`.
+- Manifest ghi Git cha `4bd83c6`; source thực tế có sửa trong working tree, đã lưu nguyên byte
+  trong capture cùng hash trên. Không coi Git cha là source của prompt mới.
+- Tổng **38 lượt gọi AI**: EXTRACT 8 và 6 bài × 5 bước. Không repair, gọi lại hoặc thay mẫu lỗi.
+- EXTRACT trả đúng schema 7/8; ca phỏng vấn HTTP 503, trạng thái UNKNOWN. Mẫu unsafe được
+  từ chối đúng và không gọi GENERATE. Sáu bài còn lại qua gate; tính trên bảy ca an toàn là
+  6/7 tạo được bài, không phải 7/7. Đây chưa phải tỷ lệ nội dung đạt chất lượng.
+
+| Case | Kết quả tự động | Số từ a1/a2/a3 | Rà soát nội dung từ bản ghi |
+|---|---|---|---|
+| `food-allergy` | Qua | 33/34/41 | Tiến triển hỏi thành phần, đổi món, hỏi giá; không còn câu hỏi sai bối cảnh gọi điện như baseline |
+| `transport-last-train` | Qua | 46/52/55 | Đã nói giờ đến 19:30 trước hạn 20:00; EXTRACT vẫn tự thêm lý do đi làm, câu hỏi có bản không dấu và cụm sai nghĩa “san ke hoach khoi hanh” |
+| `shopping-wrong-size` | Qua | 89/67/55 | Đủ độ dài; vẫn lặp ý đổi hàng, tiếng Việt lỗi “cỡ nhữ”, “chiằc áo”; REVIEW bỏ sót |
+| `work-interview-reschedule` | UNKNOWN ở EXTRACT | Không sinh | Provider trả HTTP 503; chưa đánh giá được nội dung của bản mới cho ca này |
+| `services-checkout` | Qua | 50/34/41 | Nơi gửi, phí và thẻ nhận rõ; câu hỏi a3/q1 tự nêu điều đang hỏi và key diễn đạt lại yêu cầu, tiếng Việt lỗi/không dấu |
+| `social-rain-plan` | Qua | 62/85/63 | Có người đặt sân và giờ/nơi gặp; FACTS a1/q2 biến đề xuất thành quyết định dù đồng ý nằm ở a2; REVIEW vẫn cho qua |
+| `sparse-neighbour` | Qua | 52/52/50 | Kết thúc chào hỏi tự nhiên, không ép đặt lịch; EXTRACT vẫn tự gán người học là cư dân mới, thiếu giả định, a2/q1 gần như tiết lộ dữ kiện trong câu hỏi |
+| `unsafe-bank-password` | Từ chối đúng | Không sinh | `allowed=false` |
+
+Tất cả 18 activity đã sinh có 2–6 segments và nằm trong giới hạn từ của profile tương ứng.
+Đây là kiểm tra giới hạn, không có nghĩa mọi activity đã sát điểm giữa hoặc hết câu đệm.
+Các lỗi tiếng Việt nêu trên có trong raw JSON model trả về; không phải lỗi hiển thị terminal.
+
+**Kết luận:** thay đổi đã cho phép mẫu xã hội thoát khỏi khuôn giao dịch, và bài tàu có bằng
+chứng giờ đến cụ thể. Chưa đủ để kết luận chất lượng toàn bộ tốt hơn ổn định: mỗi case chỉ
+có một mẫu, nhiều bước đã khác baseline, REVIEW cùng pipeline vẫn bỏ sót lỗi. Không coi
+6 bài qua gate là 6 bài đạt chất lượng để mở production. Rà soát này do agent thực hiện,
+không phải phê duyệt độc lập của người dùng.
+
+### Bằng chứng và kiểm tra
+
+- Capture riêng: `data/scenario-local-20261031/quality-context-progression-20261101-01/`.
+  Có input, prompt/schema, source, raw/wire của từng bước và integrity SHA-256.
+- `derived/report-v1.json` giữ mọi kết quả; `derived/content-review-v1.json` ghi nhận xét
+  theo artifact. Dùng các bản ghi này để điều tra tiếp, không cần sinh lại các mẫu lỗi.
+- Offline replay: **13/13 pha có phản hồi phát lại cùng kết quả, 0 gọi provider**.
+  Pha HTTP 503 không có parsed reply nên ghi UNREPLAYABLE, không tính thành công.
+- Bản ZIP ngoài worktree nằm cùng thư mục backup baseline; receipt ghi CRC và SHA-256
+  từng file để kiểm lại: 168 file, SHA-256 ZIP
+  `6b3f48d3a42e06ef91e0d9a7dc6707a3631647f21d9f65dc51ccafe32b349ad1`.
+  Raw và cấu hình riêng không đưa vào Git.
+- Kiểm tra sửa đổi: **61 Python pass; 91 Java pass, 1 skip**. Có fixture hội thoại xã hội
+  hoàn thành mà không đặt lịch, kiểm tương thích pin V3 cũ và các gate từ chối đã có.
+  Fixture/mock chỉ chứng minh xử lý và hợp đồng, không đo chất lượng model thật.

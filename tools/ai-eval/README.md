@@ -74,13 +74,16 @@ is for explicit synthetic evaluation; it does not enable logging real learner co
 
 The 2026-11-01 split uses `SCENARIO_LISTENING_V3`; V2 identifies the reverted experiment.
 The public lesson/session JSON is unchanged, Core reserves five generation calls, and previously
-submitted V1 results can settle only under their two exact historical pins. No database migration
+submitted V1 results can settle only under their two exact historical pins; the preceding V3 pin
+is also accepted for already-submitted five-call jobs. No database migration
 or program-definition change is required. Core/Python must run the matching workflow pin; existing
 release/local-preview approvals do not automatically approve the new pin.
 Semantic review explicitly checks scenario preservation, coherent progression, goal resolution,
 fact support and question/fact agreement. These remain model judgments, not a proof of content
-quality. This change is verified with fixtures and offline capture/replay tests; fresh model quality
-testing is intentionally left for the owner. No automatic repair or extra generation retries were added.
+quality. Generation and review choose progression/closure from the communicative goal: social exchanges
+need no transaction or next action, while service requests and deadlines still require clear responses.
+The 2026-11-01 real-model results and remaining content defects are recorded in the report below.
+No automatic repair or extra generation retries were added.
 
 The first real run and its manual findings are documented in
 `docs/scenario-quality-evaluation-20261031.md`.

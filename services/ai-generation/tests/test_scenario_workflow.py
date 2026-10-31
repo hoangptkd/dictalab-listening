@@ -202,6 +202,34 @@ def test_scenario_drift_contradiction_or_unresolved_goal_fails_even_with_valid_t
         execute(payload(), replies)
 
 
+def test_social_dialogue_can_fulfill_its_goal_without_an_agreement_or_next_action():
+    value = payload(inputVi="Tôi làm quen hàng xóm mới, trao đổi sở thích, không hẹn lịch hay nhờ làm việc gì.")
+    value.specification = workflow.Specification(allowed=True, titleVi="Làm quen hàng xóm", settingVi="Hai hàng xóm gặp nhau.",
+        learnerRoleVi="Cư dân", goalVi="Làm quen và trao đổi sở thích.", constraintsVi=["Không hẹn lịch"], assumptionsVi=[], topicIds=["social"],
+        characters=[workflow.Character(id="customer", name="Alex", roleVi="Cư dân"), workflow.Character(id="baker", name="Sam", roleVi="Hàng xóm mới")])
+    rows = [
+        [("customer", "Hello, I'm Alex. I live on the second floor. It is nice to meet another neighbour.", "Xin chào, tôi là Alex, sống ở tầng hai. Rất vui được gặp hàng xóm.", "Alex sống ở tầng nào?", "Tầng hai", "I live on the second floor"),
+         ("baker", "Nice to meet you, Alex. I'm Sam, and I moved here from Bristol. The building seems friendly.", "Rất vui được gặp Alex. Tôi là Sam, mới chuyển từ Bristol đến. Tòa nhà có vẻ thân thiện.", "Sam chuyển đến từ đâu?", "Bristol", "I moved here from Bristol")],
+        [("customer", "I enjoy painting in my free time. Watercolours are my favourite because the colours look soft and gentle.", "Lúc rảnh tôi thích vẽ. Tôi thích nhất màu nước vì màu sắc trông dịu nhẹ.", "Alex thích dùng loại màu nào nhất?", "Màu nước", "Watercolours are my favourite"),
+         ("baker", "That sounds lovely. I prefer taking photographs, especially pictures of birds. Their different shapes and colours always interest me.", "Nghe hay quá. Tôi thích chụp ảnh, nhất là ảnh chim. Hình dáng và màu sắc của chúng luôn khiến tôi thích thú.", "Sam đặc biệt thích chụp ảnh gì?", "Chim", "especially pictures of birds")],
+        [("customer", "We both seem to enjoy noticing little details. My favourite season is autumn, when the leaves turn gold.", "Có vẻ cả hai đều thích để ý chi tiết nhỏ. Tôi thích nhất mùa thu khi lá chuyển vàng.", "Alex thích mùa nào nhất?", "Mùa thu", "My favourite season is autumn"),
+         ("baker", "Spring is my favourite season because everything feels fresh. It has been lovely talking with you, Alex. I'm glad we met today.", "Tôi thích nhất mùa xuân vì mọi thứ đều tươi mới. Rất vui được trò chuyện với Alex. Tôi mừng vì hôm nay chúng ta đã gặp nhau.", "Sam thích mùa nào nhất?", "Mùa xuân", "Spring is my favourite season")]]
+    replies = generation_responses()
+    replies[3]["segments"] = []
+    for index, turns in enumerate(rows):
+        activity_id = "a" + str(index + 1)
+        replies[0]["activities"][index]["segments"] = []
+        for turn, (speaker, english, vietnamese, question, answer, quote) in enumerate(turns):
+            sid, qid = "s" + str(turn + 1), "q" + str(turn + 1)
+            replies[0]["activities"][index]["segments"].append({"id": sid, "speakerId": speaker, "textEn": english})
+            replies[1]["activities"][index]["facts"][turn] = {"id": qid, "factEn": quote, "evidence": [{"segmentId": sid, "quoteEn": quote}]}
+            replies[2]["activities"][index]["questions"][turn] = {"id": qid, "skill": "detail", "promptVi": question, "answerVi": answer}
+            replies[3]["segments"].append({"activityId": activity_id, "segmentId": sid, "textVi": vietnamese})
+    result, calls = execute(value, replies)
+    assert len(calls) == 5 and result["task"]["qualityPassed"]
+    assert [{"id": a["id"], "segments": a["segments"]} for a in result["task"]["activities"]] == replies[0]["activities"]
+
+
 def test_infeasible_word_limits_fail_before_any_provider_call():
     with pytest.raises(ValueError, match="infeasible word limits"):
         payload(profile={"id": "supported", "minWordsPerActivity": 50, "maxWordsPerActivity": 40, "maxWordsPerSession": 180})

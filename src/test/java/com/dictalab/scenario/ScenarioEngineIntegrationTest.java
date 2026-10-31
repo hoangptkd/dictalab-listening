@@ -269,8 +269,9 @@ class ScenarioEngineIntegrationTest {
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings={
             "f3a1a93382df50b9e798d9ae9d11e502d3e8eb0c347751195c6d00b7ba88b8a1",
-            "0d40fae31e57eef602c6f1e8402ea6116f8beeee56ac011c7c3d018f7f0152c2"})
-    void alreadySubmittedV1JobCanSettleUnderItsOriginalPin(String oldPin) {
+            "0d40fae31e57eef602c6f1e8402ea6116f8beeee56ac011c7c3d018f7f0152c2",
+            "3391407dddc9762afe3774cb30ee60e4a9f0936e70597e8a057b8bdfe03395fe"})
+    void alreadySubmittedJobCanSettleUnderItsOriginalPin(String oldPin) {
         var extract=dispatch(engine.createDraft(user,id(),input())); var draft=engine.draft(user,extract.path("draftId").asText());
         var op=engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong()));
         String oid=op.path("operationId").asText();
@@ -278,9 +279,10 @@ class ScenarioEngineIntegrationTest {
         original.put("promptHash",oldPin);
         db.update("UPDATE scenario_operations SET payload_json=?,submitted=TRUE WHERE id=?",json(original),oid);
         var response=done(oid,original); var result=(ObjectNode)response.path("result");
-        result.put("promptHash",oldPin).put("promptVersion","SCENARIO_LISTENING_V1");
+        boolean previousV3=oldPin.equals("3391407dddc9762afe3774cb30ee60e4a9f0936e70597e8a057b8bdfe03395fe");
+        result.put("promptHash",oldPin).put("promptVersion",previousV3 ? "SCENARIO_LISTENING_V3" : "SCENARIO_LISTENING_V1");
         var calls=result.putArray("calls");
-        for (String purpose : List.of("GENERATE","TRANSLATE","REVIEW"))
+        for (String purpose : previousV3 ? List.of("GENERATE","FACTS","QUESTIONS","TRANSLATE","REVIEW") : List.of("GENERATE","TRANSLATE","REVIEW"))
             calls.addObject().put("purpose",purpose).put("provider","ollama").put("model","fixture-model");
         when(ai.scenarioStatus(user,oid)).thenReturn(response);
         assertThat(dispatch(op).path("status").asText()).isEqualTo("SUCCEEDED");
