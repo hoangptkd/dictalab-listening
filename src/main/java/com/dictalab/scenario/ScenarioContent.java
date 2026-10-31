@@ -39,13 +39,15 @@ final class ScenarioContent {
         for (var a : task.path("activities")) {
             fields(a,"id","segments","questions"); check(text(a,"id",2).equals("a" + ++ordinal));
             list(a.path("segments"),2,6); list(a.path("questions"),2,2);
-            var segments = new HashMap<String,String>(); int words = 0;
+            var segments = new HashMap<String,String>(); var heardSpeakers = new HashSet<String>(); int words = 0;
             for (var segment : a.path("segments")) {
                 fields(segment,"id","speakerId","textEn"); String sid = id(segment,"id");
                 check(speakers.contains(id(segment,"speakerId"))); String en = text(segment,"textEn",600);
+                heardSpeakers.add(segment.path("speakerId").asText());
                 check(segments.put(sid,en) == null); words += (int)java.util.regex.Pattern.compile("(?U)\\S+").matcher(en).results().count();
                 expected.add(a.path("id").asText() + "/" + sid);
             }
+            check(heardSpeakers.equals(speakers));
             check(words >= profile.path("minWordsPerActivity").asInt() && words <= profile.path("maxWordsPerActivity").asInt()); total += words;
             var ids = new HashSet<String>();
             for (var q : a.path("questions")) {

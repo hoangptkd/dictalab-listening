@@ -13,11 +13,16 @@ copy an environment file into the evidence directory. Scenario execution must be
 enabled in that protected configuration. Then run **capture only when fresh calls are intended**:
 
 ```powershell
-python tools/ai-eval/scenario_quality.py capture --output data/scenario-evaluation/run-001 --max-calls 32 --max-seconds 1200
+python tools/ai-eval/scenario_quality.py capture --output data/scenario-evaluation/run-001 --max-calls 48 --max-seconds 1200
 ```
 
-Each case runs EXTRACT once and GENERATE once only when EXTRACT allows it. GENERATE
-uses the real generation, translation and review gates; failed samples are not repaired,
+Each case runs EXTRACT once and the GENERATE operation once only when EXTRACT allows it.
+The operation now has five calls: GENERATE (dialogue only), FACTS (six anchored facts),
+QUESTIONS (one question per fact), TRANSLATE and REVIEW. GENERATE cannot return questions,
+answers, evidence or learning points. Dialogue structure, speaker IDs and actual word counts
+are validated before FACTS runs. Questions cannot rewrite the dialogue or fact evidence.
+The default eight-case corpus needs up to 43 calls, within the 48-call capture limit.
+All five stages use the real validation gates; failed samples are not repaired,
 retried or replaced. The configured shared quota still applies. The budget counts gateway
 calls, not billed tokens; wire usage is retained when supplied by the provider. Cloud output
 has no guaranteed deterministic seed, even with temperature zero.
@@ -66,6 +71,16 @@ Keep private captures out of Git. Create a second restricted copy/archive outsid
 worktree, verify its SHA-256, ZIP CRC and raw integrity inventory, and retain it deliberately
 until the quality investigation is closed. The tool does not auto-delete evidence. This logging
 is for explicit synthetic evaluation; it does not enable logging real learner content in production.
+
+The 2026-11-01 split uses `SCENARIO_LISTENING_V3`; V2 identifies the reverted experiment.
+The public lesson/session JSON is unchanged, Core reserves five generation calls, and previously
+submitted V1 results can settle only under their two exact historical pins. No database migration
+or program-definition change is required. Core/Python must run the matching workflow pin; existing
+release/local-preview approvals do not automatically approve the new pin.
+Semantic review explicitly checks scenario preservation, coherent progression, goal resolution,
+fact support and question/fact agreement. These remain model judgments, not a proof of content
+quality. This change is verified with fixtures and offline capture/replay tests; fresh model quality
+testing is intentionally left for the owner. No automatic repair or extra generation retries were added.
 
 The first real run and its manual findings are documented in
 `docs/scenario-quality-evaluation-20261031.md`.

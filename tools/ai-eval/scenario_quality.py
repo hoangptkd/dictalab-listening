@@ -80,7 +80,7 @@ def cases(path):
 def failure(error):
     # Do not persist exception strings from HTTP/database clients: they can contain credentials.
     record = {"type": type(error).__name__}
-    if re.fullmatch(r"[a-z_]+:scenario_(extract|generate|translate|review):[a-z_]+(?::[0-9]+)?", str(error)):
+    if re.fullmatch(r"[a-z_]+:scenario_(extract|generate|facts|questions|translate|review):[a-z_]+(?::[0-9]+)?", str(error)):
         record["providerCode"] = str(error)
     if isinstance(error, workflow.QualityRejected):
         record["reason"] = str(error)
@@ -165,7 +165,7 @@ async def phase(folder, payload, settings, budget):
     return outcome
 
 
-async def capture(dataset_path, output, settings, *, max_calls=32, max_seconds=1200):
+async def capture(dataset_path, output, settings, *, max_calls=48, max_seconds=1200):
     dataset = cases(dataset_path)
     if not settings.scenario_enabled:
         raise ValueError("Scenario execution must be explicitly enabled in protected configuration")
@@ -305,7 +305,7 @@ def main():
     live = sub.add_parser("capture")
     live.add_argument("--dataset", type=Path, default=DEFAULT_CASES)
     live.add_argument("--output", type=Path, required=True)
-    live.add_argument("--max-calls", type=int, default=32)
+    live.add_argument("--max-calls", type=int, default=48)
     live.add_argument("--max-seconds", type=int, default=1200)
     for name in ("report", "replay"):
         command = sub.add_parser(name)

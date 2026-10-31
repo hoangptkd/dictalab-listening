@@ -21,15 +21,22 @@ def output():
 
 
 def responses():
-    return [EXAMPLE["specification"], {"learningPointsVi": ["fact"]*6,
-            "content": {"activities": EXAMPLE["content"]["activities"]}},
-            {"segments": EXAMPLE["content"]["translations"]},
-            {"questionChecks": [{"activityId": a["id"], "questionId": q["id"], "reasonVi": "Supported distinct meaning",
-                "answerSupported": True, "distinctMeaning": True}
-                for a in EXAMPLE["content"]["activities"] for q in a["questions"]], "valid": True, "issues": []}]
+    activities = EXAMPLE["content"]["activities"]
+    return copy.deepcopy([EXAMPLE["specification"],
+        {"activities": [{"id": a["id"], "segments": a["segments"]} for a in activities]},
+        {"activities": [{"id": a["id"], "facts": [{"id": q["id"],
+            "factEn": " / ".join(e["quoteEn"] for e in q["evidence"]), "evidence": q["evidence"]}
+            for q in a["questions"]]} for a in activities]},
+        {"activities": [{"id": a["id"], "questions": [{k: q[k] for k in ("id", "skill", "promptVi", "answerVi")}
+            for q in a["questions"]]} for a in activities]},
+        {"segments": EXAMPLE["content"]["translations"]},
+        {"questionChecks": [{"activityId": a["id"], "questionId": q["id"], "reasonVi": "Supported distinct meaning",
+            "answerSupported": True, "distinctMeaning": True, "factSupported": True, "questionMatchesFact": True}
+            for a in activities for q in a["questions"]], "scenarioPreserved": True, "coherentProgression": True,
+            "goalResolved": True, "valid": True, "issues": []}])
 
 
-def run_capture(monkeypatch, output, replies=None, max_calls=32):
+def run_capture(monkeypatch, output, replies=None, max_calls=48):
     data = quality.cases(quality.DEFAULT_CASES)
     data["cases"] = [{**data["cases"][0], "inputVi": "Tôi muốn đặt bánh để nhận ngày mai"}]
     dataset = output.parent / "cases.json"
@@ -55,29 +62,43 @@ def run_capture(monkeypatch, output, replies=None, max_calls=32):
 
 def test_capture_report_replay_preserve_same_outputs_without_network(monkeypatch, output):
     seen, dataset = run_capture(monkeypatch, output)
-    assert len(seen) == 4
-    original = (output / "food-allergy/GENERATE/02-scenario_translate-response.json").read_bytes()
+    assert len(seen) == 6
+    original = (output / "food-allergy/GENERATE/04-scenario_translate-response.json").read_bytes()
     assert quality.report(output)["cases"][0]["phases"]["GENERATE"]["status"] == "SUCCEEDED"
     # Replay replaces the gateway entirely, so even the live fake must never be called again.
     replay = asyncio.run(quality.replay(output))
     assert replay["networkCalls"] == 0 and all(row["sameOutcome"] for row in replay["phases"])
-    assert len(seen) == 4
-    assert (output / "food-allergy/GENERATE/02-scenario_translate-response.json").read_bytes() == original
+    assert len(seen) == 6
+    assert (output / "food-allergy/GENERATE/04-scenario_translate-response.json").read_bytes() == original
     with pytest.raises(FileExistsError):
         asyncio.run(quality.capture(dataset, output, Settings(scenario_enabled=True)))
-    assert len(seen) == 4
+    assert len(seen) == 6
 
 
 def test_rejected_generated_content_is_kept_before_validation(monkeypatch, output):
     replies = copy.deepcopy(responses())
-    replies[1]["content"]["activities"][0]["segments"][0]["textEn"] = "one"
-    replies[1]["content"]["activities"][0]["segments"][1]["textEn"] = "two"
+    replies[1]["activities"][0]["segments"][0]["textEn"] = "one"
+    replies[1]["activities"][0]["segments"][1]["textEn"] = "two"
     seen, _ = run_capture(monkeypatch, output, replies)
     assert seen == ["scenario_extract", "scenario_generate"]
     saved = quality.report(output)["cases"][0]["phases"]["GENERATE"]
     assert saved["status"] == "REJECTED" and saved["error"]["validationReason"] == "activity word limit"
     assert saved["replies"][0]["raw"] == replies[1]
     assert all(r["sameOutcome"] for r in asyncio.run(quality.replay(output))["phases"])
+
+
+def test_failed_fact_extraction_preserves_dialogue_and_fact_reply_for_offline_replay(monkeypatch, output):
+    replies = responses()
+    replies[2]["activities"][0]["facts"][0]["evidence"][0]["quoteEn"] = "invented evidence"
+    seen, _ = run_capture(monkeypatch, output, replies)
+    assert seen == ["scenario_extract", "scenario_generate", "scenario_facts"]
+    generated = output / "food-allergy/GENERATE"
+    assert quality.read(generated / "01-scenario_generate-response.json")["raw"] == replies[1]
+    assert quality.read(generated / "02-scenario_facts-response.json")["raw"] == replies[2]
+    assert quality.read(generated / "outcome.json")["error"]["validationReason"] == "unanchored fact evidence"
+    replay = asyncio.run(quality.replay(output))
+    assert replay["networkCalls"] == 0 and all(row["sameOutcome"] for row in replay["phases"])
+    assert len(seen) == 3
 
 
 def test_capture_does_not_retry_unknown_and_does_not_log_credential_messages(monkeypatch, output):
@@ -176,5 +197,5 @@ def test_partial_capture_report_never_claims_integrity_or_success(monkeypatch, o
     partial = quality.report(output, allow_incomplete=True)
     assert partial["evidenceIntegrity"] == "UNSEALED_INCOMPLETE" and partial["finished"] is None
     assert partial["cases"][0]["phases"]["GENERATE"]["status"] == "UNKNOWN_INTERRUPTED"
-    assert len(partial["cases"][0]["phases"]["GENERATE"]["replies"]) == 3
-    assert len(seen) == 4
+    assert len(partial["cases"][0]["phases"]["GENERATE"]["replies"]) == 5
+    assert len(seen) == 6

@@ -22,7 +22,7 @@ class ScenarioContentTest {
         ScenarioContent.grade(f.path("grade"),f.path("answers"));
     }
     @Test void rejectsForgedEvidencePrivateFieldsAndOutOfBoundsContent() throws Exception {
-        for (String fault : java.util.List.of("quote","translation","words","unicodeWords","quality","extra")) {
+        for (String fault : java.util.List.of("quote","translation","words","unicodeWords","quality","extra","oneSpeaker","segmentCount")) {
             var f=fixture(); var content=f.path("content");
             switch (fault) {
                 case "quote" -> ((ObjectNode)content.path("activities").get(0).path("questions").get(0).path("evidence").get(0)).put("quoteEn","invented");
@@ -31,6 +31,8 @@ class ScenarioContentTest {
                 case "unicodeWords" -> ((ObjectNode)content.path("activities").get(0).path("segments").get(0)).put("textEn","word ".repeat(14)+"word\u00a0".repeat(70));
                 case "quality" -> ((ObjectNode)content).put("qualityPassed",false);
                 case "extra" -> ((ObjectNode)content.path("activities").get(0)).put("publicUrl","https://untrusted.test");
+                case "oneSpeaker" -> ((ObjectNode)content.path("activities").get(0).path("segments").get(1)).put("speakerId","customer");
+                case "segmentCount" -> ((tools.jackson.databind.node.ArrayNode)content.path("activities").get(0).path("segments")).remove(1);
             }
             assertThatThrownBy(() -> ScenarioContent.content(content,f.path("specification"),f.path("profile"))).as(fault).isInstanceOf(IllegalArgumentException.class);
         }

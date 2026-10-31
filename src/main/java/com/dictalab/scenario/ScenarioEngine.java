@@ -322,10 +322,15 @@ public class ScenarioEngine {
         for (String f : List.of("model","modelDigest","promptVersion","promptHash")) ScenarioContent.text(result,f,128);
         ScenarioContent.check(result.path("promptHash").asText().matches("[a-f0-9]{64}"));
         if (!kind.equals("TTS")) {
+            // Previously submitted V1 jobs may settle only with their exact historical fingerprint.
+            boolean legacy=Set.of("f3a1a93382df50b9e798d9ae9d11e502d3e8eb0c347751195c6d00b7ba88b8a1",
+                    "0d40fae31e57eef602c6f1e8402ea6116f8beeee56ac011c7c3d018f7f0152c2").contains(input.path("promptHash").asText());
+            ScenarioContent.check(legacy || release.promptHash().equals(input.path("promptHash").asText()));
             ScenarioContent.check(input.path("promptHash").asText().equals(result.path("promptHash").asText())
-                    && "SCENARIO_LISTENING_V1".equals(result.path("promptVersion").asText())
+                    && (legacy ? "SCENARIO_LISTENING_V1" : "SCENARIO_LISTENING_V3").equals(result.path("promptVersion").asText())
                     && input.path("programHash").asText().equals(result.path("programHash").asText()));
-            var expected=kind.equals("GENERATE") ? List.of("GENERATE","TRANSLATE","REVIEW") : List.of(kind);
+            var expected=kind.equals("GENERATE") ? (legacy ? List.of("GENERATE","TRANSLATE","REVIEW")
+                    : List.of("GENERATE","FACTS","QUESTIONS","TRANSLATE","REVIEW")) : List.of(kind);
             ScenarioContent.list(result.path("calls"),expected.size(),expected.size()); int n=0;
             for (var call : result.path("calls")) {
                 ScenarioContent.fields(call,"purpose","provider","model");
