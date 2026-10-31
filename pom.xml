@@ -284,6 +284,7 @@
                                 <include>**/IdleDispatchTest.java</include>
                                 <include>**/ConversationIntegrationTest.java</include>
                                 <include>**/ScenarioIntegrationTest.java</include>
+                                <include>**/ScenarioEngineIntegrationTest.java</include>
                                 <include>**/ScenarioDisabledIntegrationTest.java</include>
                                 <include>**/ScenarioMigrationIntegrationTest.java</include>
                                 <include>**/ListeningComprehensionIntegrationTest.java</include>

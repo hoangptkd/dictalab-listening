@@ -220,8 +220,11 @@ public class ConversationService {
         final String focus = practiceFocus;
         String id = transaction.execute(status -> {
           db.queryForObject("SELECT id FROM app_users WHERE id=? FOR UPDATE", Long.class, userId);
-          if (db.queryForObject("SELECT COUNT(*) FROM ai_conversation_sessions WHERE user_id=? AND created_at>?",
-                Integer.class, userId, Timestamp.from(Instant.now().minusSeconds(86400))) >= 20) {
+          if (db.queryForObject("""
+                SELECT (SELECT COUNT(*) FROM ai_conversation_sessions WHERE user_id=? AND created_at>?)
+                     + (SELECT COUNT(*) FROM scenario_sessions WHERE user_id=? AND created_at>?)
+                """, Integer.class, userId, Timestamp.from(Instant.now().minusSeconds(86400)),
+                userId, Timestamp.from(Instant.now().minusSeconds(86400))) >= 20) {
             fail(HttpStatus.TOO_MANY_REQUESTS, "Bạn đã tạo 20 phiên hôm nay. Hãy tiếp tục một phiên đang có.");
         }
         String createdId = UUID.randomUUID().toString();

@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/css/fidelity.css">
     <link rel="stylesheet" href="/css/library.css">
     <link rel="stylesheet" href="/css/vocabulary.css">
+    <link rel="stylesheet" href="/css/scenario.css">
 </head>
 <body>
 <main id="app-loading" class="app-loading" role="status">Đang mở DictaLab…</main>
@@ -114,6 +115,7 @@
                 Nghe hiểu
             </a>
             <a class="nav-link" href="/conversation" data-route="conversation" data-mobile-label="Tình huống">Nghe hiểu tình huống</a>
+            <a class="nav-link mobile-nav-secondary" href="/scenario" data-route="scenario">Tình huống AI</a>
             <a class="nav-link mobile-nav-secondary" href="/vocabulary" data-route="vocabulary" data-mobile-label="Từ vựng">Từ vựng</a>
             </div>
             <div class="nav-group" role="group" aria-label="Dữ liệu và tiến trình">
@@ -134,6 +136,7 @@
             <button id="mobile-nav-more" class="nav-link mobile-nav-more" type="button"
                     popovertarget="mobile-nav-menu" aria-expanded="false" aria-controls="mobile-nav-menu">Thêm</button>
             <div id="mobile-nav-menu" class="mobile-nav-menu" popover="auto" aria-label="Điều hướng bổ sung">
+                <a class="nav-link" href="/scenario" data-route="scenario">Tình huống AI</a>
                 <a class="nav-link" href="/vocabulary" data-route="vocabulary">Từ vựng</a>
                 <a class="nav-link" href="/history?level=all&page=1" data-route="history" autofocus>Lịch sử</a>
                 <a class="nav-link" href="/rooms" data-route="room">Luyện cùng bạn</a>
@@ -175,6 +178,10 @@
         <section id="support-view" class="view" hidden aria-labelledby="support-heading">
             <div class="lesson-browser account-page">
                 <h1 id="support-heading">Chúng tôi có thể giúp gì?</h1><div id="support-content" aria-live="polite"></div></div>
+        </section>
+        <section id="scenario-view" class="view" hidden aria-labelledby="scenario-heading">
+            <div class="scenario-browser scenario-page-header"><h1 id="scenario-heading">Tình huống <em>của bạn.</em></h1><p>Nghe tiếng Anh, hiểu ý và trả lời bằng tiếng Việt.</p></div>
+            <div id="scenario-content"></div>
         </section>
         <section id="conversation-view" class="view" hidden aria-labelledby="conversation-heading">
             <div class="lesson-browser conversation-browser">
@@ -815,6 +822,7 @@
 <script src="/js/coach.js" defer></script>
 <script src="/js/listening.js" defer></script>
 <script src="/js/conversation.js" defer></script>
+<script src="/js/scenario.js" defer></script>
 <script src="/js/model-demo.js" defer></script>
 <script src="/js/account.js" defer></script>
 <script src="/js/billing.js" defer></script>

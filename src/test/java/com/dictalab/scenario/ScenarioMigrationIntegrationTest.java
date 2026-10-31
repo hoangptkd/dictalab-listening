@@ -34,8 +34,8 @@ class ScenarioMigrationIntegrationTest {
                         .locations("classpath:db/migration", "classpath:db/vendor/postgresql").load();
                 flyway.migrate(); flyway.validate();
                 assertThat(db.queryForObject("SELECT current_schema()", String.class)).isEqualTo(schema);
-                assertThat(flyway.info().current().getVersion().toString()).isEqualTo("48");
-                for (String table : new String[]{"scenario_program_versions", "scenario_learning_goals", "scenario_goal_requests"})
+                assertThat(flyway.info().current().getVersion().toString()).isEqualTo("49");
+                for (String table : new String[]{"scenario_program_versions", "scenario_learning_goals", "scenario_goal_requests", "scenario_drafts", "scenario_sessions", "scenario_activities", "scenario_attempts", "scenario_operations", "scenario_operation_budget", "scenario_media", "scenario_receipts"})
                     assertThat(db.queryForObject("SELECT COUNT(*) FROM " + table, Integer.class)).isZero();
                 if (upgrade) assertThat(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id='legacy-scenario-fixture'", String.class))
                         .isEqualTo("{\"fixture\":\"unchanged\"}");

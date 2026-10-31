@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.util.UUID;
 
 @Order(-10)
-@RestControllerAdvice(assignableTypes = ScenarioController.class)
+@RestControllerAdvice(assignableTypes = {ScenarioController.class,ScenarioLearningController.class})
 public class ScenarioExceptionHandler {
     public record Error(String code, String messageVi, String requestId, boolean retryable) {}
 

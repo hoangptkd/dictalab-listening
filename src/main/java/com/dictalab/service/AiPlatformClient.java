@@ -34,6 +34,7 @@ public class AiPlatformClient {
     }
     public boolean shadow(String kind) { return config.mode(kind).equals("shadow"); }
     public boolean local() { return config.textProvider().equals("ollama"); }
+    public String scenarioProvider() { return config.textProvider(); }
 
     public boolean textConfigured() { return config.serviceToken().matches("[!-~]{32,256}"); }
 
@@ -88,6 +89,23 @@ public class AiPlatformClient {
     public JsonNode demoStatus(long user, String id) {
         String scope = AiBackgroundJobs.hash("ai-scope/" + config.serviceToken() + "/" + user);
         return exchange("/v1/jobs/" + UUID.fromString(id), null, scope, id, "model-demo/" + id,
+                System.nanoTime() + TimeUnit.SECONDS.toNanos(10));
+    }
+
+    public JsonNode submitScenario(long user, String id, Instant deadline, JsonNode payload) {
+        if (!textConfigured()) throw new IllegalStateException("Scenario transport is not configured");
+        String scope = AiBackgroundJobs.hash("ai-scope/" + config.serviceToken() + "/" + user);
+        String idem = "scenario/" + id;
+        String body = json.writeValueAsString(Map.of("schemaVersion", "1", "jobId", id, "requestId", id,
+                "userScope", scope, "idempotencyKey", idem, "deadline", deadline.toString(), "payload", payload));
+        if (body.getBytes(StandardCharsets.UTF_8).length > 64000) throw new IllegalArgumentException("Scenario job exceeds limit");
+        return exchange("scenario".equals(payload.path("kind").asText()) ? "/v1/scenario/jobs" : "/v1/tts/jobs",
+                body, scope, id, idem, System.nanoTime() + TimeUnit.SECONDS.toNanos(10));
+    }
+
+    public JsonNode scenarioStatus(long user, String id) {
+        String scope = AiBackgroundJobs.hash("ai-scope/" + config.serviceToken() + "/" + user);
+        return exchange("/v1/jobs/" + UUID.fromString(id), null, scope, id, "scenario/" + id,
                 System.nanoTime() + TimeUnit.SECONDS.toNanos(10));
     }
 

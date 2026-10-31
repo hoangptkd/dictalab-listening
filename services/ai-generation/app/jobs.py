@@ -11,13 +11,13 @@ from uuid import UUID
 
 from pydantic import Field, model_validator
 
-from . import coach, review, tts, conversation_demo
+from . import coach, review, tts, conversation_demo, scenario_workflow
 from .coach import StrictModel
 from .config import CLOUD_PROVIDERS
 
 QUEUE = "dictalab.ai.platform.v1"
 DLQ = QUEUE + ".dead"
-Payload = Annotated[coach.CoachInput | review.ReviewInput | tts.TtsInput | conversation_demo.ConversationDemoInput, Field(discriminator="kind")]
+Payload = Annotated[coach.CoachInput | review.ReviewInput | tts.TtsInput | conversation_demo.ConversationDemoInput | scenario_workflow.ScenarioInput, Field(discriminator="kind")]
 
 
 def canonical(value):
@@ -56,6 +56,8 @@ class JobEvent(JobRequest):
 
 
 def capability_metadata(payload, settings):
+    if payload.kind == "scenario":
+        return scenario_workflow.metadata(settings)
     if payload.kind == "conversation_demo":
         return conversation_demo.metadata(settings)
     module = {"coach": coach, "review": review, "tts": tts}[payload.kind]
@@ -115,7 +117,7 @@ class JobStore:
     def register(self, request: JobRequest, settings):
         now = time.time()
         deadline = request.deadline.timestamp()
-        maximum = 3600 if request.payload.kind == "conversation_demo" else 90
+        maximum = 3600 if request.payload.kind == "conversation_demo" else 240 if request.payload.kind == "scenario" else 90
         if not now < deadline <= now + maximum + 1:
             raise ValueError("invalid job deadline")
         payload = request.payload.model_dump()
@@ -182,12 +184,12 @@ class JobStore:
             if event.attempt != row["attempts"] + 1:
                 return "REJECTED"
             db.execute("UPDATE jobs SET status='RUNNING',attempts=attempts+1,lease=?,updated=? WHERE id=?",
-                       (min(row["deadline"], now + (3600 if event.payload.kind == "conversation_demo" else 90)) + 5, now, row["id"]))
+                       (min(row["deadline"], now + (3600 if event.payload.kind == "conversation_demo" else 240 if event.payload.kind == "scenario" else 90)) + 5, now, row["id"]))
         return "CLAIMED"
 
-    def finish(self, event, result=None, *, error=None, retry=False):
+    def finish(self, event, result=None, *, error=None, retry=False, uncertain=False):
         now = time.time()
-        status = "DONE" if result is not None else "PENDING" if retry and event.attempt < 3 else "FAILED"
+        status = "DONE" if result is not None else "UNKNOWN" if uncertain else "PENDING" if retry and event.attempt < 3 else "FAILED"
         next_event = event.model_copy(update={"attempt": event.attempt + 1}) if status == "PENDING" else None
         with self.connect() as db:
             updated = db.execute("""UPDATE jobs SET status=?,result=?,error=?,event=?,lease=NULL,published=0,updated=?

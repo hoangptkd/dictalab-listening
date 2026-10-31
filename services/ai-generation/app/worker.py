@@ -20,6 +20,9 @@ logger.addFilter(RedactingFilter())
 
 
 async def execute(event, settings):
+    if event.payload.kind == "scenario":
+        from .scenario_workflow import execute as execute_scenario
+        return await execute_scenario(event, settings)
     if event.payload.kind == "conversation_demo":
         from .conversation_demo import execute as execute_demo
         return await execute_demo(event, settings, JobStore(settings.jobs_database, settings.job_retention_seconds))
@@ -72,7 +75,13 @@ def process(body, settings, store, runner=None):
         result = runner(event) if runner else asyncio.run(execute(event, settings))
         state = store.finish(event, result)
     except Exception as error:
-        state = store.finish(event, error="TRANSPORT" if retry_safe(error) else "GENERATION_FAILED", retry=retry_safe(error))
+        if event.payload.kind == "scenario":
+            from .scenario_workflow import QualityRejected
+            # A later call can fail after an earlier paid call succeeded. Never replay the whole workflow.
+            state = store.finish(event, error="QUALITY_REJECTED" if isinstance(error, QualityRejected) else "PROVIDER_OUTCOME_UNKNOWN",
+                                 uncertain=not isinstance(error, QualityRejected))
+        else:
+            state = store.finish(event, error="TRANSPORT" if retry_safe(error) else "GENERATION_FAILED", retry=retry_safe(error))
         logger.warning("ai_job_failed", extra={"job_id": str(event.jobId), "kind": event.payload.kind, "status": state})
     return "ACK" if state in ("DONE", "PENDING") else "DEAD"
 

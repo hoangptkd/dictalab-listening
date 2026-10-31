@@ -817,3 +817,14 @@ node --test src/test/js/ci-scope.test.cjs
 ```
 
 Rollout chỉ bật metadata/ghi goal khi đặt `DICTALAB_SCENARIO_ENABLED=true` tương ứng với `dictalab.scenario.enabled`. Tắt flag dừng ghi, giữ API đọc goal. Biên nhận được giữ để retry không ghi đè edit mới và được xóa cùng tài khoản; chưa có job tự dọn biên nhận. Không rollback bằng cách drop các bảng đã có goal thật. Production chưa được thay đổi hoặc xác minh trong đợt này; kết quả push/CI phải báo riêng.
+
+## 25. Đợt backend bài học — 31/10/2026
+
+Phần 24 là lịch sử đợt nền tảng, không phải trạng thái mới nhất. Chi tiết code, API, cấu hình, gate và lệnh kiểm tra hiện tại nằm trong [hồ sơ backend](scenario-backend-delivery-20261031.md) và [OpenAPI engine](scenario-engine-openapi.yaml).
+
+- Đã có V49 và luồng draft/spec preview → durable generation/translation/review → ba hoạt động → audio riêng → answers/grade → complete → remix. Java giữ domain writes, ownership, CSRF, optimistic version, idempotency, shared quota và atomic budget envelope; Python/RabbitMQ giữ execution ledger ổn định.
+- Đã nối `/scenario` với API thật, giữ sáu nhóm khám phá, loại audio/chấm điểm giả lập. Pending operation và câu trả lời nháp được giữ theo tài khoản; phản hồi muộn không ghi đè trang/tài khoản khác.
+- Có recommendations theo evidence rule/cold start, không công bố mastery, CEFR hay band dự đoán.
+- Có schema/fixture nội dung dùng chung Java/Python và integration test end-to-end bằng provider giả lập; kiểm tra PostgreSQL cài mới/nâng cấp, rollback ngân sách, concurrency/idempotency, owner/audio và account cascade.
+- **S02 và release chất lượng chưa hoàn tất:** chưa có benchmark model thật hoặc program APPROVED. Vì thế chưa mở generation production. Không dùng kết quả mock để duyệt program hoặc nới hash validation.
+- Chưa triển khai exam practice TOEIC/IELTS, calibrated scoring, chat và voice 1–1. Các ticket tương ứng trong roadmap vẫn giữ nguyên dependency và release gate; không đánh dấu toàn bộ S05–S25 hoàn thành chỉ vì đã có luồng giao tiếp cơ bản.

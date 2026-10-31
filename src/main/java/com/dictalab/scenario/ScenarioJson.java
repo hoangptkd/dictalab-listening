@@ -34,7 +34,7 @@ public final class ScenarioJson {
 
     public static <T> T read(byte[] bytes, Class<T> type) {
         if (bytes.length > MAX_REQUEST_BYTES) throw new IllegalArgumentException("Scenario payload too large");
-        T value = MAPPER.readValue(bytes, type);
+        T value = MAPPER.readerFor(type).with(DeserializationFeature.FAIL_ON_NULL_CREATOR_PROPERTIES).readValue(bytes);
         if (value == null) throw new IllegalArgumentException("Missing scenario payload");
         return value;
     }

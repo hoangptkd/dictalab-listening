@@ -54,6 +54,9 @@ public class SpaController {
     @GetMapping({"/conversation", "/conversation/{sessionId}"})
     public String conversation() { return INDEX; }
 
+    @GetMapping({"/scenario", "/scenario/{sessionId}"})
+    public String scenario() { return INDEX; }
+
     @GetMapping({"/vocabulary", "/vocabulary/{sessionId}"})
     public String vocabulary() { return INDEX; }
 

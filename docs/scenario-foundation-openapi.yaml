@@ -3,8 +3,8 @@ info:
   title: DictaLab Scenario foundation
   version: scenario-public.v1
   description: >-
-    Catalog and user-declared goals only. This release does not expose generation,
-    exam scoring, adaptive recommendations, chat or voice dialogue. DRAFT program
+    Catalog and user-declared goals. The additive learning engine is described in
+    scenario-engine-openapi.yaml. This API does not expose exam scoring, chat or voice dialogue. DRAFT program
     metadata can be used for declared goals when rollout is enabled; it cannot
     authorize content generation. The existing Conversation v1 API is unchanged.
 security:
@@ -15,7 +15,7 @@ paths:
       summary: Read rollout state and goal program metadata without AI calls
       responses:
         '200':
-          description: No-store catalog; generationAvailable is always false in this release
+          description: No-store catalog; generationAvailable requires the approved engine release gates
           content:
             application/json:
               schema:
@@ -24,8 +24,10 @@ paths:
                 properties:
                   contractVersion: {const: scenario-public.v1}
                   enabled: {type: boolean}
-                  generationAvailable: {const: false}
-                  supportedPracticeModes: {type: array, maxItems: 0}
+                  generationAvailable: {type: boolean}
+                  supportedPracticeModes: {type: array, items: {enum: [guided-listening]}}
+                  generationPrograms: {type: array, items: {type: object, description: 'Exact selected code/version/status/displayNameVi/targetScales eligible for generation'}}
+                  difficultyProfiles: {type: array, items: {type: string}}
                   goalPrograms:
                     type: array
                     items:

@@ -105,6 +105,7 @@ class Settings(BaseSettings):
     cartesia_version: str = "2026-08-14"
     http_max_connections: int = 10
     model_demo_enabled: bool = False
+    scenario_enabled: bool = False
     text_gateway_enabled: bool = False
     model_serving_url: str = "http://127.0.0.1:8093"
     model_serving_token: str = Field(default="", repr=False)

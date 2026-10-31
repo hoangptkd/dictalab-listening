@@ -65,6 +65,25 @@ public class AiUsageBudget {
     @org.springframework.transaction.annotation.Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void reserveDemo(Long userId, boolean local) { admit(userId,false,local); }
 
+    /** An operation and its full bounded call envelope commit atomically with this admission. */
+    @org.springframework.transaction.annotation.Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void reserveScenario(long userId, String operationId, int calls, boolean tts, boolean local) {
+        if (calls < 1 || calls > 7 || tts && calls != 1) throw new IllegalArgumentException("Invalid scenario envelope");
+        if (db.queryForObject("SELECT COUNT(*) FROM scenario_operation_budget WHERE operation_id=?", Integer.class, operationId) > 0) return;
+        if (premium != null) premium.takeAi(userId, tts);
+        Boolean accepting = db.queryForObject("SELECT enabled FROM ai_budget_control WHERE id=1 FOR UPDATE", Boolean.class);
+        if (!Boolean.TRUE.equals(accepting)) throw new Rejected("AI đang tạm dừng. Bài làm của bạn vẫn được lưu.");
+        if (enabled) {
+            Date day = Date.valueOf(LocalDate.now(ZoneOffset.UTC));
+            long amount = local && !tts ? 0 : Math.multiplyExact(tts ? ttsReservation : llmReservation, calls);
+            String prefix = local && !tts ? "LOCAL_" : "";
+            add(day, prefix + "GLOBAL", amount, globalLimit, globalCalls, calls);
+            add(day, prefix + "USER:" + userId, amount, userLimit, userCalls, calls);
+        }
+        db.update("INSERT INTO scenario_operation_budget(operation_id,user_id,calls_reserved,local_provider,tts) VALUES (?,?,?,?,?)",
+                operationId, userId, calls, local, tts);
+    }
+
     private void admit(Long userId, boolean tts, boolean local) {
             if (premium != null && userId != null) premium.takeAi(userId,tts);
             Boolean accepting=db.queryForObject("SELECT enabled FROM ai_budget_control WHERE id=1 FOR UPDATE",Boolean.class);
@@ -77,14 +96,19 @@ public class AiUsageBudget {
     }
 
     private void add(Date day,String scope,long amount,long limit,int calls) {
+        add(day,scope,amount,limit,calls,1);
+    }
+
+    private void add(Date day,String scope,long amount,long limit,int calls,int count) {
         if (amount>limit) throw rejected("Đã đạt giới hạn AI trong ngày. Bạn vẫn có thể luyện dictation.");
         if (db.update("""
-                UPDATE ai_daily_budget SET reserved_microusd=reserved_microusd+?,calls=calls+1
-                WHERE budget_day=? AND scope=? AND reserved_microusd<=? AND calls<?
-                """,amount,day,scope,limit-amount,calls)==1) return;
+                UPDATE ai_daily_budget SET reserved_microusd=reserved_microusd+?,calls=calls+?
+                WHERE budget_day=? AND scope=? AND reserved_microusd<=? AND calls<=?
+                """,amount,count,day,scope,limit-amount,calls-count)==1) return;
+        if (count > calls) throw rejected("Đã đạt giới hạn AI trong ngày. Bạn vẫn có thể luyện dictation.");
         if (db.queryForObject("SELECT COUNT(*) FROM ai_daily_budget WHERE budget_day=? AND scope=?",Integer.class,day,scope)>0)
             throw rejected("Đã đạt giới hạn AI trong ngày. Bạn vẫn có thể luyện dictation.");
-        db.update("INSERT INTO ai_daily_budget(budget_day,scope,reserved_microusd,calls) VALUES (?,?,?,1)",day,scope,amount);
+        db.update("INSERT INTO ai_daily_budget(budget_day,scope,reserved_microusd,calls) VALUES (?,?,?,?)",day,scope,amount,count);
     }
 
     public Map<String,Object> status() {

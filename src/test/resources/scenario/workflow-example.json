@@ -1,0 +1,44 @@
+{
+  "specification": {
+    "allowed": true, "titleVi": "Đặt bánh để nhận ngày mai", "settingVi": "Một cửa hàng bánh nhỏ.",
+    "learnerRoleVi": "Khách hàng", "goalVi": "Đặt và nhận bánh không có hạt.",
+    "characters": [{"id":"customer","name":"Alex","roleVi":"Khách hàng"},{"id":"baker","name":"Sam","roleVi":"Người bán bánh"}],
+    "constraintsVi": ["Không có hạt"], "assumptionsVi": ["Cửa hàng nhận đặt trước"], "topicIds": ["food"]
+  },
+  "profile": {"id":"supported","minWordsPerActivity":15,"maxWordsPerActivity":60,"maxWordsPerSession":180},
+  "content": {
+    "activities": [
+      {"id":"a1","segments":[
+        {"id":"s1","speakerId":"customer","textEn":"Hello, can I order some bread today and collect it tomorrow? I need to know when you open."},
+        {"id":"s2","speakerId":"baker","textEn":"Yes, we open at nine. You can collect your order tomorrow morning."}
+      ],"questions":[
+        {"id":"q1","type":"MEANING_RECALL_VI","skill":"detail","promptVi":"Cửa hàng mở lúc mấy giờ?","answerVi":"Chín giờ","evidence":[{"segmentId":"s2","quoteEn":"we open at nine"}]},
+        {"id":"q2","type":"MEANING_RECALL_VI","skill":"main-idea","promptVi":"Khách muốn làm gì với đơn bánh?","answerVi":"Đặt hôm nay, nhận sáng mai","evidence":[{"segmentId":"s1","quoteEn":"order some bread today and collect it tomorrow"},{"segmentId":"s2","quoteEn":"tomorrow morning"}]}
+      ]},
+      {"id":"a2","segments":[
+        {"id":"s1","speakerId":"customer","textEn":"I would like two loaves, please. Please make sure there are no nuts in either loaf."},
+        {"id":"s2","speakerId":"baker","textEn":"Of course. I will put aside two plain loaves without nuts for your order."}
+      ],"questions":[
+        {"id":"q1","type":"MEANING_RECALL_VI","skill":"detail","promptVi":"Khách muốn đặt bao nhiêu ổ bánh?","answerVi":"Hai ổ","evidence":[{"segmentId":"s1","quoteEn":"two loaves"}]},
+        {"id":"q2","type":"MEANING_RECALL_VI","skill":"detail","promptVi":"Khách yêu cầu loại bỏ thành phần nào?","answerVi":"Các loại hạt","evidence":[{"segmentId":"s1","quoteEn":"no nuts"}]}
+      ]},
+      {"id":"a3","segments":[
+        {"id":"s1","speakerId":"baker","textEn":"Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"},
+        {"id":"s2","speakerId":"customer","textEn":"I will pay now by card, thank you. I will see you tomorrow morning."}
+      ],"questions":[
+        {"id":"q1","type":"MEANING_RECALL_VI","skill":"detail","promptVi":"Tổng tiền của đơn hàng là bao nhiêu?","answerVi":"Sáu bảng","evidence":[{"segmentId":"s1","quoteEn":"six pounds altogether"}]},
+        {"id":"q2","type":"MEANING_RECALL_VI","skill":"detail","promptVi":"Khách chọn thanh toán bằng cách nào?","answerVi":"Bằng thẻ","evidence":[{"segmentId":"s2","quoteEn":"pay now by card"}]}
+      ]}
+    ],
+    "translations": [
+      {"activityId":"a1","segmentId":"s1","textVi":"Xin chào, tôi có thể đặt bánh hôm nay và nhận ngày mai không? Tôi cần biết giờ mở cửa."},
+      {"activityId":"a1","segmentId":"s2","textVi":"Được, chúng tôi mở lúc chín giờ. Bạn có thể nhận đơn sáng mai."},
+      {"activityId":"a2","segmentId":"s1","textVi":"Tôi muốn hai ổ. Hãy bảo đảm cả hai đều không có hạt."},
+      {"activityId":"a2","segmentId":"s2","textVi":"Được. Tôi sẽ để riêng hai ổ bánh thường không có hạt cho đơn của bạn."},
+      {"activityId":"a3","segmentId":"s1","textVi":"Hai ổ bánh thường có tổng giá sáu bảng. Bạn muốn trả bây giờ hay khi nhận bánh?"},
+      {"activityId":"a3","segmentId":"s2","textVi":"Tôi sẽ trả bằng thẻ bây giờ, cảm ơn. Hẹn gặp sáng mai."}
+    ], "qualityPassed": true
+  },
+  "answers": [{"questionId":"q1","textVi":"Mở cửa lúc chín giờ"},{"questionId":"q2","textVi":"Đặt hôm nay rồi đến lấy sáng mai"}],
+  "grade": {"facts":[{"questionId":"q1","status":"CAPTURED","evidenceVi":"chín giờ"},{"questionId":"q2","status":"CAPTURED","evidenceVi":"Đặt hôm nay rồi đến lấy sáng mai"}]}
+}

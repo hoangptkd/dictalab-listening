@@ -21,12 +21,15 @@ def authorize(token):
 @router.post("/v1/coach/reports", status_code=202)
 @router.post("/v1/review/tasks", status_code=202)
 @router.post("/v1/conversation/jobs", status_code=202)
+@router.post("/v1/scenario/jobs", status_code=202)
 async def submit(payload: JobRequest, request: Request,
                  x_service_token: str | None = Header(default=None),
                  x_user_scope: str | None = Header(default=None)):
     settings, store = authorize(x_service_token)
     expected = {"/v1/tts/jobs": "tts", "/v1/coach/reports": "coach", "/v1/review/tasks": "review",
-                "/v1/conversation/jobs": "conversation_demo"}[request.url.path]
+                "/v1/conversation/jobs": "conversation_demo", "/v1/scenario/jobs": "scenario"}[request.url.path]
+    if expected == "scenario" and not settings.scenario_enabled:
+        raise HTTPException(503, "scenario generation is disabled")
     if expected == "conversation_demo" and not settings.model_demo_enabled:
         raise HTTPException(503, "model demonstration is disabled")
     if expected not in ("tts", "conversation_demo") and request.headers.get("X-AI-Provider") != settings.selected_provider:

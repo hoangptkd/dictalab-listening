@@ -44,5 +44,10 @@ class ScenarioDisabledIntegrationTest {
                 .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("SCENARIO_DISABLED"));
         mvc.perform(get("/api/v2/scenarios/learning-goals").with(auth))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0].target.value").value("6.5"));
+        mvc.perform(post("/api/v2/scenarios/drafts").with(auth).with(csrf()).header("Idempotency-Key",UUID.randomUUID().toString())
+                .contentType("application/json").content("""
+                    {"inputVi":"Tôi muốn đặt bánh","programCode":"general-communication","programVersion":1,"profileId":"supported"}
+                    """))
+                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("UNSUPPORTED_PROGRAM_MODE"));
     }
 }

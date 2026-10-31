@@ -16,20 +16,25 @@ public class ScenarioController {
     private final ScenarioProgramRegistry registry;
     private final ScenarioGoalService goals;
     private final ScenarioProperties properties;
-    public ScenarioController(ScenarioProgramRegistry registry, ScenarioGoalService goals, ScenarioProperties properties) {
-        this.registry = registry; this.goals = goals; this.properties = properties;
+    private final ScenarioRelease release;
+    public ScenarioController(ScenarioProgramRegistry registry, ScenarioGoalService goals, ScenarioProperties properties, ScenarioRelease release) {
+        this.registry = registry; this.goals = goals; this.properties = properties; this.release=release;
     }
 
     public record GoalProgram(String code, int version, String status, String displayNameVi,
                               List<ScenarioProgram.TargetScale> targetScales) {}
     public record Catalog(String contractVersion, boolean enabled, boolean generationAvailable,
-                          List<String> supportedPracticeModes, List<GoalProgram> goalPrograms) {}
+                          List<String> supportedPracticeModes, List<GoalProgram> goalPrograms,
+                          List<GoalProgram> generationPrograms, List<String> difficultyProfiles) {}
 
     @GetMapping("/catalog")
     public ResponseEntity<Catalog> catalog(@AuthenticationPrincipal DictaLabPrincipal owner) {
-        return noStore(new Catalog("scenario-public.v1", properties.enabled(), false, List.of(),
+        boolean available=release.available();
+        return noStore(new Catalog("scenario-public.v1", properties.enabled(), available, available ? List.of("guided-listening") : List.of(),
                 properties.enabled() ? registry.definitions().stream().filter(p -> p.status() != ScenarioProgram.Status.RETIRED)
-                        .map(p -> new GoalProgram(p.code(), p.version(), p.status().name(), p.displayNameVi(), p.targetScales())).toList() : List.of()));
+                        .map(p -> new GoalProgram(p.code(), p.version(), p.status().name(), p.displayNameVi(), p.targetScales())).toList() : List.of(),
+                available ? List.of(new GoalProgram(release.program().code(),release.program().version(),release.program().status().name(),release.program().displayNameVi(),release.program().targetScales())) : List.of(),
+                available ? release.program().difficultyProfiles().stream().map(ScenarioProgram.DifficultyProfile::id).toList() : List.of()));
     }
 
     // Kept readable when writes are disabled, so disabling rollout does not hide saved goals.
