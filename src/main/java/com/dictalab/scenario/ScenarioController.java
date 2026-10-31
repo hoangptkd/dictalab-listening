@@ -25,16 +25,16 @@ public class ScenarioController {
                               List<ScenarioProgram.TargetScale> targetScales) {}
     public record Catalog(String contractVersion, boolean enabled, boolean generationAvailable,
                           List<String> supportedPracticeModes, List<GoalProgram> goalPrograms,
-                          List<GoalProgram> generationPrograms, List<String> difficultyProfiles) {}
+                          List<GoalProgram> generationPrograms, List<String> difficultyProfiles, String generationMode) {}
 
     @GetMapping("/catalog")
     public ResponseEntity<Catalog> catalog(@AuthenticationPrincipal DictaLabPrincipal owner) {
-        boolean available=release.available();
+        boolean available=release.available(owner.id());
         return noStore(new Catalog("scenario-public.v1", properties.enabled(), available, available ? List.of("guided-listening") : List.of(),
                 properties.enabled() ? registry.definitions().stream().filter(p -> p.status() != ScenarioProgram.Status.RETIRED)
                         .map(p -> new GoalProgram(p.code(), p.version(), p.status().name(), p.displayNameVi(), p.targetScales())).toList() : List.of(),
                 available ? List.of(new GoalProgram(release.program().code(),release.program().version(),release.program().status().name(),release.program().displayNameVi(),release.program().targetScales())) : List.of(),
-                available ? release.program().difficultyProfiles().stream().map(ScenarioProgram.DifficultyProfile::id).toList() : List.of()));
+                available ? release.program().difficultyProfiles().stream().map(ScenarioProgram.DifficultyProfile::id).toList() : List.of(), release.generationMode(owner.id())));
     }
 
     // Kept readable when writes are disabled, so disabling rollout does not hide saved goals.

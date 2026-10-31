@@ -5,8 +5,10 @@ info:
   description: >-
     Catalog and user-declared goals. The additive learning engine is described in
     scenario-engine-openapi.yaml. This API does not expose exam scoring, chat or voice dialogue. DRAFT program
-    metadata can be used for declared goals when rollout is enabled; it cannot
-    authorize content generation. The existing Conversation v1 API is unchanged.
+    metadata can be used for declared goals when rollout is enabled. Local draft
+    testing additionally requires the local profile, loopback server binding,
+    named preview users and matching program/workflow pins. This does not approve
+    a program for production. The existing Conversation v1 API is unchanged.
 security:
   - cookieAuth: []
 paths:
@@ -15,7 +17,7 @@ paths:
       summary: Read rollout state and goal program metadata without AI calls
       responses:
         '200':
-          description: No-store catalog; generationAvailable requires the approved engine release gates
+          description: No-store catalog; generationAvailable requires approved release gates or explicit restricted local preview
           content:
             application/json:
               schema:
@@ -25,6 +27,7 @@ paths:
                   contractVersion: {const: scenario-public.v1}
                   enabled: {type: boolean}
                   generationAvailable: {type: boolean}
+                  generationMode: {enum: [DISABLED, LOCAL_PREVIEW, APPROVED]}
                   supportedPracticeModes: {type: array, items: {enum: [guided-listening]}}
                   generationPrograms: {type: array, items: {type: object, description: 'Exact selected code/version/status/displayNameVi/targetScales eligible for generation'}}
                   difficultyProfiles: {type: array, items: {type: string}}

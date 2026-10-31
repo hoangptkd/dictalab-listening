@@ -5,11 +5,20 @@
 
 /* ── Catalog / Entry ─────────────────────────────────────────── */
 
+.scenario-profile-options { display: flex; flex-wrap: wrap; gap: 10px; border: 0; padding: 0; margin-block: 20px; }
+.scenario-profile-options legend { margin-bottom: 8px; font-weight: 600; }
+.scenario-profile-options label { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 24px; cursor: pointer; }
+.scenario-profile-options label:has(:checked) { background: var(--green-soft); color: var(--ink); border-color: var(--green); }
+.scenario-profile-options input { accent-color: var(--green); }
+.scenario-profile-options label:focus-within { outline: 2px solid var(--ink); outline-offset: 3px; }
+.scenario-group-grid [hidden] { display: none; }
+
 .scenario-browser {
     max-width: 1160px;
     margin: 0 auto;
     padding: 0 5vw 80px;
 }
+.conversation-browser .scenario-browser { max-width: none; padding: 0 0 32px; }
 
 /* Section eyebrow + headline */
 .scenario-page-header {
@@ -86,7 +95,7 @@
     flex-shrink: 0;
 }
 
-#scenario-brief {
+.scenario-brief {
     width: 100%;
     min-height: 100px;
     padding: 14px 16px;
@@ -102,12 +111,12 @@
     transition: border-color .15s;
 }
 
-#scenario-brief::placeholder {
+.scenario-brief::placeholder {
     color: var(--ink-soft);
     opacity: .75;
 }
 
-#scenario-brief:focus {
+.scenario-brief:focus {
     outline: 3px solid var(--coral-deep);
     outline-offset: 2px;
     border-color: var(--ink-soft);
@@ -279,6 +288,7 @@
 }
 
 .scenario-suggestion-card {
+    text-align: left;
     background: var(--cream);
     border: 1px solid var(--line);
     border-radius: 4px;
@@ -286,6 +296,8 @@
     cursor: pointer;
     transition: box-shadow .15s, transform .12s;
 }
+.scenario-suggestion-card strong, .scenario-suggestion-card span { display: block; }
+.scenario-suggestion-card span { margin-top: 6px; color: var(--ink-soft); }
 
 .scenario-suggestion-card:hover {
     box-shadow: 0 4px 12px rgba(19,42,43,.08), 2px 2px 0 var(--line);

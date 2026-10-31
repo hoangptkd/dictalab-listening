@@ -56,6 +56,7 @@
     function stopAudio() { playbackRevision++; bridge().stopRecordedAudio(); }
 
     function leave() {
+        window.DictaLabScenario?.leave();
         window.DictaLabModelDemo?.leave();
         if (session) saveDraft(root()?.querySelector("textarea")?.value ?? draft);
         revision++; busy = false;
@@ -70,6 +71,7 @@
         const token = revision;
         root().innerHTML = '<p role="status">Đang tải phiên nghe…</p>';
         try {
+            if (!id && window.DictaLabScenario && await window.DictaLabScenario.show() !== false) return;
             const data = await request(id ? `${apiRoot}/sessions/${encodeURIComponent(id)}` : apiRoot);
             if (token !== revision) return;
             if (id) {
@@ -81,6 +83,7 @@
             window.DictaLabModelDemo?.mount(document.querySelector("#model-demo-panel"), id || null, () => show(id));
         } catch (error) {
             if (token !== revision) return;
+            if (id && error.status === 404 && window.DictaLabScenario) { await window.DictaLabScenario.show(id); return; }
             root().innerHTML = `<p role="alert">${escape(error.message)}</p><button type="button" class="secondary-button">Thử tải lại</button>`;
             root().querySelector("button").addEventListener("click", () => show(id));
         }

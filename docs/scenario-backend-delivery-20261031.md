@@ -10,7 +10,7 @@
 
 ```mermaid
 flowchart LR
-    UI[Trang /scenario] --> Core[Spring API v2: owner + CSRF + version]
+    UI[Trang /conversation] --> Core[Spring API v2: owner + CSRF + version]
     Core --> DB[(PostgreSQL: domain + operation + budget)]
     DB --> Dispatch[Dispatcher với stable job ID]
     Dispatch --> API[Python internal job API]
@@ -27,6 +27,14 @@ flowchart LR
 ```
 
 Tái sử dụng transport AI, broker, bộ giới hạn ngân sách, CSRF/auth và private media hiện có. Không thêm dependency. Không đổi API Conversation v1, dữ liệu bài cũ hoặc migration đã phát hành.
+
+### Một màn hình Nghe hiểu tình huống
+
+`/conversation` là cửa vào duy nhất. Đã bỏ mục điều hướng và view riêng `/scenario`; URL cũ chuyển về `/conversation`, giữ ID khi mở bài. Tên file/module `scenario.*` và API v2 là chi tiết triển khai nội bộ.
+
+Ô nhập tiếng Việt gửi **nội dung đã chỉnh sửa** qua `inputVi` đến API draft v2. Sáu nhóm và 24 gợi ý tái sử dụng catalog Conversation hiện có; chọn gợi ý chỉ điền ô nhập, không khóa tình huống. Đổi nhóm không xóa nội dung. Bài v1 vẫn mở bằng renderer/API v1; chỉ phản hồi 404 thật mới thử renderer v2. Không coi lỗi mạng/auth/503 của v1 là dấu hiệu bài thuộc v2. Lịch sử cả hai thế hệ cùng hiển thị và có phân trang.
+
+Độ khó bài giao tiếp mới đọc ba profile có phiên bản trong registry: Có hỗ trợ / Tiêu chuẩn / Thử thách. Không biến A1/A2/B1 thành thang chung cho TOEIC/IELTS; các bài v1 giữ cấp cũ.
 
 ### Dữ liệu mới: Flyway V49
 
@@ -74,7 +82,7 @@ Contract đầy đủ: [OpenAPI engine](scenario-engine-openapi.yaml), bổ sung
 2. Input tiếng Việt chuẩn hóa NFC và lọc các mẫu email, số điện thoại, bearer/JWT và chuỗi giống credential. Đây là lọc mẫu, không phải bảo đảm phát hiện mọi PII.
 3. Ba hoạt động, hai nhân vật giả, 2–6 đoạn và hai câu `MEANING_RECALL_VI` mỗi hoạt động. Độ dài theo profile registry, không hardcode CEFR.
 4. Evidence phải là substring nguyên văn của đúng đoạn. Translation phải phủ đủ đúng ID. Không có đáp án nằm nguyên văn trong câu hỏi.
-5. Model review tách biệt lượt sinh, xét logic, vai trò, thông tin được hỏi, dịch và độ khó. Review không chắc chắn hoặc có issue thì không publish. Không tự repair/gọi lại cả workflow sau lỗi giữa chừng.
+5. Lượt sinh lập sáu ý nghe trước nội dung trong cùng call; schema giới hạn speakerId theo hai nhân vật đã xác nhận. Model review tách biệt lượt sinh, xét logic, vai trò, thông tin được hỏi, dịch và độ khó; phải đối chiếu đủ sáu câu, từng đáp án/evidence và ý nghĩa có trùng hay không. Bỏ sót câu, báo không chắc chắn hoặc có issue thì không publish. Cả sinh và review nhận mô tả gốc đã lọc thông tin nhạy cảm, tránh mất ràng buộc qua bước extract. Không tự repair/gọi lại cả workflow sau lỗi giữa chừng. Review model vẫn có thể bỏ sót lỗi; đây không thay thế benchmark và review sư phạm.
 6. Core tự kiểm tra cấu trúc, giới hạn, quote, metadata request/generation/provider/prompt/program và thứ tự các call trước ghi DB. Lưu model/digest/call metadata thực tế; metadata không thay thế benchmark độc lập.
 7. Trước hỗ trợ, API chỉ gửi ID nhân vật/đoạn và câu hỏi; không gửi transcript/dịch/đáp án/evidence. Transcript chỉ mở sau ghi dấu hỗ trợ. Đáp án chỉ mở khi hoàn thành hoạt động.
 8. Tối đa ba lần trả lời/hoạt động; không chấm lại khi grade còn pending. CAPTURED/PARTIAL/INCORRECT phải trích đúng câu người học; `UNCERTAIN` giữ nguyên.
@@ -83,7 +91,7 @@ Contract đầy đủ: [OpenAPI engine](scenario-engine-openapi.yaml), bổ sung
 
 ## Điều kiện bật
 
-Hiện chưa có program APPROVED và benchmark provider thực. **Không đặt flag/hash để né gate hoặc đổi DRAFT thành APPROVED chỉ để chạy thử.** Quy trình release:
+Hiện chưa có program APPROVED hoặc benchmark provider đủ điều kiện phát hành. **Không đặt flag/hash để né gate hoặc đổi DRAFT thành APPROVED chỉ để chạy thử.** Quy trình release production:
 
 1. Chạy bộ prompt riêng và review sư phạm trên đúng provider/model/digest cấu hình, cùng test vận hành và TTS thật. Lưu bằng chứng; không dùng tập test training để tối ưu.
 2. Thêm phiên bản program bất biến đã duyệt, có mode `guided-listening`, question `MEANING_RECALL_VI`, profile và năm artifact purpose: extraction/generation/translation/review/grading. Artifact ID `scenario-listening-v1`; hash phải khớp `src/main/resources/scenario/workflow-v1.sha256`.
@@ -100,6 +108,14 @@ Hiện chưa có program APPROVED và benchmark provider thực. **Không đặt
 5. Xác minh catalog `generationAvailable=true`, tạo bài thử bằng tài khoản được phép, kiểm tra từng giai đoạn, audio owner và cost. Theo dõi error/UNKNOWN/queue trước khi mở rộng.
 
 Hash workflow đóng băng cả instructions, schema đầu ra và giới hạn token. Mọi đổi hash cần duyệt lại và cập nhật pin có chủ đích. Model không được calibrate chỉ bởi hash prompt; người vận hành phải duyệt lại khi đổi provider/model/digest. TOEIC/IELTS cần pack, rubric và benchmark riêng trước khi thêm vào generationPrograms.
+
+### Chạy thử local có giới hạn
+
+Không cần giả trạng thái APPROVED để kiểm thử DRAFT. Ngoại lệ `LOCAL_PREVIEW` chỉ hoạt động khi đồng thời có profile `local`, không có profile `prod`/`production`, bind `server.address=127.0.0.1` hoặc `::1`, hai rollout flag, transport AI hợp lệ, hash program/workflow khớp và ID người dùng nằm trong danh sách cho phép. Thiếu một điều kiện thì từ chối admission.
+
+Protected environment của Java thêm `DICTALAB_SCENARIO_ENGINE_LOCAL_PREVIEW_ENABLED=true` và `DICTALAB_SCENARIO_ENGINE_LOCAL_PREVIEW_USERS=<các ID được phép>`. Mặc định cờ tắt, danh sách rỗng. Catalog trả `generationMode=LOCAL_PREVIEW`; UI ghi rõ DRAFT chưa được chuyên gia duyệt. Chế độ này vẫn giữ quota, budget, ownership, CSRF, idempotency và mọi gate kiểm định nội dung. Các biến `APPROVED_*_HASH` ở local là pin đối chiếu, không đổi trạng thái registry.
+
+Local hiện chạy Core `127.0.0.1:18081`, management health `127.0.0.1:18183`, Python API `127.0.0.1:8091` và worker riêng. PostgreSQL/RabbitMQ/Redis hiện có được tái sử dụng; queue vhost/job ledger thử nghiệm được tách riêng. V49 đã áp dụng bằng migration principal sau backup PostgreSQL có kiểm tra danh mục restore; runtime principal chỉ nhận quyền dữ liệu cần thiết. Hai session Conversation v1 vẫn còn. Worker thông báo/thanh toán được tắt riêng trong cấu hình thử local; không thay quyền schema để chạy tác vụ ngoài phạm vi.
 
 ## Kiểm tra có thể chạy lại
 
@@ -126,6 +142,20 @@ Test Java/Python dùng cùng fixture `workflow-example.json`. Mock semantic revi
 | UTF-8/compilation checker | 377 file đạt |
 | YAML, `docker compose --env-file NUL config --quiet`, `git diff --check` | Đạt; Compose dùng biến môi trường kiểm tra, không dùng secret production |
 
-Các bộ Java có phần trùng nhau, không cộng thành số test duy nhất. Chưa chạy kiểm thử trình duyệt với provider/TTS thật, chưa chứng minh chất lượng model bằng benchmark và chưa triển khai production. Kết quả GitHub delivery/CI được báo riêng sau khi push; các kết quả trên là kiểm tra local.
+Các bộ Java có phần trùng nhau, không cộng thành số test duy nhất. Bảng trên ghi đợt backend ban đầu; kết quả thử local sau hợp nhất UI ở dưới. Chưa chứng minh chất lượng model bằng benchmark và chưa triển khai production. Kết quả GitHub delivery/CI được báo riêng sau khi push; các kết quả trên là kiểm tra local.
+
+### Xác minh local sau hợp nhất vào Conversation
+
+- Java engine/foundation/disabled/SPA/Conversation regression: **130 ca, 0 lỗi, 1 skip theo điều kiện**; gồm kiểm tra payload generate giữ mô tả gốc và gate preview chỉ cho đúng người dùng/môi trường/pin.
+- Python workflow/jobs/contract: **87 đạt**; gồm giới hạn body/auth job Scenario, pin dùng chung, bảo toàn mô tả gốc trong generate/review, enum nhân vật và review bắt buộc phủ đủ sáu câu. Verdict tổng thể `true` không đủ nếu từng câu báo sai/trùng hoặc thiếu audit.
+- JavaScript scenario/UI/load contracts: **65 đạt**; gồm gửi đúng nội dung ô nhập, đổi nhóm giữ nội dung, điều hướng duy nhất và chỉ fallback renderer sau v1 404.
+- Trình duyệt thật: desktop 1440 px và mobile 390 px, không có JS page error hoặc tràn ngang. Đủ 6 nhóm/24 gợi ý; chọn/sửa/đổi nhóm/reload giữ mô tả; mở session v2 từ URL `/conversation/{id}` thành công qua fallback v1 404. Đã sửa textarea mất style do selector cũ và padding lồng nhau.
+- Provider/model cấu hình local: Gemini `gemini-3.5-flash-lite`; audio Cartesia thật. Một ca riêng không thuộc tập test training: đổi lịch nhận xe đạp đã sửa từ sáng thứ Ba sang chiều thứ Tư, hỏi giờ đóng cửa và người giao xe. Đã đọc thủ công hội thoại/dịch/sáu câu hỏi/đáp án; bản cuối giữ ràng buộc và có sáu ý hỏi khác nhau.
+- Ca cuối chạy đủ extract → generate/translate/review → ACTIVE → WAV RIFF **157.518 bytes** → cache trả cùng media → ba lượt grade với **6/6 câu diễn đạt lại CAPTURED** → COMPLETED → remix extraction READY. Media không đăng nhập trả 401; payload trước hỗ trợ không lộ transcript/đáp án. Số 6/6 mô tả duy nhất ca thử này, không phải độ chính xác model trên benchmark.
+- Các lần thử trước đã giữ nguyên lỗi: đoạn quá ngắn, mã nhân vật sai, câu hỏi lặp; một verdict tổng thể còn bỏ sót lỗi mà đọc thủ công phát hiện. Bản đó chỉ nằm trong tài khoản QA riêng, không dùng làm bằng chứng đạt chất lượng. Đã cải thiện planning/review như mô tả ở trên và cập nhật pin có chủ đích. Không xóa lỗi, không tự replay hay tắt gate để hoàn thành phép thử.
+- Bằng chứng/log/ảnh/WAV/backup/cấu hình bảo vệ nằm trong thư mục `data/scenario-local-20261031` được Git ignore; không commit credential, cookie hoặc nội dung học riêng. Kiểm thử đăng nhập dùng tài khoản QA riêng, đóng phiên sau thử; giới hạn phiên đăng nhập giữ nguyên.
+- 23 file thay đổi đọc UTF-8 hợp lệ; checker tiếng Việt trên file hỗ trợ, YAML và `git diff --check` đạt. Worker chẩn đoán chỉ trace tài khoản QA đã được thay lại bằng worker chuẩn sau khi không còn operation pending/running.
+
+**Để thử:** mở `http://localhost:18081/conversation`, đăng nhập tài khoản chủ đã được cho phép local, nhập tình huống → Phân tích và xem trước → Xác nhận và tạo bài → Nghe/Trả lời → Hoàn thành → Remix. Backend được giữ chạy để kiểm tra. Chỉ tài khoản được chỉ định có quyền dùng preview; đây chưa phải rollout production.
 
 Các phần chưa làm: bộ sinh/chấm bài TOEIC/IELTS theo chứng chỉ, calibrated assessment, spaced repetition scenario, chat text/realtime voice 1–1, nhiều giọng nhân vật/tốc độ TTS server, benchmark model thật và triển khai production.

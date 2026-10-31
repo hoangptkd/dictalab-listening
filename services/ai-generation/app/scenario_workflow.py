@@ -32,18 +32,52 @@ INSTRUCTIONS = {
 goalVi, two fictional characters, constraintsVi, assumptionsVi and one or two topicIds from
 food/transport/shopping/workstudy/services/social. A new situation need not match a fixed starter.
 Mark allowed=false for unsafe content. assumptionsVi must make essential assumptions visible.
+Preserve every concrete user constraint: original and requested dates/times, quantities, item, who does what,
+and the requested outcome. Put those facts explicitly in constraintsVi and settingVi; do not replace them with
+generic policy statements. Do not invent a service or change delivery into collection. Mark unknown facts
+as assumptions, never overwrite a supplied fact. inputVi is the authoritative brief.
 """,
     "GENERATE": SYSTEM + """Create exactly three connected activities, each with 2-6 English segments, two speakers
 and exactly two MEANING_RECALL_VI questions. Activity IDs a1,a2,a3; segment IDs unique within each activity;
 question IDs unique within each activity. Use only detail or main-idea skills. Each answerVi is concise Vietnamese.
+speakerId must be exactly one of specification.characters[].id; never use a segment ID as a speaker ID.
 Every evidence quoteEn must be an exact substring of its referenced English segment. Use explicit information only.
 Respect supplied profile word limits. maxWordsPerSession is the total across all activities.
+Treat minWordsPerActivity as a HARD lower bound, not a suggestion. Before emitting JSON, count whitespace-separated
+words across textEn segments for EACH activity. Aim near the midpoint of the supplied range, never below its
+minimum or above its maximum. For minimum >=30 use 4-6 alternating segments per activity, with enough meaningful
+English to meet the range. Do not pad with greetings. Every activity should advance the learner goal.
+Preserve all concrete constraints from inputVi and specification, including original and new dates/times,
+quantities and delivery/collection roles. Confirm the final arrangement explicitly before the session ends.
+An answer must not add an unsupported fact: English 'brother' does not establish older versus younger.
+First return learningPointsVi: SIX different answerable facts in order a1/q1,a1/q2,a2/q1,a2/q2,a3/q1,a3/q2.
+Then write content matching that plan, with two distinct new facts per activity. Each pair of questions must test
+different information, and no later question may re-test a fact already asked. A differently worded question
+with the same answer is still a duplicate. Introduce coherent fictional operational details where needed
+(such as location, reference item or next action), without overriding inputVi or adding personal contact data.
+Advance from the initial request through resolving practical details to a final actionable arrangement;
+do not spend the last activity merely repeating earlier answers. Check all six question meanings for overlap.
+Use this information progression: a1 establishes the reason for speaking and an initial condition;
+a2 resolves the requested change and a separate service condition; a3 establishes the next action/person
+and a NEW practical detail, such as what document to show or where to meet. For example, if a2 already
+asks the new day, a3 must ask a different logistical fact rather than confirming that day again.
+A request and the other speaker's confirmation of it are ONE fact, not two distinct learning points.
+If inputVi supplies fewer than six facts, you MUST introduce plausible non-conflicting fictional details
+in the English dialogue so there are six genuinely different meanings to ask about.
 """,
     "TRANSLATE": SYSTEM + "Translate every English segment into natural Vietnamese, preserving IDs, meaning and final decisions. Never change English or questions.",
     "REVIEW": SYSTEM + """Independently review the supplied scenario/specification/content/translations.
 Reject role or setting drift, illogical dialogue, unsafe content, unsupported facts, answer clues in questions,
 ambiguous answers, duplicated question meanings, bundled unasked facts, wrong translations or difficulty mismatch.
+Compare content to the original inputVi as well as specification. Reject lost or changed concrete constraints,
+an unanswered learner goal, or a change between delivery and collection. Vietnamese answers may not assume
+relative ages, AM/PM, or other details absent from English.
 Exact evidence is necessary but not semantic proof. If any judgment is uncertain set valid=false.
+First audit ALL SIX questions individually in questionChecks, with activityId and questionId. In reasonVi,
+briefly compare the requested meaning, answerVi and quoteEn. answerSupported=false for a mistranslated or
+missing detail (for example, 'central station' means 'ga trung tâm', not merely 'trung tâm').
+distinctMeaning=false if ANY other question in the session already tests the same fact, even in another
+activity or different wording. Explicitly compare dates, people, prices and locations across all six questions.
 Do not rewrite the content. valid=true only if issues is empty and every question is sound.
 """,
     "GRADE": SYSTEM + """Grade only the meaning of each submitted Vietnamese answer, accepting accurate paraphrases
@@ -111,6 +145,12 @@ class Content(StrictModel):
     activities: list[Activity] = Field(min_length=3, max_length=3)
 
 
+class PlannedContent(StrictModel):
+    # Plan in the same bounded call, before dialogue generation; never publish it as learner evidence.
+    learningPointsVi: list[str] = Field(min_length=6, max_length=6)
+    content: Content
+
+
 class Translation(StrictModel):
     activityId: str
     segmentId: str
@@ -121,7 +161,16 @@ class Translations(StrictModel):
     segments: list[Translation] = Field(min_length=6, max_length=18)
 
 
+class QuestionCheck(StrictModel):
+    activityId: Literal["a1", "a2", "a3"]
+    questionId: str
+    reasonVi: str = Field(min_length=1, max_length=300)
+    answerSupported: bool
+    distinctMeaning: bool
+
+
 class Review(StrictModel):
+    questionChecks: list[QuestionCheck] = Field(min_length=6, max_length=6)
     valid: bool
     issues: list[str] = Field(max_length=10)
 
@@ -179,7 +228,7 @@ class ScenarioInput(StrictModel):
 
 def prompt_hash():
     manifest = {"version": PROMPT_VERSION, "instructions": INSTRUCTIONS, "outputTokens": OUTPUT_TOKENS,
-                "schemas": {m.__name__: m.model_json_schema() for m in (Specification, Content, Translations, Review, Grade)}}
+                "schemas": {m.__name__: m.model_json_schema() for m in (Specification, Content, PlannedContent, Translations, Review, Grade)}}
     return hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
@@ -248,10 +297,13 @@ async def execute(event, settings):
     async with httpx.AsyncClient(timeout=remaining, limits=httpx.Limits(max_connections=settings.effective_http_max_connections)) as client:
         async def call(purpose, data, model):
             gateway = ModelGateway(settings.model_copy(update={"num_predict": OUTPUT_TOKENS[purpose]}), client)
+            schema = model.model_json_schema()
+            if purpose == "GENERATE":
+                schema["$defs"]["Segment"]["properties"]["speakerId"]["enum"] = [c.id for c in payload.specification.characters]
             raw, provider = await asyncio.wait_for(gateway.complete(
                 [{"role": "system", "content": INSTRUCTIONS[purpose]},
                  {"role": "user", "content": json.dumps(data, ensure_ascii=False)}],
-                model.model_json_schema(), deadline, "scenario_" + purpose.lower(), temperature=0), max(0.01, deadline - time.monotonic()))
+                schema, deadline, "scenario_" + purpose.lower(), temperature=0), max(0.01, deadline - time.monotonic()))
             calls.append({"purpose": purpose, "provider": provider, "model": gateway.last_model})
             try:
                 return model.model_validate(raw)
@@ -269,8 +321,9 @@ async def execute(event, settings):
                 raise QualityRejected("invalid grade evidence") from invalid
             result = result.model_dump()
         else:
-            content = await call("GENERATE", {"specification": payload.specification.model_dump(),
-                "profile": payload.profile.model_dump()}, Content)
+            planned = await call("GENERATE", {"inputVi": payload.inputVi, "specification": payload.specification.model_dump(),
+                "profile": payload.profile.model_dump()}, PlannedContent)
+            content = planned.content
             try:
                 validate_content(content, payload.specification, payload.profile)
             except ValueError as invalid:
@@ -280,9 +333,12 @@ async def execute(event, settings):
                 validate_content(content, payload.specification, payload.profile, translated)
             except ValueError as invalid:
                 raise QualityRejected("invalid translations") from invalid
-            verdict = await call("REVIEW", {"specification": payload.specification.model_dump(),
+            verdict = await call("REVIEW", {"inputVi": payload.inputVi, "specification": payload.specification.model_dump(),
                 "profile": payload.profile.model_dump(), "content": content.model_dump(), "translations": translated.model_dump()}, Review)
-            if not verdict.valid or verdict.issues:
+            expected = {(a.id, q.id) for a in content.activities for q in a.questions}
+            checked = {(q.activityId, q.questionId) for q in verdict.questionChecks}
+            if not verdict.valid or verdict.issues or checked != expected or any(
+                    not q.answerSupported or not q.distinctMeaning for q in verdict.questionChecks):
                 raise QualityRejected("semantic quality rejected")
             result = {**content.model_dump(), "translations": translated.model_dump()["segments"], "qualityPassed": True}
     return {**metadata(settings), "generationId": str(event.jobId), "requestId": str(event.requestId),

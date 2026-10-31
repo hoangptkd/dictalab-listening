@@ -55,7 +55,7 @@ public class ScenarioEngine {
         return data.tx.execute(tx -> {
             data.lockUser(user);
             var prior=operations.prior(user,"draft",key,request); if (prior != null) return prior;
-            release.require();
+            release.require(user);
             require(request.programCode()!=null && request.programCode().equals(release.program().code())
                     && request.programVersion()==release.program().version());
             return newDraft(user,key,request,"draft",safeInput(request.inputVi(),2000),request.profileId(),null,id());
@@ -91,7 +91,7 @@ public class ScenarioEngine {
     public JsonNode createSession(long user,String key,SessionRequest request) {
         return data.tx.execute(tx -> {
             data.lockUser(user); var prior=operations.prior(user,"session",key,request); if (prior != null) return prior;
-            release.require();
+            release.require(user);
             var draft=data.owned("scenario_drafts",user,request.draftId()); version(draft,request.draftVersion());
             require("READY".equals(draft.get("status")) && instant(draft.get("expires_at")).isAfter(Instant.now()));
             require(release.program().definitionHash().equals(draft.get("program_hash")));
@@ -107,7 +107,7 @@ public class ScenarioEngine {
                     INSERT INTO scenario_sessions(id,user_id,draft_id,title_vi,status,parent_session_id,family_id)
                     VALUES (?,?,?,?,'PREPARING',?,?)
                     """,session,user,request.draftId(),tree((String)draft.get("specification_json")).path("titleVi").asText(),draft.get("parent_session_id"),draft.get("family_id"));
-            var payload=payload(draft,"GENERATE"); payload.set("specification",tree((String)draft.get("specification_json")));
+            var payload=payload(draft,"GENERATE"); payload.put("inputVi",(String)draft.get("input_vi")); payload.set("specification",tree((String)draft.get("specification_json")));
             return operations.create(user,"session",key,request,"GENERATE",session,payload);
         });
     }
@@ -195,7 +195,7 @@ public class ScenarioEngine {
         return data.tx.execute(tx -> {
             data.lockUser(user); data.activity(user,session,activity);
             var prior=operations.prior(user,scope,key,request); if (prior!=null) return prior;
-            release.require(); var a=editable(user,session,activity,request.expectedVersion());
+            release.require(user); var a=editable(user,session,activity,request.expectedVersion());
             var saved=tree((String)a.get("private_json")); var expected=new HashSet<String>();
             saved.path("activity").path("questions").forEach(q -> expected.add(q.path("id").asText()));
             require(request.answers()!=null && request.answers().size()==2);
@@ -246,7 +246,7 @@ public class ScenarioEngine {
         return data.tx.execute(tx -> {
             data.lockUser(user); data.owned("scenario_sessions",user,session);
             String scope="remix/"+session; var prior=operations.prior(user,scope,key,request); if (prior!=null) return prior;
-            release.require(); var s=data.owned("scenario_sessions",user,session); version(s,request.expectedVersion()); require("COMPLETED".equals(s.get("status")));
+            release.require(user); var s=data.owned("scenario_sessions",user,session); version(s,request.expectedVersion()); require("COMPLETED".equals(s.get("status")));
             var d=data.owned("scenario_drafts",user,(String)s.get("draft_id"));
             String input=safeInput("Tình huống trước: "+tree((String)d.get("specification_json")).path("settingVi").asText()
                     +"\nBiến thể mong muốn: "+safeInput(request.inputVi(),1200),2000);
@@ -275,13 +275,13 @@ public class ScenarioEngine {
                     var ops=data.db.queryForList("SELECT id FROM scenario_operations WHERE user_id=? AND kind='TTS' AND resource_id=? ORDER BY created_at DESC,id DESC",String.class,user,mediaId);
                     require(!ops.isEmpty());
                     if ("FAILED".equals(rows.get(0).get("status")) && ops.size()<3) {
-                        release.require();
+                        release.require(user);
                         data.db.update("UPDATE scenario_media SET status='PENDING' WHERE id=?",mediaId);
                         result=operations.create(user,"tts/"+mediaId+"/"+ops.size(),key,request,"TTS",mediaId,object().put("kind","tts").put("text",segment.path("textEn").asText()));
                     } else result=operations.get(user,ops.get(0));
                 }
             } else {
-                release.require(); mediaId=id();
+                release.require(user); mediaId=id();
                 data.db.update("INSERT INTO scenario_media(id,activity_id,segment_id,fingerprint,status) VALUES (?,?,?,?,'PENDING')",mediaId,activity,request.segmentId(),fingerprint);
                 result=operations.create(user,"tts/"+mediaId,key,request,"TTS",mediaId,object().put("kind","tts").put("text",segment.path("textEn").asText()));
             }
@@ -390,10 +390,7 @@ public class ScenarioEngine {
 
     public JsonNode suggestions() {
         var result=object(); var groups=result.putArray("suggestions");
-        String[][] values={{"food","Ăn uống","Tôi muốn đổi món vì bị dị ứng tại nhà hàng."},{"transport","Đi lại","Tôi lỡ chuyến tàu và muốn hỏi chuyến tiếp theo."},
-                {"shopping","Mua sắm","Tôi muốn đổi một món hàng không đúng kích cỡ."},{"workstudy","Công việc và học tập","Tôi cần thương lượng lịch họp với đồng nghiệp."},
-                {"services","Dịch vụ","Tôi muốn nhờ lễ tân xử lý sự cố trong phòng."},{"social","Đời sống","Tôi muốn rủ một người bạn tham gia hoạt động cuối tuần."}};
-        for (var v : values) groups.addObject().put("id",v[0]).put("titleVi",v[1]).put("inputVi",v[2]);
+        for (var suggestion : com.dictalab.service.ConversationService.scenarioSuggestions()) groups.add(ScenarioJson.MAPPER.valueToTree(suggestion));
         return result;
     }
 

@@ -54,8 +54,11 @@ public class SpaController {
     @GetMapping({"/conversation", "/conversation/{sessionId}"})
     public String conversation() { return INDEX; }
 
-    @GetMapping({"/scenario", "/scenario/{sessionId}"})
-    public String scenario() { return INDEX; }
+    @GetMapping("/scenario")
+    public String scenario() { return "redirect:/conversation"; }
+
+    @GetMapping("/scenario/{sessionId}")
+    public String scenarioSession(@PathVariable java.util.UUID sessionId) { return "redirect:/conversation/"+sessionId; }
 
     @GetMapping({"/vocabulary", "/vocabulary/{sessionId}"})
     public String vocabulary() { return INDEX; }

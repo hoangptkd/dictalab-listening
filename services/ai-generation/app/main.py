@@ -86,7 +86,7 @@ async def bound_job_requests(request: Request, call_next):
             if len(body) > 256000:
                 return JSONResponse(status_code=413, content={"error": "text input exceeds limit"})
         request._body = bytes(body)
-    if request.method == "POST" and request.url.path in ("/v1/tts/jobs", "/v1/coach/reports", "/v1/review/tasks", "/v1/conversation/jobs"):
+    if request.method == "POST" and request.url.path in ("/v1/tts/jobs", "/v1/coach/reports", "/v1/review/tasks", "/v1/conversation/jobs", "/v1/scenario/jobs"):
         if not _authorized(request.headers.get("X-Service-Token")):
             return JSONResponse(status_code=401, content={"error": "invalid service token"})
         body = bytearray()

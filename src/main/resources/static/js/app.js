@@ -38,7 +38,7 @@
             if (s0 === "catalog") return { route: "catalog", params: {level: q.get("level") || "A1", page, sort: q.get("sort") || "", lesson: q.get("lesson") || "", start: q.get("start") || ""}, query: q };
             if (s0 === "listening")            return { route: "listening", params: { sessionId: s1 || null, page, level: q.get("level") || "", view: q.get("view") || "", edit: q.get("edit") || "" }, query: q };
             if (s0 === "conversation")         return { route: "conversation", params: { sessionId: s1 || null }, query: q };
-            if (s0 === "scenario")             return { route: "scenario", params: { sessionId: s1 || null }, query: q };
+            if (s0 === "scenario")             return { route: "conversation", params: { sessionId: s1 || null }, query: q };
             if (s0 === "vocabulary")           return { route: "vocabulary", params: { sessionId: s1 || null }, query: q };
             if (s0 === "dashboard")            return { route: "dashboard", params: {}, query: q };
             if (s0 === "practice" && s1)       return { route: "practice", params: { sessionId: s1 }, query: q };
@@ -68,7 +68,7 @@
                 case "admin-support": return "/admin/support";
                 case "catalog": return `/catalog?level=${encodeURIComponent(params.level || "A1")}&page=${encodeURIComponent(params.page || 1)}${params.sort ? `&sort=${encodeURIComponent(params.sort)}` : ""}${params.lesson ? `&lesson=${encodeURIComponent(params.lesson)}` : ""}${params.start === "1" ? "&start=1" : ""}`;
                 case "conversation": return params.sessionId ? `/conversation/${encodeURIComponent(params.sessionId)}` : "/conversation";
-                case "scenario": return params.sessionId ? `/scenario/${encodeURIComponent(params.sessionId)}` : "/scenario";
+                case "scenario": return params.sessionId ? `/conversation/${encodeURIComponent(params.sessionId)}` : "/conversation";
                 case "listening": {
                     if (params.sessionId) {
                         const query = params.view ? `?view=${encodeURIComponent(params.view)}` : "";
@@ -827,13 +827,6 @@
                 await window.DictaLabConversation?.show(params.sessionId);
                 return;
             }
-            case "scenario": {
-                if (pushHistory) router.push("scenario", params);
-                else router.replace("scenario", params);
-                await _showView("scenario");
-                await window.DictaLabScenario?.show(params.sessionId);
-                return;
-            }
             case "login":
             case "register": {
                 if (!state.currentUser) { showAuthScreen(); return; }
@@ -1103,7 +1096,7 @@
         // Map route key → view id
         const viewId = {
             catalog: "catalog", practice: "practice", result: "result",
-            history: "history", dashboard: "dashboard", listening: "listening", conversation: "conversation", scenario: "scenario", vocabulary: "vocabulary",
+            history: "history", dashboard: "dashboard", listening: "listening", conversation: "conversation", vocabulary: "vocabulary",
             room: "room", admin: "admin", account: "account", support: "support",
             "admin-users": "admin-users", "admin-support": "admin-support", "admin-listening": "admin-listening", login: null, register: null
         }[route] || "catalog";
@@ -1119,7 +1112,6 @@
         }
         if (["result", "dashboard"].includes(document.body.dataset.route) && viewId !== document.body.dataset.route) window.DictaLabCoach?.leave();
         if (document.body.dataset.route === "conversation" && viewId !== "conversation") window.DictaLabConversation?.leave();
-        if (document.body.dataset.route === "scenario" && viewId !== "scenario") window.DictaLabScenario?.leave();
         if (document.body.dataset.route === "vocabulary" && viewId !== "vocabulary") window.DictaLabVocabulary?.leave();
         if (isAdminArea) {
             stopRecordedAudio();

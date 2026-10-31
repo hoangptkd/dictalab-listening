@@ -21,6 +21,10 @@ import org.slf4j.LoggerFactory;
 @Service
 public class ConversationService {
     public static final Map<String, String> SCENARIOS = ConversationContent.labels();
+    public static List<Map<String,String>> scenarioSuggestions() {
+        return ConversationContent.SCENES.stream().map(s -> Map.of("id",s.id(),"titleVi",s.label(),
+                "groupId",s.groupId(),"groupTitleVi",s.groupVi(),"inputVi","Tôi muốn luyện tình huống: "+s.label()+". Hãy tạo một cuộc trao đổi thực tế phù hợp.")).toList();
+    }
     private static final Set<String> STATUSES = Set.of("CAPTURED", "PARTIAL", "MISSED", "INCORRECT", "UNCERTAIN");
     private static final String GRADE_INSTRUCTION = """
                     Evaluate MEANING of Vietnamese typed replies to English listening, not spelling/grammar/translation quality.

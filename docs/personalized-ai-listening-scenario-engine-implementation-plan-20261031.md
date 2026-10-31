@@ -828,3 +828,15 @@ Phần 24 là lịch sử đợt nền tảng, không phải trạng thái mới
 - Có schema/fixture nội dung dùng chung Java/Python và integration test end-to-end bằng provider giả lập; kiểm tra PostgreSQL cài mới/nâng cấp, rollback ngân sách, concurrency/idempotency, owner/audio và account cascade.
 - **S02 và release chất lượng chưa hoàn tất:** chưa có benchmark model thật hoặc program APPROVED. Vì thế chưa mở generation production. Không dùng kết quả mock để duyệt program hoặc nới hash validation.
 - Chưa triển khai exam practice TOEIC/IELTS, calibrated scoring, chat và voice 1–1. Các ticket tương ứng trong roadmap vẫn giữ nguyên dependency và release gate; không đánh dấu toàn bộ S05–S25 hoàn thành chỉ vì đã có luồng giao tiếp cơ bản.
+
+## 26. Đính chính cửa vào sản phẩm và thử local — 31/10/2026
+
+Theo xác nhận lại của chủ dự án, mục tiêu là **nâng cấp Nghe hiểu tình huống tại `/conversation`**, không thêm một tính năng cùng tên trong thanh điều hướng. Mục 25 ghi `/scenario` là lịch sử triển khai đã được sửa: chỉ còn alias chuyển hướng, không có nav/view riêng. Miền/API Scenario v2 vẫn dùng nội bộ để giữ tương thích dữ liệu/API Conversation v1.
+
+- Ô nhập tình huống tự do là điểm bắt đầu, gửi `inputVi` thực tế cho extract → preview → xác nhận → generate; không gửi slug gợi ý thay cho nội dung người dùng sửa.
+- Giữ đủ 24 gợi ý trong sáu nhóm từ catalog cũ. Chọn gợi ý điền ô để chỉnh, đổi nhóm không làm mất nội dung. Cùng trang hiển thị lịch sử v1/v2.
+- Profile giao tiếp có phiên bản, không dùng A1/A2/B1 như thang cố định cho mọi chứng chỉ. TOEIC/IELTS giữ scale/component riêng; chưa mở sinh bài thi.
+- Có chế độ `LOCAL_PREVIEW` DRAFT giới hạn profile local/bind loopback/người dùng được chỉ định/hai pin. UI ghi rõ thử nghiệm; production vẫn cần APPROVED và benchmark. Xem cấu hình/gate chính xác trong [hồ sơ backend](scenario-backend-delivery-20261031.md).
+- Thử provider thật đã phát hiện đoạn thiếu từ, mã nhân vật sai, câu hỏi lặp và lỗi nghĩa mà verdict tổng thể có thể bỏ sót. Prompt giữ mô tả gốc, lập trước sáu ý nghe trong cùng call; schema giới hạn nhân vật và review phải đối chiếu từng câu. Giữ kiểm tra độc lập, ngân sách và lỗi thật; không tự replay workflow để ép kết quả thành công.
+
+Các thay đổi này không đánh dấu hoàn thành benchmark sư phạm, exam scoring hoặc chat/voice 1–1.

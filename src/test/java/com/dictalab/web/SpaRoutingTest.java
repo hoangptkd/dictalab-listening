@@ -32,8 +32,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SpaRoutingTest {
 
     @Test void scenarioDeepLinksResolveToSpaWithoutOpeningTheAuthenticatedApi() throws Exception {
-        mockMvc.perform(get("/scenario")).andExpect(status().isOk()).andExpect(forwardedUrl("/index.html"));
-        mockMvc.perform(get("/scenario/"+UUID.randomUUID())).andExpect(status().isOk()).andExpect(forwardedUrl("/index.html"));
+        mockMvc.perform(get("/scenario")).andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/conversation"));
+        String id=UUID.randomUUID().toString();
+        mockMvc.perform(get("/scenario/"+id)).andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/conversation/"+id));
         mockMvc.perform(get("/api/v2/scenarios/sessions")).andExpect(status().isUnauthorized());
     }
 

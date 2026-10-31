@@ -45,6 +45,8 @@ def execute(value, responses):
             self.last_model = workflow.metadata(settings)["model"]
 
         async def complete(self, messages, schema, deadline, purpose, **kwargs):
+            if purpose == "scenario_generate":
+                assert schema["$defs"]["Segment"]["properties"]["speakerId"]["enum"] == [c.id for c in value.specification.characters]
             calls.append((purpose, messages))
             response = responses[len(calls) - 1]
             if isinstance(response, Exception):
@@ -57,8 +59,8 @@ def execute(value, responses):
 
 
 def generation_responses():
-    return [{"activities": EXAMPLE["content"]["activities"]}, {"segments": EXAMPLE["content"]["translations"]},
-            {"valid": True, "issues": []}]
+    return [{"learningPointsVi": ["Ý nghe " + str(i) for i in range(6)], "content": {"activities": EXAMPLE["content"]["activities"]}}, {"segments": EXAMPLE["content"]["translations"]},
+            {"questionChecks": [{"activityId": a["id"], "questionId": q["id"], "reasonVi": "Đáp án có bằng chứng riêng", "answerSupported": True, "distinctMeaning": True} for a in EXAMPLE["content"]["activities"] for q in a["questions"]], "valid": True, "issues": []}]
 
 
 def test_cross_language_prompt_pin_and_content_fixture():
@@ -69,7 +71,10 @@ def test_cross_language_prompt_pin_and_content_fixture():
 
 
 def test_generation_requires_three_distinct_stages_with_private_provenance():
-    result, calls = execute(payload(), generation_responses())
+    brief = "Đổi lịch nhận xe từ sáng thứ Ba sang chiều thứ Tư"
+    result, calls = execute(payload(inputVi=brief), generation_responses())
+    assert json.loads(calls[0][1][1]["content"])["inputVi"] == brief
+    assert json.loads(calls[2][1][1]["content"])["inputVi"] == brief
     assert [c[0] for c in calls] == ["scenario_generate", "scenario_translate", "scenario_review"]
     assert result["task"] == EXAMPLE["content"]
     assert result["generationId"] == result["requestId"]
@@ -77,19 +82,22 @@ def test_generation_requires_three_distinct_stages_with_private_provenance():
     assert [c["purpose"] for c in result["calls"]] == ["GENERATE", "TRANSLATE", "REVIEW"]
 
 
-@pytest.mark.parametrize("change", ["evidence", "word_limit", "translation", "review", "extra"])
+@pytest.mark.parametrize("change", ["evidence", "word_limit", "translation", "review", "extra", "speaker"])
 def test_unsound_results_are_rejected_without_repair(change):
     responses = copy.deepcopy(generation_responses())
+    generated = responses[0]["content"]
     if change == "evidence":
-        responses[0]["activities"][0]["questions"][0]["evidence"][0]["quoteEn"] = "invented"
+        generated["activities"][0]["questions"][0]["evidence"][0]["quoteEn"] = "invented"
     elif change == "word_limit":
-        responses[0]["activities"][0]["segments"][0]["textEn"] = "word " * 65
+        generated["activities"][0]["segments"][0]["textEn"] = "word " * 65
     elif change == "translation":
         responses[1]["segments"][-1] = responses[1]["segments"][0]
     elif change == "review":
         responses[2] = {"valid": False, "issues": ["ambiguous question"]}
+    elif change == "speaker":
+        generated["activities"][0]["segments"][0]["speakerId"] = "unknown"
     else:
-        responses[0]["activities"][0]["questions"][0]["url"] = "https://example.test"
+        generated["activities"][0]["questions"][0]["url"] = "https://example.test"
     with pytest.raises(workflow.QualityRejected):
         execute(payload(), responses)
 
@@ -102,6 +110,18 @@ def test_grade_requires_exact_learner_evidence_and_all_ids():
     invented["facts"][0]["evidenceVi"] = "This was never submitted"
     with pytest.raises(workflow.QualityRejected):
         execute(payload("GRADE"), [invented])
+
+
+@pytest.mark.parametrize("fault", ["omitted", "duplicate", "unsupported", "repeated_meaning"])
+def test_review_requires_every_question_audited_even_when_overall_verdict_is_true(fault):
+    responses = copy.deepcopy(generation_responses())
+    checks = responses[-1]["questionChecks"]
+    if fault == "omitted": checks.pop()
+    elif fault == "duplicate": checks[-1] = checks[0]
+    elif fault == "unsupported": checks[-1]["answerSupported"] = False
+    else: checks[-1]["distinctMeaning"] = False
+    with pytest.raises(workflow.QualityRejected):
+        execute(payload(), responses)
 
 
 def test_extraction_redacts_and_rejects_wrong_prompt_before_call():
@@ -150,6 +170,7 @@ def test_internal_api_requires_token_scope_provider_and_explicit_rollout(tmp_pat
     client = TestClient(main.app)
     body = req.model_dump(mode="json")
     assert client.post("/v1/scenario/jobs", json=body).status_code == 401
+    assert client.post("/v1/scenario/jobs", headers=headers, content=b" " * 64001).status_code == 413
     assert client.post("/v1/scenario/jobs", headers=headers, json=body).status_code == 503
     monkeypatch.setattr(main, "settings", settings.model_copy(update={"scenario_enabled": True}))
     assert client.post("/v1/scenario/jobs", headers={**headers, "X-AI-Provider": "gemini"}, json=body).status_code == 409

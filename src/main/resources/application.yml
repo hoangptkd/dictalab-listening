@@ -193,6 +193,8 @@ dictalab:
       program-version: ${DICTALAB_SCENARIO_ENGINE_PROGRAM_VERSION:1}
       approved-program-hash: ${DICTALAB_SCENARIO_ENGINE_APPROVED_PROGRAM_HASH:}
       approved-prompt-hash: ${DICTALAB_SCENARIO_ENGINE_APPROVED_PROMPT_HASH:}
+      local-preview-enabled: ${DICTALAB_SCENARIO_ENGINE_LOCAL_PREVIEW_ENABLED:false}
+      local-preview-users: ${DICTALAB_SCENARIO_ENGINE_LOCAL_PREVIEW_USERS:}
   learning:
     enabled: ${DICTALAB_LEARNING_ENABLED:false}
     queue-enabled: ${DICTALAB_LEARNING_QUEUE_ENABLED:false}

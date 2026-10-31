@@ -1,7 +1,7 @@
 (() => {
     "use strict";
     const base = "/api/v2/scenarios", bridge = () => window.DictaLabListeningBridge;
-    const root = () => document.querySelector("#scenario-content");
+    const root = () => document.querySelector("#conversation-content");
     const escape = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
     const labels = {CAPTURED: "Hiểu đúng", PARTIAL: "Hiểu một phần", MISSED: "Bỏ lỡ", INCORRECT: "Chưa đúng", UNCERTAIN: "Chưa đủ căn cứ"};
     const profiles = {supported: "Có hỗ trợ", standard: "Tiêu chuẩn", challenge: "Thử thách"};
@@ -39,34 +39,60 @@
         try {
             const pending = read("operation", null);
             if (pending && (!id || pending.sessionId === id)) { await wait(pending, token); return; }
-            if (id) await openSession(id, token); else await catalog(token);
+            if (id) await openSession(id, token); else return await catalog(token);
         } catch (error) { if (current(token) && error.name !== "AbortError") status(error.message); }
     }
     async function catalog(token) {
-        const [catalog, suggestions, history, goals, recommendations] = await Promise.all([
-            request("/catalog"), request("/suggestions"), request("/sessions?limit=10"), request("/learning-goals"), request("/recommendations")]);
+        const [catalog, suggestions, history, goals, recommendations, legacy] = await Promise.all([
+            request("/catalog"), request("/suggestions"), request("/sessions?limit=10"), request("/learning-goals"), request("/recommendations"),
+            bridge().api("/api/v1/conversation/sessions?offset=0&limit=12", {signal: abort?.signal, cache: "no-store"}).catch(error => ({sessions: [], error: error.message}))]);
         if (!current(token)) return;
+        if (!catalog.enabled) return false;
         const available = catalog.generationAvailable;
-        frame(`<div class="scenario-hero"><form id="scenario-create" class="scenario-input-card">
+        const groups = [...new Map(suggestions.suggestions.map(s => [s.groupId || s.id, {id: s.groupId || s.id, title: s.groupTitleVi || s.titleVi}])).values()];
+        const historyRows = rows => rows.map(s => `<p><a href="/conversation/${encodeURIComponent(s.sessionId)}" data-session="${escape(s.sessionId)}">${escape(s.titleVi)}</a> · ${escape(s.status)}</p>`).join("");
+        const legacyRows = rows => rows.map(s => `<p><a href="/conversation/${encodeURIComponent(s.id)}" data-session="${escape(s.id)}">Bài trước đây · ${escape(s.scenario)} · ${escape(s.difficulty)}</a></p>`).join("");
+        frame(`${catalog.generationMode === "LOCAL_PREVIEW" ? '<p role="status">Thử nghiệm local · Program DRAFT, chưa được chuyên gia duyệt. Kết quả không phải đánh giá chứng chỉ.</p>' : ''}<div class="scenario-hero"><form id="scenario-create" class="scenario-input-card">
             <label class="scenario-brief-label" for="scenario-input">Bạn muốn luyện tình huống nào?</label>
             <textarea id="scenario-input" class="scenario-brief" name="inputVi" rows="5" maxlength="2000" required aria-describedby="scenario-input-help"></textarea>
             <p id="scenario-input-help">Mô tả bằng tiếng Việt. Tránh nhập thông tin cá nhân hoặc khóa truy cập.</p>
-            <label for="scenario-profile">Mức luyện giao tiếp</label>
-            <select id="scenario-profile" name="profileId">${(catalog.difficultyProfiles.length ? catalog.difficultyProfiles : Object.keys(profiles)).map(p => `<option value="${escape(p)}">${escape(profiles[p] || p)}</option>`).join("")}</select>
+            <fieldset class="scenario-profile-options"><legend>Mức luyện giao tiếp</legend>${(catalog.difficultyProfiles.length ? catalog.difficultyProfiles : Object.keys(profiles)).map((p,i) => `<label><input type="radio" name="profileId" value="${escape(p)}" ${i === 0 ? "checked" : ""}>${escape(profiles[p] || p)}</label>`).join("")}</fieldset>
             <p>TOEIC và IELTS giữ mục tiêu theo thang điểm riêng; bài giao tiếp này không phải bài thi quy đổi band.</p>
             <button class="primary-button" ${available ? "" : "disabled"}>Phân tích và xem trước</button>
             ${available ? "" : "<p>Chương trình đang chờ duyệt bộ sinh bài. Bài đã lưu vẫn có thể mở.</p>"}
             </form><aside class="scenario-suggestions-col"><h2>Gợi ý bài luyện</h2><p>${escape(recommendations.messageVi)}</p>
             ${recommendations.suggestions.slice(0,3).map((s,index) => `<button class="scenario-suggestion-card" type="button" data-recommendation="${index}"><strong>${escape(s.titleVi)}</strong><span>${escape(s.reasonVi || s.inputVi)}</span></button>`).join("")}
             ${goals.map(g => `<p class="scenario-goal-display">Mục tiêu tự khai: ${escape(g.programCode)} · ${escape(g.target.component)} · ${escape(g.target.value)}</p>`).join("")}</aside></div>
-            <section class="scenario-explorer"><h2>Khám phá theo chủ đề</h2><p>Chọn làm điểm bắt đầu rồi mô tả tình huống của riêng bạn.</p><div class="scenario-group-grid">
-            ${suggestions.suggestions.map((s, index) => `<button class="scenario-group-card" data-suggestion="${index}" type="button"><strong>${escape(s.titleVi)}</strong><span>${escape(s.inputVi)}</span></button>`).join("")}</div></section>
-            <section><h2>Bài đã tạo</h2>${history.sessions.length ? history.sessions.map(s => `<p><a href="/scenario/${encodeURIComponent(s.sessionId)}" data-session="${escape(s.sessionId)}">${escape(s.titleVi)}</a> · ${escape(s.status)}</p>`).join("") : "<p>Chưa có bài học.</p>"}</section>`);
+            <section class="scenario-explorer"><h2>Gợi ý để bạn tùy chỉnh</h2><p>Chọn một gợi ý, rồi sửa mô tả theo nhu cầu của bạn. Bạn cũng có thể nhập tình huống hoàn toàn mới.</p>
+            <div class="scenario-program-pills" role="group" aria-label="Nhóm gợi ý">${groups.map((g,i) => `<button class="scenario-pill" type="button" data-group="${escape(g.id)}" aria-pressed="${i === 0}">${escape(g.title)}</button>`).join("")}</div>
+            <div class="scenario-group-grid">${suggestions.suggestions.map((s,index) => `<button class="scenario-group-card" data-suggestion="${index}" data-suggestion-group="${escape(s.groupId || s.id)}" ${index && (s.groupId || s.id) !== groups[0].id ? "hidden" : ""} type="button"><strong>${escape(s.titleVi)}</strong></button>`).join("")}</div></section>
+            <section><h2>Bài đã tạo</h2><div id="scenario-history">${history.sessions.length ? historyRows(history.sessions) : "<p>Chưa có bài học mới.</p>"}</div><button type="button" id="scenario-history-more" ${history.nextCursor ? "" : "hidden"}>Xem thêm bài</button></section>
+            <section><h2>Bài trước đây</h2><div id="scenario-legacy-history">${legacyRows(legacy.sessions || []) || "<p>Chưa có bài trước đây.</p>"}</div>${legacy.error ? `<p role="status">${escape(legacy.error)}</p>` : ""}<button type="button" id="scenario-legacy-more" ${legacy.hasMore ? "" : "hidden"}>Xem thêm bài trước đây</button></section>`);
+        const input = root().querySelector("#scenario-input"); input.value = read("brief", "");
+        input.addEventListener("input", () => save("brief", input.value));
+        root().querySelectorAll("[data-group]").forEach(button => button.addEventListener("click", () => {
+            root().querySelectorAll("[data-group]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+            root().querySelectorAll("[data-suggestion-group]").forEach(item => { item.hidden = item.dataset.suggestionGroup !== button.dataset.group; });
+        }));
         root().querySelectorAll("[data-suggestion]").forEach(button => button.addEventListener("click", () => {
-            const input = root().querySelector("#scenario-input"); input.value = suggestions.suggestions[Number(button.dataset.suggestion)].inputVi; input.focus();
+            input.value = suggestions.suggestions[Number(button.dataset.suggestion)].inputVi; save("brief", input.value); input.focus();
         }));
         root().querySelectorAll("[data-recommendation]").forEach(button => button.addEventListener("click", () => {
-            const input = root().querySelector("#scenario-input"); input.value = recommendations.suggestions[Number(button.dataset.recommendation)].inputVi; input.focus();
+            input.value = recommendations.suggestions[Number(button.dataset.recommendation)].inputVi; save("brief", input.value); input.focus();
+        }));
+        let cursor = history.nextCursor, legacyOffset = 0;
+        root().querySelector("#scenario-history-more").addEventListener("click", () => run(async token => {
+            if (!cursor) return;
+            const page = await request(`/sessions?limit=10&before=${encodeURIComponent(cursor.before)}&beforeId=${encodeURIComponent(cursor.beforeId)}`);
+            if (!current(token)) return;
+            root().querySelector("#scenario-history").insertAdjacentHTML("beforeend", historyRows(page.sessions)); cursor = page.nextCursor;
+            root().querySelector("#scenario-history-more").hidden = !cursor; bindSessionLinks();
+        }));
+        root().querySelector("#scenario-legacy-more").addEventListener("click", () => run(async token => {
+            const page = await bridge().api(`/api/v1/conversation/sessions?offset=${legacyOffset+12}&limit=12`, {signal: abort?.signal, cache: "no-store"});
+            if (!current(token)) return;
+            legacyOffset += 12; root().querySelector("#scenario-legacy-history").insertAdjacentHTML("beforeend", legacyRows(page.sessions));
+            root().querySelector("#scenario-legacy-more").hidden = !page.hasMore; bindSessionLinks();
         }));
         bindSessionLinks();
         root().querySelector("#scenario-create").addEventListener("submit", event => {
@@ -78,12 +104,15 @@
                 if (current(token)) await track({...operation, action: "EXTRACT"}, token);
             });
         });
+        return true;
     }
     function bindSessionLinks() {
-        root().querySelectorAll("[data-session]").forEach(link => link.addEventListener("click", event => {
+        root().querySelectorAll("[data-session]").forEach(link => {
+            if (link.dataset.sessionBound) return; link.dataset.sessionBound = "true";
+            link.addEventListener("click", event => {
             if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button) return;
-            event.preventDefault(); bridge().navigate("scenario", {sessionId: link.dataset.session});
-        }));
+            event.preventDefault(); bridge().navigate("conversation", {sessionId: link.dataset.session});
+        }); });
     }
     async function track(operation, token) { save("operation", operation); await wait(operation, token); }
     async function wait(pending, token, started = Date.now()) {
@@ -95,14 +124,14 @@
             if (op.status === "SUCCEEDED") {
                 save("operation", null);
                 if (pending.action === "EXTRACT") await preview(await request(`/drafts/${encodeURIComponent(op.draftId)}`), token);
-                else if (pending.action === "GENERATE") bridge().navigate("scenario", {sessionId: op.sessionId});
+                else if (pending.action === "GENERATE") bridge().navigate("conversation", {sessionId: op.sessionId});
                 else {
                     await openSession(pending.sessionId, token);
                     if (pending.action === "TTS" && current(token)) await playMedia(op.mediaId);
                 }
             } else if (["FAILED", "UNKNOWN", "CANCELLED", "EXPIRED"].includes(op.status)) {
                 save("operation", null);
-                frame(`<h2>Tác vụ ${escape(op.status)}</h2><p>${op.status === "UNKNOWN" ? "Chưa xác định được kết quả từ nhà cung cấp. Hệ thống không tự gọi lại để tránh phí trùng." : "Tác vụ không hoàn tất. Bài và câu trả lời đã lưu vẫn được giữ."}</p><p>Mã: ${escape(op.errorCode || op.status)}</p><a href="/scenario${pending.sessionId ? "/" + encodeURIComponent(pending.sessionId) : ""}" data-session="${escape(pending.sessionId || "")}">Quay lại bài học</a>`);
+                frame(`<h2>Tác vụ ${escape(op.status)}</h2><p>${op.status === "UNKNOWN" ? "Chưa xác định được kết quả từ nhà cung cấp. Hệ thống không tự gọi lại để tránh phí trùng." : "Tác vụ không hoàn tất. Bài và câu trả lời đã lưu vẫn được giữ."}</p><p>Mã: ${escape(op.errorCode || op.status)}</p><a href="/conversation${pending.sessionId ? "/" + encodeURIComponent(pending.sessionId) : ""}" data-session="${escape(pending.sessionId || "")}">Quay lại bài học</a>`);
                 bindSessionLinks();
             } else if (Date.now() - started < 300000) timer = setTimeout(() => { check().catch(error => { if (current(token)) status(error.message); }); }, Math.max(1500, Math.min(10000, op.pollAfterMs || 2000)));
             else status("Tác vụ còn đang chạy. Bấm kiểm tra trạng thái để tiếp tục, không cần gửi yêu cầu mới.");
@@ -117,7 +146,7 @@
         frame(`<h2>${escape(s.titleVi)}</h2><dl><dt>Bối cảnh</dt><dd>${escape(s.settingVi)}</dd><dt>Vai trò của bạn</dt><dd>${escape(s.learnerRoleVi)}</dd><dt>Mục tiêu</dt><dd>${escape(s.goalVi)}</dd></dl>
             <h3>Giả định để tạo bài</h3><ul>${s.assumptionsVi.map(a => `<li>${escape(a)}</li>`).join("")}</ul>
             <p>${s.characters.map(c => `${escape(c.name)}: ${escape(c.roleVi)}`).join(" · ")}</p>
-            <button class="primary-button" id="scenario-confirm">Xác nhận và tạo bài</button><a href="/scenario" data-session="">Viết tình huống khác</a>`);
+            <button class="primary-button" id="scenario-confirm">Xác nhận và tạo bài</button><a href="/conversation" data-session="">Viết tình huống khác</a>`);
         bindSessionLinks();
         root().querySelector("#scenario-confirm").addEventListener("click", () => run(async token => {
             const op = await mutation("/sessions", {draftId: draft.draftId, draftVersion: draft.version});
@@ -131,7 +160,7 @@
     function answerKey(activity) { return `answers:${session.sessionId}:${activity.activityId}`; }
     function renderSession() {
         const activity = session.activities.find(a => a.status !== "COMPLETED");
-        frame(`<div class="scenario-session-topbar"><h2>${escape(session.titleVi)}</h2><a href="/scenario" data-session="">Tình huống khác</a><button id="scenario-refresh" type="button">Tải lại bài</button></div>
+        frame(`<div class="scenario-session-topbar"><h2>${escape(session.titleVi)}</h2><a href="/conversation" data-session="">Tình huống khác</a><button id="scenario-refresh" type="button">Tải lại bài</button></div>
             <p>${escape(session.specification.settingVi)}</p><p>${escape(session.specification.goalVi)}</p><p>Trạng thái: ${escape(session.status)}</p>
             ${activity ? activityHtml(activity) : completedHtml()}`);
         bindSessionLinks(); root().querySelector("#scenario-refresh").addEventListener("click", () => run(token => openSession(session.sessionId, token)));

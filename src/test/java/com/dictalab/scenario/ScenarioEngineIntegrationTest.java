@@ -58,6 +58,7 @@ class ScenarioEngineIntegrationTest {
         when(release.program()).thenReturn(registry.require("general-communication",1));
         when(release.promptHash()).thenReturn(new String(getClass().getResourceAsStream("/scenario/workflow-v1.sha256").readAllBytes()).trim());
         when(release.available()).thenReturn(true);
+        when(release.available(anyLong())).thenReturn(true);
         when(ai.local()).thenReturn(true); when(ai.scenarioProvider()).thenReturn("ollama");
         when(ai.audio(any())).thenCallRealMethod();
         var accounting=new AiUsageBudget(db,manager,true,10000000,1000000,10,20,100000,1000);
@@ -101,6 +102,8 @@ class ScenarioEngineIntegrationTest {
 
     @Test void fullLifecycleKeepsKeysPrivateRecordsSupportCachesAudioAndRemixesWithoutOverwriting() throws Exception {
         JsonNode session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        verify(ai).submitScenario(eq(user),anyString(),any(),argThat(p -> "GENERATE".equals(p.path("phase").asText())
+                && input().inputVi().equals(p.path("inputVi").asText())));
         assertThat(session.toString()).doesNotContain("we open at nine","Chín giờ","quoteEn","textEn","answerVi","provenance_json");
         var play=engine.play(user,sid,aid,id(),new ScenarioEngine.PlayRequest(session.path("version").asLong(),"s1"));
         String mediaId=dispatch(play).path("mediaId").asText();
