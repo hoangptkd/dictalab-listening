@@ -1,5 +1,15 @@
 # Scenario EXTRACT / GENERATE quality hardening — 2026-10-31
 
+## Learner answer language correction
+
+Learners may answer in English, Vietnamese, or a mixture of both. Grading compares meaning;
+it must not require translating a correct English answer into Vietnamese. Evidence retains
+the learner's exact original words. The existing `answerVi`, `textVi`, and `evidenceVi` wire
+field names remain for compatibility and do not restrict the learner's language.
+Vietnamese reference translations are a separate generated-content requirement. The new
+English-copy heuristic was removed; it must not become a learner-language admission rule.
+The broader generation-quality verification below remains incomplete.
+
 ## Decision and scope
 
 The V2 candidate passes the current automatic suite and the eight-case live corpus.

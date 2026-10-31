@@ -100,7 +100,7 @@ test('assistance is collapsed without requesting help and playback controls rema
     assert.match(html, /<summary>Hỗ trợ<\/summary><p>Kết quả ghi nhận hỗ trợ đã dùng/);
     assert.match(html, /Mở lời giải sẽ kết thúc câu này, không tính là tự hiểu/);
     assert.match(html, /id="conversation-audio-seek" aria-label="Vị trí audio"/);
-    assert.match(html, /<label for="conversation-answer">Trả lời bằng tiếng Việt<\/label>/);
+    assert.match(html, /<label for="conversation-answer">Trả lời bằng tiếng Anh hoặc tiếng Việt<\/label>/);
     assert.doesNotMatch(html, /conversation-guide|conversation-answer-hint|Học theo cách phù hợp/);
 });
 test('saved ungraded response is read-only and retry uses its existing request id', async () => {
@@ -425,7 +425,7 @@ test('minimal catalog keeps named selections and history without previews or agg
 
 test('conversation intro keeps only the exercise instruction', () => {
     const html = fs.readFileSync(path.resolve(__dirname, '../../main/resources/static/index.html'), 'utf8');
-    assert.match(html, /<p class="conversation-intro">Nghe tiếng Anh, trả lời bằng tiếng Việt\.<\/p>/);
+    assert.match(html, /<p class="conversation-intro">Nghe tiếng Anh, trả lời bằng tiếng Anh hoặc tiếng Việt\.<\/p>/);
     assert.doesNotMatch(html, /Không phải chế độ luyện nói với AI/);
 });
 

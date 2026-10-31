@@ -101,6 +101,25 @@ class ScenarioEngineIntegrationTest {
                 new ScenarioEngine.Answer("q2",fixture.path("answers").get(1).path("textVi").asText())));
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"The shop opens at nine.","Cửa hàng mở lúc chín giờ.","Cửa hàng opens at nine."})
+    void gradingPreservesEnglishVietnameseAndMixedLearnerAnswers(String answer) {
+        var session=active(); String sid=session.path("sessionId").asText(), aid=session.path("activities").get(0).path("activityId").asText();
+        doAnswer(call -> {
+            var response=done(call.getArgument(1),call.getArgument(3));
+            ((ObjectNode)response.path("result").path("task").path("facts").get(0)).put("evidenceVi",answer);
+            return response;
+        }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        var request=new ScenarioEngine.AnswersRequest(session.path("version").asLong(),List.of(
+                new ScenarioEngine.Answer("q1",answer),answers(session).answers().get(1)));
+        var op=engine.answer(user,sid,aid,id(),request);
+        assertThat(dispatch(op).path("status").asText()).isEqualTo("SUCCEEDED");
+        verify(ai).submitScenario(eq(user),anyString(),any(),argThat(p -> "GRADE".equals(p.path("phase").asText())
+                && answer.equals(p.path("answers").get(0).path("textVi").asText())));
+        var stored=tree(db.queryForObject("SELECT answers_json FROM scenario_attempts WHERE activity_id=?",String.class,aid));
+        assertThat(stored.get(0).path("textVi").asText()).isEqualTo(answer);
+    }
+
     @Test void fullLifecycleKeepsKeysPrivateRecordsSupportCachesAudioAndRemixesWithoutOverwriting() throws Exception {
         JsonNode session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
         verify(budget).reserveScenario(eq(user),anyString(),eq(2),eq(false),eq(true));

@@ -214,11 +214,11 @@
                         <button type="button" class="primary-button" data-action="next" aria-describedby="conversation-status">${message ? "Thử lại" : "Tạo câu nghe đầu tiên"}</button>`}
                 </section>
                 <section class="conversation-card conversation-reply" aria-labelledby="conversation-reply-heading">
-                    <h2 id="conversation-reply-heading">Trả lời bằng tiếng Việt</h2>
+                    <h2 id="conversation-reply-heading">Trả lời bằng tiếng Anh hoặc tiếng Việt</h2>
                     ${turn && !turn.done ? `<p class="conversation-feedback-count">Đã nắm ${turn.capturedFacts || 0}/${turn.totalFacts || 2} ý · Còn ${3 - attempts.length} lượt bổ sung</p>` : ""}
                     <div class="conversation-chat">${attempts.map((a, i) => `${i < attempts.length - 1 ? `<details class="ui-disclosure"><summary>Lượt trả lời ${i + 1}</summary>` : ""}<div class="conversation-bubble learner"><span>Bạn</span><p>${escape(a.answerVi)}</p></div>
                         ${a.evaluation ? `<div class="conversation-bubble coach"><span>AI Coach</span><p>${escape(a.evaluation.feedbackVi)}</p>${!turn.done && a.evaluation.clarificationVi ? `<p><strong>${escape(a.evaluation.clarificationVi)}</strong></p>` : ""}</div>` : ""}${i < attempts.length - 1 ? "</details>" : ""}`).join("")}</div>
-                    ${turn && !turn.done ? `<form id="conversation-answer-form"><label for="conversation-answer">Trả lời bằng tiếng Việt</label>
+                    ${turn && !turn.done ? `<form id="conversation-answer-form"><label for="conversation-answer">Trả lời bằng tiếng Anh hoặc tiếng Việt</label>
                         <textarea id="conversation-answer" name="answerVi" rows="4" maxlength="1500" required aria-describedby="conversation-status" ${pending ? "readonly" : ""}>${escape(draft)}</textarea>
                         <div class="conversation-answer-actions"><button class="primary-button">${pending ? "Thử chấm lại câu đã lưu" : attempts.length ? "Gửi ý bổ sung →" : "Gửi câu trả lời →"}</button></div></form>`
                         : turn ? `${reviewCard(turn, session.turnNumber, true)}<button type="button" class="primary-button" data-action="next">${session.turnNumber === 3 ? "Thử câu mới để kiểm tra lại →" : "Bước tiếp theo →"}</button>${session.turnNumber === 3 ? '<p>Không tạo được câu mới hoặc muốn dừng tại đây?</p><button type="button" class="text-button" data-action="finish">Kết thúc với ba câu · Chưa kiểm tra vận dụng</button>' : ""}`

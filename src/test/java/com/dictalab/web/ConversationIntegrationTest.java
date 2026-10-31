@@ -96,6 +96,21 @@ class ConversationIntegrationTest {
         service.next(owner, id, 0); return id;
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"At the cafe at ten tomorrow.", "Ở quán cà phê lúc mười giờ ngày mai.", "Ở cafe at ten tomorrow."})
+    void gradingAcceptsEnglishVietnameseAndMixedRepliesWithoutTranslatingEvidence(String answer) {
+        String id = start();
+        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", answer));
+        var turn = service.answer(owner, id, 1, UUID.randomUUID(), answer).path("turns").path(0);
+        assertThat(turn.path("done").asBoolean()).isTrue();
+        var attempt = turn.path("attempts").path(0);
+        assertThat(attempt.path("answerVi").asText()).isEqualTo(answer);
+        var stored = json.readTree(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=? AND user_id=?", String.class, id, owner));
+        assertThat(stored.path("turns").path(0).path("attempts").path(0).path("evaluation").path("facts").path(0).path("evidenceVi").asText()).isEqualTo(answer);
+        verify(ai).completeJson(argThat(instruction -> instruction.contains("English or Vietnamese")
+                && instruction.contains("ORIGINAL")), argThat(body -> body.contains(answer)));
+    }
+
     @Test void pythonAudioReadinessIsUserScopedAndNeedsNoCoreCartesiaKey() {
         when(tts.enabled()).thenReturn(false);
         when(platform.enabled("tts", owner)).thenReturn(true);

@@ -225,7 +225,7 @@ public class ScenarioEngine {
             var result=object().put("version",request.expectedVersion()+1);
             if (request.kind().equals("TRANSCRIPT")) {
                 var content=tree((String)a.get("private_json")); result.set("segments",content.path("activity").path("segments")); result.set("translations",content.path("translations"));
-            } else result.put("hintVi","Nghe lại chi tiết và quyết định cuối cùng. Trả lời ngắn bằng tiếng Việt, chỉ nêu điều câu hỏi yêu cầu.");
+            } else result.put("hintVi","Nghe lại chi tiết và quyết định cuối cùng. Trả lời ngắn bằng tiếng Anh hoặc tiếng Việt, chỉ nêu điều câu hỏi yêu cầu.");
             return result;
         }));
     }

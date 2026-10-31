@@ -45,6 +45,8 @@ test('session renders real question counts, escapes provider text and shows no f
     assert.match(h.root.innerHTML, /&lt;script&gt;unsafe/);
     assert.doesNotMatch(h.root.innerHTML, /<script>|72%|65%|80%|5 câu hỏi/);
     assert.match(h.root.innerHTML, /Mở cửa lúc nào/);
+    assert.match(h.root.innerHTML, /tiếng Anh hoặc tiếng Việt/);
+    assert.match(h.root.innerHTML, /aria-describedby="scenario-answer-help"/);
 });
 test('leaving or changing account prevents late provider responses from painting', async () => {
     let resolve; const h = harness(() => new Promise(done => {resolve = done;}));
@@ -61,16 +63,16 @@ test('answer transport retry after reload keeps idempotency key and Vietnamese d
         return session();
     };
     const first = harness(api, storage); await first.module.show('session-1');
-    const form = first.node('#scenario-answer'); form.values = [['q1', 'Chín giờ'], ['q2', 'Bánh']];
+    const form = first.node('#scenario-answer'); form.values = [['q1', 'At nine'], ['q2', 'Bánh']];
     form.listeners.submit({preventDefault() {}}); await tick(); await tick();
     const original = first.calls.find(c => c.options.method === 'POST'); assert.ok(original);
     fail = false; const next = harness(api, storage); await next.module.show('session-1');
-    assert.match(next.root.innerHTML, /Chín giờ/);
+    assert.match(next.root.innerHTML, /At nine/);
     const form2 = next.node('#scenario-answer'); form2.values = form.values; form2.listeners.submit({preventDefault() {}});
     await tick(); await tick();
     const retried = next.calls.find(c => c.options.method === 'POST');
     assert.equal(retried.options.headers['Idempotency-Key'], original.options.headers['Idempotency-Key']);
-    assert.deepEqual(JSON.parse(JSON.stringify(retried.options.body.answers)), [{questionId: 'q1', textVi: 'Chín giờ'}, {questionId: 'q2', textVi: 'Bánh'}]);
+    assert.deepEqual(JSON.parse(JSON.stringify(retried.options.body.answers)), [{questionId: 'q1', textVi: 'At nine'}, {questionId: 'q2', textVi: 'Bánh'}]);
     assert.equal(JSON.parse(storage.get('dictalab:scenario:10:operation')).operationId, 'op');
 });
 test('unknown paid outcome does not submit another job or invent a completed session', async () => {

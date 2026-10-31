@@ -340,3 +340,23 @@ def test_internal_api_requires_token_scope_provider_and_explicit_rollout(tmp_pat
     assert first.status_code == 202
     assert client.post("/v1/scenario/jobs", headers=headers, json=body).json()["jobId"] == first.json()["jobId"]
     assert client.get("/v1/jobs/" + str(req.jobId), headers={**headers, "X-User-Scope": "c" * 64}).status_code == 404
+
+
+@pytest.mark.parametrize("answer,evidence,status", [
+    ("The shop opens at nine.", "at nine", "CAPTURED"),
+    ("Cửa hàng mở lúc chín giờ.", "chín giờ", "CAPTURED"),
+    ("Cửa hàng opens at nine.", "at nine", "CAPTURED"),
+    ("The shop opens at midnight.", "at midnight", "INCORRECT"),
+])
+def test_grade_accepts_both_languages_and_preserves_original_evidence(answer, evidence, status):
+    value = payload("GRADE", answers=[{"questionId": "q1", "textVi": answer}, {"questionId": "q2", "textVi": ""}])
+    grade = {"facts": [{"questionId": "q1", "status": status, "evidenceVi": evidence},
+                       {"questionId": "q2", "status": "MISSED", "evidenceVi": ""}]}
+    result, calls = execute(value, [grade])
+    assert result["task"] == grade
+    instruction = calls[0][1][0]["content"]
+    assert "English or Vietnamese" in instruction and "ORIGINAL" in instruction
+    assert json.loads(calls[0][1][1]["content"])["answers"][0]["textVi"] == answer
+    grade["facts"][0]["evidenceVi"] = "translated evidence absent from the answer"
+    with pytest.raises(workflow.QualityRejected, match="invalid grade evidence"):
+        execute(value, [grade])
