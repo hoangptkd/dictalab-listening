@@ -1,5 +1,75 @@
 # AI evaluation gate
 
+## Scenario EXTRACT / GENERATE: capture once, inspect offline
+
+`scenario_quality.py` runs the current `app.scenario_workflow.execute` directly with the
+configured gateway. It is an evaluation observer, not a Core API/database/TTS end-to-end
+test. Production does not import it. The default corpus contains eight synthetic cases
+across six groups and three practice profiles, including one unsafe request.
+
+From the repository root, load the existing protected AI settings into the process
+environment using the normal local launcher. Do not pass keys on the command line or
+copy an environment file into the evidence directory. Scenario execution must be explicitly
+enabled in that protected configuration. Then run **capture only when fresh calls are intended**:
+
+```powershell
+python tools/ai-eval/scenario_quality.py capture --output data/scenario-evaluation/run-001 --max-calls 32 --max-seconds 1200
+```
+
+Each case runs EXTRACT once and GENERATE once only when EXTRACT allows it. GENERATE
+uses the real generation, translation and review gates; failed samples are not repaired,
+retried or replaced. The configured shared quota still applies. The budget counts gateway
+calls, not billed tokens; wire usage is retained when supplied by the provider. Cloud output
+has no guaranteed deterministic seed, even with temperature zero.
+
+The output directory must be new and under ignored `data/`. Reusing it fails before any
+provider calls. Artifacts include:
+
+- `manifest.json`: corpus, program, prompt, source and harness hashes; model/provider/config
+  identifiers, git revision and budget. Current captures also record library versions.
+- `cases.json`, `program.json`, `instructions.json`, `workflow.source.py`, `harness.source.py`:
+  the exact synthetic inputs and code used at capture time.
+- `<case>/EXTRACT|GENERATE/input.json`, `started.json`, `outcome.json`: correlation/job ID,
+  input, elapsed time, status and safe error classification.
+- `*-request.json`: messages, schema, options and output budget for each actual call.
+- `*-response.json`: parsed model reply **before domain validation**, with provider, model,
+  source ID and timing. Rejected content remains available here.
+- `*-wire.json`: HTTP status, response hash, model text and usage when present; retains
+  malformed successful output too. It excludes headers, URLs and arbitrary provider error
+  bodies. Credentials and full settings are not logged.
+- `finished.json`, `integrity.json`: completion and SHA-256 inventory of original evidence.
+  `derived/` holds versioned analysis separately and is excluded from the original seal.
+
+Inspect/replay **the existing directory**, rather than rerunning capture:
+
+```powershell
+python tools/ai-eval/scenario_quality.py report --capture data/scenario-evaluation/run-001 --output data/scenario-evaluation/run-001/derived/report-v1.json
+python tools/ai-eval/scenario_quality.py replay --capture data/scenario-evaluation/run-001 --output data/scenario-evaluation/run-001/derived/replay-v1.json
+python -m pytest -q tools/ai-eval/test_scenario_quality.py services/ai-generation/tests/test_scenario_workflow.py
+```
+
+Both commands make **zero provider calls**. Reports include all recorded replies and failures.
+Replay runs those replies through the workflow and compares results/errors. It rejects a
+changed prompt pin or request/schema/options and never falls back to a live provider.
+A provider failure with no parsed reply is `UNREPLAYABLE`, not a reason to resend it.
+Changed validators may be evaluated offline, but preserve the original replay and label the
+new analysis with its code revision. Comparing changed prompts requires a separately
+authorized new capture with baseline lineage; never overwrite or replace a failed sample.
+
+After interruption, leave raw files intact. `report --allow-incomplete` can inspect them using
+a new output filename; it explicitly marks `UNSEALED_INCOMPLETE` and missing outcomes as
+`UNKNOWN_INTERRUPTED`. `UNKNOWN` means an uncertain failed call, `NOT_STARTED` means no
+call in that phase, and `BUDGET_STOPPED` means some replies exist but the phase could not
+finish. None count as success. There is no automatic resume/resubmit command.
+
+Keep private captures out of Git. Create a second restricted copy/archive outside a disposable
+worktree, verify its SHA-256, ZIP CRC and raw integrity inventory, and retain it deliberately
+until the quality investigation is closed. The tool does not auto-delete evidence. This logging
+is for explicit synthetic evaluation; it does not enable logging real learner content in production.
+
+The first real run and its manual findings are documented in
+`docs/scenario-quality-evaluation-20261031.md`.
+
 ## Bounded Gemini JSONL batch
 
 `gemini_batch.py` is a separate opt-in cloud generator, not the local benchmark runner below.
