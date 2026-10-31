@@ -57,11 +57,11 @@ jobs:
         run: python -m pytest -q services/ai-generation/tests services/model-serving/test_server.py tools/ai-eval training/tests/test_generate_teacher_data.py training/tests/test_benchmark_teacher.py training/tests/test_prepare_dataset.py
       - name: Java unit contracts when not covered by Core CI
         if: ${{ !inputs.core-unit-covered }}
-        run: mvn --batch-mode --no-transfer-progress -Dtest=AuroraSchemaValidationTest,ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,AiPlatformClientTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,AiProviderRegistryTest test
+        run: mvn --batch-mode --no-transfer-progress -Dtest=ScenarioProgramTest,AuroraSchemaValidationTest,ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,AiPlatformClientTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,AiProviderRegistryTest test
       - name: Java integration and Redis contracts
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
-        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationIntegrationTest,ConversationUxIntegrationTest,ModelDemoIntegrationTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiQuotaRedisIntegrationTest,ListeningComprehensionIntegrationTest test
+        run: mvn --batch-mode --no-transfer-progress -Dtest=ScenarioIntegrationTest,ScenarioDisabledIntegrationTest,ConversationIntegrationTest,ConversationUxIntegrationTest,ModelDemoIntegrationTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiQuotaRedisIntegrationTest,ListeningComprehensionIntegrationTest test
       - name: Java to Python to fake Ollama smoke
         run: python tools/ai-eval/smoke.py
       - name: Private registry migration, backup restore and database isolation

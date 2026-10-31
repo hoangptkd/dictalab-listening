@@ -1,0 +1,159 @@
+openapi: 3.1.0
+info:
+  title: DictaLab Scenario foundation
+  version: scenario-public.v1
+  description: >-
+    Catalog and user-declared goals only. This release does not expose generation,
+    exam scoring, adaptive recommendations, chat or voice dialogue. DRAFT program
+    metadata can be used for declared goals when rollout is enabled; it cannot
+    authorize content generation. The existing Conversation v1 API is unchanged.
+security:
+  - cookieAuth: []
+paths:
+  /api/v2/scenarios/catalog:
+    get:
+      summary: Read rollout state and goal program metadata without AI calls
+      responses:
+        '200':
+          description: No-store catalog; generationAvailable is always false in this release
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contractVersion, enabled, generationAvailable, supportedPracticeModes, goalPrograms]
+                properties:
+                  contractVersion: {const: scenario-public.v1}
+                  enabled: {type: boolean}
+                  generationAvailable: {const: false}
+                  supportedPracticeModes: {type: array, maxItems: 0}
+                  goalPrograms:
+                    type: array
+                    items:
+                      type: object
+                      required: [code, version, status, displayNameVi, targetScales]
+                      properties:
+                        code: {type: string}
+                        version: {type: integer, minimum: 1}
+                        status: {enum: [DRAFT, APPROVED]}
+                        displayNameVi: {type: string}
+                        targetScales:
+                          type: array
+                          items: {$ref: '#/components/schemas/TargetScale'}
+        '401': {description: Authentication required}
+  /api/v2/scenarios/learning-goals:
+    get:
+      summary: Read the authenticated user's declared goals, including while rollout writes are disabled
+      responses:
+        '200':
+          description: No-store owner-scoped array
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Goal'}
+        '401': {description: Authentication required}
+  /api/v2/scenarios/learning-goal:
+    put:
+      summary: Create or update a declared goal; no quota charge or AI call
+      description: >-
+        Maximum UTF-8 request size 32768 bytes. A goal is unique per owner, program
+        code and component across program versions. expectedVersion=0 creates a
+        missing goal; updates require its current version. Same owner/key/payload
+        returns the original saved response even after subsequent edits. A changed
+        payload with the same key returns 409. Decimals must be strings. OVERALL
+        does not create or modify LISTENING. Program snapshots are repository-owned.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, format: uuid}
+        - in: header
+          name: X-XSRF-TOKEN
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GoalRequest'}
+      responses:
+        '200':
+          description: No-store goal receipt
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Goal'}
+        '400':
+          description: Invalid JSON, target, program reference or idempotency key
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '401': {description: Authentication required}
+        '403': {description: CSRF or account restriction}
+        '409':
+          description: IDEMPOTENCY_CONFLICT or GOAL_VERSION_CONFLICT
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '413': {description: REQUEST_TOO_LARGE}
+        '429': {description: Shared Conversation/Scenario write rate limit; Retry-After header}
+        '503': {description: SCENARIO_DISABLED or infrastructure unavailable}
+components:
+  securitySchemes:
+    cookieAuth: {type: apiKey, in: cookie, name: DICTALAB_ACCESS}
+  schemas:
+    Target:
+      type: object
+      additionalProperties: false
+      required: [scaleId, component, value]
+      properties:
+        scaleId: {type: string, minLength: 1, maxLength: 64}
+        component: {type: string, minLength: 1, maxLength: 32}
+        value:
+          type: string
+          minLength: 1
+          maxLength: 32
+          description: Numeric decimal string or label accepted by the selected scale; never an estimated score
+    GoalRequest:
+      type: object
+      additionalProperties: false
+      required: [contractVersion, programCode, programVersion, target, expectedVersion]
+      properties:
+        contractVersion: {const: scenario-goal.v1}
+        programCode: {type: string, pattern: '^[a-z][a-z0-9-]{0,63}$'}
+        programVersion: {type: integer, minimum: 1, maximum: 2147483647}
+        target: {$ref: '#/components/schemas/Target'}
+        expectedVersion: {type: integer, minimum: 0, maximum: 9007199254740991}
+    Goal:
+      type: object
+      required: [id, programCode, programVersion, target, provenance, version]
+      properties:
+        id: {type: string, format: uuid}
+        programCode: {type: string}
+        programVersion: {type: integer}
+        target: {$ref: '#/components/schemas/Target'}
+        provenance: {const: USER_DECLARED_GOAL}
+        version: {type: integer, minimum: 1}
+    TargetScale:
+      type: object
+      required: [scaleId, component, min, max, step, labels, sourceUrl, reviewedOn]
+      properties:
+        scaleId: {type: string}
+        component: {type: string}
+        min: {type: [string, 'null']}
+        max: {type: [string, 'null']}
+        step: {type: [string, 'null']}
+        labels: {type: array, items: {type: string}}
+        sourceUrl: {type: [string, 'null']}
+        reviewedOn: {type: [string, 'null']}
+    Error:
+      type: object
+      required: [code, messageVi, requestId, retryable]
+      properties:
+        code: {type: string}
+        messageVi: {type: string}
+        requestId: {type: string}
+        retryable: {type: boolean}
+      description: >-
+        Scenario business errors use this shape. Existing authentication, rate-limit
+        and infrastructure filters retain their established error shapes; clients
+        must also handle the status code and Retry-After header.

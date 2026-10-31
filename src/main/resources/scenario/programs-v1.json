@@ -1,0 +1,237 @@
+[
+  {
+    "schemaVersion": "scenario-program.v1",
+    "code": "general-communication",
+    "version": 1,
+    "status": "DRAFT",
+    "displayNameVi": "Giao tiếp đời sống",
+    "targetScales": [
+      {
+        "scaleId": "practice-support",
+        "component": "LISTENING",
+        "min": null,
+        "max": null,
+        "step": null,
+        "labels": [
+          "supported",
+          "standard",
+          "challenge"
+        ],
+        "sourceUrl": null,
+        "reviewedOn": null
+      }
+    ],
+    "supportedPracticeModes": [],
+    "supportedQuestionTypes": [],
+    "difficultyProfiles": [
+      {
+        "id": "supported",
+        "version": 1,
+        "minWordsPerActivity": 15,
+        "maxWordsPerActivity": 60,
+        "maxWordsPerSession": 180,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 9,
+        "maxFactsPerActivity": 2,
+        "maxDistractors": 0,
+        "maxCorrections": 0,
+        "inferencePolicy": "EXPLICIT_ONLY",
+        "speechRateWpm": 100,
+        "pauseMillis": 700,
+        "vocabularyGuidance": "Common everyday vocabulary; draft limits require pedagogical review.",
+        "syntaxGuidance": "Short clauses with explicit references.",
+        "informationDensity": "One primary task per activity.",
+        "skills": [
+          "detail",
+          "main-idea"
+        ],
+        "allowedVoiceProfiles": []
+      },
+      {
+        "id": "standard",
+        "version": 1,
+        "minWordsPerActivity": 30,
+        "maxWordsPerActivity": 100,
+        "maxWordsPerSession": 300,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 9,
+        "maxFactsPerActivity": 3,
+        "maxDistractors": 1,
+        "maxCorrections": 0,
+        "inferencePolicy": "EXPLICIT_ONLY",
+        "speechRateWpm": 125,
+        "pauseMillis": 500,
+        "vocabularyGuidance": "Common everyday vocabulary; draft limits require pedagogical review.",
+        "syntaxGuidance": "Short clauses with explicit references.",
+        "informationDensity": "One primary task per activity.",
+        "skills": [
+          "detail",
+          "main-idea"
+        ],
+        "allowedVoiceProfiles": []
+      },
+      {
+        "id": "challenge",
+        "version": 1,
+        "minWordsPerActivity": 45,
+        "maxWordsPerActivity": 140,
+        "maxWordsPerSession": 420,
+        "maxActivities": 3,
+        "maxSpeakers": 3,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 9,
+        "maxFactsPerActivity": 3,
+        "maxDistractors": 1,
+        "maxCorrections": 1,
+        "inferencePolicy": "SUPPORTED_INFERENCE",
+        "speechRateWpm": 145,
+        "pauseMillis": 400,
+        "vocabularyGuidance": "Common everyday vocabulary; draft limits require pedagogical review.",
+        "syntaxGuidance": "Short clauses with explicit references.",
+        "informationDensity": "One primary task per activity.",
+        "skills": [
+          "detail",
+          "main-idea"
+        ],
+        "allowedVoiceProfiles": []
+      }
+    ],
+    "skillTaxonomyVersion": "scenario-skills.v1-draft",
+    "generationPolicy": {
+      "deadlineSeconds": 180,
+      "maxCalls": 7,
+      "maxInputChars": 2000,
+      "maxOutputTokens": 8000,
+      "maxResultBytes": 262144,
+      "repairLimit": 0
+    },
+    "gradingPolicy": {
+      "maxAttempts": 3,
+      "uncertaintyPolicy": "KEEP_UNCERTAIN"
+    },
+    "supportPolicy": {
+      "replay": true,
+      "slow": true,
+      "transcript": true,
+      "translation": true,
+      "reveal": true
+    },
+    "qualityPolicyVersion": "scenario-quality.v1-draft",
+    "promptArtifactRefs": [],
+    "definitionHash": "f5d8881001f17767cc87639adb92c6b389b7e462974f8c67a2bdb05fbcd7aab0"
+  },
+  {
+    "schemaVersion": "scenario-program.v1",
+    "code": "toeic-listening",
+    "version": 1,
+    "status": "DRAFT",
+    "displayNameVi": "Luyện nghe hướng tới TOEIC",
+    "targetScales": [
+      {
+        "scaleId": "toeic-listening-score",
+        "component": "LISTENING",
+        "min": "5",
+        "max": "495",
+        "step": "5",
+        "labels": [],
+        "sourceUrl": "https://www.iibc-global.org/english/toeic/test/lr/guide05.html",
+        "reviewedOn": "2026-10-31"
+      },
+      {
+        "scaleId": "toeic-total-score",
+        "component": "OVERALL",
+        "min": "10",
+        "max": "990",
+        "step": "5",
+        "labels": [],
+        "sourceUrl": "https://www.iibc-global.org/english/toeic/test/lr/guide05.html",
+        "reviewedOn": "2026-10-31"
+      }
+    ],
+    "supportedPracticeModes": [],
+    "supportedQuestionTypes": [],
+    "difficultyProfiles": [],
+    "skillTaxonomyVersion": "scenario-skills.v1-draft",
+    "generationPolicy": {
+      "deadlineSeconds": 180,
+      "maxCalls": 7,
+      "maxInputChars": 2000,
+      "maxOutputTokens": 8000,
+      "maxResultBytes": 262144,
+      "repairLimit": 0
+    },
+    "gradingPolicy": {
+      "maxAttempts": 3,
+      "uncertaintyPolicy": "KEEP_UNCERTAIN"
+    },
+    "supportPolicy": {
+      "replay": true,
+      "slow": true,
+      "transcript": true,
+      "translation": true,
+      "reveal": true
+    },
+    "qualityPolicyVersion": "scenario-quality.v1-draft",
+    "promptArtifactRefs": [],
+    "definitionHash": "18fb2c0701c4f0994440e5ee4f735ac813c1bdbda1dc1fdb5316599e774f0424"
+  },
+  {
+    "schemaVersion": "scenario-program.v1",
+    "code": "ielts-listening",
+    "version": 1,
+    "status": "DRAFT",
+    "displayNameVi": "Luyện nghe hướng tới IELTS",
+    "targetScales": [
+      {
+        "scaleId": "ielts-listening-band",
+        "component": "LISTENING",
+        "min": "0",
+        "max": "9",
+        "step": "0.5",
+        "labels": [],
+        "sourceUrl": "https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail",
+        "reviewedOn": "2026-10-31"
+      },
+      {
+        "scaleId": "ielts-overall-band",
+        "component": "OVERALL",
+        "min": "0",
+        "max": "9",
+        "step": "0.5",
+        "labels": [],
+        "sourceUrl": "https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail",
+        "reviewedOn": "2026-10-31"
+      }
+    ],
+    "supportedPracticeModes": [],
+    "supportedQuestionTypes": [],
+    "difficultyProfiles": [],
+    "skillTaxonomyVersion": "scenario-skills.v1-draft",
+    "generationPolicy": {
+      "deadlineSeconds": 180,
+      "maxCalls": 7,
+      "maxInputChars": 2000,
+      "maxOutputTokens": 8000,
+      "maxResultBytes": 262144,
+      "repairLimit": 0
+    },
+    "gradingPolicy": {
+      "maxAttempts": 3,
+      "uncertaintyPolicy": "KEEP_UNCERTAIN"
+    },
+    "supportPolicy": {
+      "replay": true,
+      "slow": true,
+      "transcript": true,
+      "translation": true,
+      "reveal": true
+    },
+    "qualityPolicyVersion": "scenario-quality.v1-draft",
+    "promptArtifactRefs": [],
+    "definitionHash": "c13fe4f689222f16eb4644ac7bb450247a2c33f7426953b8fe252ace584b5a0c"
+  }
+]

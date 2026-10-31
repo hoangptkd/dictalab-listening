@@ -24,7 +24,7 @@ class ReliabilityInfrastructureTest {
             assertThat(connection.getMetaData().getDatabaseProductName()).isEqualTo("PostgreSQL");
         }
         assertThat(db.queryForObject("SELECT current_database()", String.class)).isEqualTo("dictalab_test");
-        assertThat(db.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(47);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(48);
         try (var connection = redis.getConnectionFactory().getConnection()) {
             assertThat(connection.ping()).isEqualTo("PONG");
         }

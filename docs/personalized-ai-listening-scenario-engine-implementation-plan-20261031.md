@@ -2,7 +2,7 @@
 
 Ngày lập: 31/10/2026. Baseline mã nguồn: `6d265391c4087cf2da09f4b707c1593b4fee92d8`.
 
-Trạng thái: **đặc tả đề xuất để bàn giao triển khai**. Tài liệu không xác nhận tính năng mới đã được code, kiểm thử bằng model thật hoặc triển khai production. Phạm vi công việc hiện tại là phân tích và lập kế hoạch; việc thực thi các ticket là bước triển khai riêng.
+Trạng thái: **đang triển khai theo từng phần**, theo yêu cầu tiếp theo của chủ dự án. Phần nền tảng đầu tiên bổ sung registry có hash, metadata chương trình và API lưu mục tiêu; xem mục 24. Tài liệu này không xác nhận toàn bộ engine đã hoàn tất hoặc đã triển khai production.
 
 ## 1. Cách dùng tài liệu
 
@@ -768,3 +768,52 @@ Scenario cho phòng người–người tái sử dụng room signaling phù h�
 - [Anthropic — Building effective agents](https://www.anthropic.com/research/building-effective-agents): phân biệt workflow được code điều phối và agent tự điều khiển; ở bài toán này chọn workflow có giới hạn.
 
 Các thông số MVP, cách tính practiceIndex, ranking weights, lịch ôn và deadline trong tài liệu là đề xuất sản phẩm/kỹ thuật, chưa được hiệu chuẩn bằng dữ liệu người dùng hoặc chứng nhận chuyên môn. Kiến trúc tái sử dụng code hiện có; configuration production, pricing và năng lực provider phải kiểm tra lại ở bước triển khai tương ứng.
+
+## 24. Tiến độ triển khai — đợt nền tảng 31/10/2026
+
+### 24.1. Phần đã code
+
+- Package `com.dictalab.scenario` tách khỏi Conversation v1; cờ `dictalab.scenario.enabled` mặc định `false`.
+- Registry đọc resource `scenario/programs-v1.json`, kiểm tra schema, trần sản phẩm, ID trùng và SHA-256 của nội dung canonical. Các collection được đóng băng cả ở cấp con.
+- `scenario-canonical.v1`: sắp xếp key ASCII, JSON gọn, UTF-8, giữ thứ tự array; chỉ số nguyên được dùng làm JSON number, số thập phân của target/scale là string. Không tự gọi đây là RFC 8785.
+- Ba definition `DRAFT`: giao tiếp đời sống, TOEIC Listening, IELTS Listening. General có ba profile nháp để review. Các definition chưa có prompt artifact được duyệt hoặc capability sinh bài.
+- Scale mục tiêu giao tiếp dùng label nội bộ; TOEIC dùng điểm riêng; IELTS dùng band. Listening và Overall là hai component riêng, không quy đổi ngầm qua nhau hoặc CEFR. Scale tham chiếu nguồn chính thức được ghi ngay trong resource; ngày đối chiếu 31/10/2026. Đây chưa phải duyệt chất lượng program pack.
+- Import definition sau Flyway trong transaction, `ON CONFLICT DO NOTHING` rồi đối chiếu toàn bộ nội dung/hash/status. Chạy nhiều lần không tạo bản trùng; cùng code/version khác nội dung làm import thất bại. Trạng thái cũng thuộc bản định nghĩa bất biến; phát hành thay đổi cần version mới.
+- Migration V48 chỉ thêm ba bảng đang được dùng: definition, goal và biên nhận idempotency của goal. Không backfill điểm hoặc sửa dữ liệu Conversation cũ. Goal và biên nhận xóa theo tài khoản bằng FK cascade.
+- `GET /api/v2/scenarios/catalog`: metadata dành cho goal, không gọi AI; trả `generationAvailable=false` và `supportedPracticeModes=[]`. `goalPrograms` không phải danh sách chương trình được phép sinh bài.
+- `GET /api/v2/scenarios/learning-goals`: chỉ goal của chủ tài khoản; vẫn đọc khi tắt rollout.
+- `PUT /api/v2/scenarios/learning-goal`: lưu mục tiêu tự khai, không thu quota AI. Có CSRF, UUID `Idempotency-Key`, `expectedVersion`, khóa user trong transaction ngắn, unique goal theo user/program/component, replay response gốc và conflict cho payload/version khác.
+- Boundary JSON mới từ chối field lạ, field bắt buộc bị thiếu/null, key trùng, trailing payload, ép kiểu và request lớn hơn 32 KiB. Không sửa cấu hình Jackson của v1.
+- Mọi response nghiệp vụ mới có `Cache-Control: no-store`; lỗi nghiệp vụ có code/tiếng Việt/request ID, không lộ body provider. Các filter bảo mật/hạ tầng hiện có vẫn giữ error contract cũ.
+- Scenario mutation dùng chung nhóm rate limit với Conversation. Chưa triển khai quota/admission AI v2; chưa có endpoint gọi provider v2.
+- Python có boundary goal độc lập, dùng `Decimal`, strict types và cùng 42 fixture raw JSON với Java. Chưa nối module này vào job lane production mới.
+- [OpenAPI phần nền tảng](scenario-foundation-openapi.yaml) mô tả đúng endpoint hiện có; chưa công bố endpoint sinh bài.
+
+### 24.2. Mức hoàn tất ticket
+
+| Ticket | Trạng thái thực |
+|---|---|
+| S00 | Đã chạy regression Conversation/access; chưa khẳng định toàn bộ ma trận snapshot/frontend đã hoàn tất |
+| S01 | Hoàn thành contract/fixture/OpenAPI cho goal; contract draft/activity/attempt/job còn tiếp tục |
+| S02 | Chưa triển khai benchmark Scenario v2 |
+| S03 | Registry/hash/bounds/immutable import đã có; duyệt artifact/capability và release manifest chưa hoàn tất |
+| S04 | Hoàn thành ba bảng nền tảng; schema session/operation/evidence sẽ thêm khi có code sử dụng |
+| S05–S25 | Chưa triển khai trong đợt này |
+
+Không bật generation bằng cách sửa riêng flag hoặc đổi `DRAFT` sang `APPROVED`. Các bước tiếp theo phải bổ sung contract nội dung và benchmark, admission/ledger, lane production, rồi free-form end-to-end theo dependency ở mục 18. Phần chat/voice vẫn là giai đoạn sau.
+
+### 24.3. Kiểm tra và vận hành
+
+Các kiểm tra nền tảng không gọi model trả phí hoặc TTS thật. Đã chạy 43 Python test và 9 test phân luồng CI. Bộ Java `ci-unit` chạy 268 ca, không lỗi, 17 skip theo điều kiện sẵn có. Java regression mục tiêu đã chạy 131 ca, không lỗi, một ca skip theo điều kiện sẵn có. PostgreSQL 17.11 đã chạy 20 ca không lỗi: cài mới, nâng V47→V48 trong schema cô lập, giữ nguyên JSON phiên v1, idempotency/concurrency/rollback/owner/cascade, và regression quyền/audio cũ.
+
+Lệnh chạy lại:
+
+```powershell
+mvn --batch-mode --no-transfer-progress -Pci-unit test
+mvn --batch-mode --no-transfer-progress '-Dtest=ScenarioProgramTest,ScenarioIntegrationTest,ScenarioDisabledIntegrationTest,RequestRateLimitFilterTest,ConversationIntegrationTest,ConversationAccessIntegrationTest,ConversationLevelProfileTest' test
+mvn --batch-mode --no-transfer-progress -Preliability '-Dtest=ScenarioMigrationIntegrationTest,ScenarioIntegrationTest,ScenarioDisabledIntegrationTest,ReliabilityInfrastructureTest,ConversationAccessIntegrationTest' test
+python -m pytest -q services/ai-generation/tests/test_scenario_contract.py
+node --test src/test/js/ci-scope.test.cjs
+```
+
+Rollout chỉ bật metadata/ghi goal khi đặt `DICTALAB_SCENARIO_ENABLED=true` tương ứng với `dictalab.scenario.enabled`. Tắt flag dừng ghi, giữ API đọc goal. Biên nhận được giữ để retry không ghi đè edit mới và được xóa cùng tài khoản; chưa có job tự dọn biên nhận. Không rollback bằng cách drop các bảng đã có goal thật. Production chưa được thay đổi hoặc xác minh trong đợt này; kết quả push/CI phải báo riêng.
