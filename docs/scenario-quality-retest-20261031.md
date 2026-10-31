@@ -2,6 +2,38 @@
 
 Ngày kiểm tra: 31/10/2026, UTC+7.
 
+## Quyết định sau đánh giá: hoàn tác thử nghiệm
+
+Theo yêu cầu của chủ dự án, đã hoàn tác phần thử nghiệm chất lượng sau mốc 13:02.
+Source trở lại luồng trước thử nghiệm (`9929ffa`, cùng source ứng dụng với `1330cb5`),
+giữ riêng yêu cầu trả lời bằng Anh/Việt/trộn và các kiểm thử của yêu cầu đó.
+
+- Có cải thiện cục bộ: mẫu tàu mới nêu giờ đến cụ thể; các mẫu được chấp nhận đạt
+  giới hạn độ dài. Chưa chứng minh được cải thiện ổn định về nội dung tổng thể.
+- Baseline qua gate 4/7, bản cuối 3/7. Gate và số lần gọi đã thay đổi, bản cuối có
+  một ca hạn mức; không dùng hai tỷ lệ này để khẳng định mức giảm chất lượng thống kê.
+- Reviewer vẫn bỏ sót nhầm vai và đáp án thiếu chi tiết. Một lần từng qua 7/7 gate
+  không chứng minh nội dung đạt, vì đọc lại vẫn phát hiện thiếu giờ đến.
+- Luồng một yêu cầu hợp lệ giảm từ tối đa 10 lượt AI (EXTRACT 2, GENERATE 8) về
+  4 lượt (EXTRACT 1, GENERATE 3). Không thêm model call để đánh giá lại trong rollback.
+- Đã gỡ phần chia nhỏ sinh bài, marker dịch, EXTRACT_REVIEW, program v2 chưa phát hành
+  và migration V50 thử nghiệm; Python/Core cùng trở lại hợp đồng V1. Giữ gate V1,
+  quyền truy cập, quota, validation, dữ liệu đã lưu và công cụ capture/replay ban đầu.
+- Local database xác minh đang ở migration 49, không có operation PENDING/RUNNING.
+  Không chạy migration xuống, sửa database hoặc restart dịch vụ ứng dụng.
+- Bản source trước rollback gồm 25 tệp và patch đã sao lưu ngoài repository,
+  kiểm CRC và SHA256 từng tệp, trong thư mục dự phòng đã ghi ở cuối báo cáo.
+- Prompt pin sau rollback, gồm sửa chấm Anh/Việt:
+  `0d40fae31e57eef602c6f1e8402ea6116f8beeee56ac011c7c3d018f7f0152c2`.
+- Kiểm thử sau rollback: Python workflow/harness **32 passed**; UI **73 passed**;
+  Java Scenario/budget/Conversation **142 tests, 140 passed, 2 skipped**, không
+  failure/error. Đã clean build để loại class V50 cũ. UTF-8 đạt.
+- Các instruction ngoài GRADE được đối chiếu khớp nguyên bản trước thử nghiệm;
+  pin Python/Core khớp. Log nằm tại `data/scenario-local-20261031/rollback-*-20261031.log`.
+
+**Rollback giảm phần phức tạp chưa chứng minh hiệu quả; không biến bản cũ thành
+bản đã đạt chất lượng.** Các kết quả và fingerprint bên dưới là lịch sử trước rollback.
+
 ## Kết luận
 
 **Chưa đạt chất lượng tổng thể để phát hành.** Kiểm thử tự động đều qua, nhưng

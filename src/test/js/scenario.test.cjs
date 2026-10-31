@@ -122,25 +122,6 @@ test('conversation delegates new creation and only falls back to v2 sessions aft
     assert.deepEqual(called,['catalog','v2-session']);
 });
 
-test('draft preview separates source constraints and assumptions before explicit confirmation', async () => {
-    const storage=new Map(); storage.set('dictalab:scenario:10:operation',JSON.stringify({operationId:'extract-op',action:'EXTRACT'}));
-    const h=harness(async url => {
-        if (url.includes('/operations/')) return {status:'SUCCEEDED',draftId:'draft-1'};
-        if (url.includes('/drafts/')) return {status:'READY',draftId:'draft-1',version:1,specification:{
-            titleVi:'Gặp hàng xóm',settingVi:'Khu dân cư',learnerRoleVi:'Người đã ở đây',goalVi:'Làm quen',
-            characters:[{name:'Alex',roleVi:'Người học'},{name:'Sam',roleVi:'Hàng xóm mới'}],
-            constraintsVi:['<script>Giữ vai trò</script>'],assumptionsVi:['Gặp ở cửa nhà']}};
-        throw new Error('Unexpected request');
-    },storage);
-    await h.module.show();
-    assert.match(h.root.innerHTML,/Thông tin cần giữ/);
-    assert.match(h.root.innerHTML,/Giả định để tạo bài/);
-    assert.match(h.root.innerHTML,/&lt;script&gt;Giữ vai trò&lt;\/script&gt;/);
-    assert.doesNotMatch(h.root.innerHTML,/<script>/);
-    assert.match(h.root.innerHTML,/Xác nhận và tạo bài/);
-    assert.equal(h.calls.some(c=>c.options?.method==='POST'),false);
-});
-
 test('navigation exposes one conversation feature and keeps scenario only as a compatibility alias', () => {
     const index=fs.readFileSync(require('node:path').resolve(__dirname,'../../main/resources/static/index.html'),'utf8');
     assert.doesNotMatch(index,/data-route="scenario"|id="scenario-view"/);

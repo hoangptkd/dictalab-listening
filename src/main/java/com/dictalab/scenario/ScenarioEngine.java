@@ -322,14 +322,10 @@ public class ScenarioEngine {
         for (String f : List.of("model","modelDigest","promptVersion","promptHash")) ScenarioContent.text(result,f,128);
         ScenarioContent.check(result.path("promptHash").asText().matches("[a-f0-9]{64}"));
         if (!kind.equals("TTS")) {
-            // Only the pinned previous contract may settle with its original call sequence after rollout.
-            boolean legacy=input.path("promptHash").asText().equals("f3a1a93382df50b9e798d9ae9d11e502d3e8eb0c347751195c6d00b7ba88b8a1");
             ScenarioContent.check(input.path("promptHash").asText().equals(result.path("promptHash").asText())
-                    && (legacy ? "SCENARIO_LISTENING_V1" : "SCENARIO_LISTENING_V2").equals(result.path("promptVersion").asText())
+                    && "SCENARIO_LISTENING_V1".equals(result.path("promptVersion").asText())
                     && input.path("programHash").asText().equals(result.path("programHash").asText()));
-            var expected=kind.equals("GENERATE") ? (legacy ? List.of("GENERATE","TRANSLATE","REVIEW") : List.of("GENERATE","TRANSLATE","QUESTIONS","QUESTIONS","QUESTIONS","REVIEW"))
-                    : kind.equals("EXTRACT") && !legacy && result.path("task").path("allowed").asBoolean()
-                    ? List.of("EXTRACT","EXTRACT_REVIEW") : List.of(kind);
+            var expected=kind.equals("GENERATE") ? List.of("GENERATE","TRANSLATE","REVIEW") : List.of(kind);
             ScenarioContent.list(result.path("calls"),expected.size(),expected.size()); int n=0;
             for (var call : result.path("calls")) {
                 ScenarioContent.fields(call,"purpose","provider","model");
