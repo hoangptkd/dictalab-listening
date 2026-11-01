@@ -14,11 +14,13 @@ from .config import Settings
 from .jobs import JobEvent, JobStore, QUEUE, broker_connection, capability_metadata, declare, publish_pending
 from .model_gateway import ModelGateway
 from .redaction import RedactingFilter
+from .observability import trace_job, flush
 
 logger = logging.getLogger("dictalab.ai.worker")
 logger.addFilter(RedactingFilter())
 
 
+@trace_job
 async def execute(event, settings):
     if event.payload.kind == "scenario":
         from .scenario_workflow import execute as execute_scenario
@@ -136,4 +138,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        flush(shutdown=True)

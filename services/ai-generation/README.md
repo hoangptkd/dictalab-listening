@@ -5,6 +5,90 @@ authentication, sessions, history, quota and persistence. The default provider i
 `DICTALAB_CONVERSATION_GENERATION_PROVIDER=python` only after this service and its evaluated provider are ready.
 Production text AI uses Google Gemini; local text AI uses Ollama. Cartesia remains the audio provider.
 
+## Langfuse: theo dõi prompt và model
+
+SDK Python được khóa ở `langfuse==5.1.0`. Tracing mặc định **tắt**; bật bằng cấu hình
+runtime riêng cho cả API và worker. Compose chuyển tiếp cùng cấu hình cho hai dịch vụ.
+Không đưa khóa thật vào repository, frontend, notebook hoặc tham số dòng lệnh.
+
+```dotenv
+LANGFUSE_TRACING_ENABLED=true
+LANGFUSE_BASE_URL=https://jp.cloud.langfuse.com
+LANGFUSE_PUBLIC_KEY=<project-public-key>
+LANGFUSE_SECRET_KEY=<project-secret-key>
+LANGFUSE_TRACING_ENVIRONMENT=local
+LANGFUSE_RELEASE=<git-commit-deployed>
+DICTALAB_AI_TRACE_CONTENT=true
+```
+
+`DICTALAB_AI_TRACE_CONTENT=true` cho phép gửi prompt, schema và kết quả đã che dữ liệu
+nhạy cảm sang Langfuse. Bộ lọc hiện có che email, token và credential; không đảm bảo
+nhận diện mọi tên riêng/địa chỉ trong văn bản tự do. Chỉ dùng corpus giả lập hoặc dữ liệu
+được phép xuất; để `false` khi chỉ muốn metadata. Payload quá 64.000 ký tự được đánh dấu
+`truncated`, kèm preview đã che và hash. Không xuất audio TTS, header, URL provider,
+Settings hay nội dung exception. `userScope` đã băm được dùng làm user ID; không tự tạo
+session ID khi contract chưa cung cấp phiên học.
+
+### Dữ liệu được ghi
+
+| Thành phần | Trace và bằng chứng |
+| --- | --- |
+| Scenario EXTRACT / GENERATE / GRADE | Một root cho mỗi job; mỗi lượt gọi model là một generation con |
+| GENERATE | GENERATE → QUESTIONS → REVIEW_QUESTIONS → TRANSLATE → REVIEW; giữ đầu ra bị từ chối |
+| Gate | `gate.validate_*`: 0/1 từ validator/reviewer hiện có; mỗi gate giữ giá trị cuối trong phase |
+| Worker | `operation_success`: kết quả thực thi, **không phải điểm chất lượng nội dung** |
+| Base/full07 demo | Tách variant, revision và adapter hash; token thật và `gate.demo_structure.<variant>` |
+| Conversation Python cũ, coach/review, Core text qua Python | Dùng chung instrumentation của ModelGateway |
+| Chi phí | Token do provider trả về, gồm cache nếu có; Langfuse tính giá khi nhận diện được model |
+
+Đầu ra JSON lỗi vẫn được ghi trước parse/validation. Không ước lượng token khi provider
+không trả usage; không coi giá thiếu là chi phí bằng 0. Không retry model khi Langfuse lỗi.
+Tracing không thay prompt, prompt hash đã duyệt, kết quả API hoặc cơ chế fail closed.
+API/worker flush khi dừng; script capture flush trước thoát. Log `ai_trace_completed`
+chứa trace ID và request ID để đối chiếu với log ứng dụng.
+
+**Phạm vi:** lời gọi Java đi thẳng tới provider và job train trong Colab chưa đi qua
+Python AI boundary nên không tự có trace. So sánh inference của model đã train được
+ghi khi chạy qua boundary/demo; không tự chạy lại train hay bật tuyến Python để lấy trace.
+
+### So sánh sau mỗi lần cải thiện
+
+1. Giữ cùng corpus `scenario-quality-v1.json`, `datasetHash`, `caseId`, profile và ngân
+   sách. Mỗi lần capture dùng thư mục mới để giữ bằng chứng cũ.
+2. Prompt được nhận diện bằng `promptHash` và `stagePromptHash`, không chỉ tên V4.
+   Model local dùng digest thật. Với model đã train, cấu hình đúng các biến dưới đây
+   cho **model đang phục vụ**; để trống thông tin chưa biết:
+
+   ```dotenv
+   DICTALAB_AI_TRACE_MODEL_REVISION=<base-revision>
+   DICTALAB_AI_TRACE_ADAPTER_HASH=<adapter-sha256>
+   DICTALAB_AI_TRACE_TRAINING_RUN=<training-run-id>
+   DICTALAB_AI_TRACE_VARIANT=<base-or-adapter>
+   ```
+
+3. Chạy capture theo lệnh hiện có trong `tools/ai-eval/README.md`, bằng environment
+   runtime đã nạp an toàn. Trace tự có `evaluationRun`, `datasetHash`, `caseId`,
+   `profileId`, `programHash` và `gitCommit`. Việc capture gọi model và vẫn chịu budget.
+   `report`/`replay` tiếp tục offline, không gọi provider hoặc gửi trace.
+4. Root `version` là `configurationHash` của prompt/model/weights/program để các
+   thay đổi prompt hoặc adapter cùng tên vẫn tách được. Generation `version` là hash
+   prompt/schema riêng của bước. Metadata giữ fingerprint đầy đủ để kiểm tra lại.
+5. So sánh cả tỷ lệ qua gate, số mẫu, lỗi provider, đầu ra bị loại, độ trễ và token.
+   Gate/reviewer có thể bỏ sót lỗi; dùng annotation của người đọc trên cùng dữ liệu
+   trước khi kết luận nội dung tiến bộ. Không dùng riêng điểm gate để duyệt release.
+
+Dashboard đã tạo trong project:
+[DictaLab — Prompt & Model Progress](https://jp.cloud.langfuse.com/project/cmvx6vyks000iad0j2ph4qdbu/dashboards/cmvx7kqtu000bad0kt3vvx20b).
+Năm widget gồm tỷ lệ qua từng gate theo cấu hình, thực thi thành công theo thời gian,
+p50/p95 từng bước, token/chi phí theo model và số mẫu theo cấu hình. Khi so sánh, lọc
+cùng dataset/profile/environment; không gộp các corpus khác nhau thành một kết luận.
+Trace fixture kiểm tra tích hợp được loại khỏi dashboard; dashboard trống khi chưa có
+capture thật là trạng thái đúng, không phải bằng chứng AI đã đạt 100%.
+
+Kiểm tra không cần credential: `python -m pytest services/ai-generation/tests/test_observability.py`
+từ repository root. Trace đi qua SDK thật với exporter trong bộ nhớ, không gọi Langfuse
+hoặc model trong unit test. Rollback tracing bằng `LANGFUSE_TRACING_ENABLED=false`.
+
 Run locally:
 
 ```text

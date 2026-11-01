@@ -22,6 +22,7 @@ from .redaction import RedactingFilter, is_safe_log_value, redact
 from .workflow import run_workflow
 from .schemas import ConversationContext, ConversationTaskRequest, ConversationTaskResponse
 from .gemini_pool import quota_store, quota_metrics
+from .observability import flush
 
 settings = Settings()
 
@@ -45,6 +46,7 @@ async def lifespan(_app):
             dispatcher.cancel()
             with suppress(asyncio.CancelledError):
                 await dispatcher
+        await asyncio.to_thread(flush, shutdown=True)
 
 
 app = FastAPI(title="DictaLab AI Generation", version="0.2.0", lifespan=lifespan)

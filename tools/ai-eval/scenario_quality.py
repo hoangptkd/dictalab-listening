@@ -27,6 +27,7 @@ from app.config import Settings
 from app.jobs import JobRequest
 from app.providers.base import ProviderHttpError
 from app.redaction import redact_string
+from app.observability import evaluation_context, suspend_tracing, flush
 
 DEFAULT_CASES = ROOT / "services/ai-generation/tests/fixtures/evaluation/scenario-quality-v1.json"
 PROGRAM = ROOT / "src/main/resources/scenario/programs-v1.json"
@@ -99,6 +100,12 @@ class CaptureBudgetExhausted(RuntimeError):
 
 
 async def phase(folder, payload, settings, budget):
+    with evaluation_context(**budget.get("traceMetadata", {}), caseId=folder.parent.name,
+                            profileId=payload.profile.id):
+        return await _phase(folder, payload, settings, budget)
+
+
+async def _phase(folder, payload, settings, budget):
     folder.mkdir()
     write(folder / "input.json", payload.model_dump(mode="json"))
     write(folder / "started.json", {"at": now(), "jobId": str(uuid4())})
@@ -195,7 +202,9 @@ async def capture(dataset_path, output, settings, *, max_calls=48, max_seconds=1
     (output / "workflow.source.py").write_bytes(source)
     (output / "harness.source.py").write_bytes(harness_source)
     write(output / "instructions.json", workflow.INSTRUCTIONS)
-    budget = {"calls": 0, "maxCalls": max_calls, "deadline": time.monotonic()+max_seconds}
+    budget = {"calls": 0, "maxCalls": max_calls, "deadline": time.monotonic()+max_seconds,
+              "traceMetadata": {"evaluationRun": output.name, "datasetHash": manifest["datasetHash"],
+                                "gitCommit": manifest["gitCommit"]}}
     for case in dataset["cases"]:
         folder = output / case["id"]
         folder.mkdir()
@@ -249,6 +258,12 @@ def report(output, *, allow_incomplete=False):
 
 
 async def replay(output):
+    # Offline means no provider AND no tracing network, even in a configured shell.
+    with suspend_tracing():
+        return await _replay(output)
+
+
+async def _replay(output):
     output = Path(output)
     verify(output)
     manifest = read(output / "manifest.json")
@@ -323,4 +338,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        flush()

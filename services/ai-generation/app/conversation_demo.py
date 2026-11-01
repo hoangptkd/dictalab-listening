@@ -21,6 +21,7 @@ from .registry import artifact_hash
 from .schemas import ConversationContext
 from .validation import validate_task
 from . import guided_translation
+from .observability import observation, content, _safe, trace_job, record_response
 
 PROMPT_VERSION = "conversation-demo-guided-r13-20261028"
 PROMPT_SHA = "62d4e1c7e03c26ebd9a5dca7d186bb27c22fd62be6078f09a72c2643402cf5cb"
@@ -83,6 +84,22 @@ def messages(frozen, context, purpose, content=None):
 
 
 async def local_call(client, settings, wire, schema, variant, deadline):
+    with observation("demo_local_inference", as_type="generation", input={"messages": wire, "schema": schema},
+                     metadata={"variant": variant, "baseRevision": BASE_REVISION,
+                               "adapterHash": ADAPTER_SHA if variant == "full07" else None,
+                               "promptHash": PROMPT_SHA}, version=PROMPT_SHA) as span:
+        try:
+            raw, source = await _local_call(client, settings, wire, schema, variant, deadline)
+        except LocalUnavailable as error:
+            _safe(span, "update", output=content(error.raw), status_message=error.code)
+            raise
+        _safe(span, "update", output=content(raw), model=source["model"],
+              usage_details={k: source[v] for k, v in (("input", "inputTokens"), ("output", "outputTokens"))
+                             if type(source.get(v)) is int and source[v] >= 0}, metadata=source)
+        return raw, source
+
+
+async def _local_call(client, settings, wire, schema, variant, deadline):
     remaining = int(min(1800, deadline - time.monotonic()))
     if remaining < 1:
         raise LocalUnavailable("DEADLINE")
@@ -108,6 +125,9 @@ async def local_call(client, settings, wire, schema, variant, deadline):
         raise LocalUnavailable("MODEL_OFFLINE", True) from error
     except httpx.TransportError as error:
         raise LocalUnavailable("LOCAL_OUTCOME_UNKNOWN") from error
+    if isinstance(envelope, dict):
+        record_response(envelope.get("raw"), model=envelope.get("model"),
+                        input_tokens=envelope.get("inputTokens"), output_tokens=envelope.get("outputTokens"))
     if (not isinstance(envelope, dict) or envelope.get("requestId") != request_id or envelope.get("provider") != "local_cpu"
             or envelope.get("model") != "Qwen/Qwen3.5-4B" or envelope.get("baseRevision") != BASE_REVISION
             or envelope.get("variant") != variant
@@ -130,6 +150,17 @@ async def local_call(client, settings, wire, schema, variant, deadline):
 
 
 async def arm(payload, settings, frozen, variant, client, deadline, store, scope, job_id):
+    with observation("demo_variant", input=payload.context, metadata={"variant": variant,
+                     "promptHash": frozen["sha256"], "baseRevision": BASE_REVISION,
+                     "adapterHash": ADAPTER_SHA if variant == "full07" else None}) as span:
+        result = await _arm(payload, settings, frozen, variant, client, deadline, store, scope, job_id)
+        _safe(span, "update", output=content(result))
+        _safe(span, "score", name="gate.demo_structure." + variant, value=int(result["valid"]),
+              comment="Structural/domain validator only. Semantic quality has not been evaluated.")
+        return result
+
+
+async def _arm(payload, settings, frozen, variant, client, deadline, store, scope, job_id):
     context = redact(payload.context.model_dump(exclude_none=True))
     # Level and its bounds are server-owned. Client instructions cannot promote a model.
     profile = frozen["levelProfiles"][payload.level]
@@ -169,6 +200,7 @@ async def arm(payload, settings, frozen, variant, client, deadline, store, scope
         "wordCount": word_count, "wordBounds": profile["wordBounds"]}
 
 
+@trace_job
 async def execute(event, settings, store):
     payload, frozen = event.payload, artifact(settings)
     deadline = time.monotonic() + min(3600, event.deadline.timestamp() - time.time())

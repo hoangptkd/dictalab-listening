@@ -28,6 +28,7 @@ from .prompt_versions import generate_content as _generate_content, translate_ta
 from .schemas import ConversationContext, ConversationTaskRequest, ShadowConversationTaskRequest
 from .state import WorkflowState
 from .validation import validate_task
+from .observability import trace_workflow
 
 logger = logging.getLogger("dictalab.ai_generation.workflow")
 
@@ -206,6 +207,7 @@ async def node_repair_once(
 # Public entry point
 # ---------------------------------------------------------------------------
 
+@trace_workflow
 async def run_workflow(
     request: Any, settings: Settings, client: httpx.AsyncClient
 ) -> dict[str, Any]:

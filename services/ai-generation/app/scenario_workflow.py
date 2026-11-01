@@ -16,6 +16,7 @@ from pydantic import Field, model_validator
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .redaction import redact_string
+from .observability import trace_gate, trace_job
 
 PROMPT_VERSION = "SCENARIO_LISTENING_V4"
 OUTPUT_TOKENS = {"EXTRACT": 2600, "GENERATE": 3200, "QUESTIONS": 4000,
@@ -405,6 +406,7 @@ def metadata(settings):
             "promptVersion": PROMPT_VERSION, "promptHash": prompt_hash()}
 
 
+@trace_gate
 def validate_extraction(extracted, input_vi):
     speakers = {c.id: c for c in extracted.characters}
     if extracted.learnerCharacterId not in speakers or not speakers[extracted.learnerCharacterId].roleVi.strip():
@@ -428,6 +430,7 @@ def validate_extraction(extracted, input_vi):
     return Specification.model_validate(public)
 
 
+@trace_gate
 def validate_dialogue(dialogue, spec, profile):
     if [a.id for a in dialogue.activities] != ["a1", "a2", "a3"]:
         raise ValueError("invalid activity order")
@@ -449,6 +452,7 @@ def validate_dialogue(dialogue, spec, profile):
         raise ValueError("session word limit")
 
 
+@trace_gate
 def validate_questions(questions, dialogue):
     if [a.id for a in questions.activities] != [a.id for a in dialogue.activities]:
         raise ValueError("question activity mismatch")
@@ -490,6 +494,7 @@ def attach_questions(dialogue, questions):
     return Content(activities=activities)
 
 
+@trace_gate
 def validate_content(content, spec, profile, translations=None):
     validate_dialogue(content, spec, profile)
     for activity in content.activities:
@@ -515,6 +520,7 @@ def validate_content(content, spec, profile, translations=None):
                 raise ValueError("untranslated segment")
 
 
+@trace_gate
 def validate_question_review(verdict, content):
     expected = {(a.id, q.id) for a in content.activities for q in a.questions}
     checked = {(q.activityId, q.questionId) for q in verdict.questionChecks}
@@ -528,6 +534,7 @@ def validate_question_review(verdict, content):
         raise ValueError("question quality rejected")
 
 
+@trace_gate
 def validate_review(verdict, translations):
     translated = {(t.activityId, t.segmentId) for t in translations.segments}
     translation_checks = {(t.activityId, t.segmentId) for t in verdict.translationChecks}
@@ -541,6 +548,7 @@ def validate_review(verdict, translations):
         raise ValueError("semantic quality rejected")
 
 
+@trace_gate
 def validate_grade(grade, payload):
     answers = {a.questionId: a.textVi for a in payload.answers}
     if len({g.questionId for g in grade.facts}) != 2 or {g.questionId for g in grade.facts} != set(answers):
@@ -556,6 +564,7 @@ class QualityRejected(ValueError):
     pass
 
 
+@trace_job
 async def execute(event, settings):
     if not settings.scenario_enabled:
         raise QualityRejected("scenario execution disabled")

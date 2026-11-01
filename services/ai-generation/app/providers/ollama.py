@@ -79,6 +79,10 @@ class OllamaProvider(ModelProvider):
             response.raise_for_status()
             envelope = response.json()
             content = envelope.get("message", {}).get("content")
+            from ..observability import record_response
+            record_response(content, model=envelope.get("model") or self._model,
+                input_tokens=envelope.get("prompt_eval_count"), output_tokens=envelope.get("eval_count"),
+                finish_reason=envelope.get("done_reason"))
             if (
                 envelope.get("done") is not True
                 or envelope.get("done_reason") != "stop"
