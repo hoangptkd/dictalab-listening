@@ -17,8 +17,9 @@ from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .redaction import redact_string
 from .observability import trace_gate, trace_job
+from .scenario_prompts_v5 import INSTRUCTIONS, PROMPT_VERSION
 
-PROMPT_VERSION = "SCENARIO_LISTENING_V4"
+V4_PROMPT_VERSION = "SCENARIO_LISTENING_V4"
 OUTPUT_TOKENS = {"EXTRACT": 2600, "GENERATE": 3200, "QUESTIONS": 4000,
                  "REVIEW_QUESTIONS": 3500, "TRANSLATE": 4000, "REVIEW": 3500, "GRADE": 1200}
 SAFETY = """Create safe English listening practice for Vietnamese adults. Return only the supplied JSON schema.
@@ -30,7 +31,8 @@ SYSTEM = SAFETY + """Keep English natural and coherent, with final decisions una
 actually heard, never reveal answers. Answer keys must match exact transcript evidence and ask one atomic meaning.
 Do not pad, repeat the same fact across activities, invent unsupported AM/PM, or bundle an unasked reason.
 """
-INSTRUCTIONS = {
+# Preserve the measured V4 baseline for offline replay and explicit benchmark selection.
+V4_INSTRUCTIONS = {
     "EXTRACT": SAFETY + """Extract a scenario from inputVi, the authoritative brief. Use natural Vietnamese with
 correct accents. Preserve dates/times, places, quantities, requests, relationships and who does what.
 Separate three sources explicitly:

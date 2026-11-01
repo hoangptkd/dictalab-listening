@@ -1,10 +1,11 @@
-"""Zero-shot V5 candidate. Imported by the benchmark only; V4 remains active.
+"""Active zero-shot V5 prompts, promoted unchanged from the measured candidate.
 
 Schemas, token budgets, model selection and gates stay in scenario_workflow.
 The chat user-role boundary and JSON quoting delimit untrusted input without
 changing the V4 wire protocol or the public job contract.
 """
 
+# Keep the measured version identifier so promotion preserves its exact fingerprint.
 PROMPT_VERSION = 'SCENARIO_LISTENING_V5_CANDIDATE_1'
 
 SAFETY = '''Create safe listening practice for Vietnamese adults using fictional names.

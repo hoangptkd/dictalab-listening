@@ -1,4 +1,4 @@
-"""Offline-comparable prompt experiment; production remains pinned to V4.
+"""Offline-comparable prompt experiment with explicitly selected historical baselines.
 
 Uses scenario_quality's immutable capture, provider recording and exact replay.
 Credentials come only from the process environment. Captures must be under data/.
@@ -37,11 +37,10 @@ STAGES = {'EXTRACT': workflow.Extraction, 'GENERATE': workflow.Dialogue,
 
 @contextmanager
 def variant(name, phase=None):
-    """Process-local experiment only. Never writes V4 or its Core hash pin."""
+    """Process-local experiment only. Never writes active prompts or their Core hash pin."""
     if name == 'v4':
-        yield
-        return
-    if name == 'v5':
+        INSTRUCTIONS, PROMPT_VERSION = workflow.V4_INSTRUCTIONS, workflow.V4_PROMPT_VERSION
+    elif name == 'v5':
         from app.scenario_prompts_v5 import INSTRUCTIONS, PROMPT_VERSION
     elif name == 'v6':
         from app.scenario_prompts_v6 import INSTRUCTIONS, PROMPT_VERSION

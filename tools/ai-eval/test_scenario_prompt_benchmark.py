@@ -1,4 +1,4 @@
-"""Protect V4 and prevent misleading benchmark comparisons; no network needed."""
+"""Protect active V5 and preserve exact historical benchmark selection; no network needed."""
 import copy
 import asyncio
 import json
@@ -9,13 +9,13 @@ import pytest
 import scenario_prompt_benchmark as benchmark
 
 
-@pytest.mark.parametrize('candidate',['v5','v6'])
-def test_candidate_is_opt_in_and_restores_v4_even_after_failure(candidate):
+@pytest.mark.parametrize('candidate',['v4','v6'])
+def test_benchmark_variants_restore_active_v5_even_after_failure(candidate):
     workflow=benchmark.workflow
     original=copy.deepcopy(workflow.INSTRUCTIONS)
     original_hash=workflow.prompt_hash()
     pin=(benchmark.ROOT/'src/main/resources/scenario/workflow-v1.sha256').read_text().strip()
-    assert workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V4' and original_hash==pin
+    assert workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V5_CANDIDATE_1' and original_hash==pin
     with pytest.raises(RuntimeError):
         with benchmark.variant(candidate):
             assert set(workflow.INSTRUCTIONS)==set(benchmark.STAGES)
@@ -24,11 +24,18 @@ def test_candidate_is_opt_in_and_restores_v4_even_after_failure(candidate):
     assert workflow.INSTRUCTIONS==original and workflow.prompt_hash()==pin
 
 
+def test_v4_and_v5_benchmark_fingerprints_survive_promotion():
+    for name,expected in [('v4','e3b045db46013c6e9694ae450f8beeb168bc1b452cb1548bcbe43a4eb247535b'),
+                          ('v5','6a3a61aa0762dce1e0898bec5f1cf46b5ae6189dddbe3015828a35667ebe6f8f')]:
+        with benchmark.variant(name):
+            assert benchmark.workflow.prompt_hash()==expected
+
+
 def test_isolated_change_keeps_six_other_prompts_and_all_schemas():
     original=copy.deepcopy(benchmark.workflow.INSTRUCTIONS)
     schemas={k:benchmark.workflow.response_schema(v) for k,v in benchmark.STAGES.items()}
     tokens=copy.deepcopy(benchmark.workflow.OUTPUT_TOKENS)
-    with benchmark.variant('v5','GRADE'):
+    with benchmark.variant('v6','GRADE'):
         assert benchmark.workflow.INSTRUCTIONS['GRADE']!=original['GRADE']
         assert all(benchmark.workflow.INSTRUCTIONS[k]==v for k,v in original.items() if k!='GRADE')
         assert {k:benchmark.workflow.response_schema(v) for k,v in benchmark.STAGES.items()}==schemas
@@ -103,7 +110,7 @@ def test_interleaved_round_preserves_unknowns_and_never_retries(monkeypatch,tmp_
     asyncio.run(benchmark.paired_pipeline(tmp_path/'paired',settings,path))
     assert [row[0] for row in observed]==['v4','v5','v5','v4','v4','v5']
     assert len(observed)==6 and all(row[2]=='EXTRACT' for row in observed)
-    assert benchmark.workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V4'
+    assert benchmark.workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V5_CANDIDATE_1'
     for name in ('v4','v5'):
         benchmark.quality.verify(tmp_path/'paired'/name)
     with pytest.raises(FileExistsError):
@@ -133,7 +140,7 @@ def test_three_way_round_balances_execution_positions_without_touching_active_pr
     assert len(set(orders))==6
     for position in range(3):
         assert all(sum(row[position]==value for row in orders)==2 for value in set(observed))
-    assert benchmark.workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V4'
+    assert benchmark.workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V5_CANDIDATE_1'
 
 
 def test_v6_examples_use_the_deployed_output_contract():

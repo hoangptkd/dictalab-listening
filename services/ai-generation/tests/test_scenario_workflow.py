@@ -85,6 +85,9 @@ def generation_responses():
 
 
 def test_cross_language_prompt_pin_and_content_fixture():
+    from app.scenario_prompts_v5 import INSTRUCTIONS, PROMPT_VERSION
+    assert workflow.INSTRUCTIONS is INSTRUCTIONS
+    assert workflow.PROMPT_VERSION == PROMPT_VERSION == 'SCENARIO_LISTENING_V5_CANDIDATE_1'
     assert workflow.prompt_hash() == (ROOT / "src/main/resources/scenario/workflow-v1.sha256").read_text().strip()
     value = payload()
     workflow.validate_content(workflow.Content(activities=EXAMPLE["content"]["activities"]), value.specification,
@@ -500,7 +503,8 @@ def test_grade_accepts_both_languages_and_preserves_original_evidence(answer, ev
     result, calls = execute(value, [grade])
     assert result["task"] == grade
     instruction = calls[0][1][0]["content"]
-    assert "English or Vietnamese" in instruction and "ORIGINAL" in instruction
+    assert "English, Vietnamese or mixed" in instruction
+    assert "Preserve its original language and spelling" in instruction
     assert json.loads(calls[0][1][1]["content"])["answers"][0]["textVi"] == answer
     grade["facts"][0]["evidenceVi"] = "translated evidence absent from the answer"
     with pytest.raises(workflow.QualityRejected, match="invalid grade evidence"):

@@ -1,5 +1,7 @@
 # V4 / V5 / V6: benchmark ba bộ prompt
 
+> Cập nhật sau benchmark: người dùng đã yêu cầu dùng V5. Code chuyển sang đúng bản đã đo `SCENARIO_LISTENING_V5_CANDIDATE_1`, hash `6a3a61aa0762dce1e0898bec5f1cf46b5ae6189dddbe3015828a35667ebe6f8f`. Quyết định giữ V4 dưới đây là kết luận tại thời điểm benchmark; yêu cầu mới thay thế quyết định kích hoạt đó. Các số đo và lỗi đã ghi được giữ nguyên, gate không thay đổi.
+
 ## Phạm vi đã được người dùng chốt
 
 Mỗi phiên bản gồm đủ bảy stage. V4 là bản hoạt động; V5 là candidate của đợt trước; V6 là bộ Claude cung cấp trong hai file có tên **v5**. Nhãn trong tên file và `version: v5` của Claude **không phải** V5 nội bộ. Phiên bản nội bộ mới: `SCENARIO_LISTENING_V6_CANDIDATE_1`.
