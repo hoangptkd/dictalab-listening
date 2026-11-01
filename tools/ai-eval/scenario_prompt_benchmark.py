@@ -33,6 +33,8 @@ STAGE_DATASET = DATASET.with_name('scenario-prompt-stages-v5-v1.json')
 STAGES = {'EXTRACT': workflow.Extraction, 'GENERATE': workflow.Dialogue,
           'QUESTIONS': workflow.Questions, 'REVIEW_QUESTIONS': workflow.QuestionReview,
           'TRANSLATE': workflow.Translations, 'REVIEW': workflow.Review, 'GRADE': workflow.Grade}
+ACTIVE_INSTRUCTIONS, ACTIVE_PROMPT_VERSION = workflow.INSTRUCTIONS, workflow.PROMPT_VERSION
+VARIANTS = ('v4', 'v5', 'v6', 'active', 'fewshot')
 
 
 @contextmanager
@@ -44,6 +46,10 @@ def variant(name, phase=None):
         from app.scenario_prompts_v5 import INSTRUCTIONS, PROMPT_VERSION
     elif name == 'v6':
         from app.scenario_prompts_v6 import INSTRUCTIONS, PROMPT_VERSION
+    elif name == 'active':
+        INSTRUCTIONS, PROMPT_VERSION = ACTIVE_INSTRUCTIONS, ACTIVE_PROMPT_VERSION
+    elif name == 'fewshot':
+        from app.scenario_prompts_fewshot import INSTRUCTIONS, PROMPT_VERSION
     else:
         raise ValueError('unknown prompt variant: '+name)
     selected = dict(workflow.INSTRUCTIONS)
@@ -139,7 +145,7 @@ async def paired_pipeline(output, settings, dataset_path, names=('v4','v5'), ord
 
     Never resumes or overwrites an unknown run. Every phase still has zero retries.
     """
-    if len(set(names))!=len(names) or not 2<=len(names)<=3 or not set(names)<={'v4','v5','v6'}:
+    if len(set(names))!=len(names) or not 2<=len(names)<=3 or not set(names)<=set(VARIANTS):
         raise ValueError('need two or three distinct prompt variants')
     dataset=quality.cases(dataset_path)
     program=next(p for p in quality.read(quality.PROGRAM) if p['code']=='general-communication')
@@ -324,6 +330,7 @@ async def judge_stages(output, settings, v4, v5, v6=None):
         'notice':'Same-model pointwise judge, not human gold; no A/B preference judgment and no live evaluator activation.'})
     quality.write(output/'judge.json',{'instruction':JUDGE,'rubrics':RUBRICS,'schema':SemanticJudgment.model_json_schema()})
     sources=[('v4',v4),('v5',v5)]+([('v6',v6)] if v6 else [])
+    sources=[(quality.read(source/'manifest.json').get('variant',label),source) for label,source in sources]
     for _,source in sources: quality.verify(source)
     budget={'calls':0,'maxCalls':len(fixtures)*len(sources),'deadline':time.monotonic()+3600,
             'traceMetadata':{'evaluationRun':output.name,'responseOrigin':'live-gemini-judge'}}
@@ -362,8 +369,8 @@ async def judge_stages(output, settings, v4, v5, v6=None):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode',choices=['stages','pipeline','paired','compare','summarize','judge'])
-    parser.add_argument('--variant',choices=['v4','v5','v6'],default='v4')
-    parser.add_argument('--variants',nargs='+',choices=['v4','v5','v6'],default=['v4','v5'])
+    parser.add_argument('--variant',choices=VARIANTS,default='v4')
+    parser.add_argument('--variants',nargs='+',choices=VARIANTS,default=['v4','v5'])
     parser.add_argument('--order-offset',type=int,default=0)
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--dataset',type=Path,default=DATASET)
