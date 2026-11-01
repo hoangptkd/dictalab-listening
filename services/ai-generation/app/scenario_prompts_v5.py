@@ -1,4 +1,4 @@
-"""Active zero-shot V5 prompts, promoted unchanged from the measured candidate.
+"""Frozen zero-shot V5 prompts; active workflow reuses six stages with V4 GRADE.
 
 Schemas, token budgets, model selection and gates stay in scenario_workflow.
 The chat user-role boundary and JSON quoting delimit untrusted input without

@@ -94,12 +94,14 @@ worktree, verify its SHA-256, ZIP CRC and raw integrity inventory, and retain it
 until the quality investigation is closed. The tool does not auto-delete evidence. This logging
 is for explicit synthetic evaluation; it does not enable logging real learner content in production.
 
-The current grounding workflow uses the measured V5 prompts, version `SCENARIO_LISTENING_V5_CANDIDATE_1`,
-hash `6a3a61aa0762dce1e0898bec5f1cf46b5ae6189dddbe3015828a35667ebe6f8f`.
-The measured version identifier is retained so promotion does not change its fingerprint.
+The current workflow uses six measured V5 prompts and the exact archived V4 GRADE prompt,
+version `SCENARIO_LISTENING_V5_GRADE_V4_1`, hash
+`d43a3e228449dc64d7b6c103c2013558ac6e9415feabad8ff50e083900b0ae21`.
+Frozen V5 (`SCENARIO_LISTENING_V5_CANDIDATE_1`) remains unchanged for historical benchmarks;
+its measured completion/grading results do not certify this mixed release's quality.
 V4 remains explicitly selectable as an archived benchmark baseline; V3 identifies the preceding five-call
 split and V2 the reverted experiment. The public lesson/session JSON is unchanged. Core reserves five
-generation calls. Previously submitted V1/V3/V4 results can settle only under their exact historical pins
+generation calls. Previously submitted V1/V3/V4/V5 results can settle only under their exact historical pins
 and original call sequences. No database migration
 or program-definition change is required. Core/Python must run the matching workflow pin; existing
 release/local-preview approvals do not automatically approve the new pin.

@@ -1,4 +1,4 @@
-"""Protect active V5 and preserve exact historical benchmark selection; no network needed."""
+"""Protect V5 with V4 GRADE and preserve exact historical benchmark selection; no network needed."""
 import copy
 import asyncio
 import json
@@ -9,13 +9,13 @@ import pytest
 import scenario_prompt_benchmark as benchmark
 
 
-@pytest.mark.parametrize('candidate',['v4','v6'])
-def test_benchmark_variants_restore_active_v5_even_after_failure(candidate):
+@pytest.mark.parametrize('candidate',['v4','v5','v6'])
+def test_benchmark_variants_restore_active_mixed_release_even_after_failure(candidate):
     workflow=benchmark.workflow
     original=copy.deepcopy(workflow.INSTRUCTIONS)
     original_hash=workflow.prompt_hash()
     pin=(benchmark.ROOT/'src/main/resources/scenario/workflow-v1.sha256').read_text().strip()
-    assert workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V5_CANDIDATE_1' and original_hash==pin
+    assert workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V5_GRADE_V4_1' and original_hash==pin
     with pytest.raises(RuntimeError):
         with benchmark.variant(candidate):
             assert set(workflow.INSTRUCTIONS)==set(benchmark.STAGES)
@@ -110,7 +110,7 @@ def test_interleaved_round_preserves_unknowns_and_never_retries(monkeypatch,tmp_
     asyncio.run(benchmark.paired_pipeline(tmp_path/'paired',settings,path))
     assert [row[0] for row in observed]==['v4','v5','v5','v4','v4','v5']
     assert len(observed)==6 and all(row[2]=='EXTRACT' for row in observed)
-    assert benchmark.workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V5_CANDIDATE_1'
+    assert benchmark.workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V5_GRADE_V4_1'
     for name in ('v4','v5'):
         benchmark.quality.verify(tmp_path/'paired'/name)
     with pytest.raises(FileExistsError):
@@ -140,7 +140,7 @@ def test_three_way_round_balances_execution_positions_without_touching_active_pr
     assert len(set(orders))==6
     for position in range(3):
         assert all(sum(row[position]==value for row in orders)==2 for value in set(observed))
-    assert benchmark.workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V5_CANDIDATE_1'
+    assert benchmark.workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V5_GRADE_V4_1'
 
 
 def test_v6_examples_use_the_deployed_output_contract():

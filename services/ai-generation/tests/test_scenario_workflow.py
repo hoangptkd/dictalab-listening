@@ -85,9 +85,11 @@ def generation_responses():
 
 
 def test_cross_language_prompt_pin_and_content_fixture():
-    from app.scenario_prompts_v5 import INSTRUCTIONS, PROMPT_VERSION
-    assert workflow.INSTRUCTIONS is INSTRUCTIONS
-    assert workflow.PROMPT_VERSION == PROMPT_VERSION == 'SCENARIO_LISTENING_V5_CANDIDATE_1'
+    from app.scenario_prompts_v5 import INSTRUCTIONS
+    assert workflow.PROMPT_VERSION == 'SCENARIO_LISTENING_V5_GRADE_V4_1'
+    assert workflow.INSTRUCTIONS['GRADE'] == workflow.V4_INSTRUCTIONS['GRADE']
+    assert all(workflow.INSTRUCTIONS[k] == v for k, v in INSTRUCTIONS.items() if k != 'GRADE')
+    assert workflow.INSTRUCTIONS['GRADE'] != INSTRUCTIONS['GRADE']
     assert workflow.prompt_hash() == (ROOT / "src/main/resources/scenario/workflow-v1.sha256").read_text().strip()
     value = payload()
     workflow.validate_content(workflow.Content(activities=EXAMPLE["content"]["activities"]), value.specification,
@@ -137,6 +139,7 @@ def test_unsound_results_are_rejected_without_repair(change):
 
 def test_grade_requires_exact_learner_evidence_and_all_ids():
     result, calls = execute(payload("GRADE"), [EXAMPLE["grade"]])
+    assert calls[0][1][0] == {"role": "system", "content": workflow.V4_INSTRUCTIONS['GRADE']}
     assert result["task"] == EXAMPLE["grade"]
     assert len(calls) == 1
     invented = copy.deepcopy(EXAMPLE["grade"])
@@ -503,8 +506,8 @@ def test_grade_accepts_both_languages_and_preserves_original_evidence(answer, ev
     result, calls = execute(value, [grade])
     assert result["task"] == grade
     instruction = calls[0][1][0]["content"]
-    assert "English, Vietnamese or mixed" in instruction
-    assert "Preserve its original language and spelling" in instruction
+    assert "English or Vietnamese" in instruction
+    assert "ORIGINAL" in instruction
     assert json.loads(calls[0][1][1]["content"])["answers"][0]["textVi"] == answer
     grade["facts"][0]["evidenceVi"] = "translated evidence absent from the answer"
     with pytest.raises(workflow.QualityRejected, match="invalid grade evidence"):

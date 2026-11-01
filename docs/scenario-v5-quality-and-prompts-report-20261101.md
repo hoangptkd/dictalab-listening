@@ -2,6 +2,12 @@
 
 Ngày lập: **01/11/2026**, múi giờ Việt Nam/UTC+7.
 
+> Cập nhật sau báo cáo: theo yêu cầu người dùng, workflow chuyển sang **sáu prompt V5 + riêng GRADE V4**,
+> version `SCENARIO_LISTENING_V5_GRADE_V4_1`, hash `d43a3e228449dc64d7b6c103c2013558ac6e9415feabad8ff50e083900b0ae21`.
+> Nội dung và bảy prompt bên dưới là snapshot **V5 đầy đủ tại thời điểm benchmark**, không phải bộ hỗn hợp mới.
+> GRADE V4 nguyên văn nằm ở `V4_INSTRUCTIONS['GRADE']` trong `scenario_workflow.py`; schemas, budgets và gates không đổi.
+> V4 và V5 đều khớp 18/20 nhãn GRADE tạm trong benchmark cũ; việc đổi theo yêu cầu chưa chứng minh chất lượng chấm tăng.
+
 ## 1. Kết luận ngắn
 
 **V5 cải thiện khả năng tạo được bài học, nhưng chưa chứng minh nội dung luôn đúng hoặc đúng mục tiêu học.** Hai lượt benchmark đều hoàn tất **13/27 bài (48,1%)**, cao hơn V4 và V6 trong phép đo này. Hơn một nửa lần thử V5 vẫn chưa hoàn tất.

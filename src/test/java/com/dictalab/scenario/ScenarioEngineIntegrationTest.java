@@ -71,7 +71,7 @@ class ScenarioEngineIntegrationTest {
         String phase=input.path("phase").asText(); boolean tts=input.path("kind").asText().equals("tts");
         var result=object().put("schemaVersion","1").put("generationId",id).put("requestId",id)
                 .put("provider",tts ? "cartesia" : "ollama").put("model","fixture-model").put("modelDigest","fixture-digest")
-                .put("promptVersion",tts ? "TTS_WAV_V1" : "SCENARIO_LISTENING_V5_CANDIDATE_1").put("promptHash",release.promptHash()).put("programHash",input.path("programHash").asText());
+                .put("promptVersion",tts ? "TTS_WAV_V1" : "SCENARIO_LISTENING_V5_GRADE_V4_1").put("promptHash",release.promptHash()).put("programHash",input.path("programHash").asText());
         if (tts) result.set("task",object().put("contentType","audio/wav").put("size",wave().length).put("audioBase64",Base64.getEncoder().encodeToString(wave())));
         else {
             result.set("task",fixture.path(switch(phase) { case "EXTRACT" -> "specification"; case "GENERATE" -> "content"; default -> "grade"; }).deepCopy());
@@ -249,7 +249,7 @@ class ScenarioEngineIntegrationTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings={"skip_questions","wrong_order","old_version","old_v3_version","old_v4_version","wrong_hash"})
+    @org.junit.jupiter.params.provider.ValueSource(strings={"skip_questions","wrong_order","old_version","old_v3_version","old_v4_version","old_v5_version","wrong_hash"})
     void currentWorkflowRejectsSkippedStagesAndVersionDowngrade(String fault) {
         var extract=dispatch(engine.createDraft(user,id(),input())); var draft=engine.draft(user,extract.path("draftId").asText());
         doAnswer(call -> {
@@ -260,6 +260,7 @@ class ScenarioEngineIntegrationTest {
             else if (fault.equals("wrong_order")) ((ObjectNode)calls.get(1)).put("purpose","TRANSLATE");
             else if (fault.equals("old_v3_version")) result.put("promptVersion","SCENARIO_LISTENING_V3");
             else if (fault.equals("old_v4_version")) result.put("promptVersion","SCENARIO_LISTENING_V4");
+            else if (fault.equals("old_v5_version")) result.put("promptVersion","SCENARIO_LISTENING_V5_CANDIDATE_1");
             else if (fault.equals("wrong_hash")) result.put("promptHash","0".repeat(64));
             else result.put("promptVersion","SCENARIO_LISTENING_V1");
             return response;
@@ -275,7 +276,8 @@ class ScenarioEngineIntegrationTest {
             "0d40fae31e57eef602c6f1e8402ea6116f8beeee56ac011c7c3d018f7f0152c2",
             "3391407dddc9762afe3774cb30ee60e4a9f0936e70597e8a057b8bdfe03395fe",
             "c8e817015d97850288b8bbe377934602cc1f4df1a4b7ce18a2d5b5de8b28c2b5",
-            "e3b045db46013c6e9694ae450f8beeb168bc1b452cb1548bcbe43a4eb247535b"})
+            "e3b045db46013c6e9694ae450f8beeb168bc1b452cb1548bcbe43a4eb247535b",
+            "6a3a61aa0762dce1e0898bec5f1cf46b5ae6189dddbe3015828a35667ebe6f8f"})
     void alreadySubmittedJobCanSettleUnderItsOriginalPin(String oldPin) {
         var extract=dispatch(engine.createDraft(user,id(),input())); var draft=engine.draft(user,extract.path("draftId").asText());
         var op=engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong()));
@@ -287,10 +289,11 @@ class ScenarioEngineIntegrationTest {
         boolean previousV3=Set.of("3391407dddc9762afe3774cb30ee60e4a9f0936e70597e8a057b8bdfe03395fe",
                 "c8e817015d97850288b8bbe377934602cc1f4df1a4b7ce18a2d5b5de8b28c2b5").contains(oldPin);
         boolean previousV4=oldPin.equals("e3b045db46013c6e9694ae450f8beeb168bc1b452cb1548bcbe43a4eb247535b");
-        result.put("promptHash",oldPin).put("promptVersion",previousV3 ? "SCENARIO_LISTENING_V3" : previousV4 ? "SCENARIO_LISTENING_V4" : "SCENARIO_LISTENING_V1");
+        boolean previousV5=oldPin.equals("6a3a61aa0762dce1e0898bec5f1cf46b5ae6189dddbe3015828a35667ebe6f8f");
+        result.put("promptHash",oldPin).put("promptVersion",previousV3 ? "SCENARIO_LISTENING_V3" : previousV4 ? "SCENARIO_LISTENING_V4" : previousV5 ? "SCENARIO_LISTENING_V5_CANDIDATE_1" : "SCENARIO_LISTENING_V1");
         var calls=result.putArray("calls");
         for (String purpose : previousV3 ? List.of("GENERATE","FACTS","QUESTIONS","TRANSLATE","REVIEW")
-                : previousV4 ? List.of("GENERATE","QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW") : List.of("GENERATE","TRANSLATE","REVIEW"))
+                : previousV4 || previousV5 ? List.of("GENERATE","QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW") : List.of("GENERATE","TRANSLATE","REVIEW"))
             calls.addObject().put("purpose",purpose).put("provider","ollama").put("model","fixture-model");
         when(ai.scenarioStatus(user,oid)).thenReturn(response);
         assertThat(dispatch(op).path("status").asText()).isEqualTo("SUCCEEDED");
