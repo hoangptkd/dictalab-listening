@@ -55,12 +55,13 @@ def test_frozen_corpus_separates_holdout_and_covers_all_stages_and_languages():
     assert {'grade-english','grade-vietnamese','grade-mixed','grade-minor-typo'}<={c['id'] for c in grade}
 
 
-def _capture(folder, *, model='fixed-model', output=None, text='Tôi muốn luyện nghe.'):
+def _capture(folder, *, model='fixed-model', output=None, text='Tôi muốn luyện nghe.', operational_limits=True):
     folder.mkdir()
     case={'id':'extract-case','phase':'EXTRACT','expected':{'allowed':True}}
     benchmark.quality.write(folder/'cases.json',{'cases':[case]})
     benchmark.quality.write(folder/'manifest.json',dict(datasetHash='same',provider='gemini',model=model,
-        apiVersion='v1beta/openai',temperature=0,outputTokens={'EXTRACT':2600},providerRetries=0))
+        apiVersion='v1beta/openai',temperature=0,outputTokens={'EXTRACT':2600},providerRetries=0,
+        operationalLimitsEnabled=operational_limits))
     stage=folder/'extract-case/STAGE';stage.mkdir(parents=True)
     benchmark.quality.write(stage/'outcome.json',{'status':'SUCCEEDED'})
     benchmark.quality.write(stage/'01-request.json',{'schema':{},'options':{'temperature':0},'maxOutputTokens':2600,
@@ -76,7 +77,8 @@ def test_missing_and_malformed_outputs_do_not_count_as_schema_success(tmp_path):
     assert not benchmark.stage_metrics(tmp_path/'malformed')['EXTRACT'][0]['schemaValid']
 
 
-@pytest.mark.parametrize('change',[{'model':'different-model'},{'text':'Different input'}])
+@pytest.mark.parametrize('change',[{'model':'different-model'},{'text':'Different input'},
+                                   {'operational_limits':False}])
 def test_comparison_rejects_unfair_model_or_input(tmp_path,change):
     _capture(tmp_path/'v4')
     _capture(tmp_path/'v5',**change)

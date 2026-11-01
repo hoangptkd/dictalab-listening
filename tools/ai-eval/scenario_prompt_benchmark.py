@@ -96,7 +96,8 @@ async def stages(output, settings, name, *, phase=None, split='all'):
             'datasetHash':quality.digest(quality.encoded(dataset)), 'promptHash':workflow.prompt_hash(),
             'provider':settings.selected_provider, 'model':settings.active_cloud_model,
             'apiVersion':'v1beta/openai', 'temperature':0, 'outputTokens':workflow.OUTPUT_TOKENS,
-            'providerRetries':0, 'notice':'Agent-authored provisional labels, not human gold. input.json is a valid job scaffold; *-request.json holds the actual isolated stage input.'})
+            'providerRetries':0, 'operationalLimitsEnabled':settings.operational_limits_enabled,
+            'notice':'Agent-authored provisional labels, not human gold. input.json is a valid job scaffold; *-request.json holds the actual isolated stage input.'})
         quality.write(output/'cases.json', {'cases':rows})
         quality.write(output/'instructions.json',workflow.INSTRUCTIONS)
         budget={'calls':0,'maxCalls':len(rows),'deadline':time.monotonic()+3600,
@@ -153,6 +154,7 @@ async def paired_pipeline(output, settings, dataset_path, names=('v4','v5'), ord
     budgets={}
     safe={'provider':settings.selected_provider,'model':settings.active_cloud_model,
           'numCtx':settings.num_ctx,'modelDigest':workflow.metadata(settings)['modelDigest'],
+          'operationalLimitsEnabled':settings.operational_limits_enabled,
           'pool':[{'id':s.id,'platform':s.platform,'model':s.model,'endpointHash':quality.digest(s.url.encode())}
                   for s in settings.sources_for(settings.selected_provider)]}
     for name in names:
@@ -221,6 +223,8 @@ def compare(v4, v5):
     m4,m5=quality.read(v4/'manifest.json'),quality.read(v5/'manifest.json')
     for key in ('datasetHash','provider','model','apiVersion','temperature','outputTokens','providerRetries'):
         if m4[key]!=m5[key]: raise ValueError('unfair benchmark: '+key)
+    if m4.get('operationalLimitsEnabled')!=m5.get('operationalLimitsEnabled'):
+        raise ValueError('unfair benchmark: operationalLimitsEnabled')
     if {c['caseId'] for rows in left.values() for c in rows}!={c['caseId'] for rows in right.values() for c in rows}:
         raise ValueError('different stage selections')
     for phase,rows in left.items():
