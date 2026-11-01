@@ -9,14 +9,15 @@ import pytest
 import scenario_prompt_benchmark as benchmark
 
 
-def test_candidate_is_opt_in_and_restores_v4_even_after_failure():
+@pytest.mark.parametrize('candidate',['v5','v6'])
+def test_candidate_is_opt_in_and_restores_v4_even_after_failure(candidate):
     workflow=benchmark.workflow
     original=copy.deepcopy(workflow.INSTRUCTIONS)
     original_hash=workflow.prompt_hash()
     pin=(benchmark.ROOT/'src/main/resources/scenario/workflow-v1.sha256').read_text().strip()
     assert workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V4' and original_hash==pin
     with pytest.raises(RuntimeError):
-        with benchmark.variant('v5'):
+        with benchmark.variant(candidate):
             assert set(workflow.INSTRUCTIONS)==set(benchmark.STAGES)
             assert workflow.prompt_hash()!=original_hash
             raise RuntimeError('experiment stopped')
@@ -108,3 +109,49 @@ def test_interleaved_round_preserves_unknowns_and_never_retries(monkeypatch,tmp_
     with pytest.raises(FileExistsError):
         asyncio.run(benchmark.paired_pipeline(tmp_path/'paired',settings,path))
     assert len(observed)==6
+
+
+def test_three_way_round_balances_execution_positions_without_touching_active_prompt(monkeypatch,tmp_path):
+    dataset=benchmark.quality.read(benchmark.DATASET)
+    dataset['cases']=dataset['cases'][:6]
+    path=tmp_path/'cases.json';benchmark.quality.write(path,dataset)
+    observed=[]
+    async def fake_phase(folder,payload,settings,budget):
+        folder.mkdir()
+        observed.append(benchmark.workflow.PROMPT_VERSION)
+        outcome={'status':'UNKNOWN','error':{'type':'TimeoutError'}}
+        benchmark.quality.write(folder/'outcome.json',outcome)
+        return outcome
+    async def offline_replay(folder):
+        benchmark.quality.verify(folder)
+        return {'networkCalls':0,'phases':[]}
+    monkeypatch.setattr(benchmark.quality,'phase',fake_phase)
+    monkeypatch.setattr(benchmark.quality,'replay',offline_replay)
+    settings=benchmark.quality.Settings(scenario_enabled=True,primary_provider='gemini',gemini_api_key='unit-test-key')
+    asyncio.run(benchmark.paired_pipeline(tmp_path/'three',settings,path,('v4','v5','v6')))
+    orders=[tuple(observed[i:i+3]) for i in range(0,18,3)]
+    assert len(set(orders))==6
+    for position in range(3):
+        assert all(sum(row[position]==value for row in orders)==2 for value in set(observed))
+    assert benchmark.workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V4'
+
+
+def test_v6_examples_use_the_deployed_output_contract():
+    import re
+    from app.scenario_prompts_v6 import INSTRUCTIONS
+    for phase,prompt in INSTRUCTIONS.items():
+        for raw in re.findall(r'<output>\s*(.*?)\s*</output>',prompt,re.S):
+            item=json.loads(raw)
+            # Reviewer/question excerpts deliberately demonstrate selected items; validate their item schema.
+            if phase=='REVIEW':
+                assert set(item)=={'translationChecks','issues'}
+                for row in item['translationChecks']: benchmark.workflow.TranslationCheck.model_validate(row)
+            elif phase=='REVIEW_QUESTIONS':
+                for row in item['questionChecks']: benchmark.workflow.QuestionCheck.model_validate(row)
+            elif phase=='QUESTIONS':
+                for activity in item['activities']:
+                    for row in activity['questions']: benchmark.workflow.QuestionDraft.model_validate(row)
+            else:
+                benchmark.STAGES[phase].model_validate(item)
+    with pytest.raises(ValueError,match='unknown prompt variant'):
+        with benchmark.variant('unknown'): pass
