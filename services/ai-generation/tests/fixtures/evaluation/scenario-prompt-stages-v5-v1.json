@@ -1,0 +1,2900 @@
+{
+  "version": "scenario-stages-v5.v1",
+  "syntheticOnly": true,
+  "notice": "Fixtures and labels authored by an AI agent, not human-validated gold. Benign quality defects are deliberate evaluator probes.",
+  "cases": [
+    {
+      "id": "extract-main-idea-01",
+      "phase": "EXTRACT",
+      "input": {
+        "inputVi": "Tôi muốn cải thiện khả năng nghe hiểu nội dung chính trong một cuộc hội thoại ngắn. Hãy tự chọn tình huống phù hợp."
+      },
+      "expected": {
+        "allowed": true
+      },
+      "failureMode": "goal-only-input",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "extract-inference-03",
+      "phase": "EXTRACT",
+      "input": {
+        "inputVi": "Tôi muốn tập suy ra điều người nói cần dựa trên ngữ cảnh hội thoại. Hãy chọn tình huống phù hợp."
+      },
+      "expected": {
+        "allowed": true
+      },
+      "failureMode": "goal-only-input",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "extract-natural-communication-02",
+      "phase": "EXTRACT",
+      "input": {
+        "inputVi": "Tôi muốn luyện nhận biết lời đề nghị và cách đáp lại lịch sự trong giao tiếp. Hãy đề xuất tình huống."
+      },
+      "expected": {
+        "allowed": true
+      },
+      "failureMode": "goal-only-input",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "extract-food-allergy",
+      "phase": "EXTRACT",
+      "input": {
+        "inputVi": "Tôi gọi món mì ở quán ăn nhưng không ăn được đậu phộng. Tôi muốn hỏi món có đậu phộng không, đổi sang món không có đậu phộng và hỏi giá trước khi gọi."
+      },
+      "expected": {
+        "allowed": true
+      },
+      "failureMode": "role-fact-preservation",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "generate-bread",
+      "phase": "GENERATE",
+      "input": {
+        "inputVi": "Tôi muốn đặt hai ổ bánh không có hạt hôm nay để nhận sáng mai.",
+        "specification": {
+          "allowed": true,
+          "titleVi": "Đặt bánh để nhận ngày mai",
+          "settingVi": "Một cửa hàng bánh nhỏ.",
+          "learnerRoleVi": "Khách hàng",
+          "goalVi": "Đặt và nhận bánh không có hạt.",
+          "characters": [
+            {
+              "id": "customer",
+              "name": "Alex",
+              "roleVi": "Khách hàng"
+            },
+            {
+              "id": "baker",
+              "name": "Sam",
+              "roleVi": "Người bán bánh"
+            }
+          ],
+          "constraintsVi": [
+            "Tôi muốn đặt hai ổ bánh không có hạt hôm nay để nhận sáng mai."
+          ],
+          "assumptionsVi": [
+            "Giả định: Cửa hàng nhận đặt trước."
+          ],
+          "topicIds": [
+            "food"
+          ]
+        },
+        "profile": {
+          "id": "supported",
+          "minWordsPerActivity": 15,
+          "maxWordsPerActivity": 60,
+          "maxWordsPerSession": 180
+        },
+        "writingBudget": {
+          "targetWordsPerActivity": 37
+        }
+      },
+      "expected": {},
+      "failureMode": "role-fact-preservation",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "generate-work-interview-reschedule",
+      "phase": "GENERATE",
+      "input": {
+        "inputVi": "Tôi cần đổi lịch phỏng vấn trực tuyến từ 9 giờ sáng thứ Hai sang 3 giờ chiều thứ Ba. Tôi hỏi người tuyển dụng có đồng ý không, ai sẽ gửi đường dẫn họp và cần chuẩn bị tài liệu gì.",
+        "specification": {
+          "allowed": true,
+          "titleVi": "Đổi lịch phỏng vấn trực tuyến",
+          "settingVi": "Cuộc trao đổi giữa người ứng tuyển và nhà tuyển dụng qua tin nhắn hoặc điện thoại để dời lịch phỏng vấn.",
+          "goalVi": "Thống nhất việc dời lịch phỏng vấn sang thời gian mới và làm rõ các bước chuẩn bị tiếp theo.",
+          "characters": [
+            {
+              "id": "user",
+              "name": "Nam",
+              "roleVi": "Người ứng tuyển"
+            },
+            {
+              "id": "recruiter",
+              "name": "Lan",
+              "roleVi": "Người tuyển dụng"
+            }
+          ],
+          "assumptionsVi": [
+            "Giả định: Cuộc phỏng vấn diễn ra qua nền tảng trực tuyến phổ biến.",
+            "Giả định: Tài liệu chuẩn bị gồm CV và hồ sơ năng lực."
+          ],
+          "topicIds": [
+            "workstudy"
+          ],
+          "learnerRoleVi": "Người ứng tuyển",
+          "constraintsVi": [
+            "Tôi cần đổi lịch phỏng vấn trực tuyến từ 9 giờ sáng thứ Hai sang 3 giờ chiều thứ Ba.",
+            "Tôi hỏi người tuyển dụng có đồng ý không, ai sẽ gửi đường dẫn họp và cần chuẩn bị tài liệu gì."
+          ]
+        },
+        "profile": {
+          "id": "standard",
+          "minWordsPerActivity": 30,
+          "maxWordsPerActivity": 100,
+          "maxWordsPerSession": 300
+        },
+        "writingBudget": {
+          "targetWordsPerActivity": 65
+        }
+      },
+      "expected": {},
+      "failureMode": "proposal-commitment",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "questions-bread",
+      "phase": "QUESTIONS",
+      "input": {
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "I would like two loaves, please. Please make sure there are no nuts in either loaf."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Of course. I will put aside two plain loaves without nuts for your order."
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "baker",
+                  "textEn": "Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "customer",
+                  "textEn": "I will pay now by card, thank you. I will see you tomorrow morning."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {},
+      "failureMode": "distinct-evidence",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "review-questions-clean",
+      "phase": "REVIEW_QUESTIONS",
+      "input": {
+        "content": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Cửa hàng mở lúc mấy giờ?",
+                  "answerVi": "Chín giờ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "we open at nine"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "main-idea",
+                  "promptVi": "Khách có thể nhận đơn vào buổi nào?",
+                  "answerVi": "Sáng mai",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "tomorrow morning"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "I would like two loaves, please. Please make sure there are no nuts in either loaf."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Of course. I will put aside two plain loaves without nuts for your order."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách muốn đặt bao nhiêu ổ bánh?",
+                  "answerVi": "Hai ổ",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "two loaves"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách yêu cầu loại bỏ thành phần nào?",
+                  "answerVi": "Các loại hạt",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "no nuts"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "baker",
+                  "textEn": "Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "customer",
+                  "textEn": "I will pay now by card, thank you. I will see you tomorrow morning."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Tổng tiền của đơn hàng là bao nhiêu?",
+                  "answerVi": "Sáu bảng",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "six pounds altogether"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách chọn thanh toán bằng cách nào?",
+                  "answerVi": "Bằng thẻ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "pay now by card"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "groundedQuestions": {
+          "activities": [
+            {
+              "id": "a1",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Cửa hàng mở lúc mấy giờ?",
+                  "answerVi": "Chín giờ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "we open at nine"
+                    }
+                  ],
+                  "factEn": "The shop opens at nine.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "main-idea",
+                  "promptVi": "Khách có thể nhận đơn vào buổi nào?",
+                  "answerVi": "Sáng mai",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "tomorrow morning"
+                    }
+                  ],
+                  "factEn": "The order can be collected tomorrow morning.",
+                  "speechAct": "statement"
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Khách muốn đặt bao nhiêu ổ bánh?",
+                  "answerVi": "Hai ổ",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "two loaves"
+                    }
+                  ],
+                  "factEn": "The customer wants two loaves.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "detail",
+                  "promptVi": "Khách yêu cầu loại bỏ thành phần nào?",
+                  "answerVi": "Các loại hạt",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "no nuts"
+                    }
+                  ],
+                  "factEn": "The loaves must contain no nuts.",
+                  "speechAct": "statement"
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Tổng tiền của đơn hàng là bao nhiêu?",
+                  "answerVi": "Sáu bảng",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "six pounds altogether"
+                    }
+                  ],
+                  "factEn": "The total price is six pounds.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "detail",
+                  "promptVi": "Khách chọn thanh toán bằng cách nào?",
+                  "answerVi": "Bằng thẻ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "pay now by card"
+                    }
+                  ],
+                  "factEn": "The customer will pay by card.",
+                  "speechAct": "statement"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "valid": true
+      },
+      "failureMode": "clean",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "review-questions-wrong-answer",
+      "phase": "REVIEW_QUESTIONS",
+      "input": {
+        "content": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Cửa hàng mở lúc mấy giờ?",
+                  "answerVi": "Mười giờ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "we open at nine"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "main-idea",
+                  "promptVi": "Khách có thể nhận đơn vào buổi nào?",
+                  "answerVi": "Sáng mai",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "tomorrow morning"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "I would like two loaves, please. Please make sure there are no nuts in either loaf."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Of course. I will put aside two plain loaves without nuts for your order."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách muốn đặt bao nhiêu ổ bánh?",
+                  "answerVi": "Hai ổ",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "two loaves"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách yêu cầu loại bỏ thành phần nào?",
+                  "answerVi": "Các loại hạt",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "no nuts"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "baker",
+                  "textEn": "Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "customer",
+                  "textEn": "I will pay now by card, thank you. I will see you tomorrow morning."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Tổng tiền của đơn hàng là bao nhiêu?",
+                  "answerVi": "Sáu bảng",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "six pounds altogether"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách chọn thanh toán bằng cách nào?",
+                  "answerVi": "Bằng thẻ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "pay now by card"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "groundedQuestions": {
+          "activities": [
+            {
+              "id": "a1",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Cửa hàng mở lúc mấy giờ?",
+                  "answerVi": "Mười giờ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "we open at nine"
+                    }
+                  ],
+                  "factEn": "The shop opens at nine.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "main-idea",
+                  "promptVi": "Khách có thể nhận đơn vào buổi nào?",
+                  "answerVi": "Sáng mai",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "tomorrow morning"
+                    }
+                  ],
+                  "factEn": "The order can be collected tomorrow morning.",
+                  "speechAct": "statement"
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Khách muốn đặt bao nhiêu ổ bánh?",
+                  "answerVi": "Hai ổ",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "two loaves"
+                    }
+                  ],
+                  "factEn": "The customer wants two loaves.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "detail",
+                  "promptVi": "Khách yêu cầu loại bỏ thành phần nào?",
+                  "answerVi": "Các loại hạt",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "no nuts"
+                    }
+                  ],
+                  "factEn": "The loaves must contain no nuts.",
+                  "speechAct": "statement"
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Tổng tiền của đơn hàng là bao nhiêu?",
+                  "answerVi": "Sáu bảng",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "six pounds altogether"
+                    }
+                  ],
+                  "factEn": "The total price is six pounds.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "detail",
+                  "promptVi": "Khách chọn thanh toán bằng cách nào?",
+                  "answerVi": "Bằng thẻ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "pay now by card"
+                    }
+                  ],
+                  "factEn": "The customer will pay by card.",
+                  "speechAct": "statement"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "valid": false
+      },
+      "failureMode": "wrong-answer",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "review-questions-duplicate",
+      "phase": "REVIEW_QUESTIONS",
+      "input": {
+        "content": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Cửa hàng mở lúc mấy giờ?",
+                  "answerVi": "Chín giờ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "we open at nine"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "main-idea",
+                  "promptVi": "Khách có thể nhận đơn vào buổi nào?",
+                  "answerVi": "Sáng mai",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "tomorrow morning"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "I would like two loaves, please. Please make sure there are no nuts in either loaf."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Of course. I will put aside two plain loaves without nuts for your order."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách muốn đặt bao nhiêu ổ bánh?",
+                  "answerVi": "Hai ổ",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "two loaves"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách yêu cầu loại bỏ thành phần nào?",
+                  "answerVi": "Các loại hạt",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "no nuts"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "baker",
+                  "textEn": "Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "customer",
+                  "textEn": "I will pay now by card, thank you. I will see you tomorrow morning."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Tổng tiền của đơn hàng là bao nhiêu?",
+                  "answerVi": "Sáu bảng",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "six pounds altogether"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Tổng tiền của đơn hàng là bao nhiêu?",
+                  "answerVi": "Sáu bảng",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "six pounds altogether"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "groundedQuestions": {
+          "activities": [
+            {
+              "id": "a1",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Cửa hàng mở lúc mấy giờ?",
+                  "answerVi": "Chín giờ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "we open at nine"
+                    }
+                  ],
+                  "factEn": "The shop opens at nine.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "main-idea",
+                  "promptVi": "Khách có thể nhận đơn vào buổi nào?",
+                  "answerVi": "Sáng mai",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "tomorrow morning"
+                    }
+                  ],
+                  "factEn": "The order can be collected tomorrow morning.",
+                  "speechAct": "statement"
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Khách muốn đặt bao nhiêu ổ bánh?",
+                  "answerVi": "Hai ổ",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "two loaves"
+                    }
+                  ],
+                  "factEn": "The customer wants two loaves.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "detail",
+                  "promptVi": "Khách yêu cầu loại bỏ thành phần nào?",
+                  "answerVi": "Các loại hạt",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "no nuts"
+                    }
+                  ],
+                  "factEn": "The loaves must contain no nuts.",
+                  "speechAct": "statement"
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Tổng tiền của đơn hàng là bao nhiêu?",
+                  "answerVi": "Sáu bảng",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "six pounds altogether"
+                    }
+                  ],
+                  "factEn": "The total price is six pounds.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "detail",
+                  "promptVi": "Tổng tiền của đơn hàng là bao nhiêu?",
+                  "answerVi": "Sáu bảng",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "six pounds altogether"
+                    }
+                  ],
+                  "factEn": "The total price is six pounds.",
+                  "speechAct": "statement"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "valid": false
+      },
+      "failureMode": "duplicate",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "review-questions-leak",
+      "phase": "REVIEW_QUESTIONS",
+      "input": {
+        "content": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Cửa hàng mở lúc chín giờ, đúng không?",
+                  "answerVi": "Chín giờ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "we open at nine"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "main-idea",
+                  "promptVi": "Khách có thể nhận đơn vào buổi nào?",
+                  "answerVi": "Sáng mai",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "tomorrow morning"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "I would like two loaves, please. Please make sure there are no nuts in either loaf."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Of course. I will put aside two plain loaves without nuts for your order."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách muốn đặt bao nhiêu ổ bánh?",
+                  "answerVi": "Hai ổ",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "two loaves"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách yêu cầu loại bỏ thành phần nào?",
+                  "answerVi": "Các loại hạt",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "no nuts"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "baker",
+                  "textEn": "Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "customer",
+                  "textEn": "I will pay now by card, thank you. I will see you tomorrow morning."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Tổng tiền của đơn hàng là bao nhiêu?",
+                  "answerVi": "Sáu bảng",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "six pounds altogether"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách chọn thanh toán bằng cách nào?",
+                  "answerVi": "Bằng thẻ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "pay now by card"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "groundedQuestions": {
+          "activities": [
+            {
+              "id": "a1",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Cửa hàng mở lúc chín giờ, đúng không?",
+                  "answerVi": "Chín giờ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "we open at nine"
+                    }
+                  ],
+                  "factEn": "The shop opens at nine.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "main-idea",
+                  "promptVi": "Khách có thể nhận đơn vào buổi nào?",
+                  "answerVi": "Sáng mai",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "tomorrow morning"
+                    }
+                  ],
+                  "factEn": "The order can be collected tomorrow morning.",
+                  "speechAct": "statement"
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Khách muốn đặt bao nhiêu ổ bánh?",
+                  "answerVi": "Hai ổ",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "two loaves"
+                    }
+                  ],
+                  "factEn": "The customer wants two loaves.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "detail",
+                  "promptVi": "Khách yêu cầu loại bỏ thành phần nào?",
+                  "answerVi": "Các loại hạt",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "no nuts"
+                    }
+                  ],
+                  "factEn": "The loaves must contain no nuts.",
+                  "speechAct": "statement"
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Tổng tiền của đơn hàng là bao nhiêu?",
+                  "answerVi": "Sáu bảng",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "six pounds altogether"
+                    }
+                  ],
+                  "factEn": "The total price is six pounds.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "detail",
+                  "promptVi": "Khách chọn thanh toán bằng cách nào?",
+                  "answerVi": "Bằng thẻ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "pay now by card"
+                    }
+                  ],
+                  "factEn": "The customer will pay by card.",
+                  "speechAct": "statement"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "valid": false
+      },
+      "failureMode": "leak",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "review-questions-proposal",
+      "phase": "REVIEW_QUESTIONS",
+      "input": {
+        "content": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "Could I collect the bread tomorrow morning? I need to leave before ten."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Do you mean that you need to leave the shop before ten?"
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Cửa hàng mở lúc mấy giờ?",
+                  "answerVi": "Chín giờ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "we open at nine"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "main-idea",
+                  "promptVi": "Hai người đã thống nhất khách nhận bánh vào buổi nào?",
+                  "answerVi": "Sáng mai",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "collect the bread tomorrow morning"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "I would like two loaves, please. Please make sure there are no nuts in either loaf."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Of course. I will put aside two plain loaves without nuts for your order."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách muốn đặt bao nhiêu ổ bánh?",
+                  "answerVi": "Hai ổ",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "two loaves"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách yêu cầu loại bỏ thành phần nào?",
+                  "answerVi": "Các loại hạt",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "no nuts"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "baker",
+                  "textEn": "Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "customer",
+                  "textEn": "I will pay now by card, thank you. I will see you tomorrow morning."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Tổng tiền của đơn hàng là bao nhiêu?",
+                  "answerVi": "Sáu bảng",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "six pounds altogether"
+                    }
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "type": "MEANING_RECALL_VI",
+                  "skill": "detail",
+                  "promptVi": "Khách chọn thanh toán bằng cách nào?",
+                  "answerVi": "Bằng thẻ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "pay now by card"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "groundedQuestions": {
+          "activities": [
+            {
+              "id": "a1",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Cửa hàng mở lúc mấy giờ?",
+                  "answerVi": "Chín giờ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "we open at nine"
+                    }
+                  ],
+                  "factEn": "The shop opens at nine.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "main-idea",
+                  "promptVi": "Hai người đã thống nhất khách nhận bánh vào buổi nào?",
+                  "answerVi": "Sáng mai",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "collect the bread tomorrow morning"
+                    }
+                  ],
+                  "factEn": "They agreed on collection tomorrow morning.",
+                  "speechAct": "agreement"
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Khách muốn đặt bao nhiêu ổ bánh?",
+                  "answerVi": "Hai ổ",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "two loaves"
+                    }
+                  ],
+                  "factEn": "The customer wants two loaves.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "detail",
+                  "promptVi": "Khách yêu cầu loại bỏ thành phần nào?",
+                  "answerVi": "Các loại hạt",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "no nuts"
+                    }
+                  ],
+                  "factEn": "The loaves must contain no nuts.",
+                  "speechAct": "statement"
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "questions": [
+                {
+                  "id": "q1",
+                  "skill": "detail",
+                  "promptVi": "Tổng tiền của đơn hàng là bao nhiêu?",
+                  "answerVi": "Sáu bảng",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "six pounds altogether"
+                    }
+                  ],
+                  "factEn": "The total price is six pounds.",
+                  "speechAct": "statement"
+                },
+                {
+                  "id": "q2",
+                  "skill": "detail",
+                  "promptVi": "Khách chọn thanh toán bằng cách nào?",
+                  "answerVi": "Bằng thẻ",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "pay now by card"
+                    }
+                  ],
+                  "factEn": "The customer will pay by card.",
+                  "speechAct": "statement"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "valid": false
+      },
+      "failureMode": "proposal",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "translate-bread",
+      "phase": "TRANSLATE",
+      "input": {
+        "activities": [
+          {
+            "id": "a1",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "customer",
+                "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+              },
+              {
+                "id": "s2",
+                "speakerId": "baker",
+                "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+              }
+            ]
+          },
+          {
+            "id": "a2",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "customer",
+                "textEn": "I would like two loaves, please. Please make sure there are no nuts in either loaf."
+              },
+              {
+                "id": "s2",
+                "speakerId": "baker",
+                "textEn": "Of course. I will put aside two plain loaves without nuts for your order."
+              }
+            ]
+          },
+          {
+            "id": "a3",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "baker",
+                "textEn": "Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"
+              },
+              {
+                "id": "s2",
+                "speakerId": "customer",
+                "textEn": "I will pay now by card, thank you. I will see you tomorrow morning."
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {},
+      "failureMode": "segmentation-meaning",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "translate-unconfirmed-proposal",
+      "phase": "TRANSLATE",
+      "input": {
+        "activities": [
+          {
+            "id": "a1",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "customer",
+                "textEn": "Could we move the meeting to Tuesday afternoon?"
+              },
+              {
+                "id": "s2",
+                "speakerId": "baker",
+                "textEn": "Do you mean this Tuesday? I have not checked my calendar."
+              }
+            ]
+          },
+          {
+            "id": "a2",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "customer",
+                "textEn": "I would like two loaves, please. Please make sure there are no nuts in either loaf."
+              },
+              {
+                "id": "s2",
+                "speakerId": "baker",
+                "textEn": "Of course. I will put aside two plain loaves without nuts for your order."
+              }
+            ]
+          },
+          {
+            "id": "a3",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "baker",
+                "textEn": "Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"
+              },
+              {
+                "id": "s2",
+                "speakerId": "customer",
+                "textEn": "I will pay now by card, thank you. I will see you tomorrow morning."
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {},
+      "failureMode": "proposal-commitment",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "review-clean",
+      "phase": "REVIEW",
+      "input": {
+        "inputVi": "Tôi muốn đặt hai ổ bánh không có hạt hôm nay để nhận sáng mai.",
+        "specification": {
+          "allowed": true,
+          "titleVi": "Đặt bánh để nhận ngày mai",
+          "settingVi": "Một cửa hàng bánh nhỏ.",
+          "learnerRoleVi": "Khách hàng",
+          "goalVi": "Đặt và nhận bánh không có hạt.",
+          "characters": [
+            {
+              "id": "customer",
+              "name": "Alex",
+              "roleVi": "Khách hàng"
+            },
+            {
+              "id": "baker",
+              "name": "Sam",
+              "roleVi": "Người bán bánh"
+            }
+          ],
+          "constraintsVi": [
+            "Tôi muốn đặt hai ổ bánh không có hạt hôm nay để nhận sáng mai."
+          ],
+          "assumptionsVi": [
+            "Giả định: Cửa hàng nhận đặt trước."
+          ],
+          "topicIds": [
+            "food"
+          ]
+        },
+        "profile": {
+          "id": "supported",
+          "minWordsPerActivity": 15,
+          "maxWordsPerActivity": 60,
+          "maxWordsPerSession": 180
+        },
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "I would like two loaves, please. Please make sure there are no nuts in either loaf."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Of course. I will put aside two plain loaves without nuts for your order."
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "baker",
+                  "textEn": "Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "customer",
+                  "textEn": "I will pay now by card, thank you. I will see you tomorrow morning."
+                }
+              ]
+            }
+          ]
+        },
+        "translations": {
+          "segments": [
+            {
+              "activityId": "a1",
+              "segmentId": "s1",
+              "textVi": "Xin chào, tôi có thể đặt bánh hôm nay và nhận ngày mai không? Tôi cần biết giờ mở cửa."
+            },
+            {
+              "activityId": "a1",
+              "segmentId": "s2",
+              "textVi": "Được, chúng tôi mở lúc chín giờ. Bạn có thể nhận đơn sáng mai."
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s1",
+              "textVi": "Tôi muốn hai ổ. Hãy bảo đảm cả hai đều không có hạt."
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s2",
+              "textVi": "Được. Tôi sẽ để riêng hai ổ bánh thường không có hạt cho đơn của bạn."
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s1",
+              "textVi": "Hai ổ bánh thường có tổng giá sáu bảng. Bạn muốn trả bây giờ hay khi nhận bánh?"
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s2",
+              "textVi": "Tôi sẽ trả bằng thẻ bây giờ, cảm ơn. Hẹn gặp sáng mai."
+            }
+          ]
+        }
+      },
+      "expected": {
+        "valid": true
+      },
+      "failureMode": "clean",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "review-wrong-number",
+      "phase": "REVIEW",
+      "input": {
+        "inputVi": "Tôi muốn đặt hai ổ bánh không có hạt hôm nay để nhận sáng mai.",
+        "specification": {
+          "allowed": true,
+          "titleVi": "Đặt bánh để nhận ngày mai",
+          "settingVi": "Một cửa hàng bánh nhỏ.",
+          "learnerRoleVi": "Khách hàng",
+          "goalVi": "Đặt và nhận bánh không có hạt.",
+          "characters": [
+            {
+              "id": "customer",
+              "name": "Alex",
+              "roleVi": "Khách hàng"
+            },
+            {
+              "id": "baker",
+              "name": "Sam",
+              "roleVi": "Người bán bánh"
+            }
+          ],
+          "constraintsVi": [
+            "Tôi muốn đặt hai ổ bánh không có hạt hôm nay để nhận sáng mai."
+          ],
+          "assumptionsVi": [
+            "Giả định: Cửa hàng nhận đặt trước."
+          ],
+          "topicIds": [
+            "food"
+          ]
+        },
+        "profile": {
+          "id": "supported",
+          "minWordsPerActivity": 15,
+          "maxWordsPerActivity": 60,
+          "maxWordsPerSession": 180
+        },
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "I would like two loaves, please. Please make sure there are no nuts in either loaf."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Of course. I will put aside two plain loaves without nuts for your order."
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "baker",
+                  "textEn": "Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "customer",
+                  "textEn": "I will pay now by card, thank you. I will see you tomorrow morning."
+                }
+              ]
+            }
+          ]
+        },
+        "translations": {
+          "segments": [
+            {
+              "activityId": "a1",
+              "segmentId": "s1",
+              "textVi": "Xin chào, tôi có thể đặt bánh hôm nay và nhận ngày mai không? Tôi cần biết giờ mở cửa."
+            },
+            {
+              "activityId": "a1",
+              "segmentId": "s2",
+              "textVi": "Được, chúng tôi mở lúc chín giờ. Bạn có thể nhận đơn sáng mai."
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s1",
+              "textVi": "Tôi muốn hai ổ. Hãy bảo đảm cả hai đều không có hạt."
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s2",
+              "textVi": "Được. Tôi sẽ để riêng hai ổ bánh thường không có hạt cho đơn của bạn."
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s1",
+              "textVi": "Hai ổ bánh có tổng giá sáu mươi bảng. Bạn muốn trả bây giờ hay khi nhận bánh?"
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s2",
+              "textVi": "Tôi sẽ trả bằng thẻ bây giờ, cảm ơn. Hẹn gặp sáng mai."
+            }
+          ]
+        }
+      },
+      "expected": {
+        "valid": false
+      },
+      "failureMode": "wrong-number",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "review-negation",
+      "phase": "REVIEW",
+      "input": {
+        "inputVi": "Tôi muốn đặt hai ổ bánh không có hạt hôm nay để nhận sáng mai.",
+        "specification": {
+          "allowed": true,
+          "titleVi": "Đặt bánh để nhận ngày mai",
+          "settingVi": "Một cửa hàng bánh nhỏ.",
+          "learnerRoleVi": "Khách hàng",
+          "goalVi": "Đặt và nhận bánh không có hạt.",
+          "characters": [
+            {
+              "id": "customer",
+              "name": "Alex",
+              "roleVi": "Khách hàng"
+            },
+            {
+              "id": "baker",
+              "name": "Sam",
+              "roleVi": "Người bán bánh"
+            }
+          ],
+          "constraintsVi": [
+            "Tôi muốn đặt hai ổ bánh không có hạt hôm nay để nhận sáng mai."
+          ],
+          "assumptionsVi": [
+            "Giả định: Cửa hàng nhận đặt trước."
+          ],
+          "topicIds": [
+            "food"
+          ]
+        },
+        "profile": {
+          "id": "supported",
+          "minWordsPerActivity": 15,
+          "maxWordsPerActivity": 60,
+          "maxWordsPerSession": 180
+        },
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "I would like two loaves, please. Please make sure there are no nuts in either loaf."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Of course. I will put aside two plain loaves without nuts for your order."
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "baker",
+                  "textEn": "Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "customer",
+                  "textEn": "I will pay now by card, thank you. I will see you tomorrow morning."
+                }
+              ]
+            }
+          ]
+        },
+        "translations": {
+          "segments": [
+            {
+              "activityId": "a1",
+              "segmentId": "s1",
+              "textVi": "Xin chào, tôi có thể đặt bánh hôm nay và nhận ngày mai không? Tôi cần biết giờ mở cửa."
+            },
+            {
+              "activityId": "a1",
+              "segmentId": "s2",
+              "textVi": "Được, chúng tôi mở lúc chín giờ. Bạn có thể nhận đơn sáng mai."
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s1",
+              "textVi": "Tôi muốn hai ổ. Hãy bảo đảm cả hai đều có hạt."
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s2",
+              "textVi": "Được. Tôi sẽ để riêng hai ổ bánh thường không có hạt cho đơn của bạn."
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s1",
+              "textVi": "Hai ổ bánh thường có tổng giá sáu bảng. Bạn muốn trả bây giờ hay khi nhận bánh?"
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s2",
+              "textVi": "Tôi sẽ trả bằng thẻ bây giờ, cảm ơn. Hẹn gặp sáng mai."
+            }
+          ]
+        }
+      },
+      "expected": {
+        "valid": false
+      },
+      "failureMode": "negation",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "review-source-role",
+      "phase": "REVIEW",
+      "input": {
+        "inputVi": "Tôi muốn đặt hai ổ bánh không có hạt hôm nay để nhận sáng mai.",
+        "specification": {
+          "allowed": true,
+          "titleVi": "Đặt bánh để nhận ngày mai",
+          "settingVi": "Một cửa hàng bánh nhỏ.",
+          "learnerRoleVi": "Người bán bánh",
+          "goalVi": "Đặt và nhận bánh không có hạt.",
+          "characters": [
+            {
+              "id": "customer",
+              "name": "Alex",
+              "roleVi": "Người bán bánh"
+            },
+            {
+              "id": "baker",
+              "name": "Sam",
+              "roleVi": "Người bán bánh"
+            }
+          ],
+          "constraintsVi": [
+            "Tôi muốn đặt hai ổ bánh không có hạt hôm nay để nhận sáng mai."
+          ],
+          "assumptionsVi": [
+            "Giả định: Cửa hàng nhận đặt trước."
+          ],
+          "topicIds": [
+            "food"
+          ]
+        },
+        "profile": {
+          "id": "supported",
+          "minWordsPerActivity": 15,
+          "maxWordsPerActivity": 60,
+          "maxWordsPerSession": 180
+        },
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "I would like two loaves, please. Please make sure there are no nuts in either loaf."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Of course. I will put aside two plain loaves without nuts for your order."
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "baker",
+                  "textEn": "Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "customer",
+                  "textEn": "I will pay now by card, thank you. I will see you tomorrow morning."
+                }
+              ]
+            }
+          ]
+        },
+        "translations": {
+          "segments": [
+            {
+              "activityId": "a1",
+              "segmentId": "s1",
+              "textVi": "Xin chào, tôi có thể đặt bánh hôm nay và nhận ngày mai không? Tôi cần biết giờ mở cửa."
+            },
+            {
+              "activityId": "a1",
+              "segmentId": "s2",
+              "textVi": "Được, chúng tôi mở lúc chín giờ. Bạn có thể nhận đơn sáng mai."
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s1",
+              "textVi": "Tôi muốn hai ổ. Hãy bảo đảm cả hai đều không có hạt."
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s2",
+              "textVi": "Được. Tôi sẽ để riêng hai ổ bánh thường không có hạt cho đơn của bạn."
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s1",
+              "textVi": "Hai ổ bánh thường có tổng giá sáu bảng. Bạn muốn trả bây giờ hay khi nhận bánh?"
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s2",
+              "textVi": "Tôi sẽ trả bằng thẻ bây giờ, cảm ơn. Hẹn gặp sáng mai."
+            }
+          ]
+        }
+      },
+      "expected": {
+        "valid": false
+      },
+      "failureMode": "source-role",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "review-commitment",
+      "phase": "REVIEW",
+      "input": {
+        "inputVi": "Tôi muốn đặt hai ổ bánh không có hạt hôm nay để nhận sáng mai.",
+        "specification": {
+          "allowed": true,
+          "titleVi": "Đặt bánh để nhận ngày mai",
+          "settingVi": "Một cửa hàng bánh nhỏ.",
+          "learnerRoleVi": "Khách hàng",
+          "goalVi": "Đặt và nhận bánh không có hạt.",
+          "characters": [
+            {
+              "id": "customer",
+              "name": "Alex",
+              "roleVi": "Khách hàng"
+            },
+            {
+              "id": "baker",
+              "name": "Sam",
+              "roleVi": "Người bán bánh"
+            }
+          ],
+          "constraintsVi": [
+            "Tôi muốn đặt hai ổ bánh không có hạt hôm nay để nhận sáng mai."
+          ],
+          "assumptionsVi": [
+            "Giả định: Cửa hàng nhận đặt trước."
+          ],
+          "topicIds": [
+            "food"
+          ]
+        },
+        "profile": {
+          "id": "supported",
+          "minWordsPerActivity": 15,
+          "maxWordsPerActivity": 60,
+          "maxWordsPerSession": 180
+        },
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "Could we move the meeting to Tuesday afternoon?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Do you mean this Tuesday? I have not checked my calendar."
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "customer",
+                  "textEn": "I would like two loaves, please. Please make sure there are no nuts in either loaf."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "baker",
+                  "textEn": "Of course. I will put aside two plain loaves without nuts for your order."
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "baker",
+                  "textEn": "Your two plain loaves will cost six pounds altogether. Would you like to pay now or when you collect them?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "customer",
+                  "textEn": "I will pay now by card, thank you. I will see you tomorrow morning."
+                }
+              ]
+            }
+          ]
+        },
+        "translations": {
+          "segments": [
+            {
+              "activityId": "a1",
+              "segmentId": "s1",
+              "textVi": "Chúng ta đã thống nhất dời cuộc họp sang chiều thứ Ba."
+            },
+            {
+              "activityId": "a1",
+              "segmentId": "s2",
+              "textVi": "Bạn muốn nói thứ Ba tuần này phải không? Tôi chưa xem lịch."
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s1",
+              "textVi": "Tôi muốn hai ổ. Hãy bảo đảm cả hai đều không có hạt."
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s2",
+              "textVi": "Được. Tôi sẽ để riêng hai ổ bánh thường không có hạt cho đơn của bạn."
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s1",
+              "textVi": "Hai ổ bánh thường có tổng giá sáu bảng. Bạn muốn trả bây giờ hay khi nhận bánh?"
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s2",
+              "textVi": "Tôi sẽ trả bằng thẻ bây giờ, cảm ơn. Hẹn gặp sáng mai."
+            }
+          ]
+        }
+      },
+      "expected": {
+        "valid": false
+      },
+      "failureMode": "commitment",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "grade-english",
+      "phase": "GRADE",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "customer",
+              "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+            },
+            {
+              "id": "s2",
+              "speakerId": "baker",
+              "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+            }
+          ],
+          "questions": [
+            {
+              "id": "q1",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Khách có thể nhận bánh vào buổi nào?",
+              "answerVi": "Sáng mai",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "tomorrow morning"
+                }
+              ]
+            },
+            {
+              "id": "q2",
+              "type": "MEANING_RECALL_VI",
+              "skill": "main-idea",
+              "promptVi": "Cửa hàng mở lúc mấy giờ?",
+              "answerVi": "Chín giờ",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "we open at nine"
+                }
+              ]
+            }
+          ]
+        },
+        "answers": [
+          {
+            "questionId": "q1",
+            "textVi": "Tomorrow morning"
+          },
+          {
+            "questionId": "q2",
+            "textVi": "Nine"
+          }
+        ]
+      },
+      "expected": {
+        "statuses": {
+          "q1": "CAPTURED",
+          "q2": "CAPTURED"
+        }
+      },
+      "failureMode": "bilingual-grading",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "grade-vietnamese",
+      "phase": "GRADE",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "customer",
+              "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+            },
+            {
+              "id": "s2",
+              "speakerId": "baker",
+              "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+            }
+          ],
+          "questions": [
+            {
+              "id": "q1",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Khách có thể nhận bánh vào buổi nào?",
+              "answerVi": "Sáng mai",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "tomorrow morning"
+                }
+              ]
+            },
+            {
+              "id": "q2",
+              "type": "MEANING_RECALL_VI",
+              "skill": "main-idea",
+              "promptVi": "Cửa hàng mở lúc mấy giờ?",
+              "answerVi": "Chín giờ",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "we open at nine"
+                }
+              ]
+            }
+          ]
+        },
+        "answers": [
+          {
+            "questionId": "q1",
+            "textVi": "Sáng mai"
+          },
+          {
+            "questionId": "q2",
+            "textVi": "Chín giờ"
+          }
+        ]
+      },
+      "expected": {
+        "statuses": {
+          "q1": "CAPTURED",
+          "q2": "CAPTURED"
+        }
+      },
+      "failureMode": "bilingual-grading",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "grade-mixed",
+      "phase": "GRADE",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "customer",
+              "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+            },
+            {
+              "id": "s2",
+              "speakerId": "baker",
+              "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+            }
+          ],
+          "questions": [
+            {
+              "id": "q1",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Khách có thể nhận bánh vào buổi nào?",
+              "answerVi": "Sáng mai",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "tomorrow morning"
+                }
+              ]
+            },
+            {
+              "id": "q2",
+              "type": "MEANING_RECALL_VI",
+              "skill": "main-idea",
+              "promptVi": "Cửa hàng mở lúc mấy giờ?",
+              "answerVi": "Chín giờ",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "we open at nine"
+                }
+              ]
+            }
+          ]
+        },
+        "answers": [
+          {
+            "questionId": "q1",
+            "textVi": "tomorrow vào buổi sáng"
+          },
+          {
+            "questionId": "q2",
+            "textVi": "nine giờ"
+          }
+        ]
+      },
+      "expected": {
+        "statuses": {
+          "q1": "CAPTURED",
+          "q2": "CAPTURED"
+        }
+      },
+      "failureMode": "bilingual-grading",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "grade-paraphrase",
+      "phase": "GRADE",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "customer",
+              "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+            },
+            {
+              "id": "s2",
+              "speakerId": "baker",
+              "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+            }
+          ],
+          "questions": [
+            {
+              "id": "q1",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Khách có thể nhận bánh vào buổi nào?",
+              "answerVi": "Sáng mai",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "tomorrow morning"
+                }
+              ]
+            },
+            {
+              "id": "q2",
+              "type": "MEANING_RECALL_VI",
+              "skill": "main-idea",
+              "promptVi": "Cửa hàng mở lúc mấy giờ?",
+              "answerVi": "Chín giờ",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "we open at nine"
+                }
+              ]
+            }
+          ]
+        },
+        "answers": [
+          {
+            "questionId": "q1",
+            "textVi": "The next morning"
+          },
+          {
+            "questionId": "q2",
+            "textVi": "They open at 9."
+          }
+        ]
+      },
+      "expected": {
+        "statuses": {
+          "q1": "CAPTURED",
+          "q2": "CAPTURED"
+        }
+      },
+      "failureMode": "bilingual-grading",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "grade-minor-typo",
+      "phase": "GRADE",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "customer",
+              "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+            },
+            {
+              "id": "s2",
+              "speakerId": "baker",
+              "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+            }
+          ],
+          "questions": [
+            {
+              "id": "q1",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Khách có thể nhận bánh vào buổi nào?",
+              "answerVi": "Sáng mai",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "tomorrow morning"
+                }
+              ]
+            },
+            {
+              "id": "q2",
+              "type": "MEANING_RECALL_VI",
+              "skill": "main-idea",
+              "promptVi": "Cửa hàng mở lúc mấy giờ?",
+              "answerVi": "Chín giờ",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "we open at nine"
+                }
+              ]
+            }
+          ]
+        },
+        "answers": [
+          {
+            "questionId": "q1",
+            "textVi": "Tommorow morning"
+          },
+          {
+            "questionId": "q2",
+            "textVi": "Chín giơ"
+          }
+        ]
+      },
+      "expected": {
+        "statuses": {
+          "q1": "CAPTURED",
+          "q2": "CAPTURED"
+        }
+      },
+      "failureMode": "bilingual-grading",
+      "split": "holdout",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "grade-partial",
+      "phase": "GRADE",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "customer",
+              "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+            },
+            {
+              "id": "s2",
+              "speakerId": "baker",
+              "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+            }
+          ],
+          "questions": [
+            {
+              "id": "q1",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Khách có thể nhận bánh vào buổi nào?",
+              "answerVi": "Sáng mai",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "tomorrow morning"
+                }
+              ]
+            },
+            {
+              "id": "q2",
+              "type": "MEANING_RECALL_VI",
+              "skill": "main-idea",
+              "promptVi": "Cửa hàng mở lúc mấy giờ?",
+              "answerVi": "Chín giờ",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "we open at nine"
+                }
+              ]
+            }
+          ]
+        },
+        "answers": [
+          {
+            "questionId": "q1",
+            "textVi": "Tomorrow"
+          },
+          {
+            "questionId": "q2",
+            "textVi": "It opens."
+          }
+        ]
+      },
+      "expected": {
+        "statuses": {
+          "q1": "PARTIAL",
+          "q2": "MISSED"
+        }
+      },
+      "failureMode": "bilingual-grading",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "grade-incorrect",
+      "phase": "GRADE",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "customer",
+              "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+            },
+            {
+              "id": "s2",
+              "speakerId": "baker",
+              "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+            }
+          ],
+          "questions": [
+            {
+              "id": "q1",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Khách có thể nhận bánh vào buổi nào?",
+              "answerVi": "Sáng mai",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "tomorrow morning"
+                }
+              ]
+            },
+            {
+              "id": "q2",
+              "type": "MEANING_RECALL_VI",
+              "skill": "main-idea",
+              "promptVi": "Cửa hàng mở lúc mấy giờ?",
+              "answerVi": "Chín giờ",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "we open at nine"
+                }
+              ]
+            }
+          ]
+        },
+        "answers": [
+          {
+            "questionId": "q1",
+            "textVi": "Tonight"
+          },
+          {
+            "questionId": "q2",
+            "textVi": "Not nine; it opens at ten."
+          }
+        ]
+      },
+      "expected": {
+        "statuses": {
+          "q1": "INCORRECT",
+          "q2": "INCORRECT"
+        }
+      },
+      "failureMode": "bilingual-grading",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "grade-blank",
+      "phase": "GRADE",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "customer",
+              "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+            },
+            {
+              "id": "s2",
+              "speakerId": "baker",
+              "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+            }
+          ],
+          "questions": [
+            {
+              "id": "q1",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Khách có thể nhận bánh vào buổi nào?",
+              "answerVi": "Sáng mai",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "tomorrow morning"
+                }
+              ]
+            },
+            {
+              "id": "q2",
+              "type": "MEANING_RECALL_VI",
+              "skill": "main-idea",
+              "promptVi": "Cửa hàng mở lúc mấy giờ?",
+              "answerVi": "Chín giờ",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "we open at nine"
+                }
+              ]
+            }
+          ]
+        },
+        "answers": [
+          {
+            "questionId": "q1",
+            "textVi": ""
+          },
+          {
+            "questionId": "q2",
+            "textVi": "   "
+          }
+        ]
+      },
+      "expected": {
+        "statuses": {
+          "q1": "MISSED",
+          "q2": "MISSED"
+        }
+      },
+      "failureMode": "bilingual-grading",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "grade-acknowledgement",
+      "phase": "GRADE",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "customer",
+              "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+            },
+            {
+              "id": "s2",
+              "speakerId": "baker",
+              "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+            }
+          ],
+          "questions": [
+            {
+              "id": "q1",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Khách có thể nhận bánh vào buổi nào?",
+              "answerVi": "Sáng mai",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "tomorrow morning"
+                }
+              ]
+            },
+            {
+              "id": "q2",
+              "type": "MEANING_RECALL_VI",
+              "skill": "main-idea",
+              "promptVi": "Cửa hàng mở lúc mấy giờ?",
+              "answerVi": "Chín giờ",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "we open at nine"
+                }
+              ]
+            }
+          ]
+        },
+        "answers": [
+          {
+            "questionId": "q1",
+            "textVi": "Yes, thank you."
+          },
+          {
+            "questionId": "q2",
+            "textVi": "I understand."
+          }
+        ]
+      },
+      "expected": {
+        "statuses": {
+          "q1": "MISSED",
+          "q2": "MISSED"
+        }
+      },
+      "failureMode": "bilingual-grading",
+      "split": "development",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    },
+    {
+      "id": "grade-uncertain",
+      "phase": "GRADE",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "customer",
+              "textEn": "Hello, can I order some bread today and collect it tomorrow? I need to know when you open."
+            },
+            {
+              "id": "s2",
+              "speakerId": "baker",
+              "textEn": "Yes, we open at nine. You can collect your order tomorrow morning."
+            }
+          ],
+          "questions": [
+            {
+              "id": "q1",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Khách có thể nhận bánh vào buổi nào?",
+              "answerVi": "Sáng mai",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "tomorrow morning"
+                }
+              ]
+            },
+            {
+              "id": "q2",
+              "type": "MEANING_RECALL_VI",
+              "skill": "main-idea",
+              "promptVi": "Cửa hàng mở lúc mấy giờ?",
+              "answerVi": "Chín giờ",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "we open at nine"
+                }
+              ]
+            }
+          ]
+        },
+        "answers": [
+          {
+            "questionId": "q1",
+            "textVi": "Tomorrow morning or perhaps next week; I cannot choose."
+          },
+          {
+            "questionId": "q2",
+            "textVi": "Nine or ten; I am not sure which."
+          }
+        ]
+      },
+      "expected": {
+        "statuses": {
+          "q1": "UNCERTAIN",
+          "q2": "UNCERTAIN"
+        }
+      },
+      "failureMode": "bilingual-grading",
+      "split": "holdout",
+      "labelSource": "agent-authored-provisional-not-human-gold"
+    }
+  ]
+}
