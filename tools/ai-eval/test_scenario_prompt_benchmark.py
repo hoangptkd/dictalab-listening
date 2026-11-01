@@ -1,5 +1,6 @@
 """Protect V4 and prevent misleading benchmark comparisons; no network needed."""
 import copy
+import asyncio
 import json
 from pathlib import Path
 
@@ -78,3 +79,32 @@ def test_offline_report_refuses_tampered_evidence(tmp_path):
     folder=tmp_path/'v4';_capture(folder)
     (folder/'extract-case/STAGE/outcome.json').write_text('{}',encoding='utf-8')
     with pytest.raises(ValueError,match='integrity mismatch'): benchmark.stage_metrics(folder)
+
+
+def test_interleaved_round_preserves_unknowns_and_never_retries(monkeypatch,tmp_path):
+    dataset=benchmark.quality.read(benchmark.DATASET)
+    dataset['cases']=dataset['cases'][:3]
+    path=tmp_path/'cases.json';benchmark.quality.write(path,dataset)
+    observed=[]
+    async def fake_phase(folder,payload,settings,budget):
+        folder.mkdir()
+        name='v4' if benchmark.workflow.PROMPT_VERSION.endswith('_V4') else 'v5'
+        observed.append((name,folder.parent.name,payload.phase))
+        outcome={'status':'UNKNOWN','error':{'type':'TimeoutError'}}
+        benchmark.quality.write(folder/'outcome.json',outcome)
+        return outcome
+    async def offline_replay(folder):
+        benchmark.quality.verify(folder)
+        return {'networkCalls':0,'phases':[]}
+    monkeypatch.setattr(benchmark.quality,'phase',fake_phase)
+    monkeypatch.setattr(benchmark.quality,'replay',offline_replay)
+    settings=benchmark.quality.Settings(scenario_enabled=True,primary_provider='gemini',gemini_api_key='unit-test-key')
+    asyncio.run(benchmark.paired_pipeline(tmp_path/'paired',settings,path))
+    assert [row[0] for row in observed]==['v4','v5','v5','v4','v4','v5']
+    assert len(observed)==6 and all(row[2]=='EXTRACT' for row in observed)
+    assert benchmark.workflow.PROMPT_VERSION=='SCENARIO_LISTENING_V4'
+    for name in ('v4','v5'):
+        benchmark.quality.verify(tmp_path/'paired'/name)
+    with pytest.raises(FileExistsError):
+        asyncio.run(benchmark.paired_pipeline(tmp_path/'paired',settings,path))
+    assert len(observed)==6

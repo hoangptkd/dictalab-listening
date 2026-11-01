@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from collections import Counter
 from contextlib import contextmanager
 import json
+import random
+import subprocess
 from pathlib import Path
 from typing import Literal
 import time
@@ -126,6 +129,54 @@ async def pipeline(output, settings, name, dataset=DATASET):
         quality.write(output/'derived/replay.json',await quality.replay(output))
 
 
+async def paired_pipeline(output, settings, dataset_path):
+    """Fresh, declared measurement round, interleaving arms to reduce time/network bias.
+
+    Never resumes or overwrites an unknown run. Every phase still has zero retries.
+    """
+    dataset=quality.cases(dataset_path)
+    program=next(p for p in quality.read(quality.PROGRAM) if p['code']=='general-communication')
+    output.mkdir(parents=True,exist_ok=False)
+    budgets={}
+    safe={'provider':settings.selected_provider,'model':settings.active_cloud_model,
+          'numCtx':settings.num_ctx,'modelDigest':workflow.metadata(settings)['modelDigest'],
+          'pool':[{'id':s.id,'platform':s.platform,'model':s.model,'endpointHash':quality.digest(s.url.encode())}
+                  for s in settings.sources_for(settings.selected_provider)]}
+    for name in ('v4','v5'):
+        arm=output/name;arm.mkdir()
+        with variant(name):
+            quality.write(arm/'manifest.json',{'createdAt':quality.now(),'format':'scenario-capture.v1',
+                'variant':name,'datasetHash':quality.digest(quality.encoded(dataset)),'promptHash':workflow.prompt_hash(),
+                'workflowSourceHash':quality.digest((ROOT/'services/ai-generation/app/scenario_workflow.py').read_bytes()),
+                'harnessSourceHash':quality.digest(Path(__file__).read_bytes()),'programHash':program['definitionHash'],
+                'settings':safe,'providerRetries':0,'apiVersion':'v1beta/openai','temperature':0,
+                'gitCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
+                'notice':'Declared interleaved round after archived transport failures. A new replicate, not a retry of an unknown job.'})
+            quality.write(arm/'cases.json',dataset);quality.write(arm/'instructions.json',workflow.INSTRUCTIONS)
+        budgets[name]={'calls':0,'maxCalls':200,'deadline':time.monotonic()+3600,
+            'traceMetadata':{'evaluationRun':output.name,'variant':name,'datasetHash':quality.digest(quality.encoded(dataset)),
+                             'responseOrigin':'live-gemini-interleaved-round'}}
+    for index,case in enumerate(dataset['cases']):
+        # Both orderings are used; each case gets one attempt per arm in this round.
+        for name in (('v4','v5') if index%2==0 else ('v5','v4')):
+            with variant(name):
+                folder=output/name/case['id'];folder.mkdir()
+                profile=next(p for p in program['difficultyProfiles'] if p['id']==case['profileId'])
+                profile={k:profile[k] for k in ('id','minWordsPerActivity','maxWordsPerActivity','maxWordsPerSession')}
+                payload=workflow.ScenarioInput(phase='EXTRACT',contractVersion='scenario-job.v1',promptHash=workflow.prompt_hash(),
+                    programHash=program['definitionHash'],profile=profile,inputVi=case['inputVi'])
+                extracted=await quality.phase(folder/'EXTRACT',payload,settings,budgets[name])
+                print(name,case['id'],'EXTRACT',extracted['status'],flush=True)
+                if extracted['status']=='SUCCEEDED' and extracted['result']['task']['allowed']:
+                    payload=payload.model_copy(update={'phase':'GENERATE','specification':workflow.Specification.model_validate(extracted['result']['task'])})
+                    generated=await quality.phase(folder/'GENERATE',payload,settings,budgets[name])
+                    print(name,case['id'],'GENERATE',generated['status'],flush=True)
+    for name in ('v4','v5'):
+        quality.write(output/name/'finished.json',{'at':quality.now(),'modelCalls':budgets[name]['calls']})
+        seal(output/name)
+        with variant(name): quality.write(output/name/'derived/replay.json',await quality.replay(output/name))
+
+
 def stage_metrics(folder):
     quality.verify(folder)
     groups={}
@@ -167,6 +218,59 @@ def compare(v4, v5):
                 raise ValueError('different stage inputs: '+row['caseId'])
     return {'v4':left,'v5':right,'humanLabelAgreement':None,
             'notice':'Agreement with provisional agent labels is not real-world accuracy. Schema success is not content quality.'}
+
+
+def pipeline_metrics(folder):
+    quality.verify(folder)
+    dataset=quality.read(folder/'cases.json')['cases']
+    rows=[]
+    stage_counts={name:Counter(attempted=0,parsed=0,schemaValid=0,gatePassed=0) for name in STAGES}
+    usage=Counter();statuses=Counter();models=set()
+    for case in dataset:
+        extracted=quality.read(folder/case['id']/'EXTRACT/outcome.json')
+        path=folder/case['id']/'GENERATE/outcome.json'
+        generated=quality.read(path) if path.exists() else None
+        ready=extracted['status']=='SUCCEEDED' and extracted['result']['task']['allowed']
+        passed=bool(generated and generated['status']=='SUCCEEDED')
+        rows.append({'caseId':case['id'],'split':case['split'],'group':case['group'],'ready':ready,
+            'extractStatus':extracted['status'],'pipelinePassed':passed,'generateStatus':generated['status'] if generated else None,
+            'failure':(generated or extracted).get('error') if not passed else None})
+        for phase in ('EXTRACT','GENERATE'):
+            for request in sorted((folder/case['id']/phase).glob('*-request.json')):
+                item=quality.read(request);name=item['purpose'].removeprefix('scenario_').upper()
+                counts=stage_counts[name];counts['attempted']+=1
+                response=request.with_name(request.name.replace('-request','-response'))
+                if response.exists():
+                    counts['parsed']+=1;raw=quality.read(response)['raw']
+                    try: STAGES[name].model_validate(raw);counts['schemaValid']+=1
+                    except ValueError: pass
+                    try: validate_stage(name,raw,json.loads(item['messages'][1]['content']));counts['gatePassed']+=1
+                    except ValueError: pass
+                wire=request.with_name(request.name.replace('-request','-wire'))
+                for response in quality.read(wire):
+                    statuses[str(response['httpStatus'])]+=1
+                    if response.get('model'): models.add(response['model'])
+                    for key,value in (response.get('usage') or {}).items():
+                        if isinstance(value,int): usage[key]+=value
+    return {'manifest':quality.read(folder/'manifest.json'),'cases':rows,'stages':stage_counts,
+            'usage':dict(usage),'httpStatuses':dict(statuses),'reportedModels':sorted(models),
+            'passed':sum(r['pipelinePassed'] for r in rows),'count':len(rows),
+            'notice':'Gate completion is operational, not independent semantic quality.'}
+
+
+def pipeline_comparison(v4,v5):
+    left,right=pipeline_metrics(v4),pipeline_metrics(v5)
+    for key in ('datasetHash','workflowSourceHash','programHash'):
+        if left['manifest'][key]!=right['manifest'][key]: raise ValueError('different pipeline '+key)
+    if left['manifest']['settings']!=right['manifest']['settings']: raise ValueError('different provider configuration')
+    a={r['caseId']:r for r in left['cases']};b={r['caseId']:r for r in right['cases']}
+    if set(a)!=set(b): raise ValueError('different pipeline cases')
+    deltas=[int(b[k]['pipelinePassed'])-int(a[k]['pipelinePassed']) for k in sorted(a)]
+    rng=random.Random(17)
+    boot=sorted(sum(rng.choice(deltas) for _ in deltas)/len(deltas) for _ in range(10000))
+    return {'v4':left,'v5':right,'pairedPassRateDifference':sum(deltas)/len(deltas),
+            'pairedBootstrap95':[boot[249],boot[9749]],
+            'confidenceNotice':'Case-bootstrap conditional on one full sample per variant; does not estimate full sampling variance or human quality.'}
 
 
 class Criterion(StrictModel):
@@ -244,7 +348,7 @@ async def judge_stages(output, settings, v4, v5):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode',choices=['stages','pipeline','compare','judge'])
+    parser.add_argument('mode',choices=['stages','pipeline','paired','compare','summarize','judge'])
     parser.add_argument('--variant',choices=['v4','v5'],default='v4')
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--dataset',type=Path,default=DATASET)
@@ -253,11 +357,13 @@ def main():
     parser.add_argument('--v4',type=Path);parser.add_argument('--v5',type=Path)
     args=parser.parse_args()
     if args.mode=='compare': quality.write(args.output,compare(args.v4,args.v5));return
+    if args.mode=='summarize': quality.write(args.output,pipeline_comparison(args.v4,args.v5));return
     if not args.output.resolve().is_relative_to(ROOT/'data'): parser.error('capture must be under ignored data/')
     settings=quality.Settings()
     if settings.selected_provider!='gemini': parser.error('benchmark requires the configured real Gemini provider')
     try:
-        if args.mode=='judge': asyncio.run(judge_stages(args.output,settings,args.v4,args.v5))
+        if args.mode=='paired': asyncio.run(paired_pipeline(args.output,settings,args.dataset))
+        elif args.mode=='judge': asyncio.run(judge_stages(args.output,settings,args.v4,args.v5))
         elif args.mode=='stages': asyncio.run(stages(args.output,settings,args.variant,phase=args.phase,split=args.split))
         else: asyncio.run(pipeline(args.output,settings,args.variant,args.dataset))
     finally: flush()
