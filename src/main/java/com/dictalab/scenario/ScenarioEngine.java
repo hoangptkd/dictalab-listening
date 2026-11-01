@@ -4,6 +4,8 @@ import com.dictalab.service.AiPlatformClient;
 import com.dictalab.service.MediaStorageService;
 import com.dictalab.service.S3MediaLifecycle;
 import org.springframework.stereotype.Service;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -23,12 +25,14 @@ public class ScenarioEngine {
     private final AiPlatformClient ai;
     private final MediaStorageService media;
     private final S3MediaLifecycle lifecycle;
+    private final boolean local;
 
     public ScenarioEngine(ScenarioData data, ScenarioOperations operations, ScenarioRelease release,
                           AiPlatformClient ai, MediaStorageService media,
-                          S3MediaLifecycle lifecycle) {
+                          S3MediaLifecycle lifecycle, Environment environment) {
         this.data=data; this.operations=operations; this.release=release;
         this.ai=ai; this.media=media; this.lifecycle=lifecycle;
+        this.local=environment.acceptsProfiles(Profiles.of("local"));
     }
 
     public record DraftRequest(String inputVi, String programCode, int programVersion, String profileId) {}
@@ -101,7 +105,7 @@ public class ScenarioEngine {
                     SELECT (SELECT COUNT(*) FROM ai_conversation_sessions WHERE user_id=? AND created_at>?)
                          + (SELECT COUNT(*) FROM scenario_sessions WHERE user_id=? AND created_at>?)
                     """,Integer.class,user,Timestamp.from(Instant.now().minusSeconds(86400)),user,Timestamp.from(Instant.now().minusSeconds(86400)));
-            if (count>=20) throw new ScenarioFailure(429,"USER_QUOTA_EXCEEDED","Đã đạt giới hạn 20 bài trong 24 giờ.");
+            if (!local && count>=20) throw new ScenarioFailure(429,"USER_QUOTA_EXCEEDED","Đã đạt giới hạn 20 bài trong 24 giờ.");
             String session=id();
             data.db.update("""
                     INSERT INTO scenario_sessions(id,user_id,draft_id,title_vi,status,parent_session_id,family_id)
