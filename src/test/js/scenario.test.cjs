@@ -82,6 +82,25 @@ test('unknown paid outcome does not submit another job or invent a completed ses
     assert.equal(h.calls.length, 1); assert.equal(h.calls[0].options.method, undefined);
 });
 
+test('draft confirmation separates provided facts from labeled inferences and assumptions', async () => {
+    const storage = new Map([['dictalab:scenario:10:operation', JSON.stringify({operationId: 'op', action: 'EXTRACT'})]]);
+    const h = harness(async url => url.includes('/operations/')
+        ? {status: 'SUCCEEDED', draftId: 'draft-1'}
+        : {status: 'READY', draftId: 'draft-1', version: 1, specification: {
+            titleVi: 'Hàng xóm', settingVi: 'Hành lang', learnerRoleVi: 'Người muốn làm quen', goalVi: 'Chào hỏi',
+            constraintsVi: ['Hàng xóm mới <script>unsafe</script>'],
+            assumptionsVi: ['Suy luận: Chưa quen nhau', 'Giả định: Gặp ở hành lang'],
+            characters: [{name: 'An', roleVi: 'Người muốn làm quen'}, {name: 'Bình', roleVi: 'Hàng xóm mới'}]
+        }}, storage);
+    await h.module.show();
+    assert.match(h.root.innerHTML, /Dữ kiện bạn cung cấp/);
+    assert.match(h.root.innerHTML, /Suy luận và giả định cần xác nhận/);
+    assert.match(h.root.innerHTML, /Suy luận: Chưa quen nhau/);
+    assert.match(h.root.innerHTML, /&lt;script&gt;unsafe&lt;\/script&gt;/);
+    assert.doesNotMatch(h.root.innerHTML, /<script>/);
+    assert.equal(h.calls.filter(call => call.options.method === 'POST').length, 0);
+});
+
 test('unified entry sends edited Vietnamese brief to v2 and keeps legacy history accessible', async () => {
     const h = harness(async (url, options = {}) => {
         if (options.method === 'POST') return {operationId: 'new-op', status: 'PENDING', stage: 'EXTRACT'};

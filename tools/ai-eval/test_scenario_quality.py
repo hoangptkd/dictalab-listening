@@ -22,18 +22,24 @@ def output():
 
 def responses():
     activities = EXAMPLE["content"]["activities"]
-    return copy.deepcopy([EXAMPLE["specification"],
+    extracted = {**{k: v for k, v in EXAMPLE["specification"].items() if k not in {"constraintsVi", "learnerRoleVi"}}, "learnerCharacterId": "customer",
+        "providedFacts": [{"quoteVi": "nhận ngày mai"}], "inferredFacts": []}
+    return copy.deepcopy([extracted,
         {"activities": [{"id": a["id"], "segments": a["segments"]} for a in activities]},
-        {"activities": [{"id": a["id"], "facts": [{"id": q["id"],
-            "factEn": " / ".join(e["quoteEn"] for e in q["evidence"]), "evidence": q["evidence"]}
+        {"activities": [{"id": a["id"], "questions": [{**{k: q[k] for k in ("id", "skill", "promptVi", "answerVi", "evidence")},
+            "factEn": " / ".join(e["quoteEn"] for e in q["evidence"]), "speechAct": "statement"}
             for q in a["questions"]]} for a in activities]},
-        {"activities": [{"id": a["id"], "questions": [{k: q[k] for k in ("id", "skill", "promptVi", "answerVi")}
-            for q in a["questions"]]} for a in activities]},
-        {"segments": EXAMPLE["content"]["translations"]},
         {"questionChecks": [{"activityId": a["id"], "questionId": q["id"], "reasonVi": "Supported distinct meaning",
-            "answerSupported": True, "distinctMeaning": True, "factSupported": True, "questionMatchesFact": True}
-            for a in activities for q in a["questions"]], "scenarioPreserved": True, "coherentProgression": True,
-            "goalResolved": True, "valid": True, "issues": []}])
+            "requestedMeaningEn": q["promptVi"], "answerUnitsVi": [q["answerVi"]],
+            "answerSupported": True, "distinctMeaning": True, "factSupported": True, "questionMatchesFact": True,
+            "speechActSupported": True, "atomicMeaning": True, "noAnswerLeak": True, "vietnameseNatural": True}
+            for a in activities for q in a["questions"]], "valid": True, "issues": []},
+        {"segments": EXAMPLE["content"]["translations"]},
+        {"translationChecks": [{"activityId": a["id"], "segmentId": s["id"], "reasonVi": "Meaning matches",
+             "meaningPreserved": True, "terminologyCorrect": True, "vietnameseOnly": True, "vietnameseNatural": True}
+             for a in activities for s in a["segments"]],
+         "rubricChecks": [{"category": name, "passed": True, "reasonVi": "Checked content"}
+             for name in ("SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS")], "valid": True, "issues": []}])
 
 
 def run_capture(monkeypatch, output, replies=None, max_calls=48):
@@ -89,12 +95,12 @@ def test_rejected_generated_content_is_kept_before_validation(monkeypatch, outpu
 
 def test_failed_fact_extraction_preserves_dialogue_and_fact_reply_for_offline_replay(monkeypatch, output):
     replies = responses()
-    replies[2]["activities"][0]["facts"][0]["evidence"][0]["quoteEn"] = "invented evidence"
+    replies[2]["activities"][0]["questions"][0]["evidence"][0]["quoteEn"] = "invented evidence"
     seen, _ = run_capture(monkeypatch, output, replies)
-    assert seen == ["scenario_extract", "scenario_generate", "scenario_facts"]
+    assert seen == ["scenario_extract", "scenario_generate", "scenario_questions"]
     generated = output / "food-allergy/GENERATE"
     assert quality.read(generated / "01-scenario_generate-response.json")["raw"] == replies[1]
-    assert quality.read(generated / "02-scenario_facts-response.json")["raw"] == replies[2]
+    assert quality.read(generated / "02-scenario_questions-response.json")["raw"] == replies[2]
     assert quality.read(generated / "outcome.json")["error"]["validationReason"] == "unanchored fact evidence"
     replay = asyncio.run(quality.replay(output))
     assert replay["networkCalls"] == 0 and all(row["sameOutcome"] for row in replay["phases"])
@@ -155,7 +161,7 @@ def test_wire_retains_malformed_reply_without_headers_or_error_body(monkeypatch,
 
 
 def test_refusal_never_runs_generation(monkeypatch, output):
-    spec = {**EXAMPLE["specification"], "allowed": False}
+    spec = {**responses()[0], "allowed": False}
     seen, _ = run_capture(monkeypatch, output, [spec])
     assert seen == ["scenario_extract"]
     assert "GENERATE" not in quality.report(output)["cases"][0]["phases"]

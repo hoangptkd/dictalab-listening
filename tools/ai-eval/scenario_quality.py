@@ -80,7 +80,7 @@ def cases(path):
 def failure(error):
     # Do not persist exception strings from HTTP/database clients: they can contain credentials.
     record = {"type": type(error).__name__}
-    if re.fullmatch(r"[a-z_]+:scenario_(extract|generate|facts|questions|translate|review):[a-z_]+(?::[0-9]+)?", str(error)):
+    if re.fullmatch(r"[a-z_]+:scenario_(extract|generate|facts|questions|review_questions|translate|review):[a-z_]+(?::[0-9]+)?", str(error)):
         record["providerCode"] = str(error)
     if isinstance(error, workflow.QualityRejected):
         record["reason"] = str(error)

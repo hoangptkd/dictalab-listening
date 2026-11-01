@@ -71,12 +71,12 @@ class ScenarioEngineIntegrationTest {
         String phase=input.path("phase").asText(); boolean tts=input.path("kind").asText().equals("tts");
         var result=object().put("schemaVersion","1").put("generationId",id).put("requestId",id)
                 .put("provider",tts ? "cartesia" : "ollama").put("model","fixture-model").put("modelDigest","fixture-digest")
-                .put("promptVersion",tts ? "TTS_WAV_V1" : "SCENARIO_LISTENING_V3").put("promptHash",release.promptHash()).put("programHash",input.path("programHash").asText());
+                .put("promptVersion",tts ? "TTS_WAV_V1" : "SCENARIO_LISTENING_V4").put("promptHash",release.promptHash()).put("programHash",input.path("programHash").asText());
         if (tts) result.set("task",object().put("contentType","audio/wav").put("size",wave().length).put("audioBase64",Base64.getEncoder().encodeToString(wave())));
         else {
             result.set("task",fixture.path(switch(phase) { case "EXTRACT" -> "specification"; case "GENERATE" -> "content"; default -> "grade"; }).deepCopy());
             var calls=result.putArray("calls");
-            for (String purpose : phase.equals("GENERATE") ? List.of("GENERATE","FACTS","QUESTIONS","TRANSLATE","REVIEW") : List.of(phase))
+        for (String purpose : phase.equals("GENERATE") ? List.of("GENERATE","QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW") : List.of(phase))
                 calls.addObject().put("purpose",purpose).put("provider","ollama").put("model","fixture-model");
         }
         var state=object().put("jobId",id).put("schemaVersion","1").put("status","DONE"); state.set("result",result); return state;
@@ -249,15 +249,16 @@ class ScenarioEngineIntegrationTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings={"skip_facts","wrong_order","old_version"})
+    @org.junit.jupiter.params.provider.ValueSource(strings={"skip_questions","wrong_order","old_version","old_v3_version"})
     void currentWorkflowRejectsSkippedStagesAndVersionDowngrade(String fault) {
         var extract=dispatch(engine.createDraft(user,id(),input())); var draft=engine.draft(user,extract.path("draftId").asText());
         doAnswer(call -> {
             var response=done(call.getArgument(1),call.getArgument(3));
             var result=(ObjectNode)response.path("result");
             var calls=(tools.jackson.databind.node.ArrayNode)result.path("calls");
-            if (fault.equals("skip_facts")) calls.remove(1);
-            else if (fault.equals("wrong_order")) ((ObjectNode)calls.get(1)).put("purpose","QUESTIONS");
+            if (fault.equals("skip_questions")) calls.remove(1);
+            else if (fault.equals("wrong_order")) ((ObjectNode)calls.get(1)).put("purpose","TRANSLATE");
+            else if (fault.equals("old_v3_version")) result.put("promptVersion","SCENARIO_LISTENING_V3");
             else result.put("promptVersion","SCENARIO_LISTENING_V1");
             return response;
         }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
@@ -270,7 +271,8 @@ class ScenarioEngineIntegrationTest {
     @org.junit.jupiter.params.provider.ValueSource(strings={
             "f3a1a93382df50b9e798d9ae9d11e502d3e8eb0c347751195c6d00b7ba88b8a1",
             "0d40fae31e57eef602c6f1e8402ea6116f8beeee56ac011c7c3d018f7f0152c2",
-            "3391407dddc9762afe3774cb30ee60e4a9f0936e70597e8a057b8bdfe03395fe"})
+            "3391407dddc9762afe3774cb30ee60e4a9f0936e70597e8a057b8bdfe03395fe",
+            "c8e817015d97850288b8bbe377934602cc1f4df1a4b7ce18a2d5b5de8b28c2b5"})
     void alreadySubmittedJobCanSettleUnderItsOriginalPin(String oldPin) {
         var extract=dispatch(engine.createDraft(user,id(),input())); var draft=engine.draft(user,extract.path("draftId").asText());
         var op=engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong()));
@@ -279,7 +281,8 @@ class ScenarioEngineIntegrationTest {
         original.put("promptHash",oldPin);
         db.update("UPDATE scenario_operations SET payload_json=?,submitted=TRUE WHERE id=?",json(original),oid);
         var response=done(oid,original); var result=(ObjectNode)response.path("result");
-        boolean previousV3=oldPin.equals("3391407dddc9762afe3774cb30ee60e4a9f0936e70597e8a057b8bdfe03395fe");
+        boolean previousV3=Set.of("3391407dddc9762afe3774cb30ee60e4a9f0936e70597e8a057b8bdfe03395fe",
+                "c8e817015d97850288b8bbe377934602cc1f4df1a4b7ce18a2d5b5de8b28c2b5").contains(oldPin);
         result.put("promptHash",oldPin).put("promptVersion",previousV3 ? "SCENARIO_LISTENING_V3" : "SCENARIO_LISTENING_V1");
         var calls=result.putArray("calls");
         for (String purpose : previousV3 ? List.of("GENERATE","FACTS","QUESTIONS","TRANSLATE","REVIEW") : List.of("GENERATE","TRANSLATE","REVIEW"))

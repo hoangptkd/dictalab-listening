@@ -144,7 +144,8 @@
         if (draft.status !== "READY") { frame("<h2>Bản nháp chưa sẵn sàng</h2><p>Nội dung không được chấp nhận hoặc đã hết hạn.</p>"); return; }
         const s = draft.specification;
         frame(`<h2>${escape(s.titleVi)}</h2><dl><dt>Bối cảnh</dt><dd>${escape(s.settingVi)}</dd><dt>Vai trò của bạn</dt><dd>${escape(s.learnerRoleVi)}</dd><dt>Mục tiêu</dt><dd>${escape(s.goalVi)}</dd></dl>
-            <h3>Giả định để tạo bài</h3><ul>${s.assumptionsVi.map(a => `<li>${escape(a)}</li>`).join("")}</ul>
+            <h3>Dữ kiện bạn cung cấp</h3><ul>${s.constraintsVi.map(a => `<li>${escape(a)}</li>`).join("")}</ul>
+            <h3>Suy luận và giả định cần xác nhận</h3><ul>${s.assumptionsVi.map(a => `<li>${escape(a)}</li>`).join("")}</ul>
             <p>${s.characters.map(c => `${escape(c.name)}: ${escape(c.roleVi)}`).join(" · ")}</p>
             <button class="primary-button" id="scenario-confirm">Xác nhận và tạo bài</button><a href="/conversation" data-session="">Viết tình huống khác</a>`);
         bindSessionLinks();

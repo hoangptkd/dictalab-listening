@@ -212,3 +212,166 @@ không phải phê duyệt độc lập của người dùng.
 - Kiểm tra sửa đổi: **61 Python pass; 91 Java pass, 1 skip**. Có fixture hội thoại xã hội
   hoàn thành mà không đặt lịch, kiểm tương thích pin V3 cũ và các gate từ chối đã có.
   Fixture/mock chỉ chứng minh xử lý và hợp đồng, không đo chất lượng model thật.
+
+## Cập nhật 01/11/2026: nguồn dữ kiện, gộp FACTS/QUESTIONS và REVIEW V4
+
+### Thay đổi đã thực hiện
+
+- EXTRACT trả riêng `providedFacts` có trích dẫn nguyên văn, `inferredFacts` có căn cứ và
+  `assumptionsVi`. Backend tạo `constraintsVi` từ dữ kiện cung cấp; suy luận/giả định được
+  gắn nhãn và hiện ở màn hình xác nhận. Không đổi schema công khai hoặc database.
+- `learnerCharacterId` chọn nhân vật người học; backend lấy `learnerRoleVi` từ chính
+  nhân vật đó. Không yêu cầu model viết hai mô tả vai giống hệt nhau. ID không tồn tại,
+  vai trống, quote không có trong input hoặc nguồn khai báo trùng bị chặn. ID hợp lệ
+  không tự chứng minh vai đúng về ngữ nghĩa; vẫn cần đối chiếu input ở REVIEW.
+- FACTS và QUESTIONS gộp thành một lượt: mỗi câu có `factEn`, `speechAct`, bằng chứng,
+  câu hỏi và đáp án. Hội thoại gốc không bị sửa. Thiếu sáu câu hoặc quote sai bị chặn;
+  agreement phải có bằng chứng theo thứ tự từ hai người trong cùng activity.
+- TRANSLATE phải đủ từng segment, không trùng/thiếu, không để nguyên cả câu tiếng Anh.
+  REVIEW kiểm riêng nghĩa, thuật ngữ, tiếng Việt và độ tự nhiên của từng segment.
+  Không dùng regex giả làm bộ phát hiện ngôn ngữ hoặc chứng minh đúng nghĩa.
+- REVIEW có bốn rubric bắt buộc: SOURCE_ROLES, DIALOGUE, QUESTIONS, TRANSLATIONS;
+  sáu audit câu hỏi và audit mọi bản dịch. Thiếu mục, thiếu lý do, bất kỳ cờ false,
+  issues khác rỗng hoặc valid=false đều bị từ chối. JSON đúng không đủ để qua gate.
+- GENERATE vẫn chỉ viết hội thoại. Tạo bài thành công dùng **4 lượt** thay vì 5:
+  GENERATE → QUESTIONS → TRANSLATE → REVIEW; EXTRACT là một lượt riêng.
+  Core giảm reservation tương ứng và giữ settlement cho fingerprint V1/V3 lịch sử.
+- GRADE vẫn chấp nhận câu trả lời tiếng Anh, tiếng Việt hoặc trộn hai ngôn ngữ.
+  Quy tắc tiếng Việt áp dụng cho bản dịch/câu hỏi/đáp án tham chiếu, không cấm người học trả lời tiếng Anh.
+
+Pin ở lượt kiểm tra này: `adbb465bf193190eaa559972dbb92382f22615d93a55b24696ce56ea1fb726ea`.
+Không thêm dependency, không restart ứng dụng, không triển khai production.
+
+### Bằng chứng AI thật, giữ nguyên cả thất bại
+
+Model `gemini-3.5-flash-lite`, temperature 0; cùng tám input tổng hợp lịch sử.
+
+| Lần kiểm tra | Kết quả và giới hạn |
+|---|---|
+| `quality-grounding-v4-20261101-01` | 28 lượt gọi; năm bài đã lưu dialogue/questions/translations nhưng REVIEW đều HTTP 400. Ba EXTRACT khác bị chặn. Đây là source trung gian, không phải bản cuối. |
+| Chẩn đoán REVIEW | Cùng request được HTTP 200 khi chỉ bỏ minItems/maxItems ở các array cấp gốc của schema gửi provider. Backend vẫn kiểm nguyên số lượng; không giảm gate. Có ba lần thử chẩn đoán, lần đầu hook đọc lỗi gặp lỗi phụ. |
+| `quality-grounding-v4-saved-verification-20261101-01` | 13 lượt: tám EXTRACT và năm REVIEW dùng lại đầu ra đã lưu, không sinh lại hội thoại/câu hỏi/bản dịch. REVIEW chặn 2/5, cho qua 3/5. EXTRACT còn ba lỗi khớp chuỗi vai giữa hai trường khai báo trùng. |
+| `quality-grounding-v4-extract-final-20261101-02` | Tám lượt EXTRACT sau khi bỏ trường vai khai báo trùng: 7/7 ca an toàn qua kiểm tra cấu trúc/quote; 1/1 ca nguy hiểm trả allowed=false. Không chạy GENERATE. Thư mục `...-01` trước đó chỉ có manifest/source: helper thiếu thư mục cha, dừng trước mọi gọi provider, vẫn giữ nguyên. |
+
+REVIEW của lần kiểm tra saved-output dùng pin
+`f14740cb130729c14b79988c32c02f8ce4225ccb99f0d7e5c8b17cb2e33fde2e`.
+Sau đó chỉ đổi EXTRACT/binding và pin; không đổi prompt/schema REVIEW. Không gộp các lần
+kiểm tra này thành một kết quả end-to-end trên pin cuối.
+
+### Cải thiện có bằng chứng và lỗi còn lại
+
+- EXTRACT hàng xóm cuối đã giữ người học là “Người muốn làm quen”, nhân vật kia là
+  “Hàng xóm mới”; không tự gán người học vừa chuyển đến. Ca tàu giữ hạn trước 20 giờ,
+  không thêm lý do đi làm. Ca món ăn không biến “không ăn được” thành chẩn đoán dị ứng.
+- REVIEW chặn `food-allergy` vì lỗi chính tả câu hỏi/đáp án; chặn `sparse-neighbour`
+  vì bản dịch a2/s2 còn từ “neighborhood”. Các raw lỗi được giữ để điều tra lại.
+- **REVIEW còn bỏ sót:** `services-checkout` a3/q1 có đáp án chỉ diễn đạt lại câu hỏi,
+  a3/q2 lại hỏi đồ cần mang; chưa bảo đảm sáu thông tin riêng biệt.
+- **REVIEW còn bỏ sót:** `social-rain-plan` a3/q2 khai `speechAct=proposal` nhưng câu hỏi
+  dùng “Họ thống nhất”; evidence chỉ trích đề xuất. a1/q2 đã sửa được việc hỏi đề xuất
+  như đề xuất, nhưng chưa nhất quán toàn bài.
+- `shopping-wrong-size` được REVIEW cho qua dù câu hỏi vẫn có hai thông tin về cỡ M,
+  và a3/q1 hỏi cả số biên lai lẫn thông tin điện thoại. Cần đánh giá lại tính độc lập/đơn ý.
+- **EXTRACT cuối còn sai nghĩa:** ca cầu lông diễn đạt “chỉ có 200 nghìn đồng” thành
+  “chi phí 200 nghìn đồng”; quote có thật nhưng paraphrase chưa giữ đúng giới hạn ngân sách.
+  Một số giả định vẫn thừa (ví dụ cửa hàng ở trung tâm thương mại lớn), dù đã được gắn nhãn.
+
+**Kết luận:** đã tách nguồn, giảm một lượt gọi và tăng khả năng phát hiện một số lỗi thật;
+chưa chứng minh sáu câu hỏi luôn riêng biệt hoặc REVIEW bắt hết sai nghĩa. Gate fail closed
+đối với lỗi được phát hiện, nhưng model vẫn có thể kết luận sai là đạt. Không coi test xanh
+hoặc EXTRACT 7/7 qua cấu trúc là chứng nhận chất lượng nội dung. Chưa đủ bằng chứng mở production.
+Rà soát này do agent thực hiện, không phải phê duyệt độc lập của người dùng.
+
+### Kiểm tra và lưu hồ sơ
+
+- **94 Python pass**, hai cảnh báo deprecation; **93 Java pass, 1 skip**; **8 JavaScript pass**.
+  Có test vai theo ID, bạn cùng vai, source quote, thiếu facts, proposal/agreement, coverage
+  bản dịch, từng cờ REVIEW, compatibility V1/V3/V4 và câu trả lời Anh/Việt. Mock không đo chất lượng AI.
+- Input, source/prompt/schema, raw response, wire/usage và outcome nằm trong các thư mục trên
+  dưới `data/scenario-local-20261031/`. Không chứa credential và không đưa dữ liệu runtime vào Git.
+- Bản ZIP dự phòng và receipt nằm tại
+  `C:/Users/HP/Desktop/English_dictition/data/scenario-evaluation-20261031/`;
+  kiểm CRC, SHA-256 từng file và inventory raw. Chẩn đoán schema có bản sao riêng.
+  Dùng lại hồ sơ này để điều tra; không cần sinh lại hội thoại đã hoàn thành.
+- Kiểm UTF-8 và diff trước commit; trạng thái GitHub/CI báo riêng, không thay thế kết quả triển khai.
+
+## Sửa tiếp theo yêu cầu: trạng thái cuối ngày 01/11/2026
+
+Phần này thay thế mô tả **4 lượt gọi** và kết luận về các mẫu lỗi ở mục V4 phía trên.
+Những capture trước vẫn giữ nguyên, kể cả kết quả không đạt.
+
+### Cách xử lý nguyên nhân
+
+1. **Dữ kiện gốc được giữ nguyên văn.** `providedFacts` chỉ chứa `quoteVi` tối đa 200 ký tự;
+   backend kiểm quote có trong input và chép vào `constraintsVi`. Model không còn được thay
+   dữ kiện cung cấp bằng paraphrase. Ví dụ “chỉ có 200 nghìn” được giữ nguyên giới hạn ngân
+   sách. Suy luận vẫn có nội dung và quote riêng, giả định có nhãn để người học xác nhận.
+2. **FACTS/QUESTIONS vẫn chung một prompt.** Mỗi câu có fact, speech act, evidence và đáp án.
+   Prompt yêu cầu hỏi thông tin được trả lời trong hội thoại, tránh đáp án chỉ lặp lại điều
+   nhân vật hỏi; chọn một thông tin thay vì đòi cả số biên lai lẫn số điện thoại.
+3. **Tách REVIEW vì có bằng chứng bỏ sót.** Một lượt gộp vẫn đánh dấu đạt cho bài khách sạn
+   có đáp án “Cần mang theo gì...” thay vì vật cần mang. Chẩn đoán chỉ kiểm câu hỏi trên
+   đúng bản ghi đó đã phát hiện lỗi. Bản cuối dùng:
+
+   `GENERATE → QUESTIONS → REVIEW_QUESTIONS → TRANSLATE → REVIEW`.
+
+   REVIEW_QUESTIONS tự nêu nghĩa được hỏi và từng đơn vị trả lời, sau đó đối chiếu reference.
+   Backend từ chối 0 hoặc nhiều đơn vị, nghĩa chuẩn hóa trùng, thiếu câu hoặc cờ false.
+   Lỗi câu hỏi dừng trước khi dịch. REVIEW cuối chỉ kiểm ba rubric nguồn/vai, hội thoại,
+   bản dịch và từng segment; không phải vừa xét câu hỏi vừa điền hàng loạt cờ bản dịch.
+4. **Thêm chốt nhất quán speech act.** Khi `speechAct=proposal`, câu hỏi khẳng định “Họ
+   thống nhất”, “Cả hai đã đồng ý” và các cấu trúc tương ứng bị từ chối trực tiếp. Test giữ
+   các câu “chưa thống nhất” và hỏi về đề xuất hợp lệ. Đây là chốt cho cấu trúc xác định,
+   không phải bộ hiểu mọi cách diễn đạt tiếng Việt hoặc bảo đảm không còn sai speech act.
+
+Tổng **5 lượt tạo bài**, cộng EXTRACT riêng. Việc gộp FACTS/QUESTIONS giải phóng một lượt
+cho kiểm câu hỏi chuyên biệt; số lượt không giảm so với V3. Chi phí token thực tế còn tùy
+độ dài và thời điểm gate dừng, chưa đo được tiết kiệm tiền. Reservation Core giữ 5;
+fingerprint và thứ tự năm bước mới khác V3. API/database và chấm đáp án Anh/Việt giữ nguyên.
+
+Pin bản cuối: `e3b045db46013c6e9694ae450f8beeb168bc1b452cb1548bcbe43a4eb247535b`.
+
+### Kiểm chứng trên đầu ra đã lưu
+
+- `quality-grounding-v4-final-checks-20261101-01`: 13 lượt ở bản trung gian trước khi tách
+  REVIEW; EXTRACT 7 ca an toàn qua gate, unsafe bị từ chối. Quote ngân sách được giữ nguyên.
+  REVIEW vẫn bỏ sót lỗi khách sạn và trộn tiếng Anh; không coi đó là bản cuối đã đạt.
+- `quality-grounding-focused-review-diagnostic-20261101-01`: một lượt chẩn đoán tập trung,
+  bắt đúng đáp án lặp câu hỏi a3/q1 khách sạn. Raw đã lưu trước lỗi console cp1252 khi in
+  tiếng Việt; không gọi lại để chữa console. Bản dự phòng có request/response nguyên gốc.
+- `quality-grounding-v4-focused-final-20261101-01`: mười lượt AI, hai audit trên mỗi bài
+  của năm bản ghi đã có. Không gọi GENERATE/QUESTIONS/TRANSLATE. Công cụ chạy cả audit sau
+  dù audit câu hỏi bị từ chối để kiểm riêng bản dịch; production sẽ dừng sớm.
+- Chốt speech act được thêm sau capture audit; prompt/schema vẫn cùng pin. Phát lại local
+  toàn bộ gate trên các raw/audit này dùng **0 lượt provider**, giữ hash source mới trong
+  `derived/final-gates-v1.json`, không sửa capture gốc:
+
+| Bản ghi có lỗi đã biết | Kết quả gate cuối | Bằng chứng chặn |
+|---|---|---|
+| food-allergy | Từ chối | Audit câu hỏi phát hiện tiếng Việt lỗi |
+| services-checkout | Từ chối | a3/q1 không trả lời đúng thông tin được hỏi |
+| shopping-wrong-size | Từ chối | Audit trả hai đơn vị “số biên lai” và “thông tin điện thoại”; backend chặn dù valid=true |
+| social-rain-plan | Từ chối | speechAct=proposal nhưng câu hỏi khẳng định “Họ thống nhất” |
+| sparse-neighbour | Từ chối | Audit bản dịch phát hiện từ “neighborhood” còn sót |
+
+- **Đối chứng có nội dung đạt:** `quality-grounding-v4-positive-control-20261101-01` dùng
+  hội thoại/bản dịch bánh có sẵn trong fixture Git. Chỉ thu hẹp a1/q2 bằng tay thành hỏi
+  giờ nhận bánh, không sinh hội thoại mới. Chạy toàn bộ Python workflow với ba phản hồi
+  nội dung từ fixture được ghi rõ `provider=fixture`; hai audit gọi AI thật. Kết quả
+  SUCCEEDED, hai lượt provider. Đây là một đối chứng có kiểm soát, chưa đại diện người dùng.
+
+**Kết luận hiện tại:** đã chặn cả năm mẫu lỗi lịch sử bằng sự phối hợp gate và hai audit,
+đồng thời cho qua một đối chứng đạt. Đây không phải tỷ lệ sinh bài đạt 100%: các mẫu lỗi
+được chọn vì đã biết lỗi, và REVIEW vẫn bỏ sót một số phán đoán mà backend phải chặn.
+Chưa chạy lại GENERATE hay đo độ ổn định nhiều seed trên toàn pipeline bản cuối.
+
+### Kiểm tra, bảo toàn và giao mã
+
+- **106 Python pass** (hai cảnh báo deprecation), **93 Java pass, 1 skip**, **8 JavaScript pass**;
+  kiểm UTF-8 11 file và diff đều đạt. Kiểm Python cuối bao phủ provenance, vai, speech act, đối chứng câu phủ định, cardinality,
+  dừng trước dịch và cả hai audit. Java kiểm năm bước/reservation và settlement V1/V3/V4.
+  JavaScript kiểm màn xác nhận nguồn và tương thích giao diện. Kết quả tổng báo ở bàn giao.
+- Toàn bộ capture mới có bản sao ngoài worktree, kiểm CRC ZIP, SHA-256 từng file và inventory
+  raw khi có. Capture dở và chẩn đoán lỗi console vẫn giữ; receipt ghi rõ có/không seal.
+- Raw của bài tổng hợp, prompt/schema/source và outcome được giữ để phát lại. Không đưa
+  credential hoặc dữ liệu runtime vào Git. Chưa restart local hoặc deploy production.

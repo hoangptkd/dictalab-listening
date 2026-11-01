@@ -325,13 +325,15 @@ public class ScenarioEngine {
             // Previously submitted jobs may settle only with their exact historical fingerprint.
             boolean legacy=Set.of("f3a1a93382df50b9e798d9ae9d11e502d3e8eb0c347751195c6d00b7ba88b8a1",
                     "0d40fae31e57eef602c6f1e8402ea6116f8beeee56ac011c7c3d018f7f0152c2").contains(input.path("promptHash").asText());
-            boolean previousV3="3391407dddc9762afe3774cb30ee60e4a9f0936e70597e8a057b8bdfe03395fe".equals(input.path("promptHash").asText());
+            boolean previousV3=Set.of("3391407dddc9762afe3774cb30ee60e4a9f0936e70597e8a057b8bdfe03395fe",
+                    "c8e817015d97850288b8bbe377934602cc1f4df1a4b7ce18a2d5b5de8b28c2b5").contains(input.path("promptHash").asText());
             ScenarioContent.check(legacy || previousV3 || release.promptHash().equals(input.path("promptHash").asText()));
             ScenarioContent.check(input.path("promptHash").asText().equals(result.path("promptHash").asText())
-                    && (legacy ? "SCENARIO_LISTENING_V1" : "SCENARIO_LISTENING_V3").equals(result.path("promptVersion").asText())
+                    && (legacy ? "SCENARIO_LISTENING_V1" : previousV3 ? "SCENARIO_LISTENING_V3" : "SCENARIO_LISTENING_V4").equals(result.path("promptVersion").asText())
                     && input.path("programHash").asText().equals(result.path("programHash").asText()));
             var expected=kind.equals("GENERATE") ? (legacy ? List.of("GENERATE","TRANSLATE","REVIEW")
-                    : List.of("GENERATE","FACTS","QUESTIONS","TRANSLATE","REVIEW")) : List.of(kind);
+                    : previousV3 ? List.of("GENERATE","FACTS","QUESTIONS","TRANSLATE","REVIEW")
+                    : List.of("GENERATE","QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW")) : List.of(kind);
             ScenarioContent.list(result.path("calls"),expected.size(),expected.size()); int n=0;
             for (var call : result.path("calls")) {
                 ScenarioContent.fields(call,"purpose","provider","model");

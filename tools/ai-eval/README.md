@@ -17,15 +17,37 @@ python tools/ai-eval/scenario_quality.py capture --output data/scenario-evaluati
 ```
 
 Each case runs EXTRACT once and the GENERATE operation once only when EXTRACT allows it.
-The operation now has five calls: GENERATE (dialogue only), FACTS (six anchored facts),
-QUESTIONS (one question per fact), TRANSLATE and REVIEW. GENERATE cannot return questions,
+The operation has five calls: GENERATE (dialogue only), QUESTIONS (six anchored facts
+and their questions in one response), REVIEW_QUESTIONS, TRANSLATE and REVIEW. GENERATE cannot return questions,
 answers, evidence or learning points. Dialogue structure, speaker IDs and actual word counts
-are validated before FACTS runs. Questions cannot rewrite the dialogue or fact evidence.
+are validated before QUESTIONS runs. Questions cannot rewrite the dialogue; each evidence quote must
+match its original segment. An agreement requires ordered evidence from both speakers in the same activity.
+The question audit checks only questions and independently derives their requested answers;
+it stops an invalid lesson before translation. The final audit checks source/roles, dialogue
+and every translation. Keeping these separate caught a saved defect the combined audit missed.
 The default eight-case corpus needs up to 43 calls, within the 48-call capture limit.
 All five stages use the real validation gates; failed samples are not repaired,
 retried or replaced. The configured shared quota still applies. The budget counts gateway
 calls, not billed tokens; wire usage is retained when supplied by the provider. Cloud output
 has no guaranteed deterministic seed, even with temperature zero.
+
+EXTRACT keeps quoted provided facts separate from inferences and fictional assumptions.
+The server copies public constraints verbatim from the provided quotes (no model paraphrase) and the learner role from
+`learnerCharacterId`, avoiding duplicate model-authored role descriptions. Anchored quotes
+and a valid character ID do not prove semantic correctness; confirmation and source review remain necessary.
+The two review calls cover source/roles, dialogue, questions and every translated segment.
+Each question audit must list its requested meaning and independent answer units: zero/multiple
+units, a repeated normalized meaning, a false flag or missing coverage rejects the lesson.
+A narrow local check rejects positive agreement wording such as 'Họ thống nhất' when the
+question's speechAct is proposal; it is not a general Vietnamese semantic parser.
+Only the reviews' provider-facing root array size constraints are omitted for Gemini compatibility
+(the bounded audit schema returned HTTP 400). All required fields and local cardinality,
+identity, boolean and nonblank-reason checks remain enforced; missing audits fail closed.
+The prompt pin includes validation and both provider review schemas.
+
+See `docs/scenario-quality-evaluation-20261031.md` for V4 live evidence and known misses.
+Targeted EXTRACT runs and REVIEW of saved outputs are not full end-to-end captures or proof
+of release quality. Do not regenerate completed dialogue merely to rerun a reviewer.
 
 The output directory must be new and under ignored `data/`. Reusing it fails before any
 provider calls. Artifacts include:
@@ -72,16 +94,25 @@ worktree, verify its SHA-256, ZIP CRC and raw integrity inventory, and retain it
 until the quality investigation is closed. The tool does not auto-delete evidence. This logging
 is for explicit synthetic evaluation; it does not enable logging real learner content in production.
 
-The 2026-11-01 split uses `SCENARIO_LISTENING_V3`; V2 identifies the reverted experiment.
-The public lesson/session JSON is unchanged, Core reserves five generation calls, and previously
-submitted V1 results can settle only under their two exact historical pins; the preceding V3 pin
-is also accepted for already-submitted five-call jobs. No database migration
+The current grounding workflow uses `SCENARIO_LISTENING_V4`; V3 identifies the preceding five-call
+split and V2 the reverted experiment. The public lesson/session JSON is unchanged. Core reserves five
+generation calls. Previously submitted V1/V3 results can settle only under their exact historical pins
+and original call sequences. No database migration
 or program-definition change is required. Core/Python must run the matching workflow pin; existing
 release/local-preview approvals do not automatically approve the new pin.
 Semantic review explicitly checks scenario preservation, coherent progression, goal resolution,
 fact support and question/fact agreement. These remain model judgments, not a proof of content
 quality. Generation and review choose progression/closure from the communicative goal: social exchanges
 need no transaction or next action, while service requests and deadlines still require clear responses.
+EXTRACT privately returns quoted provided/inferred claims and an explicit learner-character binding.
+The server validates quotes and roles, publishes provided claims as constraints, and labels inferred
+claims and assumptions separately in the existing confirmation list. Exact quote matching cannot prove
+that the model paraphrased it correctly; SOURCE_ROLES review still audits the original input.
+QUESTIONS includes speech-act labels (statement/proposal/agreement/confirmation). REVIEW requires four
+rubrics, six question audits and one translation audit per source segment, with concrete reasons.
+Missing/false checks reject even with valid=true. The server checks translation coverage, blanks and
+whole copied English segments; subtler mixed language, terminology and meaning rely on semantic review.
+These reference-language requirements do not restrict learner answers in English, Vietnamese or both.
 The 2026-11-01 real-model results and remaining content defects are recorded in the report below.
 No automatic repair or extra generation retries were added.
 

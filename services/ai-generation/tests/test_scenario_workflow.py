@@ -58,20 +58,30 @@ def execute(value, responses):
     return result, calls
 
 
+def extraction_response():
+    return {**{k: copy.deepcopy(v) for k, v in EXAMPLE["specification"].items() if k not in {"constraintsVi", "learnerRoleVi"}}, "learnerCharacterId": "customer",
+            "providedFacts": [{"quoteVi": "nhận ngày mai"}],
+            "inferredFacts": []}
+
+
 def generation_responses():
     activities = EXAMPLE["content"]["activities"]
     return copy.deepcopy([
         {"activities": [{"id": a["id"], "segments": a["segments"]} for a in activities]},
-        {"activities": [{"id": a["id"], "facts": [{"id": q["id"],
-            "factEn": " / ".join(e["quoteEn"] for e in q["evidence"]), "evidence": q["evidence"]}
+        {"activities": [{"id": a["id"], "questions": [{**{k: q[k] for k in ("id", "skill", "promptVi", "answerVi", "evidence")},
+            "factEn": " / ".join(e["quoteEn"] for e in q["evidence"]), "speechAct": "statement"}
             for q in a["questions"]]} for a in activities]},
-        {"activities": [{"id": a["id"], "questions": [{k: q[k] for k in ("id", "skill", "promptVi", "answerVi")}
-            for q in a["questions"]]} for a in activities]},
-        {"segments": EXAMPLE["content"]["translations"]},
         {"questionChecks": [{"activityId": a["id"], "questionId": q["id"], "reasonVi": "Đáp án có bằng chứng riêng",
-            "answerSupported": True, "distinctMeaning": True, "factSupported": True, "questionMatchesFact": True}
-            for a in activities for q in a["questions"]], "scenarioPreserved": True, "coherentProgression": True,
-            "goalResolved": True, "valid": True, "issues": []}])
+            "requestedMeaningEn": q["promptVi"], "answerUnitsVi": [q["answerVi"]],
+            "answerSupported": True, "distinctMeaning": True, "factSupported": True, "questionMatchesFact": True,
+            "speechActSupported": True, "atomicMeaning": True, "noAnswerLeak": True, "vietnameseNatural": True}
+            for a in activities for q in a["questions"]], "valid": True, "issues": []},
+        {"segments": EXAMPLE["content"]["translations"]},
+        {"translationChecks": [{"activityId": a["id"], "segmentId": s["id"], "reasonVi": "Bản dịch giữ đúng ý",
+             "meaningPreserved": True, "terminologyCorrect": True, "vietnameseOnly": True, "vietnameseNatural": True}
+             for a in activities for s in a["segments"]],
+         "rubricChecks": [{"category": name, "passed": True, "reasonVi": "Đã đối chiếu nội dung"}
+             for name in ("SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS")], "valid": True, "issues": []}])
 
 
 def test_cross_language_prompt_pin_and_content_fixture():
@@ -86,19 +96,20 @@ def test_dialogue_is_complete_and_unchanged_before_fact_and_question_extraction(
     result, calls = execute(payload(inputVi=brief), generation_responses())
     assert json.loads(calls[0][1][1]["content"])["inputVi"] == brief
     assert json.loads(calls[4][1][1]["content"])["inputVi"] == brief
-    assert [c[0] for c in calls] == ["scenario_generate", "scenario_facts", "scenario_questions", "scenario_translate", "scenario_review"]
+    assert [c[0] for c in calls] == ["scenario_generate", "scenario_questions", "scenario_review_questions", "scenario_translate", "scenario_review"]
     dialogue = generation_responses()[0]
     assert json.loads(calls[1][1][1]["content"]) == {"dialogue": dialogue}
-    assert json.loads(calls[2][1][1]["content"])["dialogue"] == dialogue
     assert json.loads(calls[3][1][1]["content"]) == dialogue
+    assert "translations" not in json.loads(calls[2][1][1]["content"])
+    assert "groundedQuestions" not in json.loads(calls[4][1][1]["content"])
     assert json.loads(calls[0][1][1]["content"])["writingBudget"]["targetWordsPerActivity"] == 37
     assert "learningPointsVi" not in calls[0][1][0]["content"]
     assert "questions" not in json.dumps(workflow.Dialogue.model_json_schema())
-    assert "evidence" not in json.dumps(workflow.Questions.model_json_schema())
+    assert "segments" not in json.dumps(workflow.Questions.model_json_schema())
     assert result["task"] == EXAMPLE["content"]
     assert result["generationId"] == result["requestId"]
     assert result["programHash"] == "a" * 64
-    assert [c["purpose"] for c in result["calls"]] == ["GENERATE", "FACTS", "QUESTIONS", "TRANSLATE", "REVIEW"]
+    assert [c["purpose"] for c in result["calls"]] == ["GENERATE", "QUESTIONS", "REVIEW_QUESTIONS", "TRANSLATE", "REVIEW"]
 
 
 @pytest.mark.parametrize("change", ["evidence", "word_limit", "translation", "review", "extra", "speaker"])
@@ -106,13 +117,13 @@ def test_unsound_results_are_rejected_without_repair(change):
     responses = copy.deepcopy(generation_responses())
     generated = responses[0]
     if change == "evidence":
-        responses[1]["activities"][0]["facts"][0]["evidence"][0]["quoteEn"] = "invented"
+        responses[1]["activities"][0]["questions"][0]["evidence"][0]["quoteEn"] = "invented"
     elif change == "word_limit":
         generated["activities"][0]["segments"][0]["textEn"] = "word " * 65
     elif change == "translation":
         responses[3]["segments"][-1] = responses[3]["segments"][0]
     elif change == "review":
-        responses[4] = {"valid": False, "issues": ["ambiguous question"]}
+        responses[2] = {"valid": False, "issues": ["ambiguous question"]}
     elif change == "speaker":
         generated["activities"][0]["segments"][0]["speakerId"] = "unknown"
     else:
@@ -134,7 +145,7 @@ def test_grade_requires_exact_learner_evidence_and_all_ids():
 @pytest.mark.parametrize("fault", ["omitted", "duplicate", "unsupported", "repeated_meaning", "invented_fact", "wrong_fact"])
 def test_review_requires_every_question_audited_even_when_overall_verdict_is_true(fault):
     responses = copy.deepcopy(generation_responses())
-    checks = responses[-1]["questionChecks"]
+    checks = responses[2]["questionChecks"]
     if fault == "omitted": checks.pop()
     elif fault == "duplicate": checks[-1] = checks[0]
     elif fault == "unsupported": checks[-1]["answerSupported"] = False
@@ -168,9 +179,9 @@ def test_invalid_dialogue_stops_before_extracting_facts(fault):
 
 
 @pytest.mark.parametrize("fault", ["missing", "empty", "duplicate_id", "duplicate_meaning", "wrong_activity", "outside_quote", "wrong_segment"])
-def test_invalid_facts_stop_before_questions_without_rewriting_dialogue(fault):
+def test_invalid_grounded_questions_stop_before_translation_without_rewriting_dialogue(fault):
     replies = generation_responses()
-    facts = replies[1]["activities"][0]["facts"]
+    facts = replies[1]["activities"][0]["questions"]
     if fault == "missing": facts.pop()
     elif fault == "empty": facts[0]["factEn"] = " "
     elif fault == "duplicate_id": facts[1]["id"] = facts[0]["id"]
@@ -178,26 +189,26 @@ def test_invalid_facts_stop_before_questions_without_rewriting_dialogue(fault):
     elif fault == "wrong_activity": replies[1]["activities"].reverse()
     elif fault == "outside_quote": facts[0]["evidence"][0]["quoteEn"] = "a sentence absent from the dialogue"
     else: facts[0]["evidence"][0]["segmentId"] = "missing"
-    with pytest.raises(workflow.QualityRejected, match="invalid facts"):
+    with pytest.raises(workflow.QualityRejected, match="invalid scenario content"):
         execute(payload(), replies[:2])
 
 
 @pytest.mark.parametrize("fault", ["wrong_id", "wrong_activity", "rewrite_dialogue", "rewrite_evidence"])
 def test_questions_cannot_remap_facts_or_replace_the_original_speech(fault):
     replies = generation_responses()
-    drafted = replies[2]["activities"][0]
+    drafted = replies[1]["activities"][0]
     if fault == "wrong_id": drafted["questions"][1]["id"] = "q1"
-    elif fault == "wrong_activity": replies[2]["activities"].reverse()
+    elif fault == "wrong_activity": replies[1]["activities"].reverse()
     elif fault == "rewrite_dialogue": drafted["segments"] = replies[0]["activities"][0]["segments"]
     else: drafted["questions"][0]["evidence"] = [{"segmentId": "s1", "quoteEn": "rewritten"}]
     with pytest.raises(workflow.QualityRejected):
-        execute(payload(), replies[:3])
+        execute(payload(), replies[:2])
 
 
-@pytest.mark.parametrize("check", ["scenarioPreserved", "coherentProgression", "goalResolved"])
+@pytest.mark.parametrize("check", ["SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS"])
 def test_scenario_drift_contradiction_or_unresolved_goal_fails_even_with_valid_true(check):
     replies = generation_responses()
-    replies[-1][check] = False
+    next(r for r in replies[-1]["rubricChecks"] if r["category"] == check)["passed"] = False
     with pytest.raises(workflow.QualityRejected, match="semantic quality rejected"):
         execute(payload(), replies)
 
@@ -222,8 +233,8 @@ def test_social_dialogue_can_fulfill_its_goal_without_an_agreement_or_next_actio
         for turn, (speaker, english, vietnamese, question, answer, quote) in enumerate(turns):
             sid, qid = "s" + str(turn + 1), "q" + str(turn + 1)
             replies[0]["activities"][index]["segments"].append({"id": sid, "speakerId": speaker, "textEn": english})
-            replies[1]["activities"][index]["facts"][turn] = {"id": qid, "factEn": quote, "evidence": [{"segmentId": sid, "quoteEn": quote}]}
-            replies[2]["activities"][index]["questions"][turn] = {"id": qid, "skill": "detail", "promptVi": question, "answerVi": answer}
+            replies[1]["activities"][index]["questions"][turn] = {"id": qid, "factEn": quote, "speechAct": "statement", "evidence": [{"segmentId": sid, "quoteEn": quote}],
+                "skill": "detail", "promptVi": question, "answerVi": answer}
             replies[3]["segments"].append({"activityId": activity_id, "segmentId": sid, "textVi": vietnamese})
     result, calls = execute(value, replies)
     assert len(calls) == 5 and result["task"]["qualityPassed"]
@@ -238,13 +249,196 @@ def test_infeasible_word_limits_fail_before_any_provider_call():
 
 
 def test_extraction_redacts_and_rejects_wrong_prompt_before_call():
-    value = payload("EXTRACT", inputVi="Tôi muốn đặt bánh user@example.com")
+    value = payload("EXTRACT", inputVi="Tôi muốn đặt bánh để nhận ngày mai user@example.com")
     assert "user@example.com" not in value.inputVi
-    result, calls = execute(value, [EXAMPLE["specification"]])
-    assert result["task"] == EXAMPLE["specification"]
+    result, calls = execute(value, [extraction_response()])
+    assert result["task"]["constraintsVi"] == ["nhận ngày mai"]
+    assert result["task"]["assumptionsVi"] == ["Giả định: Cửa hàng nhận đặt trước"]
     assert len(calls) == 1
     with pytest.raises(ValueError):
         payload(promptHash="b" * 64)
+
+
+def test_extraction_preserves_three_origins_and_binds_learner_to_the_existing_resident():
+    brief = "Tôi muốn nói chuyện với hàng xóm mới."
+    raw = extraction_response()
+    raw.update(learnerCharacterId="customer",
+        characters=[{"id": "customer", "name": "An", "roleVi": "Người muốn làm quen"},
+                    {"id": "baker", "name": "Bình", "roleVi": "Hàng xóm mới"}],
+        providedFacts=[{"quoteVi": "Tôi muốn nói chuyện với hàng xóm mới."}],
+        inferredFacts=[{"textVi": "Hai người có thể chưa quen nhau", "quoteVi": "hàng xóm mới"}],
+        assumptionsVi=["Gặp nhau ở hành lang"])
+    result, calls = execute(payload("EXTRACT", inputVi=brief), [raw])
+    assert len(calls) == 1
+    assert result["task"]["learnerRoleVi"] == "Người muốn làm quen"
+    assert result["task"]["assumptionsVi"] == ["Suy luận: Hai người có thể chưa quen nhau", "Giả định: Gặp nhau ở hành lang"]
+    assert "providedFacts" not in result["task"]  # Private raw provenance does not change the public draft schema.
+
+
+@pytest.mark.parametrize("fault", ["missing", "invented_quote", "blank_quote", "unknown_learner", "blank_role", "overlap", "too_many_assumptions"])
+def test_extraction_rejects_invalid_provenance_before_publishing_draft(fault):
+    raw = extraction_response()
+    if fault == "missing": raw["providedFacts"] = []
+    elif fault == "invented_quote": raw["providedFacts"][0]["quoteVi"] = "tôi mới chuyển đến hôm qua"
+    elif fault == "blank_quote": raw["providedFacts"][0]["quoteVi"] = " "
+    elif fault == "unknown_learner": raw["learnerCharacterId"] = "missing"
+    elif fault == "blank_role": raw["characters"][0]["roleVi"] = " "
+    elif fault == "overlap": raw["inferredFacts"] = [{"textVi": "nhận ngày mai", "quoteVi": "nhận ngày mai"}]
+    else:
+        raw["assumptionsVi"] = ["Một giả định"] * 4
+        raw["inferredFacts"] = [{"textVi": "Người mua cần đặt trước", "quoteVi": "ngày mai"}]
+    with pytest.raises(workflow.QualityRejected, match="invalid extraction provenance"):
+        execute(payload("EXTRACT"), [raw])
+
+
+def test_extraction_derives_learner_role_by_id_even_when_both_speakers_share_a_role():
+    raw = extraction_response()
+    for character in raw["characters"]:
+        character["roleVi"] = "Bạn cùng lớp"
+    result, _ = execute(payload("EXTRACT"), [raw])
+    assert result["task"]["learnerRoleVi"] == "Bạn cùng lớp"
+    assert "learnerRoleVi" not in workflow.Extraction.model_fields
+
+
+def test_refusal_does_not_need_source_claims():
+    raw = extraction_response()
+    raw.update(allowed=False, providedFacts=[], inferredFacts=[], assumptionsVi=[])
+    result, calls = execute(payload("EXTRACT"), [raw])
+    assert result["task"]["allowed"] is False and len(calls) == 1
+
+
+def test_extraction_copies_budget_and_pending_requests_without_paraphrasing():
+    brief = "Tôi muốn đề xuất sân trong nhà, chỉ có 200 nghìn đồng cho cả hai và cần chốt ai đặt sân, giờ gặp và địa điểm gặp."
+    raw = extraction_response()
+    raw["providedFacts"] = [{"quoteVi": brief}]
+    result, _ = execute(payload("EXTRACT", inputVi=brief), [raw])
+    assert result["task"]["constraintsVi"] == [brief]
+    # An invented paraphrase cannot replace the source clause in a published constraint.
+    raw["providedFacts"][0]["textVi"] = "Giá sân đã thống nhất là 200 nghìn đồng."
+    with pytest.raises(workflow.QualityRejected, match="invalid scenario response"):
+        execute(payload("EXTRACT", inputVi=brief), [raw])
+
+
+@pytest.mark.parametrize("fault", ["no_answer", "two_answers", "blank_answer", "duplicate_meaning", "blank_meaning"])
+def test_review_rejects_unanswerable_bundled_or_duplicate_questions_despite_all_true_flags(fault):
+    replies = generation_responses()
+    checked = replies[2]["questionChecks"]
+    if fault == "no_answer": checked[0]["answerUnitsVi"] = []
+    elif fault == "two_answers": checked[0]["answerUnitsVi"] = ["Số biên lai", "Số điện thoại"]
+    elif fault == "blank_answer": checked[0]["answerUnitsVi"] = [" "]
+    elif fault == "blank_meaning": checked[0]["requestedMeaningEn"] = " "
+    else: checked[1]["requestedMeaningEn"] = "  " + checked[0]["requestedMeaningEn"].upper() + "  "
+    with pytest.raises(workflow.QualityRejected, match="question quality rejected"):
+        execute(payload(), replies)
+
+
+def test_review_provider_schema_keeps_required_fields_and_local_array_bounds():
+    for model in (workflow.QuestionReview, workflow.Review):
+        schema = workflow.response_schema(model)
+        assert set(schema["required"]) == set(model.model_fields)
+        for name, prop in model.model_json_schema()["properties"].items():
+            if prop.get("type") == "array":
+                assert "maxItems" not in schema["properties"][name]
+                assert "maxItems" in prop
+    invalid = generation_responses()[2]
+    invalid["questionChecks"].pop()
+    with pytest.raises(ValueError):
+        workflow.QuestionReview.model_validate(invalid)
+
+
+def test_archived_proposal_cannot_be_claimed_as_agreement_without_local_acceptance():
+    # Exact problematic quote from social-rain-plan in the 2026-11-01 private capture.
+    quote = "I think we should move our practice to an indoor court so we do not have to cancel our game."
+    replies = generation_responses()
+    replies[0]["activities"][0]["segments"][0]["textEn"] = quote
+    question = replies[1]["activities"][0]["questions"][0]
+    question.update(factEn="The participants decide to move their badminton practice to an indoor court.",
+                    speechAct="agreement", evidence=[{"segmentId": "s1", "quoteEn": quote}])
+    # Other fixture evidence must remain anchored, so validate the one activity directly.
+    dialogue = workflow.Dialogue.model_validate(replies[0])
+    questions = workflow.Questions.model_validate(replies[1])
+    with pytest.raises(ValueError, match="agreement requires"):
+        workflow.validate_questions(questions, dialogue)
+    question.update(factEn="A speaker proposes moving practice indoors.", speechAct="proposal")
+    for q in replies[1]["activities"][0]["questions"]:
+        if q["id"] == "q2":
+            q.update(factEn="The other speaker gives the opening time.", evidence=[{"segmentId": "s2", "quoteEn": "we open at nine"}])
+    workflow.validate_questions(workflow.Questions.model_validate(replies[1]), dialogue)
+
+
+def test_agreement_evidence_must_follow_the_local_speaker_sequence():
+    replies = generation_responses()
+    question = replies[1]["activities"][0]["questions"][1]
+    question["speechAct"] = "agreement"
+    dialogue = workflow.Dialogue.model_validate(replies[0])
+    workflow.validate_questions(workflow.Questions.model_validate(replies[1]), dialogue)
+    question["evidence"].reverse()
+    with pytest.raises(ValueError, match="agreement requires"):
+        workflow.validate_questions(workflow.Questions.model_validate(replies[1]), dialogue)
+
+
+@pytest.mark.parametrize("prompt,rejected", [
+    ("Họ thống nhất gặp nhau tại quầy lễ tân vào thời gian nào?", True),
+    ("Cả hai đã đồng ý gặp ở đâu?", True),
+    ("Hai bên quyết định gặp lúc mấy giờ?", True),
+    ("Người nói đề xuất gặp nhau lúc mấy giờ?", False),
+    ("Họ chưa thống nhất giờ gặp; người nói đề xuất thời gian nào?", False),
+    ("Đề xuất nào chưa được thống nhất?", False),
+])
+def test_proposal_cannot_presuppose_agreement_but_can_remain_explicitly_unconfirmed(prompt, rejected):
+    replies = generation_responses()
+    item = replies[1]["activities"][0]["questions"][0]
+    item.update(speechAct="proposal", promptVi=prompt)
+    questions = workflow.Questions.model_validate(replies[1])
+    dialogue = workflow.Dialogue.model_validate(replies[0])
+    if rejected:
+        with pytest.raises(ValueError, match="proposal question asserts agreement"):
+            workflow.validate_questions(questions, dialogue)
+    else:
+        workflow.validate_questions(questions, dialogue)
+
+
+def test_question_audit_rejection_stops_before_translation_and_final_review():
+    replies = generation_responses()[:3]
+    replies[2]["questionChecks"][0]["answerSupported"] = False
+    with pytest.raises(workflow.QualityRejected, match="question quality rejected"):
+        execute(payload(), replies)
+
+
+@pytest.mark.parametrize("fault", ["missing", "duplicate", "unknown", "blank", "copied_english"])
+def test_bad_translation_stops_before_review(fault):
+    replies = generation_responses()
+    segments = replies[3]["segments"]
+    if fault == "missing": segments.pop()
+    elif fault == "duplicate": segments[-1] = copy.deepcopy(segments[0])
+    elif fault == "unknown": segments[0]["segmentId"] = "missing"
+    elif fault == "blank": segments[0]["textVi"] = " "
+    else: segments[0]["textVi"] = replies[0]["activities"][0]["segments"][0]["textEn"]
+    with pytest.raises(workflow.QualityRejected):
+        execute(payload(), replies[:4])
+
+
+@pytest.mark.parametrize("field", ["speechActSupported", "atomicMeaning", "noAnswerLeak", "vietnameseNatural"])
+def test_review_cannot_override_individual_question_defects(field):
+    replies = generation_responses()
+    replies[2]["questionChecks"][0][field] = False
+    with pytest.raises(workflow.QualityRejected, match="question quality rejected"):
+        execute(payload(), replies)
+
+
+@pytest.mark.parametrize("fault", ["meaningPreserved", "terminologyCorrect", "vietnameseOnly", "vietnameseNatural", "missing", "duplicate", "wrong_segment", "rubric_missing", "rubric_duplicate", "blank_reason"])
+def test_review_requires_complete_translation_and_rubric_audits(fault):
+    replies = generation_responses()
+    review = replies[-1]
+    if fault == "missing": review["translationChecks"].pop()
+    elif fault == "duplicate": review["translationChecks"][-1] = copy.deepcopy(review["translationChecks"][0])
+    elif fault == "wrong_segment": review["translationChecks"][0]["segmentId"] = "unknown"
+    elif fault == "rubric_missing": review["rubricChecks"].pop()
+    elif fault == "rubric_duplicate": review["rubricChecks"][-1] = copy.deepcopy(review["rubricChecks"][0])
+    elif fault == "blank_reason": review["rubricChecks"][0]["reasonVi"] = " "
+    else: review["translationChecks"][0][fault] = False
+    with pytest.raises(workflow.QualityRejected):
+        execute(payload(), replies)
 
 
 def test_later_transport_failure_is_unknown_and_never_replayed(tmp_path):
