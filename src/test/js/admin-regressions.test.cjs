@@ -73,3 +73,21 @@ test('Gemini audit displays booleans and operator source lists', () => {
     assert.equal(format('rpmLimit', 0), '0');
     assert.equal(format('name', null), '—');
 });
+
+test('every admin menu route uses the URL router when clicked', async () => {
+    const code = source('app.js');
+    const routes = [...fs.readFileSync(path.resolve(__dirname, '../../main/resources/static/admin.html'), 'utf8')
+        .matchAll(/data-route="(admin[^\"]*)"/g)].map(match => match[1]);
+    const calls = [];
+    const navigate = vm.runInNewContext(code.slice(code.indexOf('    async function navigate('), code.indexOf('    function renderLevelTabs(')) + '\nnavigate', {
+        state: {},
+        resolveUrlAndNavigate: async (mapped, push) => calls.push({route: mapped.route, push}),
+        document: {querySelector() { throw Error('Menu route bypassed the URL router'); }}
+    });
+    assert.ok(routes.includes('admin-gemini'));
+    for (const route of routes) {
+        await navigate(route);
+        assert.equal(calls.at(-1).route, route);
+        assert.equal(calls.at(-1).push, true);
+    }
+});

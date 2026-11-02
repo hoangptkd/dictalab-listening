@@ -1350,6 +1350,7 @@
             "admin-users": { route: "admin-users", params: {} },
             "admin-listening": { route: "admin-listening", params: {edit: params.edit || "", page: params.page || 1} },
             "admin-support": { route: "admin-support", params: {} },
+            "admin-gemini": { route: "admin-gemini", params: {} },
             room:      { route: "room",       params: {} },
             admin:     { route: "admin",      params: {} },
             result:    { route: "result",     params: { sessionId: params.sessionId || state.session?.sessionId } },
