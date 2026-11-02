@@ -419,13 +419,17 @@ class Profile(StrictModel):
         return self
 
 
+class PersonalizedProfile(Profile):
+    id: Literal["supported", "standard", "challenge", "a1", "a2", "b1", "b2", "c1", "c2"]
+
+
 class ScenarioInput(StrictModel):
     kind: Literal["scenario"] = "scenario"
     phase: Literal["EXTRACT", "GENERATE", "GRADE"]
     contractVersion: Literal["scenario-job.v1", "scenario-job.v2"]
     promptHash: str = Field(pattern=r"^[a-f0-9]{64}$")
     programHash: str = Field(pattern=r"^[a-f0-9]{64}$")
-    profile: Profile
+    profile: Profile | PersonalizedProfile
     inputVi: str = Field(default="", max_length=2000)
     specification: Specification | PersonalizedSpecification | None = None
     activity: Activity | PersonalizedActivity | None = None
@@ -455,7 +459,7 @@ class ScenarioInput(StrictModel):
                 raise ValueError("personalized specification required")
             if self.activity is not None and not isinstance(self.activity, PersonalizedActivity):
                 raise ValueError("personalized activity required")
-        elif isinstance(self.specification, PersonalizedSpecification) or isinstance(self.activity, PersonalizedActivity):
+        elif self.profile.id not in {"supported", "standard", "challenge"} or isinstance(self.specification, PersonalizedSpecification) or isinstance(self.activity, PersonalizedActivity):
             raise ValueError("personalized content requires v2")
         if self.phase == "EXTRACT" and (not self.inputVi.strip() or self.specification is not None or self.activity is not None or self.answers):
             raise ValueError("invalid extraction input")

@@ -35,7 +35,7 @@ class ScenarioProgramTest {
 
     @Test void registryDefinitionsAreDeeplyImmutableAndNotApprovedForGeneration() throws Exception {
         var registry = new ScenarioProgramRegistry();
-        assertThat(registry.definitions()).hasSize(6).allMatch(p -> p.status() == ScenarioProgram.Status.DRAFT);
+        assertThat(registry.definitions()).hasSize(7).allMatch(p -> p.status() == ScenarioProgram.Status.DRAFT);
         var general = registry.require("general-communication", 1);
         assertThat(general.difficultyProfiles()).hasSize(3);
         assertThatThrownBy(() -> general.targetScales().get(0).labels().add("A1")).isInstanceOf(UnsupportedOperationException.class);
@@ -99,5 +99,17 @@ class ScenarioProgramTest {
             assertThatThrownBy(() -> ScenarioPersonalization.context(program,new ScenarioGoalRequest.Target(scale.scaleId(),"OVERALL",target),null,"detail")).isInstanceOf(ScenarioFailure.class);
             assertThatThrownBy(() -> ScenarioPersonalization.context(program,goal,"invalid","detail")).isInstanceOf(ScenarioFailure.class);
         }
+    }
+
+    @Test void communicationCefrHasSixDistinctProfilesAndPreservesThePreviousVersion() throws Exception {
+        var registry=new ScenarioProgramRegistry(); var program=registry.require("general-communication",3);
+        assertThat(program.difficultyProfiles()).extracting(ScenarioProgram.DifficultyProfile::id).containsExactly("a1","a2","b1","b2","c1","c2");
+        for (String level : java.util.List.of("a1","a2","b1","b2","c1","c2")) {
+            var context=ScenarioPersonalization.context(program,new ScenarioGoalRequest.Target("cefr-listening","LISTENING",level),null,"main-idea");
+            assertThat(context.path("profile").path("id").asText()).isEqualTo(level);
+            assertThat(context.path("profile").path("vocabularyGuidance").asText()).contains("CEFR "+level.toUpperCase(java.util.Locale.ROOT));
+        }
+        assertThat(registry.require("general-communication",2).definitionHash()).isEqualTo("059372a412266fdc258c9149a21983b85fff81035eedb18993802c5413449423");
+        assertThatThrownBy(() -> ScenarioPersonalization.context(program,new ScenarioGoalRequest.Target("cefr-listening","LISTENING","standard"),null,"main-idea")).isInstanceOf(ScenarioFailure.class);
     }
 }

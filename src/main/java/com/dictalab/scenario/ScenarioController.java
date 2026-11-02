@@ -34,7 +34,8 @@ public class ScenarioController {
     @GetMapping("/catalog")
     public ResponseEntity<Catalog> catalog(@AuthenticationPrincipal DictaLabPrincipal owner) {
         boolean available=release.available(owner.id());
-        var personalized=registry.definitions().stream().filter(p -> p.version()>=2 && p.status()!=ScenarioProgram.Status.RETIRED).toList();
+        var personalized=registry.definitions().stream().filter(p -> p.version()>=2 && p.status()!=ScenarioProgram.Status.RETIRED
+                && registry.definitions().stream().noneMatch(other -> other.code().equals(p.code()) && other.version()>p.version() && other.status()!=ScenarioProgram.Status.RETIRED)).toList();
         var generation=release.generationPrograms(owner.id());
         boolean anyAvailable=available || !generation.isEmpty();
         return noStore(new Catalog("scenario-public.v1", properties.enabled(), anyAvailable, anyAvailable ? List.of("guided-listening") : List.of(),

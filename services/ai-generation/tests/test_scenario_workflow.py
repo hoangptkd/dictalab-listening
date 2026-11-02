@@ -84,12 +84,12 @@ def generation_responses():
              for name in ("SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS")], "valid": True, "issues": []}])
 
 
-def learning_context(code="ielts-listening", profile_id="standard", focus="detail"):
+def learning_context(code="ielts-listening", profile_id="standard", focus="detail", program_version=2):
     programs = json.loads((ROOT / "src/main/resources/scenario/programs-personalized-v1.json").read_text(encoding="utf-8"))
-    program = next(p for p in programs if p["code"] == code)
+    program = next(p for p in programs if p["code"] == code and p["version"] == program_version)
     profile = next(p for p in program["difficultyProfiles"] if p["id"] == profile_id)
     target = profile.get("targetRange", {}).get("max", profile_id)
-    return dict(contractVersion="scenario-learning-context.v1", programCode=code, programVersion=2,
+    return dict(contractVersion="scenario-learning-context.v1", programCode=code, programVersion=program_version,
                 programHash=program["definitionHash"], practiceMode="guided-listening", layoutVersion="three-activities.v1",
                 focusSkill=focus, targetProvenance="USER_DECLARED_GOAL", currentProvenance="UNKNOWN", currentValue=None,
                 calibrationStatus="INTERNAL_PRACTICE_UNCALIBRATED", qualityPolicyVersion=program["qualityPolicyVersion"],
@@ -139,6 +139,20 @@ def test_personalized_prompt_pin_and_legacy_payload_fingerprint_are_stable():
     assert workflow.personalized_prompt_hash() == (ROOT / "src/main/resources/scenario/workflow-v2.sha256").read_text().strip()
     assert workflow.prompt_hash() == "d43a3e228449dc64d7b6c103c2013558ac6e9415feabad8ff50e083900b0ae21"
     assert "learningContext" not in payload().model_dump()
+
+
+@pytest.mark.parametrize("level", ["a1", "a2", "b1", "b2", "c1", "c2"])
+def test_cefr_target_and_operational_profile_reach_model_together(level):
+    context = learning_context("general-communication",level,"main-idea",3)
+    extracted = {**extraction_response(), "learnerMode":"listener", "learnerCharacterId":None, "genre":"information-exchange"}
+    result,calls = execute(personal_payload("EXTRACT",context=context),[extracted])
+    supplied = json.loads(calls[0][1][1]["content"])["learningContext"]
+    assert supplied["target"] == {"scaleId":"cefr-listening","component":"LISTENING","value":level}
+    assert supplied["profile"]["id"] == level
+    assert "CEFR "+level.upper() in supplied["profile"]["vocabularyGuidance"]
+    assert result["task"]["learnerMode"] == "listener"
+    with pytest.raises(ValueError):
+        payload("EXTRACT",profile={k: context["profile"][k] for k in ("id","minWordsPerActivity","maxWordsPerActivity","maxWordsPerSession")})
 
 
 def test_listener_extraction_has_no_fictional_user_role():

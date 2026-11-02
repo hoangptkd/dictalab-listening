@@ -4,7 +4,7 @@
     const root = () => document.querySelector("#conversation-content");
     const escape = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
     const labels = {CAPTURED: "Hiểu đúng", PARTIAL: "Hiểu một phần", MISSED: "Bỏ lỡ", INCORRECT: "Chưa đúng", UNCERTAIN: "Chưa đủ căn cứ"};
-    const profiles = {supported: "Có hỗ trợ", standard: "Tiêu chuẩn", challenge: "Thử thách"};
+    const profiles = {supported: "Có hỗ trợ", standard: "Tiêu chuẩn", challenge: "Thử thách", a1: "A1", a2: "A2", b1: "B1", b2: "B2", c1: "C1", c2: "C2"};
     const skills = {detail: "Nghe chi tiết", "main-idea": "Hiểu ý chính", reason: "Hiểu lý do", purpose: "Hiểu mục đích", "speaker-attitude": "Hiểu quan điểm", "supported-inference": "Nghe và suy luận"};
     let revision = 0, owner = null, abort = null, timer = null, session = null, busy = false;
     const memory = new Map();
@@ -52,7 +52,8 @@
         if (!catalog.enabled) return false;
         const programs = catalog.practicePrograms || [], preferences = savedPreferences.preferences || [];
         const program = programs.find(p => p.code === read("program", preferences[0]?.programCode)) || programs[0];
-        const preference = program && preferences.find(p => p.programCode === program.code && p.programVersion === program.version);
+        const storedPreference = program && preferences.find(p => p.programCode === program.code);
+        const preference = storedPreference?.programVersion === program?.version ? storedPreference : null;
         const available = program ? program.generationAvailable && Boolean(preference) : catalog.generationAvailable;
         const groups = [...new Map(suggestions.suggestions.map(s => [s.groupId || s.id, {id: s.groupId || s.id, title: s.groupTitleVi || s.titleVi}])).values()];
         const historyRows = rows => rows.map(s => `<p><a href="/conversation/${encodeURIComponent(s.sessionId)}" data-session="${escape(s.sessionId)}">${escape(s.titleVi)}</a> · ${escape(s.status)}</p>`).join("");
@@ -62,7 +63,7 @@
             <label class="scenario-brief-label" for="scenario-input">Bạn muốn cải thiện điều gì?</label>
             <textarea id="scenario-input" class="scenario-brief" name="inputVi" rows="5" maxlength="2000" ${program ? '' : 'required'} aria-describedby="scenario-input-help"></textarea>
             <p id="scenario-input-help">Mô tả chủ đề hoặc nhu cầu bằng tiếng Việt. ${program ? 'Có thể để trống để AI đề xuất tình huống theo mục tiêu đã lưu.' : ''} Tránh nhập thông tin cá nhân hoặc khóa truy cập.</p>
-            ${program ? `<p>${escape(program.displayNameVi)} · ${preference ? `${escape(preference.target.value)} · ${escape(skills[preference.focusSkill])}` : 'Hãy lưu mục tiêu luyện nghe trước khi tạo bài.'}</p>` : `<fieldset class="scenario-profile-options"><legend>Mức luyện giao tiếp</legend>${(catalog.difficultyProfiles.length ? catalog.difficultyProfiles : Object.keys(profiles)).map((p,i) => `<label><input type="radio" name="profileId" value="${escape(p)}" ${i === 0 ? "checked" : ""}>${escape(profiles[p] || p)}</label>`).join("")}</fieldset>`}
+            ${program ? `<p>${escape(program.displayNameVi)} · ${preference ? escape(profiles[preference.target.value] || preference.target.value) : 'Hãy lưu mục tiêu luyện nghe trước khi tạo bài.'}</p>` : `<fieldset class="scenario-profile-options"><legend>Mức luyện giao tiếp</legend>${(catalog.difficultyProfiles.length ? catalog.difficultyProfiles : ['supported','standard','challenge']).map((p,i) => `<label><input type="radio" name="profileId" value="${escape(p)}" ${i === 0 ? "checked" : ""}>${escape(profiles[p] || p)}</label>`).join("")}</fieldset>`}
             <p>Luyện kỹ năng theo mục tiêu; kết quả bài này không quy đổi thành điểm TOEIC hoặc band IELTS.</p>
             <button id="scenario-create-button" class="primary-button" ${available ? "" : "disabled"}>Phân tích và xem trước</button>
             ${available ? "" : "<p>Chương trình đang chờ duyệt bộ sinh bài. Bài đã lưu vẫn có thể mở.</p>"}
@@ -80,7 +81,7 @@
         if (program) bindPersonalization(program, preference, token, () => {
             preferenceDirty = true; root().querySelector('#scenario-create-button').disabled = true;
             status('Mục tiêu đã thay đổi. Hãy lưu mục tiêu trước khi tạo bài.');
-        });
+        }, storedPreference?.version || 0);
         root().querySelectorAll("[data-group]").forEach(button => button.addEventListener("click", () => {
             root().querySelectorAll("[data-group]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
             root().querySelectorAll("[data-suggestion-group]").forEach(item => { item.hidden = item.dataset.suggestionGroup !== button.dataset.group; });
@@ -122,35 +123,29 @@
             <form id="scenario-personalization"><label for="scenario-program">Bạn luyện nghe để làm gì?</label>
             <select id="scenario-program" name="programCode">${programs.map(p => `<option value="${escape(p.code)}" ${p.code === program.code ? 'selected' : ''}>${escape(p.displayNameVi)}</option>`).join('')}</select>
             <div id="scenario-personalization-fields"></div><button type="submit" class="secondary-button">Lưu mục tiêu luyện nghe</button>
-            <p>Điểm hiện tại là tự khai. Mức luyện được chọn theo mức hiện tại nếu có, nếu chưa biết thì theo mục tiêu. Các mức luyện nội bộ đang được kiểm chứng.</p>
+            <p>Bài luyện được tạo theo mức mục tiêu bạn chọn. Nội dung đang được kiểm chứng, không phải kết quả đánh giá trình độ.</p>
             ${program.generationAvailable ? '' : '<p role="status">Chương trình chưa mở tạo bài. Bạn có thể lưu mục tiêu và tiếp tục bài đã có.</p>'}</form></section>`;
     }
-    function bindPersonalization(program, preference, token, changed) {
+    function bindPersonalization(program, preference, token, changed, expectedVersion) {
         const scale = program.targetScales.find(s => s.component === 'LISTENING');
         if (!scale) return;
-        const defaultValue = scale.labels.length ? 'standard' : program.code === 'ielts-listening' ? '6.5' : '350';
-        const field = (id, name, label, value, optional) => `<label for="${id}">${label}</label>${scale.labels.length
-            ? `<select id="${id}" name="${name}">${optional ? '<option value="">Chưa biết</option>' : ''}${scale.labels.map(v => `<option value="${escape(v)}" ${v === value ? 'selected' : ''}>${escape(profiles[v] || v)}</option>`).join('')}</select>`
-            : `<input id="${id}" name="${name}" type="number" min="${escape(scale.min)}" max="${escape(scale.max)}" step="${escape(scale.step)}" value="${escape(value)}" ${optional ? '' : 'required'} aria-describedby="scenario-score-help">`}`;
-        root().querySelector('#scenario-personalization-fields').innerHTML = `${field('scenario-target','targetValue', program.code === 'ielts-listening' ? 'Mục tiêu IELTS Listening band' : program.code === 'toeic-listening' ? 'Mục tiêu TOEIC Listening (5–495)' : 'Mức giao tiếp mong muốn', preference?.target.value || defaultValue, false)}
-            ${field('scenario-current','currentValue','Mức hiện tại (không bắt buộc)',preference?.currentValue || '', true)}
-            <p id="scenario-score-help">${scale.labels.length ? 'Chọn mô tả phù hợp nhu cầu.' : `Thang Listening ${escape(scale.min)}–${escape(scale.max)}, bước ${escape(scale.step)}. Chưa biết mức hiện tại: để trống.`} Không tự quy đổi từ điểm tổng.</p>
-            <label for="scenario-focus">Bạn muốn cải thiện kỹ năng nào?</label><select id="scenario-focus" name="focusSkill"></select><p id="scenario-profile-help" role="status"></p>`;
-        const target = root().querySelector('#scenario-target'), currentLevel = root().querySelector('#scenario-current');
-        target.value = preference?.target.value || defaultValue; currentLevel.value = preference?.currentValue || '';
-        const focus = root().querySelector('#scenario-focus');
-        const refreshSkills = () => {
-            const level = currentLevel.value || target.value;
+        const defaultValue = scale.labels.length ? (scale.scaleId === 'cefr-listening' ? 'b1' : 'standard') : program.code === 'ielts-listening' ? '6.5' : '350';
+        const value = preference?.target.value || defaultValue;
+        const label = program.code === 'ielts-listening' ? 'Mục tiêu IELTS Listening band' : program.code === 'toeic-listening' ? 'Mục tiêu TOEIC Listening (5–495)' : 'Mức giao tiếp mong muốn (CEFR)';
+        root().querySelector('#scenario-personalization-fields').innerHTML = `<label for="scenario-target">${label}</label>${scale.labels.length
+            ? `<select id="scenario-target" name="targetValue" required aria-describedby="scenario-score-help">${scale.labels.map(v => `<option value="${escape(v)}" ${v === value ? 'selected' : ''}>${escape(profiles[v] || v)}</option>`).join('')}</select>`
+            : `<input id="scenario-target" name="targetValue" type="number" min="${escape(scale.min)}" max="${escape(scale.max)}" step="${escape(scale.step)}" value="${escape(value)}" required aria-describedby="scenario-score-help">`}
+            <p id="scenario-score-help">${scale.scaleId === 'cefr-listening' ? 'Chọn mức CEFR từ A1 đến C2.' : scale.labels.length ? 'Chọn mức luyện phù hợp.' : `Thang Listening ${escape(scale.min)}–${escape(scale.max)}, bước ${escape(scale.step)}. Không tự quy đổi từ điểm tổng.`}</p>
+            <p id="scenario-profile-help" role="status"></p>`;
+        const target = root().querySelector('#scenario-target'); target.value = value;
+        const refreshProfile = () => {
+            const level = target.value;
             const profile = program.difficultyProfiles.find(p => p.targetRange
                 ? p.targetRange.scaleId === scale.scaleId && Number(level) >= Number(p.targetRange.min) && Number(level) <= Number(p.targetRange.max)
                 : p.id === level);
-            const previous = focus.value || preference?.focusSkill || 'detail';
-            focus.innerHTML = (profile?.skills || []).map(s => `<option value="${escape(s)}">${escape(skills[s] || s)}</option>`).join('');
-            focus.value = profile?.skills.includes(previous) ? previous : profile?.skills[0] || '';
             root().querySelector('#scenario-profile-help').textContent = profile ? `Mức luyện: ${profiles[profile.id] || profile.id}. ${profile.inferencePolicy === 'EXPLICIT_ONLY' ? 'Ưu tiên thông tin được nói rõ.' : 'Có thể luyện suy luận có căn cứ.'}` : 'Hãy nhập mức Listening hợp lệ.';
         };
-        refreshSkills(); target.addEventListener('input',refreshSkills); currentLevel.addEventListener('input',refreshSkills);
-        target.addEventListener('change',refreshSkills); currentLevel.addEventListener('change',refreshSkills);
+        refreshProfile(); target.addEventListener('input',refreshProfile); target.addEventListener('change',refreshProfile);
         root().querySelector('#scenario-personalization').addEventListener('input',changed);
         root().querySelector('#scenario-personalization').addEventListener('change',changed);
         root().querySelector('#scenario-program').addEventListener('change',event => {
@@ -161,7 +156,7 @@
             run(async token => {
                 await mutation('/learning-preferences',{programCode:program.code,programVersion:program.version,
                     target:{scaleId:scale.scaleId,component:'LISTENING',value:String(form.get('targetValue'))},
-                    currentValue:form.get('currentValue') || '',focusSkill:form.get('focusSkill'),expectedVersion:preference?.version || 0});
+                    currentValue:'',focusSkill:'main-idea',expectedVersion});
                 if (current(token)) { save('program',program.code); await catalog(token); status('Đã lưu mục tiêu. Bạn có thể tạo bài luyện.'); }
             });
         });

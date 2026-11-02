@@ -148,12 +148,12 @@ test('navigation exposes one conversation feature and keeps scenario only as a c
     assert.match(source,/#conversation-content/);
 });
 
-function personalizedApi(preferences = []) {
-    const program = JSON.parse(fs.readFileSync(require('node:path').resolve(__dirname,'../../main/resources/scenario/programs-personalized-v1.json'),'utf8')).find(p => p.code === 'ielts-listening');
+function personalizedApi(preferences = [], code = 'ielts-listening', version = 2) {
+    const program = JSON.parse(fs.readFileSync(require('node:path').resolve(__dirname,'../../main/resources/scenario/programs-personalized-v1.json'),'utf8')).find(p => p.code === code && p.version === version);
     return async (url, options = {}) => {
         if (options.method === 'POST') {
             if (url.endsWith('/learning-preferences')) {
-                preferences = [{...options.body, version: 1}]; return preferences[0];
+                preferences = [{...options.body, version: options.body.expectedVersion + 1}]; return preferences[0];
             }
             return {operationId:'personal-op',status:'PENDING'};
         }
@@ -167,20 +167,38 @@ function personalizedApi(preferences = []) {
     };
 }
 
-test('personalization persists Listening band and unknown current level before allowing a blank brief', async () => {
+test('personalization only asks for target and uses main idea with no current level', async () => {
     const h=harness(personalizedApi()); await h.module.show();
     assert.match(h.root.innerHTML,/Mục tiêu luyện nghe/);
     const create=h.node('#scenario-create'); create.values=[['inputVi','']];
     create.listeners.submit({preventDefault(){},currentTarget:create}); await tick();
     assert.equal(h.calls.filter(c=>c.options?.method==='POST').length,0);
-    const form=h.node('#scenario-personalization'); form.values=[['targetValue','7.5'],['currentValue',''],['focusSkill','reason']];
+    assert.doesNotMatch(h.node('#scenario-personalization-fields').innerHTML,/scenario-current|scenario-focus|Mức hiện tại|Bạn muốn cải thiện kỹ năng nào/);
+    const form=h.node('#scenario-personalization'); form.values=[['targetValue','7.5']];
     form.listeners.submit({preventDefault(){},currentTarget:form}); await tick(); await tick();
     const saved=h.calls.find(c=>c.url.endsWith('/learning-preferences') && c.options?.method==='POST');
-    assert.deepEqual(JSON.parse(JSON.stringify(saved.options.body)),{programCode:'ielts-listening',programVersion:2,target:{scaleId:'ielts-listening-band',component:'LISTENING',value:'7.5'},currentValue:'',focusSkill:'reason',expectedVersion:0});
+    assert.deepEqual(JSON.parse(JSON.stringify(saved.options.body)),{programCode:'ielts-listening',programVersion:2,target:{scaleId:'ielts-listening-band',component:'LISTENING',value:'7.5'},currentValue:'',focusSkill:'main-idea',expectedVersion:0});
     create.listeners.submit({preventDefault(){},currentTarget:create}); await tick(); await tick();
     const submitted=h.calls.find(c=>c.url.endsWith('/drafts'));
     assert.equal(submitted.options.body.inputVi,''); assert.equal(submitted.options.body.programVersion,2);
     assert.equal(submitted.options.body.profileId,'');
+});
+
+test('communication offers and persists all six CEFR levels while upgrading an older preference', async () => {
+    const previous={programCode:'general-communication',programVersion:2,target:{scaleId:'practice-support',value:'standard'},currentValue:'supported',focusSkill:'detail',version:5};
+    const h=harness(personalizedApi([previous],'general-communication',3)); await h.module.show();
+    const html=h.node('#scenario-personalization-fields').innerHTML;
+    assert.match(html,/Mức giao tiếp mong muốn \(CEFR\)/);
+    assert.doesNotMatch(html,/scenario-current|scenario-focus|value="standard"/);
+    for (const level of ['a1','a2','b1','b2','c1','c2']) {
+        assert.ok(html.includes(`value="${level}"`)); assert.ok(html.includes(`>${level.toUpperCase()}</option>`));
+        const form=h.node('#scenario-personalization'); form.values=[['targetValue',level]];
+        form.listeners.submit({preventDefault(){},currentTarget:form}); await tick(); await tick();
+    }
+    const saved=h.calls.filter(c=>c.url.endsWith('/learning-preferences') && c.options?.method==='POST');
+    assert.equal(saved[0].options.body.expectedVersion,5);
+    assert.deepEqual(saved.map(c=>c.options.body.target.value),['a1','a2','b1','b2','c1','c2']);
+    assert.ok(saved.every(c=>c.options.body.target.scaleId==='cefr-listening' && c.options.body.programVersion===3 && c.options.body.currentValue==='' && c.options.body.focusSkill==='main-idea'));
 });
 
 test('unsaved personalization changes block generation with the previous saved target', async () => {

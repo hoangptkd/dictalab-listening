@@ -457,5 +457,230 @@
     "qualityPolicyVersion": "scenario-quality.v2-draft",
     "promptArtifactRefs": [],
     "definitionHash": "bb2ec5cd120373be1384cea529187c0bb289f6d99064ed3c85a2c346c7c33b87"
+  },
+  {
+    "schemaVersion": "scenario-program.v1",
+    "code": "general-communication",
+    "version": 3,
+    "status": "DRAFT",
+    "displayNameVi": "Giao tiếp đời sống",
+    "targetScales": [
+      {
+        "scaleId": "cefr-listening",
+        "component": "LISTENING",
+        "min": null,
+        "max": null,
+        "step": null,
+        "labels": [
+          "a1",
+          "a2",
+          "b1",
+          "b2",
+          "c1",
+          "c2"
+        ],
+        "sourceUrl": "https://www.coe.int/en/web/common-european-framework-reference-languages/introduction-and-context",
+        "reviewedOn": "2026-11-02"
+      }
+    ],
+    "supportedPracticeModes": [
+      "guided-listening"
+    ],
+    "supportedQuestionTypes": [
+      "MEANING_RECALL_VI"
+    ],
+    "difficultyProfiles": [
+      {
+        "id": "a1",
+        "version": 3,
+        "minWordsPerActivity": 15,
+        "maxWordsPerActivity": 45,
+        "maxWordsPerSession": 135,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 2,
+        "maxDistractors": 0,
+        "maxCorrections": 0,
+        "inferencePolicy": "EXPLICIT_ONLY",
+        "speechRateWpm": 100,
+        "pauseMillis": 700,
+        "vocabularyGuidance": "CEFR A1 practice target. Familiar people, objects and basic everyday needs; very common concrete words.",
+        "syntaxGuidance": "Very short simple clauses, explicit names and subjects; no idioms.",
+        "informationDensity": "One concrete idea per turn; repeat or paraphrase key meaning naturally.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose"
+        ],
+        "allowedVoiceProfiles": []
+      },
+      {
+        "id": "a2",
+        "version": 3,
+        "minWordsPerActivity": 20,
+        "maxWordsPerActivity": 65,
+        "maxWordsPerSession": 195,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 2,
+        "maxDistractors": 0,
+        "maxCorrections": 0,
+        "inferencePolicy": "EXPLICIT_ONLY",
+        "speechRateWpm": 110,
+        "pauseMillis": 700,
+        "vocabularyGuidance": "CEFR A2 practice target. Routine everyday needs, shopping, directions and personal plans; common phrases.",
+        "syntaxGuidance": "Simple coordinated clauses with explicit time and reference.",
+        "informationDensity": "Short routine exchanges with a few clearly stated connected details.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose"
+        ],
+        "allowedVoiceProfiles": []
+      },
+      {
+        "id": "b1",
+        "version": 3,
+        "minWordsPerActivity": 30,
+        "maxWordsPerActivity": 90,
+        "maxWordsPerSession": 270,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 3,
+        "maxDistractors": 1,
+        "maxCorrections": 0,
+        "inferencePolicy": "EXPLICIT_ONLY",
+        "speechRateWpm": 120,
+        "pauseMillis": 500,
+        "vocabularyGuidance": "CEFR B1 practice target. Familiar work, study, interests and experiences; explain uncommon topic words.",
+        "syntaxGuidance": "Connected clauses with explicit reasons, sequences and contrasts.",
+        "informationDensity": "Clear main ideas and linked details in familiar situations; state the required reasons explicitly.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose"
+        ],
+        "allowedVoiceProfiles": []
+      },
+      {
+        "id": "b2",
+        "version": 3,
+        "minWordsPerActivity": 40,
+        "maxWordsPerActivity": 115,
+        "maxWordsPerSession": 345,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 3,
+        "maxDistractors": 1,
+        "maxCorrections": 0,
+        "inferencePolicy": "SUPPORTED_INFERENCE",
+        "speechRateWpm": 135,
+        "pauseMillis": 500,
+        "vocabularyGuidance": "CEFR B2 practice target. Concrete and abstract topics with varied paraphrases and opinions.",
+        "syntaxGuidance": "Varied complex clauses, clear discourse links and references across turns.",
+        "informationDensity": "Develop explanations and contrasting views; supported implications can require connecting turns.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose",
+          "speaker-attitude",
+          "supported-inference"
+        ],
+        "allowedVoiceProfiles": []
+      },
+      {
+        "id": "c1",
+        "version": 3,
+        "minWordsPerActivity": 50,
+        "maxWordsPerActivity": 140,
+        "maxWordsPerSession": 420,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 3,
+        "maxDistractors": 1,
+        "maxCorrections": 1,
+        "inferencePolicy": "SUPPORTED_INFERENCE",
+        "speechRateWpm": 150,
+        "pauseMillis": 400,
+        "vocabularyGuidance": "CEFR C1 practice target. Broader abstract topics, idiomatic phrases in context and precise register.",
+        "syntaxGuidance": "Flexible complex syntax, cohesive references and nuanced qualification.",
+        "informationDensity": "Develop subtle intentions and viewpoints with recoverable implicit links; no unsupported inference.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose",
+          "speaker-attitude",
+          "supported-inference"
+        ],
+        "allowedVoiceProfiles": []
+      },
+      {
+        "id": "c2",
+        "version": 3,
+        "minWordsPerActivity": 60,
+        "maxWordsPerActivity": 140,
+        "maxWordsPerSession": 420,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 3,
+        "maxDistractors": 1,
+        "maxCorrections": 1,
+        "inferencePolicy": "SUPPORTED_INFERENCE",
+        "speechRateWpm": 165,
+        "pauseMillis": 400,
+        "vocabularyGuidance": "CEFR C2 practice target. Precise nuanced vocabulary, natural idiomatic language and shifts in register.",
+        "syntaxGuidance": "Flexible sophisticated clauses and natural ellipsis with recoverable references.",
+        "informationDensity": "Fine distinctions, qualified positions and implicit meaning grounded in the spoken context; no trivia padding.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose",
+          "speaker-attitude",
+          "supported-inference"
+        ],
+        "allowedVoiceProfiles": []
+      }
+    ],
+    "skillTaxonomyVersion": "scenario-skills.v2",
+    "generationPolicy": {
+      "deadlineSeconds": 180,
+      "maxCalls": 7,
+      "maxInputChars": 2000,
+      "maxOutputTokens": 8000,
+      "maxResultBytes": 262144,
+      "repairLimit": 0
+    },
+    "gradingPolicy": {
+      "maxAttempts": 3,
+      "uncertaintyPolicy": "KEEP_UNCERTAIN"
+    },
+    "supportPolicy": {
+      "replay": true,
+      "slow": true,
+      "transcript": true,
+      "translation": true,
+      "reveal": true
+    },
+    "qualityPolicyVersion": "scenario-quality.v2-draft",
+    "promptArtifactRefs": [],
+    "definitionHash": "2476c2ed9f4faefe24bd312a020d9b19fdc8bdc83336392921a8cd66af91160c"
   }
 ]

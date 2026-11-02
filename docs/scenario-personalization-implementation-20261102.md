@@ -4,9 +4,9 @@
 
 Nâng cấp `/conversation`, dùng lại Scenario Engine, lịch sử bài cũ, gợi ý 24 tình huống thuộc 6 nhóm và các gate hiện có. Không tạo thêm mục điều hướng.
 
-1. Người dùng chọn TOEIC Listening, IELTS Listening hoặc giao tiếp; nhập mục tiêu, mức hiện tại nếu biết và kỹ năng cần luyện.
+1. Người dùng chọn TOEIC Listening, IELTS Listening hoặc giao tiếp và mức mục tiêu. Giao tiếp dùng sáu mức CEFR A1–C2. Không hỏi mức hiện tại hoặc kỹ năng cần cải thiện.
 2. Lưu lựa chọn trên server theo tài khoản/chương trình; optimistic version và idempotency bảo vệ khi lưu lại hoặc mở nhiều tab.
-3. Khi tạo bản nháp, Core chụp mục tiêu, mức hiện tại, thang điểm, profile đầy đủ, kỹ năng, nguồn dữ liệu và phiên bản chính sách. Sửa lựa chọn về sau không thay đổi bản nháp/bài/remix cũ.
+3. Khi tạo bản nháp, Core chụp mục tiêu, thang điểm, profile đầy đủ, nguồn dữ liệu và phiên bản chính sách. Kỹ năng mặc định là hiểu ý chính (`main-idea`), mức hiện tại UNKNOWN. Những giá trị mức hiện tại/kỹ năng lưu từ UI cũ không điều khiển bài mới. Sửa lựa chọn về sau không thay đổi bản nháp/bài/remix cũ.
 4. Có thể để trống mô tả để AI chọn bối cảnh theo mục tiêu. Ô mô tả vẫn cho phép tùy chỉnh; gợi ý chỉ điền vào ô này.
 5. Truyền snapshot vào EXTRACT, GENERATE, QUESTIONS, REVIEW_QUESTIONS, TRANSLATE, REVIEW và GRADE. GRADE giữ nguyên chỉ dẫn V4; chấp nhận câu trả lời tiếng Anh, tiếng Việt và trộn hai ngôn ngữ.
 6. GENERATE chỉ viết hội thoại. Diễn biến theo thể loại trao đổi thông tin, thảo luận, giải thích, trải nghiệm, phỏng vấn, giải quyết vấn đề hoặc giao dịch; không ép mọi bài phải chốt một thỏa thuận.
@@ -15,15 +15,15 @@ Nâng cấp `/conversation`, dùng lại Scenario Engine, lịch sử bài cũ, 
 
 ## Độ khó và giới hạn của bằng chứng
 
-Mục tiêu là Listening, không tự quy đổi từ Overall/điểm tổng. Mức hiện tại do người dùng khai, không phải kết quả đánh giá. Nếu có mức hiện tại, chọn profile theo mức đó; nếu chưa biết, chọn theo mục tiêu.
+Mục tiêu là Listening, không tự quy đổi từ Overall/điểm tổng. Bài mới chọn profile theo mục tiêu được hiển thị. Bài và remix đã có giữ nguyên snapshot lịch sử.
 
-| Chương trình | Có hỗ trợ | Tiêu chuẩn | Thử thách |
-| --- | --- | --- | --- |
-| TOEIC Listening | 5–250 | 255–375 | 380–495 |
-| IELTS Listening | 0–5 | 5.5–6.5 | 7–9 |
-| Giao tiếp | supported | standard | challenge |
+| Chương trình | Thang mục tiêu | Profile luyện |
+| --- | --- | --- |
+| TOEIC Listening | 5–495 | Có hỗ trợ: 5–250; tiêu chuẩn: 255–375; thử thách: 380–495 |
+| IELTS Listening | 0–9 | Có hỗ trợ: 0–5; tiêu chuẩn: 5.5–6.5; thử thách: 7–9 |
+| Giao tiếp (phiên bản 3) | CEFR A1, A2, B1, B2, C1, C2 | Một profile riêng cho từng mức |
 
-Đây là nhóm luyện nội bộ tạm thời, **chưa được hiệu chuẩn sư phạm**. Không tuyên bố bài sinh ra tương đương band chứng chỉ. Profile điều khiển từ vựng, cú pháp, mật độ thông tin, chính sách suy luận và ngân sách từ; không chỉ số từ. Tốc độ/pause trong profile là cấu hình cho giai đoạn sau; TTS hiện dùng recipe cũ.
+Các nhóm TOEIC/IELTS là nhóm luyện nội bộ tạm thời, **chưa được hiệu chuẩn sư phạm**. Giao tiếp dùng profile riêng cho từng mức CEFR, không quy sáu mức thành ba nhóm và không tự quy đổi mức giao tiếp cũ sang CEFR. Tham khảo [khung CEFR của Council of Europe](https://www.coe.int/en/web/common-european-framework-reference-languages/introduction-and-context). Nội dung sinh chưa được chứng nhận tương đương mức CEFR/band. Profile điều khiển từ vựng, cú pháp, mật độ thông tin, chính sách suy luận và ngân sách từ; không chỉ số từ. Tốc độ/pause trong profile là cấu hình cho giai đoạn sau; TTS hiện dùng recipe cũ.
 
 Layout hiện tại giữ ba activity, mỗi activity 2–6 segment và hai câu hỏi. Đây là luyện kỹ năng theo mục tiêu, chưa phải định dạng đề thi TOEIC/IELTS thật. Profile thấp không mở suy luận; UI chỉ cho chọn kỹ năng được profile hỗ trợ.
 
@@ -32,10 +32,10 @@ Layout hiện tại giữ ba activity, mỗi activity 2–6 segment và hai câu
 - `GET /api/v2/scenarios/catalog`: bổ sung `practicePrograms`, profile đầy đủ và trạng thái mở tạo bài từng chương trình.
 - `GET /api/v2/scenarios/learning-preferences`: đọc lựa chọn của tài khoản đăng nhập.
 - `POST /api/v2/scenarios/learning-preferences`: lưu lựa chọn; cần CSRF và `Idempotency-Key` UUID.
-- `POST /api/v2/scenarios/drafts`: dùng programVersion=2; Core tự chọn profile từ lựa chọn đã lưu. UI chặn tạo khi lựa chọn đang sửa chưa lưu.
+- `POST /api/v2/scenarios/drafts`: giao tiếp dùng programVersion=3, TOEIC/IELTS dùng 2; Core tự chọn profile từ mục tiêu đã lưu. UI chặn tạo khi lựa chọn đang sửa chưa lưu. Khi nâng từ giao tiếp v2, UI yêu cầu lưu mức CEFR, dùng đúng version hiện có của preference để tránh xung đột giả.
 - Các API session, answer, audio, history và remix tiếp tục dùng luồng hiện có.
 - Migration V50 thêm bảng `scenario_learning_preferences` và cột nullable `scenario_drafts.learning_context_json`. Không backfill, không sửa bài cũ.
-- Giữ nguyên catalog program v1, prompt pin v1 và serialization job v1. Phiên bản chương trình mới là 2; job mới là `scenario-job.v2`.
+- Giữ nguyên catalog program v1, định nghĩa giao tiếp v2, prompt pin v1 và serialization job v1. Thêm giao tiếp v3; catalog chỉ hiện bản mới nhất của mỗi chương trình. Job cá nhân hóa vẫn là `scenario-job.v2`, với pin schema mới hỗ trợ CEFR.
 
 Ví dụ request lưu mục tiêu:
 
@@ -44,13 +44,13 @@ Ví dụ request lưu mục tiêu:
   "programCode": "ielts-listening",
   "programVersion": 2,
   "target": {"scaleId": "ielts-listening-band", "component": "LISTENING", "value": "6.5"},
-  "currentValue": "5.0",
-  "focusSkill": "reason",
+  "currentValue": "",
+  "focusSkill": "main-idea",
   "expectedVersion": 0
 }
 ```
 
-Mức hiện tại chưa biết truyền `""`; snapshot chuẩn hóa thành null và provenance UNKNOWN. Xung đột version trả 409. Mục tiêu Overall, điểm ngoài thang, bước điểm sai hoặc kỹ năng ngoài profile bị từ chối.
+Hai field `currentValue` và `focusSkill` giữ trong API để tương thích client cũ; UI gửi `""` và `main-idea`, không còn ô chọn. Draft mới luôn dùng mục tiêu + main-idea, không dùng lựa chọn ẩn từ client cũ. Snapshot mức hiện tại là null, provenance UNKNOWN. Xung đột version trả 409. Mục tiêu Overall, điểm ngoài thang, bước điểm sai hoặc kỹ năng ngoài profile vẫn bị từ chối.
 
 ## Bật preview local
 
@@ -68,14 +68,14 @@ dictalab:
       enabled: true
       local-preview-enabled: true
       local-preview-users: [123] # Thay bằng ID tài khoản được phép thử.
-      approved-prompt-hash: b9c6479955e2db1573d3791c600c15c5b499f4dcd0d9280176754799f8d56a55
+      approved-prompt-hash: bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa
       approved-programs:
-        "[general-communication:2]": 059372a412266fdc258c9149a21983b85fff81035eedb18993802c5413449423
+        "[general-communication:3]": 2476c2ed9f4faefe24bd312a020d9b19fdc8bdc83336392921a8cd66af91160c
         "[toeic-listening:2]": a05f4049cdf816773342b65d3ddb1b6b107504cf685c8efc9c292bf8a9df684c
         "[ielts-listening:2]": bb2ec5cd120373be1384cea529187c0bb289f6d99064ed3c85a2c346c7c33b87
 ```
 
-Worker cần `DICTALAB_SCENARIO_ENABLED=true`, cấu hình provider hợp lệ và cùng mã nguồn/pin. Không đặt khóa vào request UI, report hoặc Git. Cấu hình trên không tự khởi động server và không chứng minh local đang chạy bản mới.
+Worker cần `DICTALAB_SCENARIO_ENABLED=true`, cấu hình provider hợp lệ và cùng mã nguồn/pin. Dừng nhận job rồi để job theo pin schema cũ kết thúc trước khi nâng đồng thời Core/worker sang pin mới. Không đặt khóa vào request UI, report hoặc Git. Cấu hình trên không tự khởi động server và không chứng minh local đang chạy bản mới.
 
 ## Tracing và kiểm tra
 
@@ -97,7 +97,7 @@ python -m pytest tests/test_scenario_workflow.py tests/test_scenario_contract.py
 
 Kiểm tra PostgreSQL dùng schema riêng trong container dùng một lần: cài mới, nâng từ V47 giữ legacy session, nâng từ V49 giữ nguyên draft và context null. Kiểm thử workflow dùng phản hồi model giả lập để xác minh contract và gate; không dùng kết quả đó để tuyên bố chất lượng AI đã tăng.
 
-Kết quả local đã xác minh: 99 kiểm thử Java Scenario (gồm migration PostgreSQL), 193 kiểm thử Python thuộc bốn bộ trên và 360 kiểm thử JavaScript đều đạt. Kiểm tra UTF-8 tiếng Việt và `git diff --check` đạt. Có cảnh báo tương thích/deprecation từ Python 3.14/Langfuse/Pydantic/Starlette; không có dependency mới được cài trong thay đổi này. Chưa kiểm tra giao diện bằng trình duyệt thật và chưa chạy benchmark model mới.
+Kết quả triển khai ban đầu: 99 kiểm thử Java Scenario (gồm migration PostgreSQL), 193 kiểm thử Python thuộc bốn bộ trên và 360 kiểm thử JavaScript đều đạt. Lần điều chỉnh giao diện/CEFR tiếp tục chạy các bộ Scenario Java, workflow/contract Python và toàn bộ JavaScript; thêm kiểm tra sáu mức CEFR, nâng preference v2→v3 và bỏ tác động của trường ẩn trên bài mới. Không thay schema database trong lần điều chỉnh này. Kiểm tra UTF-8 tiếng Việt và `git diff --check` đạt. Có cảnh báo tương thích/deprecation từ Python 3.14/Langfuse/Pydantic/Starlette; không có dependency mới được cài trong thay đổi này. Chưa kiểm tra giao diện bằng trình duyệt thật và chưa chạy benchmark model mới.
 
 ## Mở rộng và rollout tiếp theo
 

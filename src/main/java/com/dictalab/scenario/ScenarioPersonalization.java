@@ -53,8 +53,8 @@ public class ScenarioPersonalization {
         var rows=data.db.queryForList("SELECT preference_json FROM scenario_learning_preferences WHERE user_id=? AND program_code=? AND program_version=?",user,program.code(),program.version());
         if (rows.isEmpty()) throw new ScenarioFailure(400,"PERSONALIZATION_REQUIRED","Hãy chọn mục tiêu luyện nghe trước khi tạo bài.");
         var preference=tree((String)rows.get(0).get("preference_json"));
-        return context(program,ScenarioJson.MAPPER.treeToValue(preference.path("target"),ScenarioGoalRequest.Target.class),
-                preference.path("currentValue").isNull() ? null : preference.path("currentValue").asText(),preference.path("focusSkill").asText());
+        // New lessons follow the visible target, never a removed UI field stored by an older client.
+        return context(program,ScenarioJson.MAPPER.treeToValue(preference.path("target"),ScenarioGoalRequest.Target.class),null,"main-idea");
     }
     static ObjectNode context(ScenarioProgram program,ScenarioGoalRequest.Target target,String currentValue,String focus) {
         try {

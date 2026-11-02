@@ -85,7 +85,7 @@ class TargetScale(BaseModel):
 
 class PracticeProfile(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    id: Literal["supported", "standard", "challenge"]
+    id: Literal["supported", "standard", "challenge", "a1", "a2", "b1", "b2", "c1", "c2"]
     version: int = Field(ge=2)
     minWordsPerActivity: int = Field(ge=1, le=140)
     maxWordsPerActivity: int = Field(ge=1, le=140)
@@ -144,7 +144,7 @@ class LearningContext(BaseModel):
         level = self.currentValue if self.currentValue is not None else self.target.value
         bounds = self.profile.targetRange
         if bounds is None:
-            if self.target.scaleId != "practice-support" or level != self.profile.id:
+            if self.target.scaleId not in {"practice-support", "cefr-listening"} or level != self.profile.id:
                 raise ValueError("practice profile mismatch")
         elif (bounds.scaleId != self.target.scaleId or not Decimal(bounds.min) <= Decimal(level) <= Decimal(bounds.max)):
             raise ValueError("score profile mismatch")

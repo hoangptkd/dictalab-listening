@@ -61,7 +61,7 @@ class ScenarioEngineIntegrationTest {
         when(release.available()).thenReturn(true);
         when(release.available(anyLong())).thenReturn(true);
         when(release.personalizedPromptHash()).thenReturn(new String(getClass().getResourceAsStream("/scenario/workflow-v2.sha256").readAllBytes()).trim());
-        when(release.require(anyLong(),anyString(),eq(2))).thenAnswer(call -> registry.require(call.getArgument(1),2));
+        when(release.require(anyLong(),anyString(),anyInt())).thenAnswer(call -> registry.require(call.getArgument(1),call.getArgument(2)));
         when(ai.local()).thenReturn(true); when(ai.scenarioProvider()).thenReturn("ollama");
         when(ai.audio(any())).thenCallRealMethod();
         var accounting=new AiUsageBudget(db,manager,true,10000000,1000000,10,20,100000,1000);
@@ -83,6 +83,7 @@ class ScenarioEngineIntegrationTest {
             if (personalized && phase.equals("EXTRACT")) ((ObjectNode)result.path("task")).put("learnerMode","listener").put("learnerRoleVi","Người nghe").put("genre","information-exchange");
             if (personalized && phase.equals("GENERATE")) for (var activity : result.path("task").path("activities")) for (var q : activity.path("questions"))
                 ((ObjectNode)q).put("supportKind","direct").put("inferenceReasonEn","");
+            if (personalized && phase.equals("GENERATE")) ((ObjectNode)result.path("task").path("activities").get(0).path("questions").get(0)).put("skill",input.path("learningContext").path("focusSkill").asText());
             var calls=result.putArray("calls");
         for (String purpose : phase.equals("GENERATE") ? List.of("GENERATE","QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW") : List.of(phase))
                 calls.addObject().put("purpose",purpose).put("provider","ollama").put("model","fixture-model");
@@ -115,15 +116,16 @@ class ScenarioEngineIntegrationTest {
     }
 
     @Test void personalizedDraftSessionAndRemixKeepOriginalSnapshotAfterPreferenceChanges() {
-        String key=id(); var request=preference("toeic-listening","450","200",0);
+        String key=id(); var request=preference("toeic-listening","250","200",0);
         var saved=personalization.save(user,key,request);
         assertThat(personalization.save(user,key,request).toString()).isEqualTo(saved.toString());
         var extraction=dispatch(engine.createDraft(user,id(),new ScenarioEngine.DraftRequest("","toeic-listening",2,"")));
         assertThat(extraction.path("status").asText()).isEqualTo("SUCCEEDED");
         String draftId=extraction.path("draftId").asText(); var draft=engine.draft(user,draftId);
         var snapshot=draft.path("learningContext");
-        assertThat(snapshot.path("target").path("value").asText()).isEqualTo("450");
-        assertThat(snapshot.path("currentValue").asText()).isEqualTo("200");
+        assertThat(snapshot.path("target").path("value").asText()).isEqualTo("250");
+        assertThat(snapshot.path("currentValue").isNull()).isTrue();
+        assertThat(snapshot.path("focusSkill").asText()).isEqualTo("main-idea");
         assertThat(snapshot.path("profile").path("id").asText()).isEqualTo("supported");
         personalization.save(user,id(),preference("toeic-listening","495","",1));
         assertThat(engine.draft(user,draftId).path("learningContext")).isEqualTo(snapshot);
@@ -157,6 +159,22 @@ class ScenarioEngineIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.preferences.length()").value(0));
         assertThatThrownBy(() -> engine.createDraft(other.getId(),id(),new ScenarioEngine.DraftRequest("","ielts-listening",2,"")))
                 .isInstanceOfSatisfying(ScenarioFailure.class,e -> assertThat(e.code).isEqualTo("PERSONALIZATION_REQUIRED"));
+    }
+
+    @Test void newDraftUsesVisibleTargetInsteadOfLegacyHiddenPreferencesAndSupportsCefr() {
+        personalization.save(user,id(),preference("toeic-listening","450","200",0));
+        var context=personalization.forDraft(user,registry.require("toeic-listening",2));
+        assertThat(context.path("profile").path("id").asText()).isEqualTo("challenge");
+        assertThat(context.path("currentValue").isNull()).isTrue();
+        assertThat(context.path("focusSkill").asText()).isEqualTo("main-idea");
+        var request=new ScenarioPersonalization.Preference("general-communication",3,new ScenarioGoalRequest.Target("cefr-listening","LISTENING","b2"),"","main-idea",0);
+        personalization.save(user,id(),request);
+        var operation=dispatch(engine.createDraft(user,id(),new ScenarioEngine.DraftRequest("","general-communication",3,"")));
+        assertThat(operation.path("status").asText()).isEqualTo("SUCCEEDED");
+        var snapshot=engine.draft(user,operation.path("draftId").asText()).path("learningContext");
+        assertThat(snapshot.path("target").path("value").asText()).isEqualTo("b2");
+        assertThat(snapshot.path("profile").path("id").asText()).isEqualTo("b2");
+        assertThat(snapshot.path("profile").path("vocabularyGuidance").asText()).contains("CEFR B2");
     }
 
     @org.junit.jupiter.params.ParameterizedTest
