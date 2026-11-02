@@ -40,6 +40,17 @@ Khi provider cho phép trở lại, giữ nguyên hai prompt và profile đã gh
 
 Kiểm tra local ngày 02/11/2026: registry có ba nguồn đang bật `a`, `b`, `c`, ba giá trị khóa và ba project ID cấu hình khác nhau; cùng model `gemini-3.5-flash-lite`. Không thể chỉ từ cấu hình xác minh chúng thuộc ba tài khoản Google hoặc ba project thực sự độc lập về quota.
 
+## Tiếp tục với chuyển nguồn khi gặp 429
+
+Đã bổ sung retry riêng cho benchmark: mỗi lời gọi nhận HTTP 429 thử nguồn khác tối đa ba nguồn, tôn trọng cooldown; lỗi khác dừng. Chính sách này áp dụng cho cả hai nhánh. Mỗi attempt lưu source ID, kết quả và thứ tự; không lưu khóa. Kiểm tra giả lập `a:429 → b:429 → c:200` thành công.
+
+- Case 01 few-shot: tái sử dụng hội thoại và câu hỏi đã lưu sau khi đối chiếu request, rồi chạy các bước REVIEW_QUESTIONS, TRANSLATE và REVIEW. Pipeline hoàn tất, `qualityPassed=true`; đây là kết quả của gate tự động, chưa phải đánh giá chất lượng do con người xác nhận. REVIEW đã thử `c:429 → a:429 → b:200`.
+- Case 01 baseline: kết quả gate từ chối trước đó được giữ nguyên.
+- Case 02 few-shot: giữ EXTRACT thành công; lần tiếp tục đầu gặp `b:429`, các nguồn khác đang cooldown. Sau khi chờ cooldown, lượt tiếp theo nhận `a:429 → b:429 → c:429`. GENERATE chưa hoàn thành; không coi lỗi quota là lỗi chất lượng.
+- Các case còn lại chưa có kết quả đủ hai nhánh. Chưa thể kết luận few-shot tốt hơn hay hoàn tất so sánh 20 bài.
+
+Evidence mới nằm ở `data/e20/resume-01-questions/`, `data/e20/retry-self-check-01/` và `data/e20/r3/`; các capture ban đầu không bị xóa. Cần tiếp tục khi nhà cung cấp cho phép, giữ từng attempt và đối chiếu nội dung thực tế sau khi có đủ hai nhánh.
+
 Trong capture của case 01, sáu request HTTP 200 lần lượt dùng `a → b → c → a → b → c`; lần EXTRACT thành công ở case 02 dùng `a` sau khi bắt đầu process mới. Vì vậy **ba nguồn thực sự được dùng**, không phải chỉ một nguồn. Thông tin nguồn không được ghi trong capture lỗi 429: `trace_generation` chỉ ghi `sourceId` sau khi request thành công. Không gán nguồn cụ thể cho hai lỗi khi thiếu bằng chứng.
 
 Logic hiện tại trong `model_gateway.py` và `gemini_pool.py`:
