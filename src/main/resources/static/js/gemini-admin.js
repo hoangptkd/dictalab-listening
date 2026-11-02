@@ -55,7 +55,8 @@
                     <td>${item.quota ? `${number(item.quota.rpm_used)} lượt/phút<br>${number(item.quota.rpd_used)} lượt/ngày<br>${number(item.quota.tpm_reserved)} token/phút dự trù` : "Chưa có trạng thái"}<br><small>Giới hạn RPM: ${number(item.operating_rpm || item.rpm_limit)}<br>TPM: ${item.tpm_limit ? number(item.tpm_limit) : "Không đặt trần"}<br>Lượt/ngày: ${item.rpd_limit ? number(item.rpd_limit) : "Không đặt trần"}</small></td>
                     <td><button type="button" class="text-button" data-edit="${esc(item.id)}">Sửa nguồn</button>
                     <button type="button" class="text-button" data-probe="${esc(item.id)}">Kiểm tra kết nối</button>
-                    ${!item.enabled ? `<button type="button" class="text-button" data-delete="${esc(item.id)}">Xóa nguồn đã tắt</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+                    <button type="button" class="text-button" data-delete="${esc(item.id)}" ${item.enabled ? 'disabled aria-describedby="gemini-delete-help"' : ""}>Xóa nguồn</button></td></tr>`).join("")}</tbody></table></div>
+                    ${data.sources.some(item => item.enabled) ? '<p id="gemini-delete-help">Để xóa nguồn đang bật: chọn Sửa nguồn, bỏ chọn Bật nguồn rồi lưu.</p>' : ""}`
                 : '<p class="admin-empty">Chưa có nguồn Gemini. Thêm nguồn đầu tiên để cấu hình API key.</p>'}</div>
             <section class="admin-panel" id="gemini-editor" aria-label="Chỉnh sửa nguồn" hidden></section>
             <details class="admin-panel" ${data.pool ? "" : "open"}><summary>${data.pool ? "Model mặc định, giới hạn chung và bật/tắt nhóm Gemini" : "Tạo nhóm Gemini"}</summary><form data-pool data-admin-dirty="gemini-pool">

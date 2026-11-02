@@ -81,8 +81,12 @@ find('[data-pool]').closest('details').open=true;field('defaultModel','gemini-3.
 await submit('[data-pool]',()=>text().includes('Đã lưu cấu hình chung.'));assert(text().includes('Nhóm nguồn đang tắt'),'paused group not visible');pass('default model + quota + pause group');
 await qa({usage:true});await load();field('period','month','[data-filters]');await submit('[data-filters]',()=>!!find('meter'));
 assert(text().includes('100')&&text().includes('20'),'actual token statistics missing');pass('usage table + monthly chart');
-assert(!find('[data-delete]'),'enabled source can be deleted');find('[data-edit="source-a"]').click();field('enabled',false);
-await submit('#gemini-editor form',()=>!!find('[data-delete]'));
+assert(find('[data-delete]')?.disabled,'enabled source must show a disabled delete action');
+assert(text().includes('Để xóa nguồn đang bật: chọn Sửa nguồn, bỏ chọn Bật nguồn rồi lưu.'),'delete prerequisite is not explained');
+let askedToDelete=false;window.confirm=()=>{askedToDelete=true;return true;};find('[data-delete]').click();
+assert(!askedToDelete&&!!find('[data-edit]'),'enabled delete action was not blocked');
+find('[data-edit="source-a"]').click();field('enabled',false);
+await submit('#gemini-editor form',()=>find('[data-delete]')&&!find('[data-delete]').disabled);
 window.confirm=()=>false;find('[data-delete]').click();assert(!!find('[data-edit]'),'delete cancellation removed source');
 window.confirm=()=>true;find('[data-delete]').click();await wait(()=>text().includes('Đã xóa nguồn.'));
 assert(!find('[data-edit]')&&!!find('meter')&&text().includes('Xóa nguồn'),'delete lost history or usage');
