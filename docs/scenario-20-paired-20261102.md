@@ -35,3 +35,19 @@ Hai attempt ghi được **7 HTTP 200 và 2 HTTP 429**. Wire chỉ giữ mã HTT
 - Bản sao ngoài worktree: `C:/Users/HP/Desktop/English_dictition/data/scenario-evidence/paired-20-20261102.zip`, kèm receipt và SHA-256. Archive cũng tách riêng các bản nháp trước khi đổi yêu cầu; không dùng chúng làm kết quả của hai arm.
 
 Khi provider cho phép trở lại, giữ nguyên hai prompt và profile đã ghi, chạy các arm/case chưa có outcome trong một capture mới. Giữ 429 và các kết quả đã có; nếu đo lặp một case UNKNOWN, báo đó là lượt mới riêng và không xóa lần lỗi. Sau đó đọc toàn bộ case cả hai bản hoàn tất, kiểm vai, tiến triển, độ dài, từng câu hỏi/đáp án/bằng chứng, reviewer và token; tiếp tục giữ baseline cho đến khi có đủ bằng chứng.
+
+## Kiểm tra xoay ba nguồn Gemini
+
+Kiểm tra local ngày 02/11/2026: registry có ba nguồn đang bật `a`, `b`, `c`, ba giá trị khóa và ba project ID cấu hình khác nhau; cùng model `gemini-3.5-flash-lite`. Không thể chỉ từ cấu hình xác minh chúng thuộc ba tài khoản Google hoặc ba project thực sự độc lập về quota.
+
+Trong capture của case 01, sáu request HTTP 200 lần lượt dùng `a → b → c → a → b → c`; lần EXTRACT thành công ở case 02 dùng `a` sau khi bắt đầu process mới. Vì vậy **ba nguồn thực sự được dùng**, không phải chỉ một nguồn. Thông tin nguồn không được ghi trong capture lỗi 429: `trace_generation` chỉ ghi `sourceId` sau khi request thành công. Không gán nguồn cụ thể cho hai lỗi khi thiếu bằng chứng.
+
+Logic hiện tại trong `model_gateway.py` và `gemini_pool.py`:
+
+1. Trước mỗi HTTP, pool chọn luân phiên một nguồn cùng model, bỏ qua nguồn đang cooldown hoặc hết hạn mức admission.
+2. Nếu nguồn trả 429, gateway ghi cooldown cho nguồn đó rồi trả lỗi lên caller; **không tự gửi lại cùng request sang nguồn khác**. Request tiếp theo có thể chọn nguồn khác. Worker scenario không replay cả workflow đã có các request thành công.
+3. Script benchmark của đợt này chủ động dừng lượt khi thấy 429; do đó các case còn lại chưa được thử dù nguồn khác có thể tồn tại. Đây là giới hạn của kịch bản benchmark, không phải bằng chứng bộ xoay chỉ có một nguồn.
+
+Ảnh chụp bộ đếm Redis local lúc kiểm tra: `a=505`, `b=501`, `c=500` lượt admission trong ngày Pacific; mức RPD được cấu hình là 500 cho mỗi nguồn. Benchmark đặt `operational_limits_enabled=false`, nên admission local không chặn ở mức 500, nhưng không xóa giới hạn của Gemini. Các số này bao gồm reservation, không chứng minh số request Google đã tính và không chứng minh nguyên nhân HTTP 429. Bộ đếm local dự kiến sang ngày mới lúc **15:00 ngày 02/11/2026 giờ Việt Nam**; không khẳng định quota thực tế của nhà cung cấp cũng sẽ khả dụng ngay lúc đó.
+
+Đã chạy tám kiểm tra tập trung của pool: **8 PASS**, gồm xoay dưới tải giả lập, giữ cooldown, admission không giới hạn local và không retry request đã nhận 429. Chưa có kiểm tra thực tế chứng minh cả ba project còn quota tại thời điểm lỗi. Có thể cải thiện benchmark để tiếp tục case độc lập khác và ghi riêng mọi 429; nếu muốn thử lại request có 429 trên nguồn khác, cần ghi thành attempt mới với source ID, mã lỗi và chi phí, không ghi đè outcome cũ.
