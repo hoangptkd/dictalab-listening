@@ -77,6 +77,7 @@ class OpenAiCompatibleProvider(ModelProvider):
         *,
         temperature: float | None = None,
     ) -> dict[str, Any]:
+        self.last_usage = {}
         if not self._api_key:
             raise ProviderError(f"{self._provider_name}:no_api_key_configured")
         remaining = deadline - time.monotonic()

@@ -63,3 +63,13 @@ test('saved fields stop being dirty while other edited fields survive a rerender
     assert.equal(forms[0].fields[1].value,'Fresh description');assert.equal(forms[0].fields[2].checked,true);
     ui.clean(forms[0]); assert.equal(ui.canLeave(),true);
 });
+
+test('Gemini audit displays booleans and operator source lists', () => {
+    const code = source('gemini-admin.js');
+    const format = vm.runInNewContext(code.slice(code.indexOf('    const auditValue ='), code.indexOf('    const fields =')) + '\nauditValue');
+    assert.equal(format('enabled', false), 'Tắt');
+    assert.equal(format('modelAvailable', true), 'Có');
+    assert.equal(format('sourceIds', ['source-a', 'source-b']), 'source-a, source-b');
+    assert.equal(format('rpmLimit', 0), '0');
+    assert.equal(format('name', null), '—');
+});

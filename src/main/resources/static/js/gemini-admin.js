@@ -1,13 +1,17 @@
 (() => {
     "use strict";
     const ui = () => window.DictaLabAdmin;
-    const api = (path = "", options = {}) => window.DictaLabListeningBridge.api(`/api/admin/gemini${path}`, {cache: "no-store", ...options});
+    const api = (path = "", options = {}) => window.DictaLabListeningBridge.api(`/api/admin/gemini${path}`, {cache: "no-store", timeoutMs: 25000, ...options});
     let generation = 0, snapshot, period = "day", source = "", before = "";
     const number = value => value == null ? "Không có dữ liệu" : Number(value).toLocaleString("vi-VN");
     const esc = value => ui().esc(value);
     const auditNames = {name: "Tên nguồn", projectId: "Project", model: "Model", rpmLimit: "RPM tối đa", operatingRpm: "RPM vận hành",
         tpmLimit: "Token/phút", rpdLimit: "Lượt/ngày", priority: "Thứ tự", enabled: "Bật/tắt", apiKey: "API key",
-        globalRpmLimit: "RPM chung", globalRpdLimit: "Lượt/ngày chung", httpStatus: "Mã HTTP", modelAvailable: "Model khả dụng"};
+        defaultModel: "Model mặc định", globalRpmLimit: "RPM chung", globalRpdLimit: "Lượt/ngày chung", httpStatus: "Mã HTTP", modelAvailable: "Model khả dụng",
+        sourceIds: "Các nguồn", platforms: "Nền tảng"};
+    const auditValue = (key, value) => value == null ? "—" : typeof value === "boolean"
+        ? (key === "enabled" ? (value ? "Bật" : "Tắt") : (value ? "Có" : "Không"))
+        : Array.isArray(value) ? value.join(", ") : String(value);
     const fields = {rpmLimit: ["RPM tối đa", "rpm_limit", 15], operatingRpm: ["RPM vận hành (0: dùng RPM tối đa)", "operating_rpm", 13],
         tpmLimit: ["Token/phút (0: không đặt trần)", "tpm_limit", 0], rpdLimit: ["Lượt/ngày (0: không đặt trần)", "rpd_limit", 0], priority: ["Thứ tự", "priority", 0]};
 
@@ -23,17 +27,24 @@
             if (request !== generation || document.body.dataset.route !== "admin-gemini") return;
             snapshot = data;
             render(root);
-        } catch (error) { if (request === generation) ui().failure(root, error.message, show); }
+            return true;
+        } catch (error) { if (request === generation) ui().failure(root, error.message, show); return false; }
         finally { if (request === generation) root.setAttribute("aria-busy", "false"); }
     }
 
     function render(root) {
         const data = snapshot;
+        const sourceNames = new Map(data.sources.map(item => [item.id, item.name]));
+        for (const id of [...data.usage.map(row => row.source_id), ...data.audit.map(row => row.source_id), source]) {
+            if (id && !sourceNames.has(id)) sourceNames.set(id, `Đã xóa: ${id}`);
+        }
         root.innerHTML = `<div class="gemini-toolbar"><p>Luân phiên các nguồn cùng model. Gặp 429 sẽ thử nguồn khác trong thời hạn hiện có.</p>
-            <button type="button" class="primary-button compact" data-add>Thêm nguồn</button>
+            <button type="button" class="primary-button compact" data-add ${data.pool ? "" : "disabled"}>Thêm nguồn</button>
             <button type="button" class="text-button" data-refresh>Làm mới</button></div>
+            <p id="gemini-status" role="status" tabindex="-1"></p>
             <p>${data.limitsEnabled ? "Đang áp dụng giới hạn vận hành nội bộ." : "Giới hạn vận hành nội bộ đang tắt; quota thực tế của Google vẫn áp dụng."}
-            ${data.pool ? `Model mặc định: ${esc(data.pool.default_model)}. Nhóm nguồn ${data.pool.enabled ? "đang bật" : "đang tắt"}.` : "Chưa có nhóm nguồn Gemini."}</p>
+            ${data.pool ? `Model mặc định: ${esc(data.pool.default_model)}. Nhóm nguồn ${data.pool.enabled ? "đang bật" : "đang tắt"}.` : "Chưa có nhóm Gemini. Tạo nhóm bên dưới trước khi thêm nguồn."}</p>
+            ${data.pool?.enabled && !data.sources.some(item => item.enabled && item.model === data.pool.default_model) ? '<p role="alert">Model mặc định chưa có nguồn đang bật. Yêu cầu dùng model này sẽ chưa thực hiện được.</p>' : ""}
             ${!data.quotaAvailable ? '<p role="alert">Chưa đọc được trạng thái quota. Bạn vẫn có thể xem cấu hình đã lưu.</p>' : ""}
             <div class="admin-panel"><h2>Các nguồn</h2>${data.sources.length ? `<div class="gemini-table-scroll" tabindex="0" role="region" aria-label="Danh sách nguồn Gemini"><table class="gemini-table">
                 <thead><tr><th>Nguồn / project</th><th>Model / API key</th><th>Trạng thái</th><th>Sử dụng hiện tại</th><th>Thao tác</th></tr></thead>
@@ -41,29 +52,31 @@
                     <td>${esc(item.model)}<br><span aria-label="API key được che">${esc(item.key_mask)}</span></td>
                     <td>${item.enabled ? "Đã bật" : "Đã tắt"}${item.quota?.cooldown_ms > 0 ? `<br>Tạm nghỉ ${Math.ceil(item.quota.cooldown_ms / 1000)} giây` : ""}
                     ${item.last_error ? `<br><small>Lỗi gần nhất: ${item.last_error === "429" ? "429" : "Gọi API thất bại"}<br>${esc(ui().stamp(item.last_error_at))}</small>` : ""}</td>
-                    <td>${item.quota ? `${number(item.quota.rpm_used)} lượt/phút<br>${number(item.quota.rpd_used)} lượt/ngày` : "Chưa có trạng thái"}<br><small>RPM cấu hình: ${number(item.operating_rpm || item.rpm_limit)}</small></td>
+                    <td>${item.quota ? `${number(item.quota.rpm_used)} lượt/phút<br>${number(item.quota.rpd_used)} lượt/ngày<br>${number(item.quota.tpm_reserved)} token/phút dự trù` : "Chưa có trạng thái"}<br><small>Giới hạn RPM: ${number(item.operating_rpm || item.rpm_limit)}<br>TPM: ${item.tpm_limit ? number(item.tpm_limit) : "Không đặt trần"}<br>Lượt/ngày: ${item.rpd_limit ? number(item.rpd_limit) : "Không đặt trần"}</small></td>
                     <td><button type="button" class="text-button" data-edit="${esc(item.id)}">Sửa nguồn</button>
-                    <button type="button" class="text-button" data-probe="${esc(item.id)}">Kiểm tra kết nối</button></td></tr>`).join("")}</tbody></table></div>`
+                    <button type="button" class="text-button" data-probe="${esc(item.id)}">Kiểm tra kết nối</button>
+                    ${!item.enabled ? `<button type="button" class="text-button" data-delete="${esc(item.id)}">Xóa nguồn đã tắt</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
                 : '<p class="admin-empty">Chưa có nguồn Gemini. Thêm nguồn đầu tiên để cấu hình API key.</p>'}</div>
             <section class="admin-panel" id="gemini-editor" aria-label="Chỉnh sửa nguồn" hidden></section>
-            ${data.pool ? `<details class="admin-panel"><summary>Giới hạn chung và bật/tắt nhóm Gemini</summary><form data-pool data-admin-dirty="gemini-pool">
-                <label>RPM chung (0: không đặt trần)<input type="number" name="globalRpmLimit" min="0" max="2147483647" step="1" required value="${data.pool.global_rpm_limit}"></label>
-                <label>Lượt/ngày chung (0: không đặt trần)<input type="number" name="globalRpdLimit" min="0" max="2147483647" step="1" required value="${data.pool.global_rpd_limit}"></label>
-                <label><input type="checkbox" name="enabled" ${data.pool.enabled ? "checked" : ""}> Bật nhóm Gemini</label>
-                <button class="text-button" type="submit">Lưu cấu hình chung</button><button class="text-button" type="button" data-reset-pool>Hủy thay đổi</button><p data-error role="alert"></p></form></details>` : ""}
+            <details class="admin-panel" ${data.pool ? "" : "open"}><summary>${data.pool ? "Model mặc định, giới hạn chung và bật/tắt nhóm Gemini" : "Tạo nhóm Gemini"}</summary><form data-pool data-admin-dirty="gemini-pool">
+                <label>Model mặc định<input name="defaultModel" required pattern="[a-zA-Z0-9_.\\-]{1,100}" maxlength="100" value="${esc(data.pool?.default_model || "")}"></label>
+                <p>Tác vụ yêu cầu model cụ thể vẫn chỉ dùng nguồn đúng model đó. Đổi mặc định không tự đổi model của các tác vụ này.</p>
+                <label>RPM chung (0: không đặt trần)<input type="number" name="globalRpmLimit" min="0" max="2147483647" step="1" required value="${data.pool?.global_rpm_limit ?? 0}"></label>
+                <label>Lượt/ngày chung (0: không đặt trần)<input type="number" name="globalRpdLimit" min="0" max="2147483647" step="1" required value="${data.pool?.global_rpd_limit ?? 0}"></label>
+                <label><input type="checkbox" name="enabled" ${data.pool?.enabled ? "checked" : ""}> Bật nhóm Gemini</label>
+                <button class="text-button" type="submit">${data.pool ? "Lưu cấu hình chung" : "Tạo nhóm"}</button><button class="text-button" type="button" data-reset-pool>Hủy thay đổi</button><p data-error role="alert"></p></form></details>
             <section class="admin-panel"><h2>Thống kê sử dụng</h2>
-                <form data-filters class="admin-toolbar"><label>Nguồn<select name="source"><option value="">Tất cả nguồn</option>${data.sources.map(item => `<option value="${esc(item.id)}" ${source === item.id ? "selected" : ""}>${esc(item.name)}</option>`).join("")}</select></label>
+                <form data-filters class="admin-toolbar"><label>Nguồn<select name="source"><option value="">Tất cả nguồn</option>${[...sourceNames].map(([id, name]) => `<option value="${esc(id)}" ${source === id ? "selected" : ""}>${esc(name)}</option>`).join("")}</select></label>
                 <label>Gộp theo<select name="period"><option value="day" ${period === "day" ? "selected" : ""}>Ngày</option><option value="month" ${period === "month" ? "selected" : ""}>Tháng</option></select></label>
                 <button class="text-button" type="submit">Áp dụng</button></form>
                 <p>90 ngày gần nhất · Múi giờ ${esc(data.timezone)}. Token do API trả về; quota token dự trù được theo dõi riêng.</p>
                 ${!data.usageEnabled ? '<p role="alert">Chưa bật ghi thống kê sử dụng trong dịch vụ AI.</p>' : ""}
                 ${usageHtml(data.usage)}</section>
-            <section class="admin-panel"><h2>Lịch sử thay đổi</h2>${data.audit.length ? `<ol class="admin-timeline">${data.audit.map(event => `<li><strong>${esc({created: "Thêm nguồn", updated: "Sửa nguồn", probe: "Kiểm tra kết nối", pool_updated: "Sửa cấu hình chung", operator_updated: "Cập nhật từ CLI"}[event.action] || event.action)}</strong>
+            <section class="admin-panel"><h2>Lịch sử thay đổi</h2>${data.audit.length ? `<ol class="admin-timeline">${data.audit.map(event => `<li><strong>${esc({created: "Thêm nguồn", updated: "Sửa nguồn", deleted: "Xóa nguồn", probe: "Kiểm tra kết nối", pool_created: "Tạo nhóm Gemini", pool_updated: "Sửa cấu hình chung", operator_updated: "Cập nhật từ CLI"}[event.action] || event.action)}</strong>
                 <time>${esc(ui().stamp(event.created_at))}</time><p>${event.actor_id === 0 ? "Người vận hành CLI" : `Admin #${esc(event.actor_id)}`} · ${esc(event.source_id || "Nhóm Gemini")}</p>
-                <dl>${Object.entries(event.changes).map(([key, value]) => `<dt>${esc(auditNames[key] || key)}</dt><dd>${key === "apiKey" ? "Đã thay API key" : esc(typeof value === "object" && value !== null ? `${value.before ?? "—"} → ${value.after ?? "—"}` : value)}</dd>`).join("")}</dl></li>`).join("")}</ol>` : '<p class="admin-empty">Chưa có thay đổi được ghi nhận.</p>'}
+                <dl>${Object.entries(event.changes).map(([key, value]) => `<dt>${esc(auditNames[key] || key)}</dt><dd>${key === "apiKey" ? (value === "added" ? "Đã thêm API key" : "Đã thay API key") : esc(typeof value === "object" && value !== null && "before" in value && "after" in value ? `${auditValue(key, value.before)} → ${auditValue(key, value.after)}` : auditValue(key, value))}</dd>`).join("")}</dl></li>`).join("")}</ol>` : '<p class="admin-empty">Chưa có thay đổi được ghi nhận.</p>'}
                 ${before ? '<button type="button" class="text-button" data-latest>Lịch sử mới nhất</button>' : ""}
-                ${data.nextAudit ? '<button type="button" class="text-button" data-older>Xem thay đổi cũ hơn</button>' : ""}</section>
-            <p id="gemini-status" role="status" tabindex="-1"></p>`;
+                ${data.nextAudit ? '<button type="button" class="text-button" data-older>Xem thay đổi cũ hơn</button>' : ""}</section>`;
         root.querySelector("[data-add]").onclick = () => edit(null);
         ui().track(root);
         const poolForm = root.querySelector("[data-pool]");
@@ -74,15 +87,26 @@
                 status("Lưu hoặc hủy thay đổi của nguồn trước khi sửa cấu hình chung."); return;
             }
             const values = new FormData(poolForm);
-            await ui().busy(poolForm, async () => {
+            await ui().busy(root, async () => {
                 try { await api("/pool/config", {method: "PUT", body: {revision: snapshot.revision, enabled: values.has("enabled"),
+                    defaultModel: values.get("defaultModel").trim(),
                     globalRpmLimit: Number(values.get("globalRpmLimit")), globalRpdLimit: Number(values.get("globalRpdLimit"))}});
-                    ui().clean(poolForm); await show(); status("Đã lưu cấu hình chung.");
+                    ui().clean(poolForm); await saved("Đã lưu cấu hình chung.");
                 } catch (error) { poolForm.querySelector("[data-error]").textContent = error.message; }
             });
         };
         root.querySelector("[data-refresh]").onclick = () => { if (ui().canLeave()) show(); };
         root.querySelectorAll("[data-edit]").forEach(button => button.onclick = () => edit(data.sources.find(item => item.id === button.dataset.edit)));
+        root.querySelectorAll("[data-delete]").forEach(button => button.onclick = async () => {
+            const item = data.sources.find(item => item.id === button.dataset.delete);
+            if (!confirm(`Xóa nguồn “${item.name}” và API key đã lưu? Không thể khôi phục key. Thống kê và lịch sử vẫn được giữ.`)) return;
+            if (!ui().canLeave()) return;
+            await ui().busy(root, async () => {
+                try { await api(`/${encodeURIComponent(item.id)}?revision=${snapshot.revision}`, {method: "DELETE"});
+                    await saved("Đã xóa nguồn. Thống kê và lịch sử vẫn được giữ.");
+                } catch (error) { status(error.message); }
+            });
+        });
         root.querySelectorAll("[data-probe]").forEach(button => button.onclick = async () => {
             button.disabled = true;
             try { const result = await api(`/${button.dataset.probe}/probe`, {method: "POST"});
@@ -106,7 +130,18 @@
             <div class="gemini-table-scroll" tabindex="0" role="region" aria-label="Số liệu sử dụng Gemini"><table class="gemini-table"><thead><tr><th>Kỳ / nguồn</th><th>Yêu cầu kết thúc</th><th>Lần gọi</th><th>Thành công / lỗi / 429</th><th>Token vào / ra</th><th>Có số liệu token</th></tr></thead><tbody>${rows.map(row => `<tr><td>${esc(row.bucket.slice(0, 10))}<br>${esc(row.source_id)}<br><small>${esc(row.model)}</small></td><td>${number(row.requests)}</td><td>${number(row.attempts)}</td><td>${number(row.successes)} / ${number(row.errors)} / ${number(row.rate_limited)}</td><td>${number(row.input_tokens)} / ${number(row.output_tokens)}</td><td>${number(row.measured_attempts)} / ${number(row.attempts)} lần gọi</td></tr>`).join("")}</tbody></table></div>`;
     }
 
-    function status(message) { const node = document.getElementById("gemini-status"); if (node) { node.textContent = message; node.focus({preventScroll: true}); } }
+    async function saved(message) {
+        const refreshed = await show();
+        status(refreshed ? message : `${message} Chưa tải lại được danh sách; bấm Thử lại để kiểm tra cấu hình đã lưu.`);
+    }
+
+    function status(message) {
+        if (document.body.dataset.route !== "admin-gemini") return;
+        let node = document.getElementById("gemini-status");
+        if (!node) { node = document.createElement("p"); node.id = "gemini-status"; node.setAttribute("role", "status"); node.tabIndex = -1;
+            document.getElementById("admin-gemini-content").prepend(node); }
+        node.textContent = message; node.focus({preventScroll: true});
+    }
 
     function edit(item) {
         const poolForm = document.querySelector("[data-pool]");
@@ -131,12 +166,14 @@
             event.preventDefault(); const values = new FormData(form), body = {revision: snapshot.revision};
             for (const name of ["name", "projectId", "model"]) body[name] = values.get(name).trim();
             for (const name of Object.keys(fields)) body[name] = Number(values.get(name));
+            if (!body.name) { try { ui().fieldError(form, "name", "Nhập tên nguồn."); } catch (_) {} return; }
+            if (body.operatingRpm > body.rpmLimit) { try { ui().fieldError(form, "operatingRpm", "RPM vận hành không được vượt RPM tối đa."); } catch (_) {} return; }
             body.enabled = values.has("enabled");
             if (values.get("apiKey")) body.apiKey = values.get("apiKey").trim();
             const id = values.get("id").trim();
-            await ui().busy(form, async () => {
-                try { await api(`/${encodeURIComponent(id)}`, {method: "PUT", body});
-                    form.elements.apiKey.value = ""; ui().clean(form); await show(); status("Đã lưu. Yêu cầu mới sẽ dùng cấu hình vừa cập nhật.");
+            await ui().busy(document.getElementById("admin-gemini-content"), async () => {
+                try { await api(`/${encodeURIComponent(id)}`, {method: item ? "PUT" : "POST", body});
+                    form.elements.apiKey.value = ""; ui().clean(form); await saved("Đã lưu. Yêu cầu mới sẽ dùng cấu hình vừa cập nhật.");
                 } catch (error) { body.apiKey = undefined; form.elements.apiKey.value = ""; form.querySelector("[data-error]").textContent = error.message; }
             });
         };
