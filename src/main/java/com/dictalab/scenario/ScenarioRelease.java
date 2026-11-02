@@ -15,6 +15,7 @@ public class ScenarioRelease {
     private final ScenarioProgramRegistry programs;
     private final AiPlatformClient ai;
     private final String promptHash;
+    private final String personalizedPromptHash;
     private final org.springframework.core.env.Environment environment;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -26,6 +27,10 @@ public class ScenarioRelease {
             promptHash = new String(input.readNBytes(66), StandardCharsets.US_ASCII).trim();
         }
         if (!promptHash.matches("[a-f0-9]{64}")) throw new IllegalStateException("Invalid scenario workflow pin");
+        try (var input = new ClassPathResource("scenario/workflow-v2.sha256").getInputStream()) {
+            personalizedPromptHash = new String(input.readNBytes(66), StandardCharsets.US_ASCII).trim();
+        }
+        if (!personalizedPromptHash.matches("[a-f0-9]{64}")) throw new IllegalStateException("Invalid personalized workflow pin");
     }
 
     ScenarioRelease(ScenarioProperties rollout, ScenarioEngineProperties engine, ScenarioProgramRegistry programs,
@@ -62,6 +67,32 @@ public class ScenarioRelease {
 
     public ScenarioProgram program() { return programs.require("general-communication", engine.programVersion()); }
     public String promptHash() { return promptHash; }
+    public String personalizedPromptHash() { return personalizedPromptHash; }
+    public java.util.List<ScenarioProgram> generationPrograms(long user) {
+        return programs.definitions().stream().filter(p -> available(user,p)).toList();
+    }
+    public boolean available(long user, ScenarioProgram program) {
+        if (program.version() < 2) return program.equals(program()) && available(user);
+        if (!rollout.enabled() || !engine.enabled() || !ai.textConfigured()
+                || !personalizedPromptHash.equals(engine.approvedPromptHash())
+                || !program.definitionHash().equals(engine.approvedPrograms().get(program.code()+":"+program.version()))) return false;
+        if (!program.supportedPracticeModes().contains("guided-listening")
+                || !program.supportedQuestionTypes().contains("MEANING_RECALL_VI")) return false;
+        if (program.status() == ScenarioProgram.Status.APPROVED)
+            return program.promptArtifactRefs().stream().allMatch(a -> a.sha256().equals(personalizedPromptHash)
+                    && a.artifactId().equals("scenario-listening-v2"));
+        return program.status() == ScenarioProgram.Status.DRAFT && engine.localPreviewEnabled()
+                && engine.localPreviewUsers().contains(user) && environment.matchesProfiles("local")
+                && !environment.matchesProfiles("prod","production")
+                && Set.of("127.0.0.1","::1").contains(environment.getProperty("server.address",""));
+    }
+    public ScenarioProgram require(long user, String code, int version) {
+        ScenarioProgram program;
+        try { program=programs.require(code,version); }
+        catch (IllegalArgumentException missing) { throw new ScenarioFailure(400,"UNSUPPORTED_PROGRAM_MODE","Chương trình không tồn tại."); }
+        if (!available(user,program)) throw new ScenarioFailure(503,"UNSUPPORTED_PROGRAM_MODE","Chương trình chưa mở để tạo bài.");
+        return program;
+    }
     public void require() {
         if (!available()) throw new ScenarioFailure(503, "UNSUPPORTED_PROGRAM_MODE", "Chương trình chưa qua đủ kiểm tra để tạo bài. Bạn vẫn có thể mở bài đã lưu.");
     }

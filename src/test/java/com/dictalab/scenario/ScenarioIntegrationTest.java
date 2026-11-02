@@ -145,13 +145,13 @@ class ScenarioIntegrationTest {
 
     @Test void importerIsRepeatableAndDetectsStoredDefinitionDrift() {
         programs.run(null);
-        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_program_versions", Integer.class)).isEqualTo(3);
-        var saved = db.queryForObject("SELECT definition_json FROM scenario_program_versions WHERE program_code='general-communication'", String.class);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_program_versions", Integer.class)).isEqualTo(6);
+        var saved = db.queryForObject("SELECT definition_json FROM scenario_program_versions WHERE program_code='general-communication' AND program_version=1", String.class);
         try {
-            db.update("UPDATE scenario_program_versions SET definition_json='{}' WHERE program_code='general-communication'");
+            db.update("UPDATE scenario_program_versions SET definition_json='{}' WHERE program_code='general-communication' AND program_version=1");
             assertThatThrownBy(() -> programs.run(null)).isInstanceOf(IllegalStateException.class);
         } finally {
-            db.update("UPDATE scenario_program_versions SET definition_json=? WHERE program_code='general-communication'", saved);
+            db.update("UPDATE scenario_program_versions SET definition_json=? WHERE program_code='general-communication' AND program_version=1", saved);
         }
     }
 

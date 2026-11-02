@@ -15,7 +15,7 @@ function harness(api, storage = new Map()) {
     const root = {innerHTML: '', setAttribute() {}, removeAttribute() {},
         querySelector(selector) {
             if (selector === 'audio') return null;
-            if (selector.startsWith('#') && this.innerHTML.includes(`id="${selector.slice(1)}"`)) return node(selector);
+            if (selector.startsWith('#') && (this.innerHTML.includes(`id="${selector.slice(1)}"`) || [...nodes.values()].some(n => n.innerHTML?.includes(`id="${selector.slice(1)}"`)))) return node(selector);
             return null;
         },
         querySelectorAll(selector) {
@@ -146,4 +146,49 @@ test('navigation exposes one conversation feature and keeps scenario only as a c
     assert.doesNotMatch(index,/data-route="scenario"|id="scenario-view"/);
     assert.match(index,/data-route="conversation"/);
     assert.match(source,/#conversation-content/);
+});
+
+function personalizedApi(preferences = []) {
+    const program = JSON.parse(fs.readFileSync(require('node:path').resolve(__dirname,'../../main/resources/scenario/programs-personalized-v1.json'),'utf8')).find(p => p.code === 'ielts-listening');
+    return async (url, options = {}) => {
+        if (options.method === 'POST') {
+            if (url.endsWith('/learning-preferences')) {
+                preferences = [{...options.body, version: 1}]; return preferences[0];
+            }
+            return {operationId:'personal-op',status:'PENDING'};
+        }
+        if (url.endsWith('/catalog')) return {enabled:true,generationAvailable:true,generationMode:'LOCAL_PREVIEW',practicePrograms:[{...program,generationAvailable:true}]};
+        if (url.endsWith('/learning-preferences')) return {preferences};
+        if (url.endsWith('/learning-goals')) return [];
+        if (url.endsWith('/suggestions')) return {suggestions:[]};
+        if (url.endsWith('/recommendations')) return {suggestions:[],messageVi:''};
+        if (url.includes('/operations/')) return {status:'RUNNING'};
+        return {sessions:[]};
+    };
+}
+
+test('personalization persists Listening band and unknown current level before allowing a blank brief', async () => {
+    const h=harness(personalizedApi()); await h.module.show();
+    assert.match(h.root.innerHTML,/Mục tiêu luyện nghe/);
+    const create=h.node('#scenario-create'); create.values=[['inputVi','']];
+    create.listeners.submit({preventDefault(){},currentTarget:create}); await tick();
+    assert.equal(h.calls.filter(c=>c.options?.method==='POST').length,0);
+    const form=h.node('#scenario-personalization'); form.values=[['targetValue','7.5'],['currentValue',''],['focusSkill','reason']];
+    form.listeners.submit({preventDefault(){},currentTarget:form}); await tick(); await tick();
+    const saved=h.calls.find(c=>c.url.endsWith('/learning-preferences') && c.options?.method==='POST');
+    assert.deepEqual(JSON.parse(JSON.stringify(saved.options.body)),{programCode:'ielts-listening',programVersion:2,target:{scaleId:'ielts-listening-band',component:'LISTENING',value:'7.5'},currentValue:'',focusSkill:'reason',expectedVersion:0});
+    create.listeners.submit({preventDefault(){},currentTarget:create}); await tick(); await tick();
+    const submitted=h.calls.find(c=>c.url.endsWith('/drafts'));
+    assert.equal(submitted.options.body.inputVi,''); assert.equal(submitted.options.body.programVersion,2);
+    assert.equal(submitted.options.body.profileId,'');
+});
+
+test('unsaved personalization changes block generation with the previous saved target', async () => {
+    const h=harness(personalizedApi([{programCode:'ielts-listening',programVersion:2,target:{value:'6.5'},currentValue:'',focusSkill:'detail',version:1}]));
+    await h.module.show(); h.node('#scenario-personalization').listeners.input();
+    assert.equal(h.node('#scenario-create-button').disabled,true);
+    const form=h.node('#scenario-create'); form.values=[['inputVi','']];
+    form.listeners.submit({preventDefault(){},currentTarget:form}); await tick();
+    assert.equal(h.calls.filter(c=>c.options?.method==='POST').length,0);
+    assert.match(h.node('#scenario-status').textContent,/Hãy lưu mục tiêu/);
 });

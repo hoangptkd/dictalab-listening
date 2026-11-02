@@ -20,12 +20,15 @@ public record ScenarioProgram(String schemaVersion, String code, int version, St
             int maxWordsPerSession, int maxActivities, int maxSpeakers, int maxSegmentsPerActivity,
             int maxQuestionsPerSession, int maxFactsPerActivity, int maxDistractors, int maxCorrections,
             String inferencePolicy, int speechRateWpm, int pauseMillis, String vocabularyGuidance,
-            String syntaxGuidance, String informationDensity, List<String> skills, List<String> allowedVoiceProfiles) {
+            String syntaxGuidance, String informationDensity, List<String> skills, List<String> allowedVoiceProfiles,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) TargetRange targetRange) {
         public DifficultyProfile {
             skills = List.copyOf(skills);
             allowedVoiceProfiles = List.copyOf(allowedVoiceProfiles);
         }
     }
+    /** Internal practice grouping, not an equated exam score or a proficiency assessment. */
+    public record TargetRange(String scaleId, String min, String max) {}
     public record TargetScale(String scaleId, String component, String min, String max, String step,
                               List<String> labels, String sourceUrl, String reviewedOn) {
         public TargetScale { labels = List.copyOf(labels); }
@@ -98,6 +101,13 @@ public record ScenarioProgram(String schemaVersion, String code, int version, St
                     && p.speechRateWpm() >= 80 && p.speechRateWpm() <= 200 && p.pauseMillis() >= 0 && p.pauseMillis() <= 3000
                     && p.vocabularyGuidance() != null && p.syntaxGuidance() != null && p.informationDensity() != null
                     && p.skills() != null && !p.skills().isEmpty() && p.allowedVoiceProfiles() != null, "Invalid difficulty profile");
+            if (p.targetRange() != null) {
+                var range = p.targetRange();
+                var scale = targetScales.stream().filter(s -> s.scaleId().equals(range.scaleId()) && s.labels().isEmpty())
+                        .findFirst().orElseThrow(() -> new IllegalArgumentException("Unknown profile scale"));
+                scale.validateValue(range.min()); scale.validateValue(range.max());
+                require(new BigDecimal(range.min()).compareTo(new BigDecimal(range.max())) <= 0, "Reversed profile range");
+            }
         }
         for (var ref : promptArtifactRefs) require(ref.purpose() != null && ref.artifactId() != null
                 && ref.sha256() != null && ref.sha256().matches("[a-f0-9]{64}"), "Invalid prompt artifact");

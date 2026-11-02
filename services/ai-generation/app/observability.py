@@ -179,6 +179,15 @@ def trace_job(function):
         metadata = {**capability_metadata(event.payload, settings), "jobId": str(event.jobId),
                     "requestId": str(event.requestId), "attempt": getattr(event, "attempt", 1),
                     "programHash": getattr(event.payload, "programHash", None)}
+        context = getattr(event.payload, "learningContext", None)
+        if context is not None:
+            snapshot = context.model_dump(mode="json", exclude_none=True)
+            metadata.update(programCode=context.programCode, programVersion=context.programVersion,
+                            focusSkill=context.focusSkill, profileId=context.profile.id,
+                            qualityPolicyVersion=context.qualityPolicyVersion,
+                            calibrationStatus=context.calibrationStatus,
+                            learningContextHash=hashlib.sha256(json.dumps(snapshot, ensure_ascii=False, sort_keys=True,
+                                separators=(",", ":")).encode()).hexdigest())
         trace_input = event.payload.model_dump(mode="json", exclude={"promptHash", "contractVersion", "programHash", "kind"})
         with operation(name, settings, trace_input, metadata, event.userScope) as span:
             try:

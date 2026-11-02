@@ -12,6 +12,10 @@
 .scenario-profile-options input { accent-color: var(--green); }
 .scenario-profile-options label:focus-within { outline: 2px solid var(--ink); outline-offset: 3px; }
 .scenario-group-grid [hidden] { display: none; }
+.scenario-personalization { border: 1px solid var(--line); padding: 20px; margin-bottom: 24px; border-radius: 4px; }
+.scenario-personalization form, #scenario-personalization-fields { display: grid; gap: 10px; }
+.scenario-personalization select, .scenario-personalization input { min-height: 44px; padding: 8px; max-width: 100%; }
+.scenario-personalization :is(select,input,button):focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 
 .scenario-browser {
     max-width: 1160px;

@@ -26,13 +26,15 @@ public class ScenarioEngine {
     private final MediaStorageService media;
     private final S3MediaLifecycle lifecycle;
     private final boolean local;
+    private final ScenarioPersonalization personalization;
 
     public ScenarioEngine(ScenarioData data, ScenarioOperations operations, ScenarioRelease release,
                           AiPlatformClient ai, MediaStorageService media,
-                          S3MediaLifecycle lifecycle, Environment environment) {
+                          S3MediaLifecycle lifecycle, Environment environment, ScenarioPersonalization personalization) {
         this.data=data; this.operations=operations; this.release=release;
         this.ai=ai; this.media=media; this.lifecycle=lifecycle;
         this.local=environment.acceptsProfiles(Profiles.of("local"));
+        this.personalization=personalization;
     }
 
     public record DraftRequest(String inputVi, String programCode, int programVersion, String profileId) {}
@@ -59,25 +61,33 @@ public class ScenarioEngine {
         return data.tx.execute(tx -> {
             data.lockUser(user);
             var prior=operations.prior(user,"draft",key,request); if (prior != null) return prior;
+            if (request.programVersion()>=2) {
+                var program=release.require(user,request.programCode(),request.programVersion());
+                return newDraft(user,key,request,"draft",request.inputVi(),request.profileId(),null,id(),program,personalization.forDraft(user,program));
+            }
             release.require(user);
-            require(request.programCode()!=null && request.programCode().equals(release.program().code())
-                    && request.programVersion()==release.program().version());
-            return newDraft(user,key,request,"draft",safeInput(request.inputVi(),2000),request.profileId(),null,id());
+            require(request.programCode()!=null && request.programCode().equals(release.program().code()) && request.programVersion()==release.program().version());
+            return newDraft(user,key,request,"draft",request.inputVi(),request.profileId(),null,id(),release.program(),null);
         });
     }
 
-    private JsonNode newDraft(long user,String key,Object intent,String scope,String input,String profileId,String parent,String family) {
-        var program=release.program();
-        var profile=program.difficultyProfiles().stream().filter(p -> p.id().equals(profileId)).findFirst().orElseThrow(ScenarioData::invalid);
+    private JsonNode newDraft(long user,String key,Object intent,String scope,String input,String profileId,String parent,String family,ScenarioProgram program,ObjectNode context) {
+        if (context!=null) {
+            profileId=context.path("profile").path("id").asText();
+            if (input==null || input.isBlank()) input="Tôi muốn luyện nghe " + program.displayNameVi()+", tập trung kỹ năng "+context.path("focusSkill").asText()+". Hãy đề xuất một bối cảnh phù hợp.";
+        }
+        input=safeInput(input,2000);
+        String selectedProfile=profileId;
+        var profile=program.difficultyProfiles().stream().filter(p -> p.id().equals(selectedProfile)).findFirst().orElseThrow(ScenarioData::invalid);
         JsonNode profileJson=object().put("id",profile.id()).put("minWordsPerActivity",profile.minWordsPerActivity())
                 .put("maxWordsPerActivity",profile.maxWordsPerActivity()).put("maxWordsPerSession",profile.maxWordsPerSession());
         String draft=id();
         data.db.update("""
-                INSERT INTO scenario_drafts(id,user_id,input_vi,program_code,program_version,program_hash,profile_json,target_json,status,parent_session_id,family_id,expires_at)
-                VALUES (?,?,?,?,?,?,?,?,'PENDING',?,?,?)
+                INSERT INTO scenario_drafts(id,user_id,input_vi,program_code,program_version,program_hash,profile_json,target_json,status,parent_session_id,family_id,expires_at,learning_context_json)
+                VALUES (?,?,?,?,?,?,?,?,'PENDING',?,?,?,?)
                 """,draft,user,input,program.code(),program.version(),program.definitionHash(),profileJson.toString(),
-                json(data.db.queryForList("SELECT program_code,program_version,component,scale_id,target_value,provenance FROM scenario_learning_goals WHERE user_id=?",user)),
-                parent,family,Timestamp.from(Instant.now().plusSeconds(86400)));
+                json(data.db.queryForList("SELECT program_code,program_version,component,scale_id,target_value,provenance FROM scenario_learning_goals WHERE user_id=? AND program_code=?",user,program.code())),
+                parent,family,Timestamp.from(Instant.now().plusSeconds(86400)),context==null ? null : context.toString());
         return operations.create(user,scope,key,intent,"EXTRACT",draft,payload(data.owned("scenario_drafts",user,draft),"EXTRACT").put("inputVi",input));
     }
 
@@ -87,6 +97,7 @@ public class ScenarioEngine {
                 .put("programCode",(String)row.get("program_code")).put("programVersion",number(row,"program_version"))
                 .put("expiresAt",instant(row.get("expires_at")).toString());
         result.set("profile",tree((String)row.get("profile_json"))); result.set("declaredGoals",tree((String)row.get("target_json")));
+        if (row.get("learning_context_json")!=null) result.set("learningContext",tree((String)row.get("learning_context_json")));
         if (row.get("specification_json") != null) result.set("specification",tree((String)row.get("specification_json")));
         if (instant(row.get("expires_at")).isBefore(Instant.now())) result.put("status","EXPIRED");
         return result;
@@ -95,10 +106,10 @@ public class ScenarioEngine {
     public JsonNode createSession(long user,String key,SessionRequest request) {
         return data.tx.execute(tx -> {
             data.lockUser(user); var prior=operations.prior(user,"session",key,request); if (prior != null) return prior;
-            release.require(user);
             var draft=data.owned("scenario_drafts",user,request.draftId()); version(draft,request.draftVersion());
+            var program=requireProgram(user,draft);
             require("READY".equals(draft.get("status")) && instant(draft.get("expires_at")).isAfter(Instant.now()));
-            require(release.program().definitionHash().equals(draft.get("program_hash")));
+            require(program.definitionHash().equals(draft.get("program_hash")));
             if (data.db.queryForObject("SELECT COUNT(*) FROM scenario_sessions WHERE draft_id=?",Integer.class,request.draftId())>0)
                 throw new ScenarioFailure(409,"DRAFT_ALREADY_USED","Bản nháp đã có bài học. Hãy mở bài đã tạo.");
             int count=data.db.queryForObject("""
@@ -117,9 +128,15 @@ public class ScenarioEngine {
     }
 
     private ObjectNode payload(Map<String,Object> draft,String phase) {
-        var result=object().put("kind","scenario").put("contractVersion","scenario-job.v1").put("phase",phase)
-                .put("promptHash",release.promptHash()).put("programHash",(String)draft.get("program_hash"));
+        boolean personalized=draft.get("learning_context_json")!=null;
+        var result=object().put("kind","scenario").put("contractVersion",personalized ? "scenario-job.v2" : "scenario-job.v1").put("phase",phase)
+                .put("promptHash",personalized ? release.personalizedPromptHash() : release.promptHash()).put("programHash",(String)draft.get("program_hash"));
+        if (personalized) result.set("learningContext",tree((String)draft.get("learning_context_json")));
         result.set("profile",tree((String)draft.get("profile_json"))); return result;
+    }
+    private ScenarioProgram requireProgram(long user,Map<String,Object> draft) {
+        if (draft.get("learning_context_json")!=null) return release.require(user,(String)draft.get("program_code"),(int)number(draft,"program_version"));
+        release.require(user); return release.program();
     }
 
     public JsonNode session(long user,String id) {
@@ -133,6 +150,7 @@ public class ScenarioEngine {
             result.set("profile",tree((String)draft.get("profile_json")));
             result.set("specification",tree((String)draft.get("specification_json")));
             result.set("declaredGoals",tree((String)draft.get("target_json")));
+            if (draft.get("learning_context_json")!=null) result.set("learningContext",tree((String)draft.get("learning_context_json")));
             var activities=result.putArray("activities");
             for (var a : data.db.queryForList("SELECT * FROM scenario_activities WHERE session_id=? ORDER BY ordinal",id)) activities.add(publicActivity(a));
             return result;
@@ -199,7 +217,9 @@ public class ScenarioEngine {
         return data.tx.execute(tx -> {
             data.lockUser(user); data.activity(user,session,activity);
             var prior=operations.prior(user,scope,key,request); if (prior!=null) return prior;
-            release.require(user); var a=editable(user,session,activity,request.expectedVersion());
+            var ownedSession=data.owned("scenario_sessions",user,session);
+            requireProgram(user,data.owned("scenario_drafts",user,(String)ownedSession.get("draft_id")));
+            var a=editable(user,session,activity,request.expectedVersion());
             var saved=tree((String)a.get("private_json")); var expected=new HashSet<String>();
             saved.path("activity").path("questions").forEach(q -> expected.add(q.path("id").asText()));
             require(request.answers()!=null && request.answers().size()==2);
@@ -229,7 +249,7 @@ public class ScenarioEngine {
             var result=object().put("version",request.expectedVersion()+1);
             if (request.kind().equals("TRANSCRIPT")) {
                 var content=tree((String)a.get("private_json")); result.set("segments",content.path("activity").path("segments")); result.set("translations",content.path("translations"));
-            } else result.put("hintVi","Nghe lại chi tiết và quyết định cuối cùng. Trả lời ngắn bằng tiếng Anh hoặc tiếng Việt, chỉ nêu điều câu hỏi yêu cầu.");
+            } else result.put("hintVi","Nghe ý chính, lý do và quan điểm của người nói. Trả lời ngắn bằng tiếng Anh hoặc tiếng Việt, chỉ nêu điều câu hỏi yêu cầu.");
             return result;
         }));
     }
@@ -250,17 +270,21 @@ public class ScenarioEngine {
         return data.tx.execute(tx -> {
             data.lockUser(user); data.owned("scenario_sessions",user,session);
             String scope="remix/"+session; var prior=operations.prior(user,scope,key,request); if (prior!=null) return prior;
-            release.require(user); var s=data.owned("scenario_sessions",user,session); version(s,request.expectedVersion()); require("COMPLETED".equals(s.get("status")));
+            var s=data.owned("scenario_sessions",user,session); version(s,request.expectedVersion()); require("COMPLETED".equals(s.get("status")));
             var d=data.owned("scenario_drafts",user,(String)s.get("draft_id"));
+            var program=requireProgram(user,d);
+            ObjectNode context=d.get("learning_context_json")==null ? null : (ObjectNode)tree((String)d.get("learning_context_json"));
             String input=safeInput("Tình huống trước: "+tree((String)d.get("specification_json")).path("settingVi").asText()
                     +"\nBiến thể mong muốn: "+safeInput(request.inputVi(),1200),2000);
-            return newDraft(user,key,request,scope,input,request.profileId(),session,(String)s.get("family_id"));
+            if (context!=null) require(request.profileId()==null || request.profileId().equals(context.path("profile").path("id").asText()));
+            return newDraft(user,key,request,scope,input,request.profileId(),session,(String)s.get("family_id"),program,context);
         });
     }
 
     public JsonNode play(long user,String session,String activity,String key,PlayRequest request) {
         return data.tx.execute(tx -> data.receipt(user,"play/"+activity,key,request,() -> {
             var s=data.owned("scenario_sessions",user,session); version(s,request.expectedVersion());
+            var draft=data.owned("scenario_drafts",user,(String)s.get("draft_id"));
             require(Set.of("ACTIVE","COMPLETED").contains(s.get("status")));
             var a=data.activity(user,session,activity);
             require(data.db.queryForObject("SELECT COUNT(*) FROM scenario_activities WHERE session_id=? AND ordinal<? AND status<>'COMPLETED'",Integer.class,session,number(a,"ordinal"))==0);
@@ -279,13 +303,13 @@ public class ScenarioEngine {
                     var ops=data.db.queryForList("SELECT id FROM scenario_operations WHERE user_id=? AND kind='TTS' AND resource_id=? ORDER BY created_at DESC,id DESC",String.class,user,mediaId);
                     require(!ops.isEmpty());
                     if ("FAILED".equals(rows.get(0).get("status")) && ops.size()<3) {
-                        release.require(user);
+                        requireProgram(user,draft);
                         data.db.update("UPDATE scenario_media SET status='PENDING' WHERE id=?",mediaId);
                         result=operations.create(user,"tts/"+mediaId+"/"+ops.size(),key,request,"TTS",mediaId,object().put("kind","tts").put("text",segment.path("textEn").asText()));
                     } else result=operations.get(user,ops.get(0));
                 }
             } else {
-                release.require(user); mediaId=id();
+                requireProgram(user,draft); mediaId=id();
                 data.db.update("INSERT INTO scenario_media(id,activity_id,segment_id,fingerprint,status) VALUES (?,?,?,?,'PENDING')",mediaId,activity,request.segmentId(),fingerprint);
                 result=operations.create(user,"tts/"+mediaId,key,request,"TTS",mediaId,object().put("kind","tts").put("text",segment.path("textEn").asText()));
             }
@@ -326,6 +350,7 @@ public class ScenarioEngine {
         for (String f : List.of("model","modelDigest","promptVersion","promptHash")) ScenarioContent.text(result,f,128);
         ScenarioContent.check(result.path("promptHash").asText().matches("[a-f0-9]{64}"));
         if (!kind.equals("TTS")) {
+            boolean personalized="scenario-job.v2".equals(input.path("contractVersion").asText());
             // Previously submitted jobs may settle only with their exact historical fingerprint.
             boolean legacy=Set.of("f3a1a93382df50b9e798d9ae9d11e502d3e8eb0c347751195c6d00b7ba88b8a1",
                     "0d40fae31e57eef602c6f1e8402ea6116f8beeee56ac011c7c3d018f7f0152c2").contains(input.path("promptHash").asText());
@@ -333,9 +358,10 @@ public class ScenarioEngine {
                     "c8e817015d97850288b8bbe377934602cc1f4df1a4b7ce18a2d5b5de8b28c2b5").contains(input.path("promptHash").asText());
             boolean previousV4="e3b045db46013c6e9694ae450f8beeb168bc1b452cb1548bcbe43a4eb247535b".equals(input.path("promptHash").asText());
             boolean previousV5="6a3a61aa0762dce1e0898bec5f1cf46b5ae6189dddbe3015828a35667ebe6f8f".equals(input.path("promptHash").asText());
-            ScenarioContent.check(legacy || previousV3 || previousV4 || previousV5 || release.promptHash().equals(input.path("promptHash").asText()));
+            ScenarioContent.check(personalized ? release.personalizedPromptHash().equals(input.path("promptHash").asText())
+                    : legacy || previousV3 || previousV4 || previousV5 || release.promptHash().equals(input.path("promptHash").asText()));
             ScenarioContent.check(input.path("promptHash").asText().equals(result.path("promptHash").asText())
-                    && (legacy ? "SCENARIO_LISTENING_V1" : previousV3 ? "SCENARIO_LISTENING_V3" : previousV4 ? "SCENARIO_LISTENING_V4" : previousV5 ? "SCENARIO_LISTENING_V5_CANDIDATE_1" : "SCENARIO_LISTENING_V5_GRADE_V4_1").equals(result.path("promptVersion").asText())
+                    && (personalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : legacy ? "SCENARIO_LISTENING_V1" : previousV3 ? "SCENARIO_LISTENING_V3" : previousV4 ? "SCENARIO_LISTENING_V4" : previousV5 ? "SCENARIO_LISTENING_V5_CANDIDATE_1" : "SCENARIO_LISTENING_V5_GRADE_V4_1").equals(result.path("promptVersion").asText())
                     && input.path("programHash").asText().equals(result.path("programHash").asText()));
             var expected=kind.equals("GENERATE") ? (legacy ? List.of("GENERATE","TRANSLATE","REVIEW")
                     : previousV3 ? List.of("GENERATE","FACTS","QUESTIONS","TRANSLATE","REVIEW")
@@ -348,8 +374,8 @@ public class ScenarioEngine {
             }
         }
         JsonNode task=result.path("task"); byte[] wav=null; String url=null;
-        if (kind.equals("EXTRACT")) ScenarioContent.specification(task);
-        else if (kind.equals("GENERATE")) ScenarioContent.content(task,input.path("specification"),input.path("profile"));
+        if (kind.equals("EXTRACT")) ScenarioContent.specification(task,"scenario-job.v2".equals(input.path("contractVersion").asText()));
+        else if (kind.equals("GENERATE")) ScenarioContent.content(task,input.path("specification"),input.path("profile"),input.has("learningContext") ? input.path("learningContext") : null);
         else if (kind.equals("GRADE")) ScenarioContent.grade(task,input.path("answers"));
         else {
             ScenarioContent.check("TTS_WAV_V1".equals(result.path("promptVersion").asText()));

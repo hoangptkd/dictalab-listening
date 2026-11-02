@@ -12,11 +12,15 @@ public class ScenarioProgramRegistry {
     private final List<ScenarioProgram> programs;
 
     public ScenarioProgramRegistry() throws IOException {
-        try (var input = new ClassPathResource("scenario/programs-v1.json").getInputStream()) {
+        var definitions = new java.util.ArrayList<ScenarioProgram>();
+        for (String resource : List.of("scenario/programs-v1.json", "scenario/programs-personalized-v1.json")) {
+          try (var input = new ClassPathResource(resource).getInputStream()) {
             var bytes = input.readNBytes(262145);
             if (bytes.length > 262144) throw new IllegalStateException("Program catalog too large");
-            programs = load(bytes);
+            definitions.addAll(load(bytes));
+          }
         }
+        programs = List.copyOf(definitions);
     }
 
     public static List<ScenarioProgram> load(byte[] bytes) {
@@ -30,7 +34,10 @@ public class ScenarioProgramRegistry {
             var supplied = content.remove("definitionHash");
             ScenarioProgram.require(supplied != null && supplied.isTextual()
                     && ScenarioJson.hash(ScenarioJson.canonical(content)).equals(supplied.asText()), "Program hash mismatch");
-            var definition = ScenarioJson.MAPPER.treeToValue(node, ScenarioProgram.class);
+            var typed = node.deepCopy();
+            for (var profile : typed.path("difficultyProfiles"))
+                if (!profile.has("targetRange")) ((ObjectNode)profile).putNull("targetRange");
+            var definition = ScenarioJson.MAPPER.treeToValue(typed, ScenarioProgram.class);
             ScenarioProgram.require(keys.add(definition.code() + ":" + definition.version()), "Duplicate program version");
             results.add(definition);
         }

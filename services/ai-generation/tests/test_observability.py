@@ -176,6 +176,29 @@ def test_configuration_tracks_prompt_and_trained_weights(tracing, monkeypatch):
     assert len({s.attributes["langfuse.version"] for s in exporter.get_finished_spans()}) == 3
 
 
+def test_personalized_trace_records_context_and_fingerprint_without_network(tracing):
+    from test_scenario_workflow import personal_payload, request
+    exporter, scores = tracing
+
+    @obs.trace_job
+    async def run(event, settings):
+        return {"task": {"fixture": True}}
+
+    event = request(personal_payload("EXTRACT"))
+    asyncio.run(run(event, Settings(scenario_enabled=True)))
+    span = exporter.get_finished_spans()[-1]
+    prefix = "langfuse.trace.metadata."
+    metadata = {key.removeprefix(prefix): json.loads(value) for key, value in span.attributes.items() if key.startswith(prefix)}
+    assert metadata["programCode"] == "ielts-listening"
+    assert metadata["programVersion"] == 2
+    assert metadata["focusSkill"] == "detail"
+    assert metadata["calibrationStatus"] == "INTERNAL_PRACTICE_UNCALIBRATED"
+    assert len(metadata["learningContextHash"]) == 64
+    assert metadata["promptHash"] == event.payload.promptHash
+    assert "learningContext" in span.attributes["langfuse.observation.input"]
+    assert scores[-1]["value"] == 1
+
+
 def test_repeated_gate_upserts_one_final_score(tracing):
     _, scores = tracing
     @obs.trace_gate

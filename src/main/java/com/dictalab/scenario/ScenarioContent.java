@@ -20,7 +20,15 @@ final class ScenarioContent {
     }
     static void list(JsonNode n, int min, int max) { check(n.isArray() && n.size() >= min && n.size() <= max); }
     static void specification(JsonNode s) {
-        fields(s,"allowed","titleVi","settingVi","learnerRoleVi","goalVi","characters","constraintsVi","assumptionsVi","topicIds");
+        specification(s,false);
+    }
+    static void specification(JsonNode s,boolean personalized) {
+        if (personalized) {
+            fields(s,"allowed","titleVi","settingVi","learnerRoleVi","goalVi","characters","constraintsVi","assumptionsVi","topicIds","learnerMode","genre");
+            check(Set.of("listener","participant").contains(text(s,"learnerMode",16)));
+            check(Set.of("information-exchange","discussion","explanation","experience","interview","problem-solving","transaction").contains(text(s,"genre",30)));
+            if (s.path("learnerMode").asText().equals("listener")) check(s.path("learnerRoleVi").asText().equals("Người nghe"));
+        } else fields(s,"allowed","titleVi","settingVi","learnerRoleVi","goalVi","characters","constraintsVi","assumptionsVi","topicIds");
         check(s.path("allowed").isBoolean()); text(s,"titleVi",120); text(s,"settingVi",400); text(s,"learnerRoleVi",100); text(s,"goalVi",300);
         list(s.path("characters"),2,2); var speakers = new HashSet<String>();
         for (var c : s.path("characters")) { fields(c,"id","name","roleVi"); check(speakers.add(id(c,"id"))); text(c,"name",40); text(c,"roleVi",100); }
@@ -32,10 +40,13 @@ final class ScenarioContent {
         for (var topic : s.path("topicIds")) check(Set.of("food","transport","shopping","workstudy","services","social").contains(topic.asText()));
     }
     static void content(JsonNode task, JsonNode spec, JsonNode profile) {
+        content(task,spec,profile,null);
+    }
+    static void content(JsonNode task, JsonNode spec, JsonNode profile,JsonNode context) {
         fields(task,"activities","translations","qualityPassed"); check(task.path("qualityPassed").isBoolean() && task.path("qualityPassed").asBoolean());
         list(task.path("activities"),3,3); list(task.path("translations"),6,18);
         var speakers = new HashSet<String>(); spec.path("characters").forEach(c -> speakers.add(c.path("id").asText()));
-        var expected = new HashSet<String>(); int total = 0, ordinal = 0;
+        var expected = new HashSet<String>(); int total = 0, ordinal = 0; boolean focusCovered=false;
         for (var a : task.path("activities")) {
             fields(a,"id","segments","questions"); check(text(a,"id",2).equals("a" + ++ordinal));
             list(a.path("segments"),2,6); list(a.path("questions"),2,2);
@@ -51,8 +62,21 @@ final class ScenarioContent {
             check(words >= profile.path("minWordsPerActivity").asInt() && words <= profile.path("maxWordsPerActivity").asInt()); total += words;
             var ids = new HashSet<String>();
             for (var q : a.path("questions")) {
-                fields(q,"id","type","skill","promptVi","answerVi","evidence"); check(ids.add(id(q,"id")));
-                check("MEANING_RECALL_VI".equals(text(q,"type",30)) && Set.of("detail","main-idea").contains(text(q,"skill",30)));
+                if (context==null) fields(q,"id","type","skill","promptVi","answerVi","evidence");
+                else {
+                    fields(q,"id","type","skill","promptVi","answerVi","evidence","supportKind","inferenceReasonEn");
+                    String support=text(q,"supportKind",16); check(Set.of("direct","synthesis","inference").contains(support));
+                    check(q.path("inferenceReasonEn").isTextual() && q.path("inferenceReasonEn").asText().length()<=400);
+                    boolean inferred=support.equals("inference");
+                    check(inferred == q.path("skill").asText().equals("supported-inference"));
+                    check(inferred ? !q.path("inferenceReasonEn").asText().isBlank()
+                            && context.path("profile").path("inferencePolicy").asText().equals("SUPPORTED_INFERENCE")
+                            : q.path("inferenceReasonEn").asText().isEmpty());
+                    check(java.util.stream.StreamSupport.stream(context.path("profile").path("skills").spliterator(),false).anyMatch(s -> s.asText().equals(q.path("skill").asText())));
+                    focusCovered |= context.path("focusSkill").asText().equals(q.path("skill").asText());
+                }
+                check(ids.add(id(q,"id")));
+                check("MEANING_RECALL_VI".equals(text(q,"type",30)) && (context!=null ? ScenarioPersonalization.SKILLS : Set.of("detail","main-idea")).contains(text(q,"skill",30)));
                 String prompt = text(q,"promptVi",300), answer = text(q,"answerVi",200);
                 check(!prompt.toLowerCase(Locale.ROOT).contains(answer.toLowerCase(Locale.ROOT)));
                 list(q.path("evidence"),1,3);
@@ -61,7 +85,9 @@ final class ScenarioContent {
                     check(segments.containsKey(sid) && segments.get(sid).contains(quote));
                 }
             }
+            check(ids.equals(Set.of("q1","q2")));
         }
+        check(context==null || focusCovered);
         check(total <= profile.path("maxWordsPerSession").asInt()); var actual = new HashSet<String>();
         for (var t : task.path("translations")) {
             fields(t,"activityId","segmentId","textVi"); text(t,"textVi",800);

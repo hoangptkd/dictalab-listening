@@ -159,7 +159,7 @@
     {
       "name": "unknown-program-version",
       "valid": false,
-      "raw": "{\"contractVersion\":\"scenario-goal.v1\",\"programCode\":\"ielts-listening\",\"programVersion\":2,\"target\":{\"scaleId\":\"ielts-listening-band\",\"component\":\"LISTENING\",\"value\":\"6.5\"},\"expectedVersion\":0}"
+      "raw": "{\"contractVersion\":\"scenario-goal.v1\",\"programCode\":\"ielts-listening\",\"programVersion\":999,\"target\":{\"scaleId\":\"ielts-listening-band\",\"component\":\"LISTENING\",\"value\":\"6.5\"},\"expectedVersion\":0}"
     },
     {
       "name": "unsupported-contract",

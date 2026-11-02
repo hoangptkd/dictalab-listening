@@ -1,0 +1,461 @@
+[
+  {
+    "schemaVersion": "scenario-program.v1",
+    "code": "general-communication",
+    "version": 2,
+    "status": "DRAFT",
+    "displayNameVi": "Giao tiếp đời sống",
+    "targetScales": [
+      {
+        "scaleId": "practice-support",
+        "component": "LISTENING",
+        "min": null,
+        "max": null,
+        "step": null,
+        "labels": [
+          "supported",
+          "standard",
+          "challenge"
+        ],
+        "sourceUrl": null,
+        "reviewedOn": null
+      }
+    ],
+    "supportedPracticeModes": [
+      "guided-listening"
+    ],
+    "supportedQuestionTypes": [
+      "MEANING_RECALL_VI"
+    ],
+    "difficultyProfiles": [
+      {
+        "id": "supported",
+        "version": 2,
+        "minWordsPerActivity": 15,
+        "maxWordsPerActivity": 60,
+        "maxWordsPerSession": 180,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 2,
+        "maxDistractors": 0,
+        "maxCorrections": 0,
+        "inferencePolicy": "EXPLICIT_ONLY",
+        "speechRateWpm": 100,
+        "pauseMillis": 700,
+        "vocabularyGuidance": "Everyday social, personal and practical English. Explain uncommon terms in context. Prefer common words and explicit paraphrases.",
+        "syntaxGuidance": "Short clauses, explicit subjects and clear logical links.",
+        "informationDensity": "One central idea per turn; reasons stated explicitly.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose"
+        ],
+        "allowedVoiceProfiles": []
+      },
+      {
+        "id": "standard",
+        "version": 2,
+        "minWordsPerActivity": 30,
+        "maxWordsPerActivity": 100,
+        "maxWordsPerSession": 300,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 3,
+        "maxDistractors": 1,
+        "maxCorrections": 0,
+        "inferencePolicy": "SUPPORTED_INFERENCE",
+        "speechRateWpm": 125,
+        "pauseMillis": 500,
+        "vocabularyGuidance": "Everyday social, personal and practical English. Explain uncommon terms in context. Use varied paraphrases and topic vocabulary with clear context.",
+        "syntaxGuidance": "Varied compound and subordinate clauses, unambiguous references.",
+        "informationDensity": "Linked details and reasons; occasional contrast or correction.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose",
+          "speaker-attitude",
+          "supported-inference"
+        ],
+        "allowedVoiceProfiles": []
+      },
+      {
+        "id": "challenge",
+        "version": 2,
+        "minWordsPerActivity": 45,
+        "maxWordsPerActivity": 140,
+        "maxWordsPerSession": 420,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 3,
+        "maxDistractors": 1,
+        "maxCorrections": 1,
+        "inferencePolicy": "SUPPORTED_INFERENCE",
+        "speechRateWpm": 145,
+        "pauseMillis": 400,
+        "vocabularyGuidance": "Everyday social, personal and practical English. Explain uncommon terms in context. Include nuanced opinions and abstract vocabulary when useful.",
+        "syntaxGuidance": "Varied complex clauses and references across turns, with recoverable meaning.",
+        "informationDensity": "Multiple perspectives or conditions; grounded implications, no trivia padding.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose",
+          "speaker-attitude",
+          "supported-inference"
+        ],
+        "allowedVoiceProfiles": []
+      }
+    ],
+    "skillTaxonomyVersion": "scenario-skills.v2",
+    "generationPolicy": {
+      "deadlineSeconds": 180,
+      "maxCalls": 7,
+      "maxInputChars": 2000,
+      "maxOutputTokens": 8000,
+      "maxResultBytes": 262144,
+      "repairLimit": 0
+    },
+    "gradingPolicy": {
+      "maxAttempts": 3,
+      "uncertaintyPolicy": "KEEP_UNCERTAIN"
+    },
+    "supportPolicy": {
+      "replay": true,
+      "slow": true,
+      "transcript": true,
+      "translation": true,
+      "reveal": true
+    },
+    "qualityPolicyVersion": "scenario-quality.v2-draft",
+    "promptArtifactRefs": [],
+    "definitionHash": "059372a412266fdc258c9149a21983b85fff81035eedb18993802c5413449423"
+  },
+  {
+    "schemaVersion": "scenario-program.v1",
+    "code": "toeic-listening",
+    "version": 2,
+    "status": "DRAFT",
+    "displayNameVi": "Luyện nghe hướng tới TOEIC",
+    "targetScales": [
+      {
+        "scaleId": "toeic-listening-score",
+        "component": "LISTENING",
+        "min": "5",
+        "max": "495",
+        "step": "5",
+        "labels": [],
+        "sourceUrl": "https://www.iibc-global.org/english/toeic/test/lr/guide05.html",
+        "reviewedOn": "2026-10-31"
+      },
+      {
+        "scaleId": "toeic-total-score",
+        "component": "OVERALL",
+        "min": "10",
+        "max": "990",
+        "step": "5",
+        "labels": [],
+        "sourceUrl": "https://www.iibc-global.org/english/toeic/test/lr/guide05.html",
+        "reviewedOn": "2026-10-31"
+      }
+    ],
+    "supportedPracticeModes": [
+      "guided-listening"
+    ],
+    "supportedQuestionTypes": [
+      "MEANING_RECALL_VI"
+    ],
+    "difficultyProfiles": [
+      {
+        "id": "supported",
+        "version": 2,
+        "minWordsPerActivity": 15,
+        "maxWordsPerActivity": 60,
+        "maxWordsPerSession": 180,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 2,
+        "maxDistractors": 0,
+        "maxCorrections": 0,
+        "inferencePolicy": "EXPLICIT_ONLY",
+        "speechRateWpm": 100,
+        "pauseMillis": 700,
+        "vocabularyGuidance": "Workplace, public services, travel, announcements and professional exchanges. Use business vocabulary in context. Prefer common words and explicit paraphrases.",
+        "syntaxGuidance": "Short clauses, explicit subjects and clear logical links.",
+        "informationDensity": "One central idea per turn; reasons stated explicitly.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose"
+        ],
+        "allowedVoiceProfiles": [],
+        "targetRange": {
+          "scaleId": "toeic-listening-score",
+          "min": "5",
+          "max": "250"
+        }
+      },
+      {
+        "id": "standard",
+        "version": 2,
+        "minWordsPerActivity": 30,
+        "maxWordsPerActivity": 100,
+        "maxWordsPerSession": 300,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 3,
+        "maxDistractors": 1,
+        "maxCorrections": 0,
+        "inferencePolicy": "SUPPORTED_INFERENCE",
+        "speechRateWpm": 125,
+        "pauseMillis": 500,
+        "vocabularyGuidance": "Workplace, public services, travel, announcements and professional exchanges. Use business vocabulary in context. Use varied paraphrases and topic vocabulary with clear context.",
+        "syntaxGuidance": "Varied compound and subordinate clauses, unambiguous references.",
+        "informationDensity": "Linked details and reasons; occasional contrast or correction.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose",
+          "speaker-attitude",
+          "supported-inference"
+        ],
+        "allowedVoiceProfiles": [],
+        "targetRange": {
+          "scaleId": "toeic-listening-score",
+          "min": "255",
+          "max": "375"
+        }
+      },
+      {
+        "id": "challenge",
+        "version": 2,
+        "minWordsPerActivity": 45,
+        "maxWordsPerActivity": 140,
+        "maxWordsPerSession": 420,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 3,
+        "maxDistractors": 1,
+        "maxCorrections": 1,
+        "inferencePolicy": "SUPPORTED_INFERENCE",
+        "speechRateWpm": 145,
+        "pauseMillis": 400,
+        "vocabularyGuidance": "Workplace, public services, travel, announcements and professional exchanges. Use business vocabulary in context. Include nuanced opinions and abstract vocabulary when useful.",
+        "syntaxGuidance": "Varied complex clauses and references across turns, with recoverable meaning.",
+        "informationDensity": "Multiple perspectives or conditions; grounded implications, no trivia padding.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose",
+          "speaker-attitude",
+          "supported-inference"
+        ],
+        "allowedVoiceProfiles": [],
+        "targetRange": {
+          "scaleId": "toeic-listening-score",
+          "min": "380",
+          "max": "495"
+        }
+      }
+    ],
+    "skillTaxonomyVersion": "scenario-skills.v2",
+    "generationPolicy": {
+      "deadlineSeconds": 180,
+      "maxCalls": 7,
+      "maxInputChars": 2000,
+      "maxOutputTokens": 8000,
+      "maxResultBytes": 262144,
+      "repairLimit": 0
+    },
+    "gradingPolicy": {
+      "maxAttempts": 3,
+      "uncertaintyPolicy": "KEEP_UNCERTAIN"
+    },
+    "supportPolicy": {
+      "replay": true,
+      "slow": true,
+      "transcript": true,
+      "translation": true,
+      "reveal": true
+    },
+    "qualityPolicyVersion": "scenario-quality.v2-draft",
+    "promptArtifactRefs": [],
+    "definitionHash": "a05f4049cdf816773342b65d3ddb1b6b107504cf685c8efc9c292bf8a9df684c"
+  },
+  {
+    "schemaVersion": "scenario-program.v1",
+    "code": "ielts-listening",
+    "version": 2,
+    "status": "DRAFT",
+    "displayNameVi": "Luyện nghe hướng tới IELTS",
+    "targetScales": [
+      {
+        "scaleId": "ielts-listening-band",
+        "component": "LISTENING",
+        "min": "0",
+        "max": "9",
+        "step": "0.5",
+        "labels": [],
+        "sourceUrl": "https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail",
+        "reviewedOn": "2026-10-31"
+      },
+      {
+        "scaleId": "ielts-overall-band",
+        "component": "OVERALL",
+        "min": "0",
+        "max": "9",
+        "step": "0.5",
+        "labels": [],
+        "sourceUrl": "https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail",
+        "reviewedOn": "2026-10-31"
+      }
+    ],
+    "supportedPracticeModes": [
+      "guided-listening"
+    ],
+    "supportedQuestionTypes": [
+      "MEANING_RECALL_VI"
+    ],
+    "difficultyProfiles": [
+      {
+        "id": "supported",
+        "version": 2,
+        "minWordsPerActivity": 15,
+        "maxWordsPerActivity": 60,
+        "maxWordsPerSession": 180,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 2,
+        "maxDistractors": 0,
+        "maxCorrections": 0,
+        "inferencePolicy": "EXPLICIT_ONLY",
+        "speechRateWpm": 100,
+        "pauseMillis": 700,
+        "vocabularyGuidance": "Social, education and training discussions, explanations and academic topics. Explain specialist terms without assuming outside knowledge. Prefer common words and explicit paraphrases.",
+        "syntaxGuidance": "Short clauses, explicit subjects and clear logical links.",
+        "informationDensity": "One central idea per turn; reasons stated explicitly.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose"
+        ],
+        "allowedVoiceProfiles": [],
+        "targetRange": {
+          "scaleId": "ielts-listening-band",
+          "min": "0",
+          "max": "5"
+        }
+      },
+      {
+        "id": "standard",
+        "version": 2,
+        "minWordsPerActivity": 30,
+        "maxWordsPerActivity": 100,
+        "maxWordsPerSession": 300,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 3,
+        "maxDistractors": 1,
+        "maxCorrections": 0,
+        "inferencePolicy": "SUPPORTED_INFERENCE",
+        "speechRateWpm": 125,
+        "pauseMillis": 500,
+        "vocabularyGuidance": "Social, education and training discussions, explanations and academic topics. Explain specialist terms without assuming outside knowledge. Use varied paraphrases and topic vocabulary with clear context.",
+        "syntaxGuidance": "Varied compound and subordinate clauses, unambiguous references.",
+        "informationDensity": "Linked details and reasons; occasional contrast or correction.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose",
+          "speaker-attitude",
+          "supported-inference"
+        ],
+        "allowedVoiceProfiles": [],
+        "targetRange": {
+          "scaleId": "ielts-listening-band",
+          "min": "5.5",
+          "max": "6.5"
+        }
+      },
+      {
+        "id": "challenge",
+        "version": 2,
+        "minWordsPerActivity": 45,
+        "maxWordsPerActivity": 140,
+        "maxWordsPerSession": 420,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 6,
+        "maxFactsPerActivity": 3,
+        "maxDistractors": 1,
+        "maxCorrections": 1,
+        "inferencePolicy": "SUPPORTED_INFERENCE",
+        "speechRateWpm": 145,
+        "pauseMillis": 400,
+        "vocabularyGuidance": "Social, education and training discussions, explanations and academic topics. Explain specialist terms without assuming outside knowledge. Include nuanced opinions and abstract vocabulary when useful.",
+        "syntaxGuidance": "Varied complex clauses and references across turns, with recoverable meaning.",
+        "informationDensity": "Multiple perspectives or conditions; grounded implications, no trivia padding.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose",
+          "speaker-attitude",
+          "supported-inference"
+        ],
+        "allowedVoiceProfiles": [],
+        "targetRange": {
+          "scaleId": "ielts-listening-band",
+          "min": "7",
+          "max": "9"
+        }
+      }
+    ],
+    "skillTaxonomyVersion": "scenario-skills.v2",
+    "generationPolicy": {
+      "deadlineSeconds": 180,
+      "maxCalls": 7,
+      "maxInputChars": 2000,
+      "maxOutputTokens": 8000,
+      "maxResultBytes": 262144,
+      "repairLimit": 0
+    },
+    "gradingPolicy": {
+      "maxAttempts": 3,
+      "uncertaintyPolicy": "KEEP_UNCERTAIN"
+    },
+    "supportPolicy": {
+      "replay": true,
+      "slow": true,
+      "transcript": true,
+      "translation": true,
+      "reveal": true
+    },
+    "qualityPolicyVersion": "scenario-quality.v2-draft",
+    "promptArtifactRefs": [],
+    "definitionHash": "bb2ec5cd120373be1384cea529187c0bb289f6d99064ed3c85a2c346c7c33b87"
+  }
+]

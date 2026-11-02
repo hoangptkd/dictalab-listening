@@ -8,7 +8,7 @@ import re
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 MAX_REQUEST_BYTES = 32 * 1024
 
@@ -62,3 +62,92 @@ def validate_target(request: ScenarioGoalRequest, definition: dict) -> None:
     value, lower, upper, step = map(Decimal, (target.value, scale["min"], scale["max"], scale["step"]))
     if not lower <= value <= upper or (value - lower) % step != 0:
         raise ValueError("Target outside scale")
+
+
+class TargetRange(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    scaleId: str
+    min: str
+    max: str
+
+
+class TargetScale(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    scaleId: str = Field(min_length=1, max_length=64)
+    component: Literal["LISTENING"]
+    min: str | None
+    max: str | None
+    step: str | None
+    labels: list[str] = Field(max_length=20)
+    sourceUrl: str | None
+    reviewedOn: str | None
+
+
+class PracticeProfile(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    id: Literal["supported", "standard", "challenge"]
+    version: int = Field(ge=2)
+    minWordsPerActivity: int = Field(ge=1, le=140)
+    maxWordsPerActivity: int = Field(ge=1, le=140)
+    maxWordsPerSession: int = Field(ge=1, le=480)
+    maxActivities: Literal[3]
+    maxSpeakers: Literal[2]
+    maxSegmentsPerActivity: Literal[6]
+    maxQuestionsPerSession: Literal[6]
+    maxFactsPerActivity: int = Field(ge=1, le=4)
+    maxDistractors: int = Field(ge=0, le=3)
+    maxCorrections: int = Field(ge=0, le=2)
+    inferencePolicy: Literal["EXPLICIT_ONLY", "SUPPORTED_INFERENCE"]
+    speechRateWpm: int = Field(ge=80, le=200)
+    pauseMillis: int = Field(ge=0, le=3000)
+    vocabularyGuidance: str = Field(min_length=1, max_length=1000)
+    syntaxGuidance: str = Field(min_length=1, max_length=1000)
+    informationDensity: str = Field(min_length=1, max_length=1000)
+    skills: list[Literal["detail", "main-idea", "reason", "purpose", "speaker-attitude", "supported-inference"]] = Field(min_length=1, max_length=6)
+    allowedVoiceProfiles: list[str] = Field(max_length=10)
+    targetRange: TargetRange | None = None
+
+
+class LearningContext(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    contractVersion: Literal["scenario-learning-context.v1"]
+    programCode: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
+    programVersion: int = Field(ge=2)
+    programHash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    practiceMode: Literal["guided-listening"]
+    layoutVersion: Literal["three-activities.v1"]
+    focusSkill: Literal["detail", "main-idea", "reason", "purpose", "speaker-attitude", "supported-inference"]
+    targetProvenance: Literal["USER_DECLARED_GOAL"]
+    currentProvenance: Literal["UNKNOWN", "USER_DECLARED"]
+    calibrationStatus: Literal["INTERNAL_PRACTICE_UNCALIBRATED"]
+    qualityPolicyVersion: str = Field(min_length=1, max_length=64)
+    skillTaxonomyVersion: str = Field(min_length=1, max_length=64)
+    target: Target
+    targetScale: TargetScale
+    currentValue: str | None
+    profile: PracticeProfile
+    answerLanguages: list[Literal["vi", "en"]] = Field(min_length=2, max_length=2)
+
+    @model_validator(mode="after")
+    def consistent_context(self):
+        if (self.target.component != "LISTENING" or self.focusSkill not in self.profile.skills
+                or set(self.answerLanguages) != {"vi", "en"}
+                or (self.currentValue is None) != (self.currentProvenance == "UNKNOWN")):
+            raise ValueError("inconsistent learning context")
+        definition = {"code": self.programCode, "version": self.programVersion,
+                      "targetScales": [self.targetScale.model_dump()]}
+        request = ScenarioGoalRequest(contractVersion="scenario-goal.v1", programCode=self.programCode,
+            programVersion=self.programVersion, target=self.target, expectedVersion=0)
+        validate_target(request, definition)
+        if self.currentValue is not None:
+            validate_target(request.model_copy(update={"target": self.target.model_copy(update={"value": self.currentValue})}), definition)
+        level = self.currentValue if self.currentValue is not None else self.target.value
+        bounds = self.profile.targetRange
+        if bounds is None:
+            if self.target.scaleId != "practice-support" or level != self.profile.id:
+                raise ValueError("practice profile mismatch")
+        elif (bounds.scaleId != self.target.scaleId or not Decimal(bounds.min) <= Decimal(level) <= Decimal(bounds.max)):
+            raise ValueError("score profile mismatch")
+        if self.focusSkill == "supported-inference" and self.profile.inferencePolicy != "SUPPORTED_INFERENCE":
+            raise ValueError("inference disabled by profile")
+        return self

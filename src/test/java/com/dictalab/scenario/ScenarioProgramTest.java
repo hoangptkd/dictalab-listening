@@ -35,12 +35,13 @@ class ScenarioProgramTest {
 
     @Test void registryDefinitionsAreDeeplyImmutableAndNotApprovedForGeneration() throws Exception {
         var registry = new ScenarioProgramRegistry();
-        assertThat(registry.definitions()).hasSize(3).allMatch(p -> p.status() == ScenarioProgram.Status.DRAFT);
+        assertThat(registry.definitions()).hasSize(6).allMatch(p -> p.status() == ScenarioProgram.Status.DRAFT);
         var general = registry.require("general-communication", 1);
         assertThat(general.difficultyProfiles()).hasSize(3);
         assertThatThrownBy(() -> general.targetScales().get(0).labels().add("A1")).isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> general.difficultyProfiles().get(0).skills().clear()).isInstanceOf(UnsupportedOperationException.class);
-        assertThat(registry.definitions()).allMatch(p -> p.supportedPracticeModes().isEmpty() && p.promptArtifactRefs().isEmpty());
+        assertThat(registry.definitions().stream().filter(p -> p.version()==1)).allMatch(p -> p.supportedPracticeModes().isEmpty() && p.promptArtifactRefs().isEmpty());
+        assertThat(registry.definitions()).allMatch(p -> p.promptArtifactRefs().isEmpty());
     }
 
     @Test void refusesHashDriftAndMissingApprovalEvidence() throws Exception {
@@ -71,5 +72,32 @@ class ScenarioProgramTest {
     static void rehash(ObjectNode program) {
         program.remove("definitionHash");
         program.put("definitionHash", ScenarioJson.hash(ScenarioJson.canonical(program)));
+    }
+
+    @Test void legacyCanonicalDefinitionsKeepTheirExactFingerprint() throws Exception {
+        var registry=new ScenarioProgramRegistry();
+        for (var original : ScenarioJson.MAPPER.readTree(resource("/scenario/programs-v1.json"))) {
+            var stored=ScenarioJson.MAPPER.valueToTree(registry.require(original.path("code").asText(),1));
+            assertThat(ScenarioJson.canonical(stored)).isEqualTo(ScenarioJson.canonical(original));
+        }
+    }
+
+    @Test void practiceUsesDeclaredCurrentLevelOrTargetWithoutConvertingOverall() throws Exception {
+        var registry=new ScenarioProgramRegistry();
+        for (String code : java.util.List.of("general-communication","toeic-listening","ielts-listening")) {
+            var program=registry.require(code,2);
+            var scale=program.targetScales().stream().filter(s -> s.component().equals("LISTENING")).findFirst().orElseThrow();
+            String target=code.equals("general-communication") ? "challenge" : code.equals("toeic-listening") ? "450" : "7.5";
+            String current=code.equals("general-communication") ? "supported" : code.equals("toeic-listening") ? "200" : "4.5";
+            var goal=new ScenarioGoalRequest.Target(scale.scaleId(),"LISTENING",target);
+            var context=ScenarioPersonalization.context(program,goal,current,"reason");
+            assertThat(context.path("target").path("value").asText()).isEqualTo(target);
+            assertThat(context.path("profile").path("id").asText()).isEqualTo("supported");
+            assertThat(context.path("currentProvenance").asText()).isEqualTo("USER_DECLARED");
+            assertThat(ScenarioPersonalization.context(program,goal,"","supported-inference").path("profile").path("id").asText()).isEqualTo("challenge");
+            assertThatThrownBy(() -> ScenarioPersonalization.context(program,goal,current,"supported-inference")).isInstanceOf(ScenarioFailure.class);
+            assertThatThrownBy(() -> ScenarioPersonalization.context(program,new ScenarioGoalRequest.Target(scale.scaleId(),"OVERALL",target),null,"detail")).isInstanceOf(ScenarioFailure.class);
+            assertThatThrownBy(() -> ScenarioPersonalization.context(program,goal,"invalid","detail")).isInstanceOf(ScenarioFailure.class);
+        }
     }
 }

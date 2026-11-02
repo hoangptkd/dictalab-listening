@@ -39,6 +39,7 @@ class ScenarioEngineIntegrationTest {
     @Autowired ScenarioData data;
     @Autowired ScenarioProgramRegistry registry;
     @Autowired ScenarioProgramStore store;
+    @Autowired ScenarioPersonalization personalization;
     @Autowired JdbcTemplate db;
     @Autowired PlatformTransactionManager manager;
     @Autowired AppUserRepository users;
@@ -59,6 +60,8 @@ class ScenarioEngineIntegrationTest {
         when(release.promptHash()).thenReturn(new String(getClass().getResourceAsStream("/scenario/workflow-v1.sha256").readAllBytes()).trim());
         when(release.available()).thenReturn(true);
         when(release.available(anyLong())).thenReturn(true);
+        when(release.personalizedPromptHash()).thenReturn(new String(getClass().getResourceAsStream("/scenario/workflow-v2.sha256").readAllBytes()).trim());
+        when(release.require(anyLong(),anyString(),eq(2))).thenAnswer(call -> registry.require(call.getArgument(1),2));
         when(ai.local()).thenReturn(true); when(ai.scenarioProvider()).thenReturn("ollama");
         when(ai.audio(any())).thenCallRealMethod();
         var accounting=new AiUsageBudget(db,manager,true,10000000,1000000,10,20,100000,1000);
@@ -69,12 +72,17 @@ class ScenarioEngineIntegrationTest {
     ScenarioEngine.DraftRequest input() { return new ScenarioEngine.DraftRequest("Tôi muốn đặt bánh để nhận ngày mai","general-communication",1,"supported"); }
     JsonNode done(String id,JsonNode input) {
         String phase=input.path("phase").asText(); boolean tts=input.path("kind").asText().equals("tts");
+        boolean personalized=input.path("contractVersion").asText().equals("scenario-job.v2");
         var result=object().put("schemaVersion","1").put("generationId",id).put("requestId",id)
                 .put("provider",tts ? "cartesia" : "ollama").put("model","fixture-model").put("modelDigest","fixture-digest")
-                .put("promptVersion",tts ? "TTS_WAV_V1" : "SCENARIO_LISTENING_V5_GRADE_V4_1").put("promptHash",release.promptHash()).put("programHash",input.path("programHash").asText());
+                .put("promptVersion",tts ? "TTS_WAV_V1" : personalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : "SCENARIO_LISTENING_V5_GRADE_V4_1")
+                .put("promptHash",personalized ? release.personalizedPromptHash() : release.promptHash()).put("programHash",input.path("programHash").asText());
         if (tts) result.set("task",object().put("contentType","audio/wav").put("size",wave().length).put("audioBase64",Base64.getEncoder().encodeToString(wave())));
         else {
             result.set("task",fixture.path(switch(phase) { case "EXTRACT" -> "specification"; case "GENERATE" -> "content"; default -> "grade"; }).deepCopy());
+            if (personalized && phase.equals("EXTRACT")) ((ObjectNode)result.path("task")).put("learnerMode","listener").put("learnerRoleVi","Người nghe").put("genre","information-exchange");
+            if (personalized && phase.equals("GENERATE")) for (var activity : result.path("task").path("activities")) for (var q : activity.path("questions"))
+                ((ObjectNode)q).put("supportKind","direct").put("inferenceReasonEn","");
             var calls=result.putArray("calls");
         for (String purpose : phase.equals("GENERATE") ? List.of("GENERATE","QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW") : List.of(phase))
                 calls.addObject().put("purpose",purpose).put("provider","ollama").put("model","fixture-model");
@@ -98,6 +106,57 @@ class ScenarioEngineIntegrationTest {
         return new ScenarioEngine.AnswersRequest(session.path("version").asLong(),List.of(
                 new ScenarioEngine.Answer("q1",fixture.path("answers").get(0).path("textVi").asText()),
                 new ScenarioEngine.Answer("q2",fixture.path("answers").get(1).path("textVi").asText())));
+    }
+
+    ScenarioPersonalization.Preference preference(String code,String target,String current,long version) {
+        var program=registry.require(code,2);
+        var scale=program.targetScales().stream().filter(s -> s.component().equals("LISTENING")).findFirst().orElseThrow();
+        return new ScenarioPersonalization.Preference(code,2,new ScenarioGoalRequest.Target(scale.scaleId(),"LISTENING",target),current,"detail",version);
+    }
+
+    @Test void personalizedDraftSessionAndRemixKeepOriginalSnapshotAfterPreferenceChanges() {
+        String key=id(); var request=preference("toeic-listening","450","200",0);
+        var saved=personalization.save(user,key,request);
+        assertThat(personalization.save(user,key,request).toString()).isEqualTo(saved.toString());
+        var extraction=dispatch(engine.createDraft(user,id(),new ScenarioEngine.DraftRequest("","toeic-listening",2,"")));
+        assertThat(extraction.path("status").asText()).isEqualTo("SUCCEEDED");
+        String draftId=extraction.path("draftId").asText(); var draft=engine.draft(user,draftId);
+        var snapshot=draft.path("learningContext");
+        assertThat(snapshot.path("target").path("value").asText()).isEqualTo("450");
+        assertThat(snapshot.path("currentValue").asText()).isEqualTo("200");
+        assertThat(snapshot.path("profile").path("id").asText()).isEqualTo("supported");
+        personalization.save(user,id(),preference("toeic-listening","495","",1));
+        assertThat(engine.draft(user,draftId).path("learningContext")).isEqualTo(snapshot);
+        var generation=dispatch(engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draftId,draft.path("version").asLong())));
+        assertThat(generation.path("status").asText()).isEqualTo("SUCCEEDED");
+        String sid=generation.path("sessionId").asText(); JsonNode session=engine.session(user,sid);
+        for (int ordinal=0; ordinal<3; ordinal++) {
+            String aid=session.path("activities").get(ordinal).path("activityId").asText();
+            assertThat(dispatch(engine.answer(user,sid,aid,id(),answers(session))).path("status").asText()).isEqualTo("SUCCEEDED");
+            session=engine.session(user,sid);
+            session=engine.completeActivity(user,sid,aid,id(),new ScenarioEngine.VersionRequest(session.path("version").asLong()));
+        }
+        assertThat(session.path("learningContext")).isEqualTo(snapshot);
+        var remix=dispatch(engine.remix(user,sid,id(),new ScenarioEngine.RemixRequest(session.path("version").asLong(),"Đổi bối cảnh thành thư viện","supported")));
+        assertThat(engine.draft(user,remix.path("draftId").asText()).path("learningContext")).isEqualTo(snapshot);
+        verify(ai,atLeastOnce()).submitScenario(eq(user),anyString(),any(),argThat(p -> "EXTRACT".equals(p.path("phase").asText())
+                && !p.path("inputVi").asText().isBlank() && snapshot.equals(p.path("learningContext"))));
+        verify(ai,atLeastOnce()).submitScenario(eq(user),anyString(),any(),argThat(p -> "GRADE".equals(p.path("phase").asText()) && snapshot.equals(p.path("learningContext"))));
+    }
+
+    @Test void preferencesRequireCsrfAreOwnerScopedAndEnforceVersionsAndAdmission() throws Exception {
+        var request=preference("ielts-listening","6.5","",0);
+        mvc.perform(post("/api/v2/scenarios/learning-preferences").with(user(DictaLabPrincipal.from(owner)))
+                .header("Idempotency-Key",id()).contentType("application/json").content(json(request))).andExpect(status().isForbidden());
+        mvc.perform(post("/api/v2/scenarios/learning-preferences").with(user(DictaLabPrincipal.from(owner))).with(csrf())
+                .header("Idempotency-Key",id()).contentType("application/json").content(json(request)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.version").value(1)).andExpect(jsonPath("$.learningContext.profile.id").value("standard"));
+        assertThatThrownBy(() -> personalization.save(user,id(),request)).isInstanceOfSatisfying(ScenarioFailure.class,e -> assertThat(e.code).isEqualTo("PREFERENCE_VERSION_CONFLICT"));
+        var other=users.saveAndFlush(new AppUser(id()+"@personal.test","Other","unused",Instant.now()));
+        mvc.perform(get("/api/v2/scenarios/learning-preferences").with(user(DictaLabPrincipal.from(other))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.preferences.length()").value(0));
+        assertThatThrownBy(() -> engine.createDraft(other.getId(),id(),new ScenarioEngine.DraftRequest("","ielts-listening",2,"")))
+                .isInstanceOfSatisfying(ScenarioFailure.class,e -> assertThat(e.code).isEqualTo("PERSONALIZATION_REQUIRED"));
     }
 
     @org.junit.jupiter.params.ParameterizedTest

@@ -84,6 +84,121 @@ def generation_responses():
              for name in ("SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS")], "valid": True, "issues": []}])
 
 
+def learning_context(code="ielts-listening", profile_id="standard", focus="detail"):
+    programs = json.loads((ROOT / "src/main/resources/scenario/programs-personalized-v1.json").read_text(encoding="utf-8"))
+    program = next(p for p in programs if p["code"] == code)
+    profile = next(p for p in program["difficultyProfiles"] if p["id"] == profile_id)
+    target = profile.get("targetRange", {}).get("max", profile_id)
+    return dict(contractVersion="scenario-learning-context.v1", programCode=code, programVersion=2,
+                programHash=program["definitionHash"], practiceMode="guided-listening", layoutVersion="three-activities.v1",
+                focusSkill=focus, targetProvenance="USER_DECLARED_GOAL", currentProvenance="UNKNOWN", currentValue=None,
+                calibrationStatus="INTERNAL_PRACTICE_UNCALIBRATED", qualityPolicyVersion=program["qualityPolicyVersion"],
+                skillTaxonomyVersion=program["skillTaxonomyVersion"], profile=profile, answerLanguages=["vi", "en"],
+                targetScale=program["targetScales"][0],
+                target=dict(scaleId=program["targetScales"][0]["scaleId"], component="LISTENING", value=target))
+
+
+def personal_payload(phase="GENERATE", context=None, **changes):
+    context = copy.deepcopy(context or learning_context())
+    values = dict(contractVersion="scenario-job.v2", promptHash=workflow.personalized_prompt_hash(),
+                  programHash=context["programHash"], learningContext=context,
+                  profile={k: context["profile"][k] for k in ("id", "minWordsPerActivity", "maxWordsPerActivity", "maxWordsPerSession")})
+    if phase == "GENERATE":
+        values["specification"] = {**EXAMPLE["specification"], "learnerRoleVi": "Người nghe", "learnerMode": "listener", "genre": "information-exchange"}
+    elif phase == "GRADE":
+        values["activity"] = copy.deepcopy(EXAMPLE["content"]["activities"][0])
+        for q in values["activity"]["questions"]:
+            q.update(supportKind="direct", inferenceReasonEn="")
+    return payload(phase, **{**values, **changes})
+
+
+def personal_responses():
+    responses = generation_responses()
+    for activity in responses[1]["activities"]:
+        for q in activity["questions"]:
+            q.update(supportKind="direct", inferenceReasonEn="")
+    for q in responses[2]["questionChecks"]:
+        q.update(skillAppropriate=True, groundingSupported=True)
+    responses[4]["rubricChecks"] += [dict(category=k, passed=True, reasonVi="Đã đối chiếu với cấu hình bài luyện") for k in ("PROFILE", "LEARNING_GOAL")]
+    return responses
+
+
+@pytest.mark.parametrize("code", ["general-communication", "toeic-listening", "ielts-listening"])
+def test_personalized_context_reaches_every_stage_and_keeps_grade_v4(code):
+    context = learning_context(code)
+    result, calls = execute(personal_payload(context=context), personal_responses())
+    assert result["promptVersion"] == workflow.personalized.PROMPT_VERSION
+    assert result["promptHash"] == workflow.personalized_prompt_hash()
+    for _, messages in calls:
+        assert json.loads(messages[1]["content"])["learningContext"] == personal_payload(context=context).learningContext.model_dump(exclude_none=True)
+    _, grade_calls = execute(personal_payload("GRADE", context=context), [EXAMPLE["grade"]])
+    assert grade_calls[0][1][0]["content"] == workflow.V4_INSTRUCTIONS["GRADE"]
+
+
+def test_personalized_prompt_pin_and_legacy_payload_fingerprint_are_stable():
+    assert workflow.personalized_prompt_hash() == (ROOT / "src/main/resources/scenario/workflow-v2.sha256").read_text().strip()
+    assert workflow.prompt_hash() == "d43a3e228449dc64d7b6c103c2013558ac6e9415feabad8ff50e083900b0ae21"
+    assert "learningContext" not in payload().model_dump()
+
+
+def test_listener_extraction_has_no_fictional_user_role():
+    extracted = {**extraction_response(), "learnerMode": "listener", "learnerCharacterId": None, "genre": "explanation"}
+    result, calls = execute(personal_payload("EXTRACT"), [extracted])
+    assert result["task"]["learnerRoleVi"] == "Người nghe"
+    assert result["task"]["learnerMode"] == "listener"
+    assert "learningContext" in json.loads(calls[0][1][1]["content"])
+    extracted["learnerCharacterId"] = "customer"
+    with pytest.raises(workflow.QualityRejected, match="provenance"):
+        execute(personal_payload("EXTRACT"), [extracted])
+
+
+@pytest.mark.parametrize("fault", ["missing_context", "wrong_hash", "wrong_profile", "overall", "wrong_range", "unknown_skill", "legacy_spec"])
+def test_personalization_rejects_inconsistent_jobs_before_model_calls(fault):
+    value = personal_payload().model_dump()
+    if fault == "missing_context":
+        value.pop("learningContext")
+    elif fault == "wrong_hash":
+        value["programHash"] = "0" * 64
+    elif fault == "wrong_profile":
+        value["profile"]["maxWordsPerActivity"] = 110
+    elif fault == "overall":
+        value["learningContext"]["target"]["component"] = "OVERALL"
+    elif fault == "wrong_range":
+        value["learningContext"]["target"]["value"] = "8.5"
+    elif fault == "unknown_skill":
+        value["learningContext"]["focusSkill"] = "speaking"
+    else:
+        value["specification"] = EXAMPLE["specification"]
+    with pytest.raises(ValueError):
+        workflow.ScenarioInput.model_validate(value)
+
+
+@pytest.mark.parametrize("fault", ["focus", "profile", "grounding", "inference", "skill"])
+def test_personalized_quality_gates_fail_closed(fault):
+    responses = personal_responses()
+    context = learning_context()
+    if fault == "focus":
+        context["focusSkill"] = "reason"
+    elif fault == "profile":
+        responses[4]["rubricChecks"][-2]["passed"] = False
+    elif fault == "grounding":
+        responses[2]["questionChecks"][0]["groundingSupported"] = False
+    elif fault == "inference":
+        responses[1]["activities"][0]["questions"][0].update(supportKind="inference", skill="supported-inference", inferenceReasonEn="")
+    else:
+        responses[2]["questionChecks"][0]["skillAppropriate"] = False
+    with pytest.raises(workflow.QualityRejected):
+        execute(personal_payload(context=context), responses)
+
+
+def test_inference_contract_accepts_premise_explanation_after_mocked_review():
+    responses = personal_responses()
+    question = responses[1]["activities"][0]["questions"][0]
+    question.update(skill="supported-inference", supportKind="inference", inferenceReasonEn="The opening time stated by the clerk excludes earlier collection.")
+    result, _ = execute(personal_payload(context=learning_context(focus="supported-inference")), responses)
+    assert result["task"]["activities"][0]["questions"][0]["supportKind"] == "inference"
+
+
 def test_cross_language_prompt_pin_and_content_fixture():
     from app.scenario_prompts_v5 import INSTRUCTIONS
     assert workflow.PROMPT_VERSION == 'SCENARIO_LISTENING_V5_GRADE_V4_1'

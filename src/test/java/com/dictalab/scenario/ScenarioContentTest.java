@@ -68,4 +68,44 @@ class ScenarioContentTest {
         var wrongPin=new ScenarioEngineProperties(true,1,"0".repeat(64),hash,true,java.util.Set.of(3L));
         assertThat(new ScenarioRelease(new ScenarioProperties(true),wrongPin,registry,ai,env).available(3)).isFalse();
     }
+    @Test void personalizedPreviewRequiresExactProgramAndPromptPinsAndLocalAdmission() throws Exception {
+        var registry=new ScenarioProgramRegistry(); var program=registry.require("toeic-listening",2);
+        var ai=mock(com.dictalab.service.AiPlatformClient.class); when(ai.textConfigured()).thenReturn(true);
+        String hash; try (var in=getClass().getResourceAsStream("/scenario/workflow-v2.sha256")) { hash=new String(in.readAllBytes()).trim(); }
+        var properties=new ScenarioEngineProperties(true,1,"",hash,true,java.util.Set.of(3L),java.util.Map.of("toeic-listening:2",program.definitionHash()));
+        var env=new org.springframework.mock.env.MockEnvironment(); env.setActiveProfiles("local"); env.setProperty("server.address","127.0.0.1");
+        var release=new ScenarioRelease(new ScenarioProperties(true),properties,registry,ai,env);
+        assertThat(release.require(3,program.code(),2)).isEqualTo(program);
+        assertThat(release.available(4,program)).isFalse();
+        assertThat(release.available(3,registry.require("ielts-listening",2))).isFalse();
+        assertThat(release.available()).isFalse();
+        env.setProperty("server.address","0.0.0.0"); assertThat(release.available(3,program)).isFalse();
+        env.setProperty("server.address","127.0.0.1"); env.setActiveProfiles("production","local"); assertThat(release.available(3,program)).isFalse();
+        env.setActiveProfiles("local");
+        var wrongPin=new ScenarioEngineProperties(true,1,"","0".repeat(64),true,java.util.Set.of(3L),properties.approvedPrograms());
+        assertThat(new ScenarioRelease(new ScenarioProperties(true),wrongPin,registry,ai,env).available(3,program)).isFalse();
+    }
+
+    @Test void configurationBindsExactVersionedProgramMapKeys() {
+        var env=new org.springframework.mock.env.MockEnvironment()
+                .withProperty("dictalab.scenario.engine.approved-programs.[toeic-listening:2]","a".repeat(64));
+        var bound=org.springframework.boot.context.properties.bind.Binder.get(env)
+                .bind("dictalab.scenario.engine",org.springframework.boot.context.properties.bind.Bindable.of(ScenarioEngineProperties.class)).get();
+        assertThat(bound.approvedPrograms()).containsExactlyEntriesOf(java.util.Map.of("toeic-listening:2","a".repeat(64)));
+    }
+
+    @Test void coreRejectsMissingFocusAndInferenceOutsideProfileEvenWhenWorkerSaysQualityPassed() throws Exception {
+        var fixture=fixture();
+        var program=new ScenarioProgramRegistry().require("general-communication",2);
+        var context=ScenarioPersonalization.context(program,new ScenarioGoalRequest.Target("practice-support","LISTENING","supported"),null,"detail");
+        var content=fixture.path("content");
+        for (var activity : content.path("activities")) for (var q : activity.path("questions"))
+            ((ObjectNode)q).put("supportKind","direct").put("inferenceReasonEn","");
+        ScenarioContent.content(content,fixture.path("specification"),context.path("profile"),context);
+        context.put("focusSkill","reason");
+        assertThatThrownBy(() -> ScenarioContent.content(content,fixture.path("specification"),context.path("profile"),context)).isInstanceOf(IllegalArgumentException.class);
+        context.put("focusSkill","detail");
+        ((ObjectNode)content.path("activities").get(0).path("questions").get(0)).put("supportKind","inference").put("skill","supported-inference").put("inferenceReasonEn","Claimed inference");
+        assertThatThrownBy(() -> ScenarioContent.content(content,fixture.path("specification"),context.path("profile"),context)).isInstanceOf(IllegalArgumentException.class);
+    }
 }

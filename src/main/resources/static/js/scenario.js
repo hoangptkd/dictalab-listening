@@ -5,6 +5,7 @@
     const escape = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
     const labels = {CAPTURED: "Hiểu đúng", PARTIAL: "Hiểu một phần", MISSED: "Bỏ lỡ", INCORRECT: "Chưa đúng", UNCERTAIN: "Chưa đủ căn cứ"};
     const profiles = {supported: "Có hỗ trợ", standard: "Tiêu chuẩn", challenge: "Thử thách"};
+    const skills = {detail: "Nghe chi tiết", "main-idea": "Hiểu ý chính", reason: "Hiểu lý do", purpose: "Hiểu mục đích", "speaker-attitude": "Hiểu quan điểm", "supported-inference": "Nghe và suy luận"};
     let revision = 0, owner = null, abort = null, timer = null, session = null, busy = false;
     const memory = new Map();
     const storageKey = (suffix, user = owner) => `dictalab:scenario:${user}:${suffix}`;
@@ -43,22 +44,27 @@
         } catch (error) { if (current(token) && error.name !== "AbortError") status(error.message); }
     }
     async function catalog(token) {
-        const [catalog, suggestions, history, goals, recommendations, legacy] = await Promise.all([
+        const [catalog, suggestions, history, goals, recommendations, legacy, savedPreferences] = await Promise.all([
             request("/catalog"), request("/suggestions"), request("/sessions?limit=10"), request("/learning-goals"), request("/recommendations"),
-            bridge().api("/api/v1/conversation/sessions?offset=0&limit=12", {signal: abort?.signal, cache: "no-store"}).catch(error => ({sessions: [], error: error.message}))]);
+            bridge().api("/api/v1/conversation/sessions?offset=0&limit=12", {signal: abort?.signal, cache: "no-store"}).catch(error => ({sessions: [], error: error.message})),
+            request("/learning-preferences")]);
         if (!current(token)) return;
         if (!catalog.enabled) return false;
-        const available = catalog.generationAvailable;
+        const programs = catalog.practicePrograms || [], preferences = savedPreferences.preferences || [];
+        const program = programs.find(p => p.code === read("program", preferences[0]?.programCode)) || programs[0];
+        const preference = program && preferences.find(p => p.programCode === program.code && p.programVersion === program.version);
+        const available = program ? program.generationAvailable && Boolean(preference) : catalog.generationAvailable;
         const groups = [...new Map(suggestions.suggestions.map(s => [s.groupId || s.id, {id: s.groupId || s.id, title: s.groupTitleVi || s.titleVi}])).values()];
         const historyRows = rows => rows.map(s => `<p><a href="/conversation/${encodeURIComponent(s.sessionId)}" data-session="${escape(s.sessionId)}">${escape(s.titleVi)}</a> · ${escape(s.status)}</p>`).join("");
         const legacyRows = rows => rows.map(s => `<p><a href="/conversation/${encodeURIComponent(s.id)}" data-session="${escape(s.id)}">Bài trước đây · ${escape(s.scenario)} · ${escape(s.difficulty)}</a></p>`).join("");
-        frame(`${catalog.generationMode === "LOCAL_PREVIEW" ? '<p role="status">Thử nghiệm local · Program DRAFT, chưa được chuyên gia duyệt. Kết quả không phải đánh giá chứng chỉ.</p>' : ''}<div class="scenario-hero"><form id="scenario-create" class="scenario-input-card">
-            <label class="scenario-brief-label" for="scenario-input">Bạn muốn luyện tình huống nào?</label>
-            <textarea id="scenario-input" class="scenario-brief" name="inputVi" rows="5" maxlength="2000" required aria-describedby="scenario-input-help"></textarea>
-            <p id="scenario-input-help">Mô tả bằng tiếng Việt. Tránh nhập thông tin cá nhân hoặc khóa truy cập.</p>
-            <fieldset class="scenario-profile-options"><legend>Mức luyện giao tiếp</legend>${(catalog.difficultyProfiles.length ? catalog.difficultyProfiles : Object.keys(profiles)).map((p,i) => `<label><input type="radio" name="profileId" value="${escape(p)}" ${i === 0 ? "checked" : ""}>${escape(profiles[p] || p)}</label>`).join("")}</fieldset>
-            <p>TOEIC và IELTS giữ mục tiêu theo thang điểm riêng; bài giao tiếp này không phải bài thi quy đổi band.</p>
-            <button class="primary-button" ${available ? "" : "disabled"}>Phân tích và xem trước</button>
+        frame(`${catalog.generationMode === "LOCAL_PREVIEW" ? '<p role="status">Thử nghiệm local · Program DRAFT, chưa được chuyên gia duyệt. Kết quả không phải đánh giá chứng chỉ.</p>' : ''}
+            ${program ? personalizationHtml(programs, program) : ''}<div class="scenario-hero"><form id="scenario-create" class="scenario-input-card">
+            <label class="scenario-brief-label" for="scenario-input">Bạn muốn cải thiện điều gì?</label>
+            <textarea id="scenario-input" class="scenario-brief" name="inputVi" rows="5" maxlength="2000" ${program ? '' : 'required'} aria-describedby="scenario-input-help"></textarea>
+            <p id="scenario-input-help">Mô tả chủ đề hoặc nhu cầu bằng tiếng Việt. ${program ? 'Có thể để trống để AI đề xuất tình huống theo mục tiêu đã lưu.' : ''} Tránh nhập thông tin cá nhân hoặc khóa truy cập.</p>
+            ${program ? `<p>${escape(program.displayNameVi)} · ${preference ? `${escape(preference.target.value)} · ${escape(skills[preference.focusSkill])}` : 'Hãy lưu mục tiêu luyện nghe trước khi tạo bài.'}</p>` : `<fieldset class="scenario-profile-options"><legend>Mức luyện giao tiếp</legend>${(catalog.difficultyProfiles.length ? catalog.difficultyProfiles : Object.keys(profiles)).map((p,i) => `<label><input type="radio" name="profileId" value="${escape(p)}" ${i === 0 ? "checked" : ""}>${escape(profiles[p] || p)}</label>`).join("")}</fieldset>`}
+            <p>Luyện kỹ năng theo mục tiêu; kết quả bài này không quy đổi thành điểm TOEIC hoặc band IELTS.</p>
+            <button id="scenario-create-button" class="primary-button" ${available ? "" : "disabled"}>Phân tích và xem trước</button>
             ${available ? "" : "<p>Chương trình đang chờ duyệt bộ sinh bài. Bài đã lưu vẫn có thể mở.</p>"}
             </form><aside class="scenario-suggestions-col"><h2>Gợi ý bài luyện</h2><p>${escape(recommendations.messageVi)}</p>
             ${recommendations.suggestions.slice(0,3).map((s,index) => `<button class="scenario-suggestion-card" type="button" data-recommendation="${index}"><strong>${escape(s.titleVi)}</strong><span>${escape(s.reasonVi || s.inputVi)}</span></button>`).join("")}
@@ -70,6 +76,11 @@
             <section><h2>Bài trước đây</h2><div id="scenario-legacy-history">${legacyRows(legacy.sessions || []) || "<p>Chưa có bài trước đây.</p>"}</div>${legacy.error ? `<p role="status">${escape(legacy.error)}</p>` : ""}<button type="button" id="scenario-legacy-more" ${legacy.hasMore ? "" : "hidden"}>Xem thêm bài trước đây</button></section>`);
         const input = root().querySelector("#scenario-input"); input.value = read("brief", "");
         input.addEventListener("input", () => save("brief", input.value));
+        let preferenceDirty = false;
+        if (program) bindPersonalization(program, preference, token, () => {
+            preferenceDirty = true; root().querySelector('#scenario-create-button').disabled = true;
+            status('Mục tiêu đã thay đổi. Hãy lưu mục tiêu trước khi tạo bài.');
+        });
         root().querySelectorAll("[data-group]").forEach(button => button.addEventListener("click", () => {
             root().querySelectorAll("[data-group]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
             root().querySelectorAll("[data-suggestion-group]").forEach(item => { item.hidden = item.dataset.suggestionGroup !== button.dataset.group; });
@@ -96,15 +107,67 @@
         }));
         bindSessionLinks();
         root().querySelector("#scenario-create").addEventListener("submit", event => {
-            event.preventDefault(); if (!available) return;
+            event.preventDefault(); if (!available || preferenceDirty) return;
             const form = new FormData(event.currentTarget);
             run(async token => {
-                const program = catalog.generationPrograms[0];
-                const operation = await mutation("/drafts", {inputVi: String(form.get("inputVi")).trim(), programCode: program.code, programVersion: program.version, profileId: form.get("profileId")});
+                const selected = program || catalog.generationPrograms[0];
+                const operation = await mutation("/drafts", {inputVi: String(form.get("inputVi") || '').trim(), programCode: selected.code, programVersion: selected.version, profileId: program ? '' : form.get("profileId")});
                 if (current(token)) await track({...operation, action: "EXTRACT"}, token);
             });
         });
         return true;
+    }
+    function personalizationHtml(programs, program) {
+        return `<section class="scenario-personalization" aria-labelledby="scenario-personalization-title"><h2 id="scenario-personalization-title">Mục tiêu luyện nghe của bạn</h2>
+            <form id="scenario-personalization"><label for="scenario-program">Bạn luyện nghe để làm gì?</label>
+            <select id="scenario-program" name="programCode">${programs.map(p => `<option value="${escape(p.code)}" ${p.code === program.code ? 'selected' : ''}>${escape(p.displayNameVi)}</option>`).join('')}</select>
+            <div id="scenario-personalization-fields"></div><button type="submit" class="secondary-button">Lưu mục tiêu luyện nghe</button>
+            <p>Điểm hiện tại là tự khai. Mức luyện được chọn theo mức hiện tại nếu có, nếu chưa biết thì theo mục tiêu. Các mức luyện nội bộ đang được kiểm chứng.</p>
+            ${program.generationAvailable ? '' : '<p role="status">Chương trình chưa mở tạo bài. Bạn có thể lưu mục tiêu và tiếp tục bài đã có.</p>'}</form></section>`;
+    }
+    function bindPersonalization(program, preference, token, changed) {
+        const scale = program.targetScales.find(s => s.component === 'LISTENING');
+        if (!scale) return;
+        const defaultValue = scale.labels.length ? 'standard' : program.code === 'ielts-listening' ? '6.5' : '350';
+        const field = (id, name, label, value, optional) => `<label for="${id}">${label}</label>${scale.labels.length
+            ? `<select id="${id}" name="${name}">${optional ? '<option value="">Chưa biết</option>' : ''}${scale.labels.map(v => `<option value="${escape(v)}" ${v === value ? 'selected' : ''}>${escape(profiles[v] || v)}</option>`).join('')}</select>`
+            : `<input id="${id}" name="${name}" type="number" min="${escape(scale.min)}" max="${escape(scale.max)}" step="${escape(scale.step)}" value="${escape(value)}" ${optional ? '' : 'required'} aria-describedby="scenario-score-help">`}`;
+        root().querySelector('#scenario-personalization-fields').innerHTML = `${field('scenario-target','targetValue', program.code === 'ielts-listening' ? 'Mục tiêu IELTS Listening band' : program.code === 'toeic-listening' ? 'Mục tiêu TOEIC Listening (5–495)' : 'Mức giao tiếp mong muốn', preference?.target.value || defaultValue, false)}
+            ${field('scenario-current','currentValue','Mức hiện tại (không bắt buộc)',preference?.currentValue || '', true)}
+            <p id="scenario-score-help">${scale.labels.length ? 'Chọn mô tả phù hợp nhu cầu.' : `Thang Listening ${escape(scale.min)}–${escape(scale.max)}, bước ${escape(scale.step)}. Chưa biết mức hiện tại: để trống.`} Không tự quy đổi từ điểm tổng.</p>
+            <label for="scenario-focus">Bạn muốn cải thiện kỹ năng nào?</label><select id="scenario-focus" name="focusSkill"></select><p id="scenario-profile-help" role="status"></p>`;
+        const target = root().querySelector('#scenario-target'), currentLevel = root().querySelector('#scenario-current');
+        target.value = preference?.target.value || defaultValue; currentLevel.value = preference?.currentValue || '';
+        const focus = root().querySelector('#scenario-focus');
+        const refreshSkills = () => {
+            const level = currentLevel.value || target.value;
+            const profile = program.difficultyProfiles.find(p => p.targetRange
+                ? p.targetRange.scaleId === scale.scaleId && Number(level) >= Number(p.targetRange.min) && Number(level) <= Number(p.targetRange.max)
+                : p.id === level);
+            const previous = focus.value || preference?.focusSkill || 'detail';
+            focus.innerHTML = (profile?.skills || []).map(s => `<option value="${escape(s)}">${escape(skills[s] || s)}</option>`).join('');
+            focus.value = profile?.skills.includes(previous) ? previous : profile?.skills[0] || '';
+            root().querySelector('#scenario-profile-help').textContent = profile ? `Mức luyện: ${profiles[profile.id] || profile.id}. ${profile.inferencePolicy === 'EXPLICIT_ONLY' ? 'Ưu tiên thông tin được nói rõ.' : 'Có thể luyện suy luận có căn cứ.'}` : 'Hãy nhập mức Listening hợp lệ.';
+        };
+        refreshSkills(); target.addEventListener('input',refreshSkills); currentLevel.addEventListener('input',refreshSkills);
+        target.addEventListener('change',refreshSkills); currentLevel.addEventListener('change',refreshSkills);
+        root().querySelector('#scenario-personalization').addEventListener('input',changed);
+        root().querySelector('#scenario-personalization').addEventListener('change',changed);
+        root().querySelector('#scenario-program').addEventListener('change',event => {
+            save('brief',root().querySelector('#scenario-input').value); save('program',event.target.value); run(() => catalog(token));
+        });
+        root().querySelector('#scenario-personalization').addEventListener('submit',event => {
+            event.preventDefault(); const form = new FormData(event.currentTarget);
+            run(async token => {
+                await mutation('/learning-preferences',{programCode:program.code,programVersion:program.version,
+                    target:{scaleId:scale.scaleId,component:'LISTENING',value:String(form.get('targetValue'))},
+                    currentValue:form.get('currentValue') || '',focusSkill:form.get('focusSkill'),expectedVersion:preference?.version || 0});
+                if (current(token)) { save('program',program.code); await catalog(token); status('Đã lưu mục tiêu. Bạn có thể tạo bài luyện.'); }
+            });
+        });
+    }
+    function contextHtml(context) {
+        return context ? `<p class="scenario-goal-display">${escape(context.programCode)} · Mục tiêu Listening: ${escape(profiles[context.target.value] || context.target.value)} · ${escape(skills[context.focusSkill])} · ${escape(profiles[context.profile.id])}</p>` : '';
     }
     function bindSessionLinks() {
         root().querySelectorAll("[data-session]").forEach(link => {
@@ -143,7 +206,7 @@
         if (!current(token)) return;
         if (draft.status !== "READY") { frame("<h2>Bản nháp chưa sẵn sàng</h2><p>Nội dung không được chấp nhận hoặc đã hết hạn.</p>"); return; }
         const s = draft.specification;
-        frame(`<h2>${escape(s.titleVi)}</h2><dl><dt>Bối cảnh</dt><dd>${escape(s.settingVi)}</dd><dt>Vai trò của bạn</dt><dd>${escape(s.learnerRoleVi)}</dd><dt>Mục tiêu</dt><dd>${escape(s.goalVi)}</dd></dl>
+        frame(`<h2>${escape(s.titleVi)}</h2>${contextHtml(draft.learningContext)}<dl><dt>Bối cảnh</dt><dd>${escape(s.settingVi)}</dd><dt>Vai trò của bạn</dt><dd>${escape(s.learnerRoleVi)}</dd><dt>Mục tiêu</dt><dd>${escape(s.goalVi)}</dd></dl>
             <h3>Dữ kiện bạn cung cấp</h3><ul>${s.constraintsVi.map(a => `<li>${escape(a)}</li>`).join("")}</ul>
             <h3>Suy luận và giả định cần xác nhận</h3><ul>${s.assumptionsVi.map(a => `<li>${escape(a)}</li>`).join("")}</ul>
             <p>${s.characters.map(c => `${escape(c.name)}: ${escape(c.roleVi)}`).join(" · ")}</p>
@@ -162,14 +225,14 @@
     function renderSession() {
         const activity = session.activities.find(a => a.status !== "COMPLETED");
         frame(`<div class="scenario-session-topbar"><h2>${escape(session.titleVi)}</h2><a href="/conversation" data-session="">Tình huống khác</a><button id="scenario-refresh" type="button">Tải lại bài</button></div>
-            <p>${escape(session.specification.settingVi)}</p><p>${escape(session.specification.goalVi)}</p><p>Trạng thái: ${escape(session.status)}</p>
+            ${contextHtml(session.learningContext)}<p>${escape(session.specification.settingVi)}</p><p>${escape(session.specification.goalVi)}</p><p>Trạng thái: ${escape(session.status)}</p>
             ${activity ? activityHtml(activity) : completedHtml()}`);
         bindSessionLinks(); root().querySelector("#scenario-refresh").addEventListener("click", () => run(token => openSession(session.sessionId, token)));
         if (activity) bindActivity(activity);
         else root().querySelector("#scenario-remix")?.addEventListener("submit", event => {
             event.preventDefault(); const form = new FormData(event.currentTarget);
             run(async token => {
-                const op = await mutation(`/sessions/${session.sessionId}/remixes`, {expectedVersion: session.version, inputVi: form.get("inputVi"), profileId: form.get("profileId")});
+                const op = await mutation(`/sessions/${session.sessionId}/remixes`, {expectedVersion: session.version, inputVi: form.get("inputVi"), profileId: session.learningContext?.profile.id || form.get("profileId")});
                 if (current(token)) await track({...op, action: "EXTRACT"}, token);
             });
         });
@@ -223,7 +286,7 @@
         return `<h3>Đã hoàn thành</h3><p>Lần trả lời đầu: hiểu đúng ${captured}/${facts.length} ý đã được chấm. Đây không phải điểm chứng chỉ.</p>
             ${session.activities.map(a => `<details><summary>Hoạt động ${a.ordinal}: bản chép và đáp án</summary>${a.segments.map(s => `<p lang="en">${escape(s.textEn)}</p>`).join("")}${a.questions.map(q => `<p>${escape(q.promptVi)} — ${escape(q.answerVi)}</p>`).join("")}</details>`).join("")}
             <form id="scenario-remix"><label for="scenario-remix-input">Bạn muốn biến thể như thế nào?</label><textarea id="scenario-remix-input" name="inputVi" maxlength="1200" required rows="3"></textarea>
-            <label for="scenario-remix-profile">Mức luyện</label><select id="scenario-remix-profile" name="profileId">${Object.keys(profiles).map(p => `<option value="${p}">${profiles[p]}</option>`).join("")}</select><button class="primary-button">Xem trước biến thể mới</button></form>`;
+            ${session.learningContext ? `<p>Biến thể giữ mục tiêu và mức luyện của bài này: ${escape(profiles[session.learningContext.profile.id])}.</p>` : `<label for="scenario-remix-profile">Mức luyện</label><select id="scenario-remix-profile" name="profileId">${Object.keys(profiles).map(p => `<option value="${p}">${profiles[p]}</option>`).join("")}</select>`}<button class="primary-button">Xem trước biến thể mới</button></form>`;
     }
     window.DictaLabScenario = {show, leave};
 })();

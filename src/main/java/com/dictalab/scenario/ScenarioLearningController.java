@@ -16,7 +16,15 @@ import static com.dictalab.scenario.ScenarioController.noStore;
 public class ScenarioLearningController {
     private final ScenarioEngine engine;
     private final ScenarioOperations operations;
-    public ScenarioLearningController(ScenarioEngine engine,ScenarioOperations operations) { this.engine=engine; this.operations=operations; }
+    private final ScenarioPersonalization personalization;
+    public ScenarioLearningController(ScenarioEngine engine,ScenarioOperations operations,ScenarioPersonalization personalization) { this.engine=engine; this.operations=operations; this.personalization=personalization; }
+
+    @GetMapping("/learning-preferences")
+    ResponseEntity<JsonNode> preferences(@AuthenticationPrincipal DictaLabPrincipal owner) { return noStore(personalization.list(owner.id())); }
+    @PostMapping(value="/learning-preferences",consumes="application/json")
+    ResponseEntity<JsonNode> preferences(@AuthenticationPrincipal DictaLabPrincipal owner,@RequestHeader(value="Idempotency-Key",required=false) String key,HttpServletRequest http) throws IOException {
+        return noStore(personalization.save(owner.id(),key,read(http,ScenarioPersonalization.Preference.class)));
+    }
 
     @GetMapping("/suggestions")
     ResponseEntity<JsonNode> suggestions() { return noStore(engine.suggestions()); }

@@ -11,13 +11,15 @@ import time
 from typing import Annotated, Literal
 
 import httpx
-from pydantic import Field, model_validator
+from pydantic import Field, model_validator, model_serializer
 
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .redaction import redact_string
 from .observability import trace_gate, trace_job
 from .scenario_prompts_v5 import INSTRUCTIONS as V5_INSTRUCTIONS
+from .scenario_contract import LearningContext
+from . import scenario_prompts_personalized as personalized
 
 V4_PROMPT_VERSION = "SCENARIO_LISTENING_V4"
 OUTPUT_TOKENS = {"EXTRACT": 2600, "GENERATE": 3200, "QUESTIONS": 4000,
@@ -343,6 +345,67 @@ class Grade(StrictModel):
     facts: list[GradeItem] = Field(min_length=2, max_length=2)
 
 
+Genre = Literal["information-exchange", "discussion", "explanation", "experience", "interview", "problem-solving", "transaction"]
+Skill = Literal["detail", "main-idea", "reason", "purpose", "speaker-attitude", "supported-inference"]
+
+
+class PersonalizedSpecification(Specification):
+    learnerMode: Literal["listener", "participant"]
+    genre: Genre
+
+
+class PersonalizedExtraction(Extraction):
+    learnerMode: Literal["listener", "participant"]
+    genre: Genre
+    learnerCharacterId: str | None = Field(pattern=r"^[a-z][a-z0-9-]{0,15}$")
+
+
+class PersonalizedQuestion(Question):
+    skill: Skill
+    supportKind: Literal["direct", "synthesis", "inference"]
+    inferenceReasonEn: str = Field(max_length=400)
+
+
+class PersonalizedQuestionDraft(QuestionDraft):
+    skill: Skill
+    speechAct: Literal["statement", "proposal", "agreement", "confirmation", "opinion", "hypothesis", "intention", "request"]
+    supportKind: Literal["direct", "synthesis", "inference"]
+    inferenceReasonEn: str = Field(max_length=400)
+
+
+class PersonalizedActivityQuestions(ActivityQuestions):
+    questions: list[PersonalizedQuestionDraft] = Field(max_length=2)
+
+
+class PersonalizedQuestions(Questions):
+    activities: list[PersonalizedActivityQuestions] = Field(min_length=3, max_length=3)
+
+
+class PersonalizedActivity(Activity):
+    questions: list[PersonalizedQuestion] = Field(min_length=2, max_length=2)
+
+
+class PersonalizedContent(Content):
+    activities: list[PersonalizedActivity] = Field(min_length=3, max_length=3)
+
+
+class PersonalizedQuestionCheck(QuestionCheck):
+    skillAppropriate: bool
+    groundingSupported: bool
+
+
+class PersonalizedQuestionReview(QuestionReview):
+    questionChecks: list[PersonalizedQuestionCheck] = Field(min_length=6, max_length=6)
+
+
+class PersonalizedRubricCheck(RubricCheck):
+    category: Literal["SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS", "PROFILE", "LEARNING_GOAL"]
+
+
+class PersonalizedReview(Review):
+    rubricChecks: list[PersonalizedRubricCheck] = Field(min_length=5, max_length=5)
+
+
 class Profile(StrictModel):
     id: Literal["supported", "standard", "challenge"]
     minWordsPerActivity: int = Field(ge=1, le=140)
@@ -359,19 +422,41 @@ class Profile(StrictModel):
 class ScenarioInput(StrictModel):
     kind: Literal["scenario"] = "scenario"
     phase: Literal["EXTRACT", "GENERATE", "GRADE"]
-    contractVersion: Literal["scenario-job.v1"]
+    contractVersion: Literal["scenario-job.v1", "scenario-job.v2"]
     promptHash: str = Field(pattern=r"^[a-f0-9]{64}$")
     programHash: str = Field(pattern=r"^[a-f0-9]{64}$")
     profile: Profile
     inputVi: str = Field(default="", max_length=2000)
-    specification: Specification | None = None
-    activity: Activity | None = None
+    specification: Specification | PersonalizedSpecification | None = None
+    activity: Activity | PersonalizedActivity | None = None
     answers: list[Answer] = Field(default_factory=list, max_length=2)
+    learningContext: LearningContext | None = None
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_fingerprint(self, handler):
+        result = handler(self)
+        if self.learningContext is None:
+            result.pop("learningContext", None)
+        return result
 
     @model_validator(mode="after")
     def phase_input(self):
-        if self.promptHash != prompt_hash():
+        is_personalized = self.contractVersion == "scenario-job.v2"
+        if self.promptHash != (personalized_prompt_hash() if is_personalized else prompt_hash()):
             raise ValueError("scenario prompt mismatch")
+        if is_personalized != (self.learningContext is not None):
+            raise ValueError("missing or unexpected learning context")
+        if is_personalized:
+            context = self.learningContext
+            if context.programHash != self.programHash or any(getattr(context.profile, k) != getattr(self.profile, k)
+                    for k in ("id", "minWordsPerActivity", "maxWordsPerActivity", "maxWordsPerSession")):
+                raise ValueError("learning context fingerprint/profile mismatch")
+            if self.specification is not None and not isinstance(self.specification, PersonalizedSpecification):
+                raise ValueError("personalized specification required")
+            if self.activity is not None and not isinstance(self.activity, PersonalizedActivity):
+                raise ValueError("personalized activity required")
+        elif isinstance(self.specification, PersonalizedSpecification) or isinstance(self.activity, PersonalizedActivity):
+            raise ValueError("personalized content requires v2")
         if self.phase == "EXTRACT" and (not self.inputVi.strip() or self.specification is not None or self.activity is not None or self.answers):
             raise ValueError("invalid extraction input")
         if self.phase == "GENERATE" and (self.specification is None or not self.specification.allowed or self.activity is not None or self.answers):
@@ -387,7 +472,7 @@ class ScenarioInput(StrictModel):
 
 def response_schema(model):
     schema = model.model_json_schema()
-    if model in (QuestionReview, Review):
+    if issubclass(model, (QuestionReview, Review)):
         # Gemini rejects the combined bounded audit arrays (HTTP 400). Enforce counts locally instead.
         for field in schema["properties"].values():
             if field.get("type") == "array":
@@ -404,18 +489,32 @@ def prompt_hash():
     return hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def metadata(settings):
+def personalized_prompt_hash():
+    instructions = {**personalized.INSTRUCTIONS, "GRADE": V4_INSTRUCTIONS["GRADE"]}
+    models = (LearningContext, PersonalizedSpecification, PersonalizedExtraction, Dialogue, PersonalizedQuestions,
+              PersonalizedContent, Translations, PersonalizedQuestionReview, PersonalizedReview, Grade)
+    manifest = {"version": personalized.PROMPT_VERSION, "instructions": instructions, "outputTokens": OUTPUT_TOKENS,
+                "schemas": {m.__name__: m.model_json_schema() for m in models},
+                "reviewResponseSchemas": {m.__name__: response_schema(m) for m in (PersonalizedQuestionReview, PersonalizedReview)}}
+    return hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def metadata(settings, is_personalized=False):
     from .config import CLOUD_PROVIDERS
     return {"schemaVersion": "1", "provider": settings.selected_provider,
             "model": settings.active_cloud_model if settings.selected_provider in CLOUD_PROVIDERS else settings.model,
             "modelDigest": settings.model_digest if settings.selected_provider == "ollama" else "provider-managed",
-            "promptVersion": PROMPT_VERSION, "promptHash": prompt_hash()}
+            "promptVersion": personalized.PROMPT_VERSION if is_personalized else PROMPT_VERSION,
+            "promptHash": personalized_prompt_hash() if is_personalized else prompt_hash()}
 
 
 @trace_gate
 def validate_extraction(extracted, input_vi):
     speakers = {c.id: c for c in extracted.characters}
-    if extracted.learnerCharacterId not in speakers or not speakers[extracted.learnerCharacterId].roleVi.strip():
+    listener = isinstance(extracted, PersonalizedExtraction) and extracted.learnerMode == "listener"
+    if listener and extracted.learnerCharacterId is not None:
+        raise ValueError("listener must not be bound to a character")
+    if not listener and (extracted.learnerCharacterId not in speakers or not speakers[extracted.learnerCharacterId].roleVi.strip()):
         raise ValueError("learner role binding mismatch")
     if extracted.allowed and not extracted.providedFacts:
         raise ValueError("missing provided facts")
@@ -429,11 +528,11 @@ def validate_extraction(extracted, input_vi):
     if len(meanings) != len(set(meanings)):
         raise ValueError("duplicate or conflicting claim origins")
     public = extracted.model_dump(exclude={"learnerCharacterId", "providedFacts", "inferredFacts"})
-    public["learnerRoleVi"] = speakers[extracted.learnerCharacterId].roleVi
+    public["learnerRoleVi"] = "Người nghe" if listener else speakers[extracted.learnerCharacterId].roleVi
     public["constraintsVi"] = [c.quoteVi for c in extracted.providedFacts]
     public["assumptionsVi"] = (["Suy luận: " + c.textVi for c in extracted.inferredFacts]
                                + ["Giả định: " + a for a in extracted.assumptionsVi])
-    return Specification.model_validate(public)
+    return (PersonalizedSpecification if isinstance(extracted, PersonalizedExtraction) else Specification).model_validate(public)
 
 
 @trace_gate
@@ -459,7 +558,7 @@ def validate_dialogue(dialogue, spec, profile):
 
 
 @trace_gate
-def validate_questions(questions, dialogue):
+def validate_questions(questions, dialogue, context=None):
     if [a.id for a in questions.activities] != [a.id for a in dialogue.activities]:
         raise ValueError("question activity mismatch")
     meanings = set()
@@ -468,6 +567,15 @@ def validate_questions(questions, dialogue):
             raise ValueError("question IDs mismatch")
         segments = {s.id: s.textEn for s in activity.segments}
         for fact in drafted.questions:
+            if context is not None:
+                if fact.skill not in context.profile.skills:
+                    raise ValueError("question skill outside practice profile")
+                if fact.supportKind == "inference":
+                    if (context.profile.inferencePolicy != "SUPPORTED_INFERENCE" or fact.skill != "supported-inference"
+                            or not fact.inferenceReasonEn.strip()):
+                        raise ValueError("unsupported inference policy or missing premise explanation")
+                elif fact.inferenceReasonEn or fact.skill == "supported-inference":
+                    raise ValueError("inference support mismatch")
             meaning = " ".join(fact.factEn.casefold().split())
             if not meaning or meaning in meanings:
                 raise ValueError("duplicate or empty fact")
@@ -487,17 +595,21 @@ def validate_questions(questions, dialogue):
                 if (len({s.speakerId for s in activity.segments if any(e.segmentId == s.id for e in fact.evidence)}) < 2
                         or evidence_positions != sorted(evidence_positions)):
                     raise ValueError("agreement requires ordered evidence from both speakers")
+    if context is not None and not any(q.skill == context.focusSkill for a in questions.activities for q in a.questions):
+        raise ValueError("missing learning focus coverage")
 
 
-def attach_questions(dialogue, questions):
-    validate_questions(questions, dialogue)
+def attach_questions(dialogue, questions, context=None):
+    validate_questions(questions, dialogue, context)
     activities = []
+    activity_type, question_type, content_type = ((PersonalizedActivity, PersonalizedQuestion, PersonalizedContent)
+                                                 if context else (Activity, Question, Content))
     for activity, drafted in zip(dialogue.activities, questions.activities):
         # The merged extraction step cannot replace the completed dialogue.
-        activities.append(Activity(**activity.model_dump(), questions=[
-            Question(**q.model_dump(exclude={"factEn", "speechAct"}), type="MEANING_RECALL_VI")
+        activities.append(activity_type(**activity.model_dump(), questions=[
+            question_type(**q.model_dump(exclude={"factEn", "speechAct"}), type="MEANING_RECALL_VI")
             for q in drafted.questions]))
-    return Content(activities=activities)
+    return content_type(activities=activities)
 
 
 @trace_gate
@@ -531,13 +643,15 @@ def validate_question_review(verdict, content):
     expected = {(a.id, q.id) for a in content.activities for q in a.questions}
     checked = {(q.activityId, q.questionId) for q in verdict.questionChecks}
     meanings = [" ".join(q.requestedMeaningEn.casefold().split()) for q in verdict.questionChecks]
-    if (not verdict.valid or verdict.issues or checked != expected
+    if (not verdict.valid or verdict.issues or checked != expected or len(verdict.questionChecks) != len(expected)
             or not all(meanings) or len(set(meanings)) != len(meanings)
             or any(len(q.answerUnitsVi) != 1 or not q.answerUnitsVi[0].strip() for q in verdict.questionChecks)
             or any(not q.reasonVi.strip() or not all((q.answerSupported, q.distinctMeaning, q.factSupported,
                 q.questionMatchesFact, q.speechActSupported, q.atomicMeaning, q.noAnswerLeak, q.vietnameseNatural))
                 for q in verdict.questionChecks)):
         raise ValueError("question quality rejected")
+    if isinstance(verdict, PersonalizedQuestionReview) and any(not q.skillAppropriate or not q.groundingSupported for q in verdict.questionChecks):
+        raise ValueError("personalized question quality rejected")
 
 
 @trace_gate
@@ -545,9 +659,12 @@ def validate_review(verdict, translations):
     translated = {(t.activityId, t.segmentId) for t in translations.segments}
     translation_checks = {(t.activityId, t.segmentId) for t in verdict.translationChecks}
     categories = {r.category for r in verdict.rubricChecks}
+    required = {"SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS"}
+    if isinstance(verdict, PersonalizedReview):
+        required |= {"PROFILE", "LEARNING_GOAL"}
     if (not verdict.valid or verdict.issues or translation_checks != translated
             or len(verdict.translationChecks) != len(translated)
-            or categories != {"SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS"}
+            or categories != required or len(verdict.rubricChecks) != len(required)
             or any(not r.passed or not r.reasonVi.strip() for r in verdict.rubricChecks)
             or any(not t.reasonVi.strip() or not all((t.meaningPreserved, t.terminologyCorrect,
                 t.vietnameseOnly, t.vietnameseNatural)) for t in verdict.translationChecks)):
@@ -579,6 +696,9 @@ async def execute(event, settings):
         raise TimeoutError("scenario deadline")
     deadline = time.monotonic() + remaining
     payload = event.payload
+    is_personalized = payload.contractVersion == "scenario-job.v2"
+    context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)} if is_personalized else {}
+    instructions = {**personalized.INSTRUCTIONS, "GRADE": V4_INSTRUCTIONS["GRADE"]} if is_personalized else INSTRUCTIONS
     calls = []
     async with httpx.AsyncClient(timeout=remaining, limits=httpx.Limits(max_connections=settings.effective_http_max_connections)) as client:
         async def call(purpose, data, model):
@@ -587,7 +707,7 @@ async def execute(event, settings):
             if purpose == "GENERATE":
                 schema["$defs"]["Segment"]["properties"]["speakerId"]["enum"] = [c.id for c in payload.specification.characters]
             raw, provider = await asyncio.wait_for(gateway.complete(
-                [{"role": "system", "content": INSTRUCTIONS[purpose]},
+                [{"role": "system", "content": instructions[purpose]},
                  {"role": "user", "content": json.dumps(data, ensure_ascii=False)}],
                 schema, deadline, "scenario_" + purpose.lower(), temperature=0), max(0.01, deadline - time.monotonic()))
             calls.append({"purpose": purpose, "provider": provider, "model": gateway.last_model})
@@ -597,14 +717,14 @@ async def execute(event, settings):
                 raise QualityRejected("invalid scenario response") from invalid
 
         if payload.phase == "EXTRACT":
-            extracted = await call("EXTRACT", {"inputVi": payload.inputVi}, Extraction)
+            extracted = await call("EXTRACT", {"inputVi": payload.inputVi, **context}, PersonalizedExtraction if is_personalized else Extraction)
             try:
                 result = validate_extraction(extracted, payload.inputVi).model_dump()
             except ValueError as invalid:
                 raise QualityRejected("invalid extraction provenance") from invalid
         elif payload.phase == "GRADE":
             result = await call("GRADE", {"activity": payload.activity.model_dump(),
-                "answers": [a.model_dump() for a in payload.answers]}, Grade)
+                "answers": [a.model_dump() for a in payload.answers], **context}, Grade)
             try:
                 validate_grade(result, payload)
             except ValueError as invalid:
@@ -612,37 +732,37 @@ async def execute(event, settings):
             result = result.model_dump()
         else:
             dialogue = await call("GENERATE", {"inputVi": payload.inputVi, "specification": payload.specification.model_dump(),
-                "profile": payload.profile.model_dump(), "writingBudget": {"targetWordsPerActivity": min(
+                "profile": payload.profile.model_dump(), **context, "writingBudget": {"targetWordsPerActivity": min(
                     (payload.profile.minWordsPerActivity + payload.profile.maxWordsPerActivity) // 2,
                     payload.profile.maxWordsPerSession // 3)}}, Dialogue)
             try:
                 validate_dialogue(dialogue, payload.specification, payload.profile)
             except ValueError as invalid:
                 raise QualityRejected("invalid dialogue") from invalid
-            questions = await call("QUESTIONS", {"dialogue": dialogue.model_dump()}, Questions)
+            questions = await call("QUESTIONS", {"dialogue": dialogue.model_dump(), **context}, PersonalizedQuestions if is_personalized else Questions)
             try:
-                content = attach_questions(dialogue, questions)
+                content = attach_questions(dialogue, questions, payload.learningContext)
                 validate_content(content, payload.specification, payload.profile)
             except ValueError as invalid:
                 raise QualityRejected("invalid scenario content") from invalid
             question_review = await call("REVIEW_QUESTIONS", {"content": content.model_dump(),
-                "groundedQuestions": questions.model_dump()}, QuestionReview)
+                "groundedQuestions": questions.model_dump(), **context}, PersonalizedQuestionReview if is_personalized else QuestionReview)
             try:
                 validate_question_review(question_review, content)
             except ValueError as invalid:
                 raise QualityRejected("question quality rejected") from invalid
-            translated = await call("TRANSLATE", dialogue.model_dump(), Translations)
+            translated = await call("TRANSLATE", {**dialogue.model_dump(), **context}, Translations)
             try:
                 validate_content(content, payload.specification, payload.profile, translated)
             except ValueError as invalid:
                 raise QualityRejected("invalid translations") from invalid
             verdict = await call("REVIEW", {"inputVi": payload.inputVi, "specification": payload.specification.model_dump(),
                 "profile": payload.profile.model_dump(), "dialogue": dialogue.model_dump(),
-                "translations": translated.model_dump()}, Review)
+                "translations": translated.model_dump(), **context}, PersonalizedReview if is_personalized else Review)
             try:
                 validate_review(verdict, translated)
             except ValueError as invalid:
                 raise QualityRejected("semantic quality rejected") from invalid
             result = {**content.model_dump(), "translations": translated.model_dump()["segments"], "qualityPassed": True}
-    return {**metadata(settings), "generationId": str(event.jobId), "requestId": str(event.requestId),
+    return {**metadata(settings, is_personalized), "generationId": str(event.jobId), "requestId": str(event.requestId),
             "programHash": payload.programHash, "calls": calls, "task": result}
