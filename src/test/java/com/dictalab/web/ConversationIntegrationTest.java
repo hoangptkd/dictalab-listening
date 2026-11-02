@@ -917,6 +917,25 @@ class ConversationIntegrationTest {
         assertThat(service.audio(owner, retryId, 1, "original")).containsExactly(4,5,6);
     }
 
+    @Test void failedAudioLeavesPendingJobsBeforeNotifyingRetryCallers() throws Exception {
+        var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
+        when(tts.synthesize(anyString())).thenAnswer(invocation -> {
+            entered.countDown();
+            if (!release.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("timeout");
+            throw new IllegalStateException("offline");
+        });
+        String id = start();
+        try {
+            assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+            @SuppressWarnings("unchecked")
+            var jobs = (Map<String, CompletableFuture<Void>>) org.springframework.test.util.ReflectionTestUtils.getField(service, "audioJobs");
+            String key = id + "/1/original";
+            var completedWhileRegistered = jobs.get(key).handle((ignored, error) -> jobs.containsKey(key));
+            release.countDown();
+            assertThat(completedWhileRegistered.get(10, TimeUnit.SECONDS)).isFalse();
+        } finally { release.countDown(); }
+    }
+
     @Test void slowAudioLookupDoesNotBlockAnotherSessionPreparingAudio() throws Exception {
         JdbcTemplate delayedDb = spy(db);
         var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();

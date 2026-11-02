@@ -823,6 +823,8 @@ public class ConversationService {
                     future.complete(null);
                 } catch (RuntimeException error) {
                     job.error(new IllegalStateException("Audio task failed"));
+                    // Callers awakened by completion must be able to start a fresh retry.
+                    audioJobs.remove(key, future);
                     future.completeExceptionally(error);
                 } finally {audioJobs.remove(key, future); job.stop();}
             });
