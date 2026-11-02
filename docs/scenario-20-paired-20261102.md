@@ -62,3 +62,34 @@ Logic hiện tại trong `model_gateway.py` và `gemini_pool.py`:
 Ảnh chụp bộ đếm Redis local lúc kiểm tra: `a=505`, `b=501`, `c=500` lượt admission trong ngày Pacific; mức RPD được cấu hình là 500 cho mỗi nguồn. Benchmark đặt `operational_limits_enabled=false`, nên admission local không chặn ở mức 500, nhưng không xóa giới hạn của Gemini. Các số này bao gồm reservation, không chứng minh số request Google đã tính và không chứng minh nguyên nhân HTTP 429. Bộ đếm local dự kiến sang ngày mới lúc **15:00 ngày 02/11/2026 giờ Việt Nam**; không khẳng định quota thực tế của nhà cung cấp cũng sẽ khả dụng ngay lúc đó.
 
 Đã chạy tám kiểm tra tập trung của pool: **8 PASS**, gồm xoay dưới tải giả lập, giữ cooldown, admission không giới hạn local và không retry request đã nhận 429. Chưa có kiểm tra thực tế chứng minh cả ba project còn quota tại thời điểm lỗi. Có thể cải thiện benchmark để tiếp tục case độc lập khác và ghi riêng mọi 429; nếu muốn thử lại request có 429 trên nguồn khác, cần ghi thành attempt mới với source ID, mã lỗi và chi phí, không ghi đè outcome cũ.
+
+## Chẩn đoán lỗi gốc ngày 02/11, 10:27 UTC+7
+
+Đã kiểm tra AI Studio bằng Chrome đang đăng nhập và gửi các request chẩn đoán có giới hạn, dùng nguyên request GENERATE bị lỗi của case 02. Kết quả chẩn đoán không được tính là bài hoàn chỉnh hay chọn output tốt nhất cho benchmark.
+
+**Đã xác định chắc chắn ít nhất nguồn `b` vượt quota ngày từ Google**, qua phản hồi lúc `2026-11-02T03:26:48Z`:
+
+- HTTP `429`, status `RESOURCE_EXHAUSTED`.
+- Quota metric: `generativelanguage.googleapis.com/generate_content_free_tier_requests`.
+- Quota ID: `GenerateRequestsPerDayPerProjectPerModel-FreeTier`.
+- Model: `gemini-3.5-flash-lite`, giới hạn `500`, phạm vi `global`.
+- Google mô tả vượt số request/ngày ở Free Tier; `RetryInfo.retryDelay=16387s`, tương ứng khoảng 15:00 ngày 02/11 UTC+7. Header `Retry-After` không có.
+
+AI Studio đối chiếu được project number của nguồn `a` (`351347102726`) và `b` (`758474683458`) với cấu hình. Cả hai ở Free Tier. Chế độ **1 Day** hiển thị peak RPM lần lượt `8/15`, TPM `15.65K/250K` và `21.32K/250K`, peak RPD `499/500` và `496/500`. UI ghi dữ liệu có thể trễ tới 15 phút; các giá trị peak theo khoảng xem không phải bằng chứng còn quota hiện thời. Nguồn `c` chưa đối chiếu được dashboard vì tài khoản thứ ba dừng ở màn hình xác nhận điều kiện sử dụng/độ tuổi; không tự xác nhận thông tin đó.
+
+Các request chẩn đoán cùng request gốc có cả HTTP 200 và 429. Ở lượt 10:26–10:27, `a:200 → b:429 → c:200`. Vì vậy **không kết luận cả ba nguồn hiện đều hết quota**, cũng không suy ngược mọi 429 cũ đều cùng nguyên nhân; body lỗi cũ chỉ lưu hash nên không phục hồi được nội dung.
+
+### Vì sao retry chưa xử lý đúng
+
+`OpenAiCompatibleProvider.complete` hiện chỉ truyền header `Retry-After` vào `ProviderHttpError`. Nó bỏ qua JSON `google.rpc.QuotaFailure` và `google.rpc.RetryInfo`; phản hồi lỗi thực tế còn có envelope dạng list. `retry_seconds(None)` trả mặc định 60 giây. Vì vậy lỗi quota ngày có thể bị thử lại sau một phút thay vì thời gian Google yêu cầu. Tắt admission limits local không thay đổi quota phía Google.
+
+### Hướng sửa đề xuất
+
+1. Parse lỗi Google với envelope object/list, chỉ lưu các trường cho phép: source ID, status, quota metric/ID/value, model và thời gian retry; không lưu khóa/header xác thực hay body tùy ý.
+2. Khi thiếu header, dùng `RetryInfo.retryDelay`; khi xác định quota ngày thì giữ cooldown đúng thời hạn Google cho project/model, kể cả benchmark đang tắt admission limits.
+3. Bỏ qua nguồn đang cooldown, chuyển sang nguồn còn khả dụng; nếu không còn nguồn thì lưu bước đang dở và thời điểm có thể tiếp tục. Không replay các bước đã thành công.
+4. Đánh giá nội dung và chẩn đoán nhà cung cấp là hai loại evidence riêng; chưa đổi prompt/model hay nâng gói trả phí trong đợt chẩn đoán này.
+
+Evidence: `data/e20/diagnosis-429-20261102/` và các lượt `-02`, `-03`, `-04`; lỗi có quota chi tiết ở `diagnosis-429-20261102-04/b-diagnosis.json`. Hai lần parse chẩn đoán đầu nhận 429 nhưng chưa đọc được envelope list; giữ nguyên outcome `AttributeError`, không coi đó là lỗi của workflow. Output HTTP 200 được giữ riêng để không mất dữ liệu đã sinh.
+
+Tài liệu Google xác nhận quota áp dụng theo project và RPD reset lúc nửa đêm Pacific: [Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits). Chưa sửa code dịch vụ trong bước điều tra này.
