@@ -72,6 +72,10 @@ try:
                 self.reply(200, dict(headerName='X-CSRF-TOKEN', token='fixture-only'))
             elif self.path.startswith('/api/auth/me'):
                 self.reply(200, dict(id=7, role='ADMIN', displayName='QA Admin', email='qa@example.test'))
+            elif self.path.startswith('/api/admin/lessons/page'):
+                self.reply(200, dict(items=[], page=0, size=20, total=0))
+            elif self.path.startswith('/api/admin/lessons/filters'):
+                self.reply(200, [])
             elif self.path.startswith('/__qa'):
                 data = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))) or b'{}')
                 if data.pop('reset', False):

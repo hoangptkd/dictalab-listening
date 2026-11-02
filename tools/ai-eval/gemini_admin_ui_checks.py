@@ -41,6 +41,13 @@ const field=(name,value,form='#gemini-editor form')=>{const node=find(form).elem
 const load=()=>window.DictaLabGemini.show();
 const submit=async(selector,expected)=>{find(selector).requestSubmit();await wait(()=>root().getAttribute('aria-busy')!=='true'&&expected());};
 const cancel=()=>{window.confirm=()=>true;find('[data-cancel]').click();};
+assert(document.body.dataset.route==='admin','fixture must start on the lessons page');
+document.querySelector('a[data-route="admin-gemini"]').click();
+await wait(()=>location.pathname==='/admin/gemini'&&document.body.dataset.route==='admin-gemini'&&!!find('[data-add]'));
+assert(document.querySelector('a[data-route="admin-gemini"]').getAttribute('aria-current')==='page','Gemini menu is not active');
+history.back();await wait(()=>location.pathname==='/admin/lessons'&&document.body.dataset.route==='admin');
+history.forward();await wait(()=>location.pathname==='/admin/gemini'&&document.body.dataset.route==='admin-gemini'&&!!find('[data-add]'));
+pass('lessons menu to Gemini + URL + back/forward + content');
 assert(text().includes('Chưa có nguồn Gemini'),'empty state missing');pass('empty state');
 await qa({noPool:true});await load();
 assert(find('[data-add]').disabled,'add must wait for pool');
@@ -103,9 +110,9 @@ def run_checks():
     with urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:18089/__qa', data=b'{"reset":true}',headers={'Content-Type':'application/json'}), timeout=10) as response:
         assert response.status==200
     print('Opening isolated Chrome session', flush=True)
-    browser('open', 'http://127.0.0.1:18089/admin/gemini', launch=True)
+    browser('open', 'http://127.0.0.1:18089/admin/lessons?page=1', launch=True)
     print('Checking source management workflows', flush=True)
-    browser('wait', '--text', 'Thêm nguồn')
+    browser('wait', '--fn', 'document.body.dataset.route === "admin" && document.querySelector("#admin-lesson-list").getAttribute("aria-busy") !== "true"')
     result = browser('eval', '--stdin', script=script)['result']
     print(json.dumps(result, ensure_ascii=False, indent=2))
     out=Path(__file__).resolve().parents[2] / 'target/gemini-audit'
