@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import time
 import asyncio
+from uuid import uuid4
 from typing import Any
 
 import httpx
@@ -35,6 +36,7 @@ class ModelGateway:
         self._client = client
         self.last_model = settings.active_cloud_model if settings.selected_provider in CLOUD_PROVIDERS else settings.model
         self.last_source_id = None
+        self._snapshot_loaded = False
         self._local = OllamaProvider(
             ollama_url=settings.ollama_url,
             model=settings.model,
@@ -73,6 +75,11 @@ class ModelGateway:
         (result_dict, provider_name)
         """
         started = time.monotonic()
+        if not self._snapshot_loaded and self._settings.selected_provider in CLOUD_PROVIDERS:
+            self._settings = await asyncio.wait_for(asyncio.to_thread(self._settings.current_registry),
+                max(0, deadline - time.monotonic()))
+            self._snapshot_loaded = True
+            self.last_model = self._settings.active_cloud_model
         provider = self._settings.selected_provider
         if deepseek_thinking and (provider != "deepseek" or not self._settings.gemini_quota_enabled):
             raise ValueError("thinking opt-in requires the DeepSeek registry provider")
@@ -83,6 +90,25 @@ class ModelGateway:
                 not deepseek_thinking or deepseek_reasoning_effort not in {"low", "high", "max"}):
             raise ValueError("reasoning effort requires DeepSeek thinking and low/high/max")
         if provider in CLOUD_PROVIDERS:
+            async with asyncio.timeout(max(0, deadline - time.monotonic())):
+                return await self._complete_cloud(messages, schema, deadline, purpose, temperature,
+                    deepseek_thinking, deepseek_reasoning_effort, deepseek_cache_prefix, json_object, started)
+        result = await self._local.complete(messages, schema, deadline, purpose, temperature=temperature)
+        self._log(self._local.name, purpose, started)
+        return result, self._local.name
+
+    async def _complete_cloud(self, messages, schema, deadline, purpose, temperature,
+                              deepseek_thinking, deepseek_reasoning_effort, deepseek_cache_prefix, json_object, started):
+        from .provider_admin import record_attempt, finish_request
+        provider = self._settings.selected_provider
+        attempted, request_id = set(), uuid4()
+        last_429 = None
+        while True:
+            if deadline - time.monotonic() < 1:
+                if last_429:
+                    await asyncio.to_thread(finish_request, self._settings, request_id)
+                    raise last_429
+                raise QuotaUnavailable(1)
             selected = self._primary_cloud
             if json_object:
                 selected = OpenAiCompatibleProvider(base_url=self._settings.active_cloud_base_url,
@@ -96,8 +122,15 @@ class ModelGateway:
                 if deadline - time.monotonic() < 1:
                     raise QuotaUnavailable(1)
                 store = quota_store(self._settings)
-                source = await asyncio.to_thread(store.select, self._settings.active_cloud_model,
-                    estimate_tokens(messages, self._settings.num_predict, schema))
+                try:
+                    source = await asyncio.to_thread(store.select, self._settings.active_cloud_model,
+                        estimate_tokens(messages, self._settings.num_predict, schema), attempted)
+                except QuotaUnavailable:
+                    if last_429:
+                        await asyncio.to_thread(finish_request, self._settings, request_id)
+                        raise last_429
+                    raise
+                attempted.add(source.id)
                 common = dict(base_url=source.url, api_key=source.api_key, model=source.model,
                     temperature=self._settings.temperature, client=self._client, max_tokens=self._settings.num_predict)
                 extra = {"thinking": {"type": "enabled" if deepseek_thinking else "disabled"}} if source.platform == "deepseek" else {}
@@ -110,24 +143,35 @@ class ModelGateway:
                         chat_completions_path="/chat/completions" if source.platform == "gemini" else None,
                         cache_stable_prefix=deepseek_cache_prefix))
                 self.last_model, self.last_source_id = source.model, source.id
+            attempt_started = time.monotonic()
+            outcome, done = "failure", True
             try:
                 result = await selected.complete(messages, schema, deadline, purpose, temperature=temperature)
+                outcome = "success"
             except ProviderHttpError as error:
+                outcome = "429" if error.status == 429 else "failure"
                 if source:
-                    await asyncio.to_thread(store.report, source, "429" if error.status == 429 else "failure",
+                    await asyncio.to_thread(store.report, source, outcome,
                         retry_seconds(error.retry_after))
+                if source and provider == "gemini" and error.status == 429:
+                    remaining = [s for s in self._settings.sources_for(provider)
+                        if s.model == source.model and s.id not in attempted]
+                    if remaining and deadline - time.monotonic() >= 1:
+                        last_429, done = error, False
+                        continue
                 raise
             except (TimeoutError, httpx.TransportError):
                 if source:
                     await asyncio.to_thread(store.report, source, "failure")
                 raise
+            finally:
+                if source:
+                    await asyncio.to_thread(record_attempt, self._settings, request_id, source, outcome, done,
+                        getattr(selected, "last_usage", {}), time.monotonic() - attempt_started)
             if source:
                 await asyncio.to_thread(store.report, source, "success")
             self._log(provider, purpose, started)
             return result, provider
-        result = await self._local.complete(messages, schema, deadline, purpose, temperature=temperature)
-        self._log(self._local.name, purpose, started)
-        return result, self._local.name
 
     def _log(self, provider: str, purpose: str, started: float) -> None:
         logger.info(

@@ -146,6 +146,8 @@ public class GeminiClient {
     }
 
     private JsonNode requestJson(String instruction, String input, String requestModel, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        var attempted = new java.util.HashSet<String>();
         if (!configured()) throw new IllegalStateException("Gemini chưa được cấu hình trên máy chủ.");
         if (requestModel == null || requestModel.isBlank()) throw new IllegalArgumentException("Missing Gemini model");
         try (var permit=guard.enter()) {
@@ -155,12 +157,19 @@ public class GeminiClient {
                     JsonNode result = platform.completeText(instruction, input, local ? remoteModel : requestModel, timeout);
                     permit.success();
                     return result;
+                } catch (ProviderGuard.Unavailable unavailable) {
+                    throw unavailable;
                 } catch (RuntimeException unavailable) {
                     permit.failure();
                     throw new Failure("AI_SERVICE", "AI service did not return a verified text result");
                 }
             }
-            ProviderSelection selection = local ? null : selectProvider(instruction, input, requestModel);
+          while (true) {
+            long remainingNanos = deadline - System.nanoTime();
+            if (remainingNanos <= 0) throw new Failure("TIMEOUT", "Gemini request deadline exhausted");
+            Duration remaining = Duration.ofNanos(remainingNanos);
+            ProviderSelection selection = local ? null : selectProvider(instruction, input, requestModel, attempted);
+            if (selection != null && selection.id() != null) attempted.add(selection.id());
             String targetModel = local ? localModel : selection.model();
             String targetUrl = local ? localBaseUrl + "/api/chat" : selection.url();
             String targetKey = local ? "" : selection.apiKey();
@@ -174,7 +183,7 @@ public class GeminiClient {
             if (!local && cloudPlatform.equals("deepseek")) payload.put("thinking", Map.of("type","disabled"));
             String body = json.writeValueAsString(payload);
             var builder = HttpRequest.newBuilder(URI.create(targetUrl))
-                    .timeout(timeout)
+                    .timeout(remaining)
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body));
             if (!local) builder.header("Authorization", "Bearer " + targetKey);
@@ -183,7 +192,7 @@ public class GeminiClient {
             HttpResponse<byte[]> response;
             try {
                 // HttpRequest.timeout alone must not leave a slow response body occupying a permit.
-                response = pending.get(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+                response = pending.get(Math.max(1, remaining.toMillis()), java.util.concurrent.TimeUnit.MILLISECONDS);
             } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException exception) {
                 if (routingEnabled()) recordOutcome(selection, "failure", 0); else permit.failure();
                 throw new Failure(exception instanceof java.util.concurrent.TimeoutException
@@ -196,6 +205,9 @@ public class GeminiClient {
                     recordOutcome(selection, response.statusCode()==429 ? "429" : "failure", delay);
                 } else if(response.statusCode()==429 || response.statusCode()>=500) permit.failure();
                 if(response.statusCode()==429){
+                    if (cloudPlatform.equals("gemini") && routingEnabled() && System.nanoTime() < deadline
+                            && properties().enabledProviders().stream().anyMatch(source -> !attempted.contains(source.id())
+                                && source.model().equals(requestModel.replaceFirst("^models/", "")))) continue;
                     int delay=ProviderGuard.retryAfterSeconds(response.headers().firstValue("Retry-After").orElse(null),java.time.Instant.now());
                     if(delay>0) throw new ProviderGuard.Unavailable("Gemini trả HTTP 429",delay);
                 }
@@ -231,6 +243,7 @@ public class GeminiClient {
             if (routingEnabled()) recordOutcome(selection, "success", 0);
             permit.success();
             return result;
+          }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Yêu cầu Gemini bị gián đoạn.", exception);
@@ -245,7 +258,7 @@ public class GeminiClient {
                 && !properties().enabledProviders().isEmpty() && quota != null;
     }
 
-    private ProviderSelection selectProvider(String instruction, String input, String requestModel) {
+    private ProviderSelection selectProvider(String instruction, String input, String requestModel, java.util.Set<String> attempted) {
         if (!routingEnabled()) {
             if (databaseEnabled() || !cloudPlatform.equals("gemini")) throw new IllegalStateException("Cloud account unavailable; no fallback");
             return new ProviderSelection(null, requestModel, url, key);
@@ -258,6 +271,7 @@ public class GeminiClient {
         long retryMs = Long.MAX_VALUE;
         for (int offset = 0; offset < providers.size(); offset++) {
             var provider = providers.get((start + offset) % providers.size());
+            if (attempted.contains(provider.id())) continue;
             String selectedModel = requestModel.replaceFirst("^models/", "");
             if (!provider.model().equals(selectedModel)) continue;
             var admission = quota.reserve(cloudPlatform, provider.id(), selectedModel, estimatedTokens);

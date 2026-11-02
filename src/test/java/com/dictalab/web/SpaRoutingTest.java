@@ -240,7 +240,7 @@ class SpaRoutingTest {
     void adminCanLoadSeparateDocumentAndAccountRoutes() throws Exception {
         mockMvc.perform(get("/admin").with(user(DictaLabPrincipal.from(adminUser))))
                 .andExpect(redirectedUrl("/admin/lessons"));
-        for (String path : new String[]{"/admin/users", "/admin/support", "/admin/listening"}) {
+        for (String path : new String[]{"/admin/users", "/admin/support", "/admin/listening", "/admin/gemini"}) {
             mockMvc.perform(get(path).with(user(DictaLabPrincipal.from(adminUser))))
                     .andExpect(status().isOk()).andExpect(forwardedUrl("/admin.html"));
         }
@@ -250,6 +250,17 @@ class SpaRoutingTest {
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("id=\"catalog-view\""))));
         mockMvc.perform(get("/index.html"))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("id=\"admin-view\""))));
+    }
+
+    @Test
+    void geminiManagementRequiresAdminAndCsrf() throws Exception {
+        mockMvc.perform(get("/api/admin/gemini")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/admin/gemini").with(user(DictaLabPrincipal.from(user)))).andExpect(status().isForbidden());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/admin/gemini/source-a")
+                .with(user(DictaLabPrincipal.from(adminUser))).contentType("application/json").content("{}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/admin/gemini").with(user(DictaLabPrincipal.from(adminUser))))
+                .andExpect(status().isServiceUnavailable()).andExpect(header().string("Cache-Control", "no-store"));
     }
 
     // ── Unauthenticated access to SPA routes ──────────────────────────────

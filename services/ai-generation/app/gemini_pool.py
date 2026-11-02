@@ -130,9 +130,9 @@ class QuotaStore:
             self.daily["__global__"][1] += 1
             return [1, 0]
 
-    def select(self, model, tokens):
+    def select(self, model, tokens, excluded=()):
         model = model.removeprefix("models/")
-        sources = [p for p in self.settings.enabled_gemini_sources if p.model == model]
+        sources = [p for p in self.settings.enabled_gemini_sources if p.model == model and p.id not in excluded]
         if not sources:
             raise QuotaUnavailable(60)
         with self.lock:
@@ -195,12 +195,13 @@ def quota_store(settings, platform=None):
 
 
 def quota_metrics(settings):
-    if not settings.gemini_quota_enabled:
-        return ""
     try:
+        settings = settings.current_registry()
+        if not settings.gemini_quota_enabled:
+            return ""
         return "dictalab_gemini_quota_available 1\n" + "".join(quota_store(settings, platform).metrics()
             for platform in sorted({p.platform for p in settings.enabled_cloud_sources}))
-    except (QuotaUnavailable, redis.RedisError):
+    except (QuotaUnavailable, redis.RedisError, ValueError):
         return "dictalab_gemini_quota_available 0\n"
 
 

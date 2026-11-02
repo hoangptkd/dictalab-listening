@@ -105,7 +105,7 @@ public class SpaController {
         return "redirect:/admin/lessons";
     }
 
-    @GetMapping({"/admin/users", "/admin/support", "/admin/listening"})
+    @GetMapping({"/admin/users", "/admin/support", "/admin/listening", "/admin/gemini"})
     public String adminAccounts() {
         return ADMIN;
     }

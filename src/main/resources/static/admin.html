@@ -26,6 +26,7 @@
             <a class="nav-link" href="/admin/users" data-route="admin-users">Người dùng</a>
             <a class="nav-link" href="/admin/support" data-route="admin-support">Yêu cầu hỗ trợ</a>
             <a class="nav-link" href="/admin/training">Training Studio</a>
+            <a class="nav-link" href="/admin/gemini" data-route="admin-gemini">Nguồn Gemini</a>
         </nav>
         <a class="admin-return" href="/catalog">← Về trang học tập</a>
     </aside>
@@ -45,6 +46,12 @@
             </div>
         </header>
         <main id="main-content" tabindex="-1">
+        <section id="admin-gemini-view" class="view" hidden aria-labelledby="admin-gemini-heading">
+            <div class="lesson-browser account-page"><p class="section-index">Cấu hình AI</p>
+                <h1 id="admin-gemini-heading">Nguồn Gemini.</h1>
+                <div id="admin-gemini-content" aria-live="polite"></div>
+            </div>
+        </section>
         <section id="admin-listening-view" class="view" hidden aria-labelledby="admin-listening-heading">
             <div class="lesson-browser account-page listening-browser">
                 <p class="section-index">Nội dung học tập</p>
@@ -226,5 +233,6 @@
 <script src="/js/library.js" defer></script>
 <script src="/js/listening.js" defer></script>
 <script src="/js/account.js" defer></script>
+<script src="/js/gemini-admin.js" defer></script>
 </body>
 </html>

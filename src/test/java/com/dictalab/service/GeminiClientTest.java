@@ -293,4 +293,25 @@ class GeminiClientTest {
                         error -> assertThat(error.retrySafe()).isTrue());
         assertThat(requests.get()).isEqualTo(1);
     }
+
+    @Test
+    void pooled429VisitsEachSourceOnceBut500DoesNotRetry() {
+        var providers = List.of("a", "b", "c").stream().map(id ->
+            new GeminiProviderProperties.Provider(id, "project-" + id, "key-" + id, "fixture",
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions", 100, 0, 0, 100, true, 0)).toList();
+        var properties = new GeminiProviderProperties(providers, 0, 0, true, "memory");
+        var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        var quota = new GeminiQuotaCoordinator(properties, metrics, null, java.time.Clock.systemUTC());
+        var pooled = new GeminiClient(json, "unused", "fixture", "http://127.0.0.1:1/wrong", 8, metrics,
+            io.micrometer.observation.ObservationRegistry.NOOP, 5, 30, properties, quota);
+        status.set(429); retryAfter.set("60");
+        assertThatThrownBy(() -> pooled.completeJson("test", "test")).isInstanceOf(ProviderGuard.Unavailable.class);
+        assertThat(requests.get()).isEqualTo(3);
+        var freshQuota = new GeminiQuotaCoordinator(properties, metrics, null, java.time.Clock.systemUTC());
+        var fresh = new GeminiClient(json, "unused", "fixture", "http://127.0.0.1:1/wrong", 8, metrics,
+            io.micrometer.observation.ObservationRegistry.NOOP, 5, 30, properties, freshQuota);
+        status.set(500);
+        assertThatThrownBy(() -> fresh.completeJson("test", "test")).isInstanceOf(GeminiClient.Failure.class);
+        assertThat(requests.get()).isEqualTo(4);
+    }
 }

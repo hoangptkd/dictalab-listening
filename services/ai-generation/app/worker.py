@@ -20,6 +20,8 @@ logger.addFilter(RedactingFilter())
 
 
 async def execute(event, settings):
+    if event.payload.kind != "tts" and settings.selected_provider in ("gemini", "deepseek", "openai_compatible"):
+        settings = await asyncio.to_thread(settings.current_registry)
     if event.payload.kind == "conversation_demo":
         from .conversation_demo import execute as execute_demo
         return await execute_demo(event, settings, JobStore(settings.jobs_database, settings.job_retention_seconds))

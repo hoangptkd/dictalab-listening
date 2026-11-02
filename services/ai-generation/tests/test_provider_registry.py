@@ -39,8 +39,10 @@ def registry_settings(platform="deepseek"):
         enabled=True,operating_rpm=1) for p in ("gemini","deepseek")]
     pools = {s.platform: dict(default_model=s.model,global_rpm_limit=1,global_rpd_limit=100,enabled=True) for s in sources}
     with patch("app.provider_registry.load_registry",return_value=(pools,sources)):
-        return Settings(primary_provider=platform,ai_provider_config_source="database",
+        result = Settings(primary_provider=platform,ai_provider_config_source="database",
             gemini_quota_backend="memory",gemini_api_key="must-not-fallback")
+        result._registry_snapshot = True  # Synthetic request snapshot has no database.
+        return result
 
 
 def test_vendor_quota_isolation_and_preserved_gemini_namespace():

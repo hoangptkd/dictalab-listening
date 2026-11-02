@@ -145,3 +145,23 @@
     .admin-shell .admin-hero, .admin-shell .admin-workspace, .admin-shell .account-page { padding: 24px 20px; }
     .admin-shell .admin-form-grid { grid-template-columns: 1fr; }
 }
+/* Gemini source management follows the existing admin panels and controls. */
+.gemini-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.gemini-toolbar p { flex-basis: 100%; margin-bottom: 0; }
+.gemini-table-scroll { max-width: 100%; overflow-x: auto; }
+.gemini-table { width: 100%; border-collapse: collapse; text-align: left; }
+.gemini-table th, .gemini-table td { padding: 12px; border-bottom: 1px solid var(--line, #d9e2de); vertical-align: top; overflow-wrap: anywhere; }
+.gemini-table th { font-size: .85rem; }
+.gemini-table td { min-width: 140px; }
+.gemini-table button { display: block; }
+.gemini-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.gemini-form-grid label { display: grid; gap: 6px; min-width: 0; }
+.gemini-form-grid input { width: 100%; min-width: 0; }
+.gemini-chart { display: grid; gap: 8px; max-height: 320px; overflow-y: auto; margin-block: 20px; }
+.gemini-chart-row { display: grid; grid-template-columns: 100px minmax(40px, 1fr) 180px; align-items: center; gap: 12px; font-size: .85rem; }
+.gemini-chart-row meter { width: 100%; }
+@media (max-width: 600px) {
+    .gemini-form-grid { grid-template-columns: minmax(0, 1fr); }
+    .gemini-chart-row { grid-template-columns: 85px minmax(30px, 1fr); }
+    .gemini-chart-row > span:last-child { grid-column: 2; }
+}
