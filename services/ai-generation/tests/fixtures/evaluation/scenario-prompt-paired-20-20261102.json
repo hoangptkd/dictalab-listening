@@ -1,0 +1,187 @@
+{
+  "cases": [
+    {
+      "expectedAllowed": true,
+      "group": "food",
+      "id": "case-01",
+      "inputVi": "Tôi là khách muốn hỏi quán về món chay rồi chọn bữa trưa.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "food",
+      "id": "case-02",
+      "inputVi": "Tôi muốn rủ bạn cùng chuẩn bị một bữa dã ngoại đơn giản.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "food",
+      "id": "case-03",
+      "inputVi": "Tôi làm ở tiệm bánh và giúp khách chọn một chiếc bánh sinh nhật nhỏ.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "transport",
+      "id": "case-04",
+      "inputVi": "Tôi là hành khách hỏi nhân viên ga cách đi đến bảo tàng bằng tàu.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "transport",
+      "id": "case-05",
+      "inputVi": "Tôi và bạn sắp đạp xe trong công viên và cần bàn cách chuẩn bị.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "transport",
+      "id": "case-06",
+      "inputVi": "Tôi là hành khách nhờ tài xế chỉ điểm xuống gần thư viện.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "shopping",
+      "id": "case-07",
+      "inputVi": "Tôi là khách tìm mua một chiếc ô phù hợp với chuyến đi bộ.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "shopping",
+      "id": "case-08",
+      "inputVi": "Tôi đang hỏi nhân viên cửa hàng về một cuốn sổ làm quà.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "shopping",
+      "id": "case-09",
+      "inputVi": "Tôi và bạn chọn hoa cho một bữa tiệc cảm ơn.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "workstudy",
+      "id": "case-10",
+      "inputVi": "Tôi là đồng nghiệp trao đổi cách chuẩn bị cuộc họp nhóm.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "workstudy",
+      "id": "case-11",
+      "inputVi": "Tôi là học viên hỏi bạn cùng lớp cách chuẩn bị thuyết trình.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "workstudy",
+      "id": "case-12",
+      "inputVi": "Tôi và đồng nghiệp bàn cách tổ chức tài liệu dùng chung.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "services",
+      "id": "case-13",
+      "inputVi": "Tôi là khách hỏi thư viện về cách mượn và trả sách.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "services",
+      "id": "case-14",
+      "inputVi": "Tôi là nhân viên trung tâm thể thao giới thiệu lớp bơi cho khách.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "services",
+      "id": "case-15",
+      "inputVi": "Tôi là khách hỏi tiệm sửa xe đạp về việc kiểm tra phanh.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "social",
+      "id": "case-16",
+      "inputVi": "Tôi gặp hàng xóm mới và trò chuyện về sở thích làm vườn.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "social",
+      "id": "case-17",
+      "inputVi": "Tôi muốn mời bạn đi xem triển lãm ảnh và trao đổi lịch rảnh.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "social",
+      "id": "case-18",
+      "inputVi": "Tôi trò chuyện với bạn về một hoạt động tình nguyện cuối tuần.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "workstudy",
+      "id": "case-19",
+      "inputVi": "Tôi muốn luyện nghe ý chính khi hai người bàn cách chia sẻ việc chuẩn bị hội chợ ở trường.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    },
+    {
+      "expectedAllowed": true,
+      "group": "social",
+      "id": "case-20",
+      "inputVi": "Tôi muốn luyện nghe ý định khi một người bạn lịch sự đề xuất đổi địa điểm gặp.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "agent-authored-fiction"
+    }
+  ],
+  "notice": "Original 20 briefs were used for a prior independent draft; not a blinded holdout. Neither prompt arm was tuned using those drafts.",
+  "syntheticOnly": true,
+  "version": "scenario-e20-20261102"
+}
