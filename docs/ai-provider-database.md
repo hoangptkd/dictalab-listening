@@ -2,7 +2,7 @@
 
 ## Quản lý Gemini trên giao diện
 
-Trang `/admin/gemini` dành cho admin, gồm thêm/sửa nguồn, thay key, bật/tắt,
+Trang `/admin/gemini` dành cho admin, gồm thêm/sửa/xóa nguồn đã tắt, thay key, bật/tắt,
 kiểm tra kết nối, giới hạn chung, thống kê 90 ngày và lịch sử thay đổi. API key
 chỉ được nhập/thay; phản hồi và lịch sử không chứa key thô. Kiểm tra kết nối
 chỉ gọi danh sách model của Google, không gửi prompt sinh nội dung.
@@ -34,7 +34,8 @@ GRANT SELECT ON ai_provider_pools, ai_provider_accounts, ai_provider_labels,
     ai_provider_management, ai_provider_audit, ai_provider_usage TO dictalab_ai_manager;
 GRANT INSERT, UPDATE ON ai_provider_accounts, ai_provider_labels,
     ai_provider_management TO dictalab_ai_manager;
-GRANT UPDATE ON ai_provider_pools TO dictalab_ai_manager;
+GRANT INSERT, UPDATE ON ai_provider_pools TO dictalab_ai_manager;
+GRANT DELETE ON ai_provider_accounts, ai_provider_labels TO dictalab_ai_manager;
 GRANT INSERT ON ai_provider_audit TO dictalab_ai_manager;
 GRANT USAGE ON SEQUENCE ai_provider_audit_id_seq TO dictalab_ai_manager;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ai_provider_usage TO dictalab_ai_usage;
@@ -43,7 +44,10 @@ GRANT USAGE ON SEQUENCE ai_provider_usage_id_seq TO dictalab_ai_usage;
 
 Role gọi Gemini giữ nguyên quyền đọc registry. Role telemetry không có quyền
 đọc/sửa key hoặc cấu hình nguồn. Role quản trị không có quyền sửa/xóa audit.
-Không đưa file owner vào service. Pool Gemini phải được khởi tạo trước bằng CLI.
+Không đưa file owner vào service. Có thể tạo nhóm Gemini và đặt model mặc định
+trên giao diện. Chỉ xóa được nguồn đã tắt; thao tác xóa key không thể hoàn tác,
+nhưng thống kê và lịch sử vẫn được giữ. Form thêm nguồn dùng thao tác tạo riêng,
+không ghi đè một mã nguồn đã tồn tại.
 
 Trong file Core được bảo vệ, đặt `DICTALAB_AI_PROVIDER_ADMIN_TOKEN`; trong file
 AI API đặt `AI_PROVIDER_ADMIN_TOKEN` cùng giá trị, khác token thực thi AI hiện có,

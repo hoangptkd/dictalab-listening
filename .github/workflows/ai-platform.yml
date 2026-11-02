@@ -45,6 +45,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
+      provider-postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_PASSWORD: fixture-only
+        ports: ['15549:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 3s --health-timeout 3s --health-retries 20
       redis:
         image: redis:8.10.2-alpine
         ports: ['6379:6379']
@@ -72,11 +80,12 @@ jobs:
       - name: Python contracts, registry, readiness, regression and golden metrics
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
+          TEST_PROVIDER_ADMIN_DSN: postgresql://postgres:fixture-only@127.0.0.1:15549/postgres
         run: python -m pytest -q services/ai-generation/tests services/model-serving/test_server.py tools/ai-eval training/tests/test_generate_teacher_data.py training/tests/test_benchmark_teacher.py training/tests/test_prepare_dataset.py
       - name: Java routing and contract tests
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
-        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,ModelDemoIntegrationTest,AiPlatformClientTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,AiProviderRegistryTest,ListeningComprehensionIntegrationTest test
+        run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,ModelDemoIntegrationTest,AiPlatformClientTest,GeminiAdminControllerTest,SpaRoutingTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,AiProviderRegistryTest,ListeningComprehensionIntegrationTest test
       - name: Java to Python to fake Ollama smoke
         run: python tools/ai-eval/smoke.py
       - name: Private registry migration, backup restore and database isolation

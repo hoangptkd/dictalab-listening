@@ -51,10 +51,27 @@ public class GeminiAdminController {
     @PutMapping("/{id}")
     public JsonNode save(@PathVariable String id, @RequestBody JsonNode body,
                          @AuthenticationPrincipal DictaLabPrincipal actor) {
+        return saveSource("PUT", id, body, actor);
+    }
+
+    @PostMapping("/{id}")
+    public JsonNode create(@PathVariable String id, @RequestBody JsonNode body,
+                          @AuthenticationPrincipal DictaLabPrincipal actor) {
+        return saveSource("POST", id, body, actor);
+    }
+
+    private JsonNode saveSource(String method, String id, JsonNode body, DictaLabPrincipal actor) {
         if (!id.matches("[a-zA-Z0-9_-]{1,64}") || !body.isObject()) throw invalid();
         String encoded = json.writeValueAsString(body);
         if (encoded.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 8192) throw invalid();
-        return exchange("PUT", "/" + id, encoded, actor);
+        return exchange(method, "/" + id, encoded, actor);
+    }
+
+    @DeleteMapping("/{id}")
+    public JsonNode delete(@PathVariable String id, @RequestParam long revision,
+                          @AuthenticationPrincipal DictaLabPrincipal actor) {
+        if (!id.matches("[a-zA-Z0-9_-]{1,64}") || revision < 0) throw invalid();
+        return exchange("DELETE", "/" + id + "?revision=" + revision, null, actor);
     }
 
     @PostMapping("/{id}/probe")
@@ -86,7 +103,7 @@ public class GeminiAdminController {
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 HttpStatus status = switch (response.statusCode()) { case 400, 422 -> HttpStatus.BAD_REQUEST;
                     case 404 -> HttpStatus.NOT_FOUND; case 409 -> HttpStatus.CONFLICT; default -> HttpStatus.SERVICE_UNAVAILABLE; };
-                String message = status == HttpStatus.CONFLICT ? "Cấu hình đã thay đổi hoặc project/model bị trùng. Tải lại trước khi lưu."
+                String message = status == HttpStatus.CONFLICT ? "Cấu hình đã đổi, mã nguồn/project/model bị trùng hoặc nguồn chưa tắt. Tải lại để kiểm tra."
                     : status == HttpStatus.BAD_REQUEST ? "Thông tin nguồn Gemini không hợp lệ."
                     : "Dịch vụ quản lý Gemini chưa sẵn sàng. Kiểm tra cấu hình và kết nối.";
                 throw new ResponseStatusException(status, message);

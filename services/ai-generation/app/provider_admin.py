@@ -36,6 +36,7 @@ class SourceEdit(BaseModel):
 class PoolEdit(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     revision: int = Field(ge=0)
+    defaultModel: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_.-]{1,100}$")
     globalRpmLimit: int = Field(ge=0, le=2147483647)
     globalRpdLimit: int = Field(ge=0, le=2147483647)
     enabled: bool
@@ -46,7 +47,7 @@ def authorize(token, actor):
     if (not re.fullmatch(r"[!-~]{32,256}", settings.provider_admin_token)
             or not secrets.compare_digest((token or "").encode(), settings.provider_admin_token.encode())):
         raise HTTPException(401, "invalid management token")
-    if not actor or not actor.isascii() or not actor.isdigit() or not 0 < int(actor) < 2**63:
+    if not actor or not re.fullmatch(r"[0-9]{1,19}", actor) or not 0 < int(actor) < 2**63:
         raise HTTPException(400, "invalid admin identity")
     if settings.ai_provider_config_source != "database" or not settings.provider_admin_database_url:
         raise HTTPException(503, "Gemini management is not configured")
@@ -54,7 +55,11 @@ def authorize(token, actor):
         uri = urlsplit(dsn)
         host = "loopback" if uri.hostname in ("localhost", "127.0.0.1", "::1") else uri.hostname
         return host, uri.port or 5432, uri.path
-    if target(settings.provider_admin_database_url) != target(settings.ai_provider_database_url):
+    try:
+        same_database = target(settings.provider_admin_database_url) == target(settings.ai_provider_database_url)
+    except ValueError:
+        same_database = False
+    if not same_database:
         raise HTTPException(503, "Management and runtime must use the same AI registry database")
     return settings, int(actor)
 
@@ -84,7 +89,7 @@ def audit(db, actor, source, action, changes):
         (actor, source, action, json.dumps(changes, ensure_ascii=False)))
 
 
-def edit_source(settings, actor, source_id, edit):
+def edit_source(settings, actor, source_id, edit, *, create=None):
     if not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", source_id):
         raise HTTPException(400, "invalid source ID")
     if not edit.name.strip():
@@ -94,6 +99,10 @@ def edit_source(settings, actor, source_id, edit):
         if current != edit.revision:
             raise HTTPException(409, "Configuration changed; reload before saving")
         previous = db.execute("SELECT a.*,l.name FROM ai_provider_accounts a LEFT JOIN ai_provider_labels l ON l.source_id=a.id WHERE a.id=%s", (source_id,)).fetchone()
+        if previous and create is True:
+            raise HTTPException(409, "Source ID already exists")
+        if not previous and create is False:
+            raise HTTPException(404, "Source no longer exists")
         if previous and previous["platform"] != "gemini":
             raise HTTPException(400, "source belongs to another platform")
         key_changed = bool(edit.apiKey)
@@ -156,7 +165,7 @@ def snapshot(settings, source_id=None, period="day", before=None):
         from .gemini_pool import quota_store
         cfg = settings.current_registry()
         store = quota_store(cfg, "gemini")
-        by_id = {p.id: p for p in cfg.sources_for("gemini")}
+        by_id = {p.id: p for p in cfg.gemini_providers}
         for row in rows:
             source = by_id.get(row["id"])
             row["quota"] = dict(zip(("rpm_used", "tpm_reserved", "rpd_used", "global_rpm_used", "global_rpd_used", "cooldown_ms"),
@@ -175,16 +184,38 @@ def edit_pool(settings, actor, edit):
         if revision != edit.revision:
             raise HTTPException(409, "Configuration changed; reload before saving")
         previous = db.execute("SELECT * FROM ai_provider_pools WHERE platform='gemini'").fetchone()
-        if not previous:
-            raise HTTPException(409, "Create the Gemini pool with the operator CLI first")
-        db.execute("UPDATE ai_provider_pools SET global_rpm_limit=%s,global_rpd_limit=%s,enabled=%s,updated_at=CURRENT_TIMESTAMP WHERE platform='gemini'",
-            (edit.globalRpmLimit, edit.globalRpdLimit, edit.enabled))
-        changes = {field: {"before": previous[column], "after": value} for field, column, value in
-            (("globalRpmLimit", "global_rpm_limit", edit.globalRpmLimit), ("globalRpdLimit", "global_rpd_limit", edit.globalRpdLimit),
-             ("enabled", "enabled", edit.enabled)) if previous[column] != value}
-        audit(db, actor, None, "pool_updated", changes)
+        model = edit.defaultModel or (previous["default_model"] if previous else None)
+        if not model:
+            raise HTTPException(400, "Default model is required for a new Gemini pool")
+        from .provider_registry import save_pool
+        save_pool(db, "gemini", model, edit.globalRpmLimit, edit.globalRpdLimit, edit.enabled)
+        changes = {field: {"before": previous[column] if previous else None, "after": value} for field, column, value in
+            (("defaultModel", "default_model", model), ("globalRpmLimit", "global_rpm_limit", edit.globalRpmLimit),
+             ("globalRpdLimit", "global_rpd_limit", edit.globalRpdLimit), ("enabled", "enabled", edit.enabled))
+            if not previous or previous[column] != value}
+        audit(db, actor, None, "pool_updated" if previous else "pool_created", changes)
         db.execute("UPDATE ai_provider_management SET revision=revision+1 WHERE singleton=1")
         return {"revision": revision + 1, "applied": "new_requests"}
+
+
+def delete_source(settings, actor, source_id, revision):
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", source_id):
+        raise HTTPException(400, "invalid source ID")
+    with connect(settings.provider_admin_database_url, readonly=False) as db:
+        current = db.execute("SELECT revision FROM ai_provider_management WHERE singleton=1 FOR UPDATE").fetchone()["revision"]
+        if current != revision:
+            raise HTTPException(409, "Configuration changed; reload before deleting")
+        previous = db.execute("SELECT a.id,a.account_id,a.model,a.enabled,l.name FROM ai_provider_accounts a LEFT JOIN ai_provider_labels l ON l.source_id=a.id WHERE a.id=%s AND a.platform='gemini'", (source_id,)).fetchone()
+        if not previous:
+            raise HTTPException(404, "Source no longer exists")
+        if previous["enabled"]:
+            raise HTTPException(409, "Disable the source before deleting it")
+        db.execute("DELETE FROM ai_provider_labels WHERE source_id=%s", (source_id,))
+        db.execute("DELETE FROM ai_provider_accounts WHERE id=%s", (source_id,))
+        audit(db, actor, source_id, "deleted", {"name": previous["name"] or source_id,
+            "projectId": previous["account_id"], "model": previous["model"]})
+        db.execute("UPDATE ai_provider_management SET revision=revision+1 WHERE singleton=1")
+        return {"revision": current + 1, "applied": "new_requests"}
 
 
 def record_attempt(settings, request_id, source, outcome, done, usage, duration):
@@ -231,18 +262,40 @@ async def get_sources(x_provider_admin_token: str | None = Header(default=None),
         raise HTTPException(503, "Gemini management database unavailable") from None
 
 
+@router.post("/{source_id}")
+async def create_source(source_id: str, edit: SourceEdit, x_provider_admin_token: str | None = Header(default=None),
+                        x_admin_actor: str | None = Header(default=None)):
+    return await write_source(source_id, edit, x_provider_admin_token, x_admin_actor, create=True)
+
+
 @router.put("/{source_id}")
 async def put_source(source_id: str, edit: SourceEdit, x_provider_admin_token: str | None = Header(default=None),
                      x_admin_actor: str | None = Header(default=None)):
-    settings, actor = authorize(x_provider_admin_token, x_admin_actor)
+    return await write_source(source_id, edit, x_provider_admin_token, x_admin_actor, create=False)
+
+
+async def write_source(source_id, edit, token, actor_header, *, create):
+    settings, actor = authorize(token, actor_header)
     try:
-        return await asyncio.to_thread(edit_source, settings, actor, source_id, edit)
+        return await asyncio.to_thread(edit_source, settings, actor, source_id, edit, create=create)
     except HTTPException:
         raise
     except ValueError:
         raise HTTPException(400, "Invalid Gemini source or key") from None
     except Exception:
         raise HTTPException(503, "Gemini configuration could not be saved") from None
+
+
+@router.delete("/{source_id}")
+async def remove_source(source_id: str, revision: int = Query(ge=0), x_provider_admin_token: str | None = Header(default=None),
+                        x_admin_actor: str | None = Header(default=None)):
+    settings, actor = authorize(x_provider_admin_token, x_admin_actor)
+    try:
+        return await asyncio.to_thread(delete_source, settings, actor, source_id, revision)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(503, "Gemini source could not be deleted") from None
 
 
 @router.put("/pool/config")

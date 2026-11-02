@@ -138,3 +138,17 @@ def test_queue_deadline_keeps_admission_and_releases_no_unacquired_permit(api):
             headers={"X-Service-Token": TOKEN}).status_code == 503
         complete.assert_not_called()
     assert main.semaphore.locked()
+
+
+@pytest.mark.parametrize("admission", [True, False])
+def test_rate_limit_preserves_retry_after_without_replaying_sent_request(api, admission):
+    from app.gemini_pool import QuotaUnavailable
+    from app.providers.base import ProviderHttpError
+    client, _, _ = api
+    failure = QuotaUnavailable(17) if admission else ProviderHttpError(429, "73", "gemini")
+    body = request()
+    with patch.object(ModelGateway, "complete", side_effect=failure) as complete:
+        response = client.post("/v1/text/completions", json=body, headers={"X-Service-Token": TOKEN})
+        assert response.status_code == 429 and response.headers["Retry-After"] == ("17" if admission else "73")
+        assert client.post("/v1/text/completions", json=body, headers={"X-Service-Token": TOKEN}).status_code == 409
+        assert complete.call_count == 1

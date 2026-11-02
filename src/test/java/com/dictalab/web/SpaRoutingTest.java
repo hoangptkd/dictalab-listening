@@ -259,6 +259,12 @@ class SpaRoutingTest {
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/admin/gemini/source-a")
                 .with(user(DictaLabPrincipal.from(adminUser))).contentType("application/json").content("{}"))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/admin/gemini/source-a")
+                .with(user(DictaLabPrincipal.from(adminUser))).contentType("application/json").content("{}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/admin/gemini/source-a?revision=0")
+                .with(user(DictaLabPrincipal.from(adminUser))))
+                .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/admin/gemini").with(user(DictaLabPrincipal.from(adminUser))))
                 .andExpect(status().isServiceUnavailable()).andExpect(header().string("Cache-Control", "no-store"));
     }
