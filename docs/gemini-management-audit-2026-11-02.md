@@ -37,7 +37,7 @@ quota/hóa đơn của Google.
 ## Kiểm thử và bằng chứng
 
 - **419 ca Python đạt**, chạy cùng PostgreSQL và Redis dùng riêng cho test.
-- **73 ca Java đạt, 1 ca bỏ qua** do thiếu môi trường registry Java riêng;
+- **126 ca Java đạt, 2 ca bỏ qua** (registry Java riêng và kiểm tra đồng thời tùy chọn);
   PostgreSQL thực của API quản trị được kiểm tra bằng các ca Python ở trên.
 - **6 ca JavaScript đạt**; kiểm tra cú pháp JS và UTF-8 đạt.
 - Ghi nhận runtime cho thấy **20/20 hàm trong `provider_admin.py` đã được gọi**.
@@ -65,6 +65,14 @@ Các ca liên quan còn kiểm tra chỉ chuyển nguồn sau 429, mỗi nguồn
 giữ model/deadline, không thử nguồn khác sau timeout/5xx, giữ Retry-After qua
 Core, và thay key chỉ ảnh hưởng workflow mới. Các cập nhật CLI tăng revision,
 ghi audit và không đưa key vào audit.
+
+### Sửa lỗi phát hiện thêm bởi CI
+
+Nhóm Java mở rộng tìm thấy một race có sẵn trong audio hội thoại, ngoài màn
+Gemini: future báo thất bại trước khi bị xóa khỏi `audioJobs`, nên yêu cầu thử
+nghe lại ngay có thể nhận lại chính future đã lỗi. Đã thêm ca tái hiện xác định
+(thất bại trên bản cũ), dọn tác vụ trước khi báo hoàn tất thất bại và chạy lại
+toàn bộ 54 ca `ConversationIntegrationTest`: 53 đạt, 1 ca đồng thời tùy chọn bỏ qua.
 
 ### 16 nhóm kiểm tra Chrome
 
