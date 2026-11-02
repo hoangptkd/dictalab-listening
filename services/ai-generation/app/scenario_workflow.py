@@ -20,6 +20,7 @@ from .observability import trace_gate, trace_job
 from .scenario_prompts_v5 import INSTRUCTIONS as V5_INSTRUCTIONS
 from .scenario_contract import LearningContext
 from . import scenario_prompts_personalized as personalized
+from . import scenario_prompts_personalized_fewshot as personalized_fewshot
 
 V4_PROMPT_VERSION = "SCENARIO_LISTENING_V4"
 OUTPUT_TOKENS = {"EXTRACT": 2600, "GENERATE": 3200, "QUESTIONS": 4000,
@@ -446,7 +447,9 @@ class ScenarioInput(StrictModel):
     @model_validator(mode="after")
     def phase_input(self):
         is_personalized = self.contractVersion == "scenario-job.v2"
-        if self.promptHash != (personalized_prompt_hash() if is_personalized else prompt_hash()):
+        if is_personalized:
+            personalized_release(self.promptHash)
+        elif self.promptHash != prompt_hash():
             raise ValueError("scenario prompt mismatch")
         if is_personalized != (self.learningContext is not None):
             raise ValueError("missing or unexpected learning context")
@@ -493,23 +496,42 @@ def prompt_hash():
     return hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def personalized_prompt_hash():
-    instructions = {**personalized.INSTRUCTIONS, "GRADE": V4_INSTRUCTIONS["GRADE"]}
+def personalized_prompt_hash(release=personalized_fewshot):
+    instructions = {**release.INSTRUCTIONS, "GRADE": V4_INSTRUCTIONS["GRADE"]}
     models = (LearningContext, PersonalizedSpecification, PersonalizedExtraction, Dialogue, PersonalizedQuestions,
               PersonalizedContent, Translations, PersonalizedQuestionReview, PersonalizedReview, Grade)
-    manifest = {"version": personalized.PROMPT_VERSION, "instructions": instructions, "outputTokens": OUTPUT_TOKENS,
+    manifest = {"version": release.PROMPT_VERSION, "instructions": instructions, "outputTokens": OUTPUT_TOKENS,
                 "schemas": {m.__name__: m.model_json_schema() for m in models},
                 "reviewResponseSchemas": {m.__name__: response_schema(m) for m in (PersonalizedQuestionReview, PersonalizedReview)}}
     return hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def metadata(settings, is_personalized=False):
+def personalized_release(requested_hash):
+    # Dispatch by the immutable job pin, including jobs queued before this release.
+    for release in (personalized_fewshot, personalized):
+        if requested_hash == personalized_prompt_hash(release):
+            return release
+    raise ValueError("scenario prompt mismatch")
+
+
+def example_metadata(requested_hash, phase):
+    release = personalized_release(requested_hash)
+    if release is personalized or phase == "GRADE":
+        return {"promptMode": "zero-shot", "exampleIdsByStage": {}}
+    stages = ("EXTRACT",) if phase == "EXTRACT" else personalized_fewshot.STAGES[1:]
+    return {"promptMode": "few-shot", "exampleSetVersion": release.EXAMPLE_SET_VERSION,
+            "exampleSetHash": release.EXAMPLE_SET_HASH,
+            "exampleIdsByStage": {stage: release.EXAMPLE_IDS[stage] for stage in stages}}
+
+
+def metadata(settings, is_personalized=False, requested_hash=None):
     from .config import CLOUD_PROVIDERS
+    release = personalized_release(requested_hash or personalized_prompt_hash()) if is_personalized else None
     return {"schemaVersion": "1", "provider": settings.selected_provider,
             "model": settings.active_cloud_model if settings.selected_provider in CLOUD_PROVIDERS else settings.model,
             "modelDigest": settings.model_digest if settings.selected_provider == "ollama" else "provider-managed",
-            "promptVersion": personalized.PROMPT_VERSION if is_personalized else PROMPT_VERSION,
-            "promptHash": personalized_prompt_hash() if is_personalized else prompt_hash()}
+            "promptVersion": release.PROMPT_VERSION if is_personalized else PROMPT_VERSION,
+            "promptHash": personalized_prompt_hash(release) if is_personalized else prompt_hash()}
 
 
 @trace_gate
@@ -702,7 +724,7 @@ async def execute(event, settings):
     payload = event.payload
     is_personalized = payload.contractVersion == "scenario-job.v2"
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)} if is_personalized else {}
-    instructions = {**personalized.INSTRUCTIONS, "GRADE": V4_INSTRUCTIONS["GRADE"]} if is_personalized else INSTRUCTIONS
+    instructions = {**personalized_release(payload.promptHash).INSTRUCTIONS, "GRADE": V4_INSTRUCTIONS["GRADE"]} if is_personalized else INSTRUCTIONS
     calls = []
     async with httpx.AsyncClient(timeout=remaining, limits=httpx.Limits(max_connections=settings.effective_http_max_connections)) as client:
         async def call(purpose, data, model):
@@ -768,5 +790,5 @@ async def execute(event, settings):
             except ValueError as invalid:
                 raise QualityRejected("semantic quality rejected") from invalid
             result = {**content.model_dump(), "translations": translated.model_dump()["segments"], "qualityPassed": True}
-    return {**metadata(settings, is_personalized), "generationId": str(event.jobId), "requestId": str(event.requestId),
+    return {**metadata(settings, is_personalized, payload.promptHash), "generationId": str(event.jobId), "requestId": str(event.requestId),
             "programHash": payload.programHash, "calls": calls, "task": result}

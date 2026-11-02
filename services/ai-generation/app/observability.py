@@ -181,6 +181,8 @@ def trace_job(function):
                     "programHash": getattr(event.payload, "programHash", None)}
         context = getattr(event.payload, "learningContext", None)
         if context is not None:
+            from .scenario_workflow import example_metadata
+            metadata.update(example_metadata(event.payload.promptHash, event.payload.phase))
             snapshot = context.model_dump(mode="json", exclude_none=True)
             metadata.update(programCode=context.programCode, programVersion=context.programVersion,
                             focusSkill=context.focusSkill, profileId=context.profile.id,

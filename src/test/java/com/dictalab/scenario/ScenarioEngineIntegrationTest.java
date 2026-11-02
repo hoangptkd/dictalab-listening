@@ -73,10 +73,11 @@ class ScenarioEngineIntegrationTest {
     JsonNode done(String id,JsonNode input) {
         String phase=input.path("phase").asText(); boolean tts=input.path("kind").asText().equals("tts");
         boolean personalized=input.path("contractVersion").asText().equals("scenario-job.v2");
+        boolean previousPersonalized=input.path("promptHash").asText().equals("bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa");
         var result=object().put("schemaVersion","1").put("generationId",id).put("requestId",id)
                 .put("provider",tts ? "cartesia" : "ollama").put("model","fixture-model").put("modelDigest","fixture-digest")
-                .put("promptVersion",tts ? "TTS_WAV_V1" : personalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : "SCENARIO_LISTENING_V5_GRADE_V4_1")
-                .put("promptHash",personalized ? release.personalizedPromptHash() : release.promptHash()).put("programHash",input.path("programHash").asText());
+                .put("promptVersion",tts ? "TTS_WAV_V1" : personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4") : "SCENARIO_LISTENING_V5_GRADE_V4_1")
+                .put("promptHash",input.path("promptHash").asText(release.promptHash())).put("programHash",input.path("programHash").asText());
         if (tts) result.set("task",object().put("contentType","audio/wav").put("size",wave().length).put("audioBase64",Base64.getEncoder().encodeToString(wave())));
         else {
             result.set("task",fixture.path(switch(phase) { case "EXTRACT" -> "specification"; case "GENERATE" -> "content"; default -> "grade"; }).deepCopy());
@@ -113,6 +114,42 @@ class ScenarioEngineIntegrationTest {
         var program=registry.require(code,2);
         var scale=program.targetScales().stream().filter(s -> s.component().equals("LISTENING")).findFirst().orElseThrow();
         return new ScenarioPersonalization.Preference(code,2,new ScenarioGoalRequest.Target(scale.scaleId(),"LISTENING",target),current,"detail",version);
+    }
+
+    @Test void queuedPersonalizedBaselineSettlesWithoutBeingRelabelledFewshot() {
+        String current=release.personalizedPromptHash();
+        String baseline="bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa";
+        personalization.save(user,id(),preference("toeic-listening","250","",0));
+        when(release.personalizedPromptHash()).thenReturn(baseline);
+        var pending=engine.createDraft(user,id(),new ScenarioEngine.DraftRequest("","toeic-listening",2,""));
+        String operationId=pending.path("operationId").asText();
+        assertThat(tree(db.queryForObject("SELECT payload_json FROM scenario_operations WHERE id=?",String.class,operationId))
+                .path("promptHash").asText()).isEqualTo(baseline);
+        when(release.personalizedPromptHash()).thenReturn(current);
+        assertThat(dispatch(pending).path("status").asText()).isEqualTo("SUCCEEDED");
+        var draft=engine.draft(user,pending.path("draftId").asText());
+        var generation=engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong()));
+        String nextId=generation.path("operationId").asText();
+        assertThat(tree(db.queryForObject("SELECT payload_json FROM scenario_operations WHERE id=?",String.class,nextId))
+                .path("promptHash").asText()).isEqualTo(current);
+        assertThat(dispatch(generation).path("status").asText()).isEqualTo("SUCCEEDED");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"old_version","wrong_hash","relabel_baseline"})
+    void personalizedResultCannotSwapPromptHashOrVersion(String fault) {
+        personalization.save(user,id(),preference("toeic-listening","250","",0));
+        if (fault.equals("relabel_baseline")) when(release.personalizedPromptHash())
+                .thenReturn("bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa");
+        doAnswer(call -> {
+            var response=done(call.getArgument(1),call.getArgument(3));
+            var result=(ObjectNode)response.path("result");
+            if (fault.equals("wrong_hash")) result.put("promptHash","0".repeat(64));
+            else result.put("promptVersion",fault.equals("old_version") ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4");
+            return response;
+        }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        var pending=engine.createDraft(user,id(),new ScenarioEngine.DraftRequest("","toeic-listening",2,""));
+        assertThat(dispatch(pending).path("status").asText()).isEqualTo("FAILED");
     }
 
     @Test void personalizedDraftSessionAndRemixKeepOriginalSnapshotAfterPreferenceChanges() {

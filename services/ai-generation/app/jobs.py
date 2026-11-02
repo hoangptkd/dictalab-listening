@@ -57,7 +57,7 @@ class JobEvent(JobRequest):
 
 def capability_metadata(payload, settings):
     if payload.kind == "scenario":
-        return scenario_workflow.metadata(settings, payload.contractVersion == "scenario-job.v2")
+        return scenario_workflow.metadata(settings, payload.contractVersion == "scenario-job.v2", payload.promptHash)
     if payload.kind == "conversation_demo":
         return conversation_demo.metadata(settings)
     module = {"coach": coach, "review": review, "tts": tts}[payload.kind]

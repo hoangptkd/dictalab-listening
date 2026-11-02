@@ -195,6 +195,11 @@ def test_personalized_trace_records_context_and_fingerprint_without_network(trac
     assert metadata["calibrationStatus"] == "INTERNAL_PRACTICE_UNCALIBRATED"
     assert len(metadata["learningContextHash"]) == 64
     assert metadata["promptHash"] == event.payload.promptHash
+    from app import scenario_prompts_personalized_fewshot as fewshot
+    assert metadata["promptMode"] == "few-shot"
+    assert metadata["exampleSetHash"] == fewshot.EXAMPLE_SET_HASH
+    assert metadata["exampleSetVersion"] == fewshot.EXAMPLE_SET_VERSION
+    assert metadata["exampleIdsByStage"] == {"EXTRACT": fewshot.EXAMPLE_IDS["EXTRACT"]}
     assert "learningContext" in span.attributes["langfuse.observation.input"]
     assert scores[-1]["value"] == 1
 

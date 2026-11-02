@@ -127,7 +127,7 @@ def personal_responses():
 def test_personalized_context_reaches_every_stage_and_keeps_grade_v4(code):
     context = learning_context(code)
     result, calls = execute(personal_payload(context=context), personal_responses())
-    assert result["promptVersion"] == workflow.personalized.PROMPT_VERSION
+    assert result["promptVersion"] == workflow.personalized_fewshot.PROMPT_VERSION
     assert result["promptHash"] == workflow.personalized_prompt_hash()
     for _, messages in calls:
         assert json.loads(messages[1]["content"])["learningContext"] == personal_payload(context=context).learningContext.model_dump(exclude_none=True)
