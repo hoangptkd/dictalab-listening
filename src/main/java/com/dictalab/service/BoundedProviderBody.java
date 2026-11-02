@@ -7,9 +7,9 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Flow;
 
 /** Cancel oversized provider responses before buffering them in memory. */
-final class BoundedProviderBody {
+public final class BoundedProviderBody {
     private BoundedProviderBody() {}
-    static HttpResponse.BodySubscriber<byte[]> bytes(int maximum) {
+    public static HttpResponse.BodySubscriber<byte[]> bytes(int maximum) {
         var delegate = HttpResponse.BodySubscribers.ofByteArray();
         return new HttpResponse.BodySubscriber<>() {
             private Flow.Subscription subscription;

@@ -64,6 +64,21 @@ class AiPlatformClientTest {
         assertThat(calls.get()).isEqualTo(2);
     }
 
+    @Test void genericTextPreservesRateLimitDelayWithoutRetry() {
+        server.createContext("/v1/text/completions", exchange -> {
+            calls.incrementAndGet();
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().add("Retry-After", "37");
+            exchange.sendResponseHeaders(429, -1);
+            exchange.close();
+        });
+        var remote = new AiPlatformClient(json, new AiPlatformProperties("http://127.0.0.1:" + server.getAddress().getPort(),
+                "t".repeat(40), "gemini", 5, "legacy", "legacy", "legacy", Set.of()), new SimpleMeterRegistry());
+        assertThatThrownBy(() -> remote.completeText("JSON", "Evidence", "gemini-test", java.time.Duration.ofSeconds(2)))
+                .isInstanceOfSatisfying(ProviderGuard.Unavailable.class, error -> assertThat(error.retryAfter()).isEqualTo(37));
+        assertThat(calls.get()).isEqualTo(1);
+    }
+
     @Test void genericTextRejectsWeakTokenBeforeNetwork() {
         assertThatThrownBy(() -> client.completeText("JSON", "Evidence", "model", java.time.Duration.ofSeconds(2)))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("strong service token");

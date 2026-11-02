@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
-from pydantic import BaseModel, ConfigDict, Field, AliasChoices, model_validator
+from pydantic import BaseModel, ConfigDict, Field, AliasChoices, model_validator, PrivateAttr
 from pydantic.alias_generators import to_camel
 import re
 from urllib.parse import urlsplit
@@ -52,6 +52,7 @@ def cloud_model_id_matches(configured: str, reported: str) -> bool:
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DICTALAB_AI_", populate_by_name=True, hide_input_in_errors=True)
+    _registry_snapshot: bool = PrivateAttr(default=False)
 
     model: str = "qwen3.5:9b"
     ollama_url: str = "http://127.0.0.1:11434"
@@ -80,6 +81,9 @@ class Settings(BaseSettings):
     ai_provider_config_source: str = Field(default="env", validation_alias="AI_PROVIDER_CONFIG_SOURCE")
     ai_provider_database_url: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_DATABASE_URL")
     ai_provider_encryption_key: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_ENCRYPTION_KEY")
+    provider_admin_token: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_ADMIN_TOKEN")
+    provider_admin_database_url: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_ADMIN_DATABASE_URL")
+    provider_telemetry_database_url: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_TELEMETRY_DATABASE_URL")
     registry_ownership: str = "legacy"
     cloud_providers: list[GeminiSource] = Field(default_factory=list, repr=False)
     registry_pools: dict = Field(default_factory=dict, repr=False, exclude=True)
@@ -127,6 +131,9 @@ class Settings(BaseSettings):
         super().__init__(**values)
         if len({r.id for r in self.scenario_tts_recipes}) != len(self.scenario_tts_recipes):
             raise ValueError("duplicate scenario TTS recipe ID")
+        if self.provider_admin_token and (not re.fullmatch(r"[!-~]{32,256}", self.provider_admin_token)
+                or self.provider_admin_token == self.service_token):
+            raise ValueError("provider management requires a separate strong token")
         if self.ai_provider_config_source not in ("env", "database"):
             raise ValueError("invalid provider configuration source")
         if self.registry_ownership not in ("legacy", "private") or (
@@ -161,14 +168,14 @@ class Settings(BaseSettings):
                 raise ValueError("duplicate Gemini project/model quota")
             if source.enabled:
                 quotas.add(key)
-        if self.gemini_quota_enabled and not self.enabled_cloud_sources:
+        if self.gemini_quota_enabled and not self.enabled_cloud_sources and self.ai_provider_config_source != "database":
             raise ValueError("Gemini quota requires an enabled provider")
         if self.production_mode and self.gemini_quota_enabled and self.gemini_quota_backend != "redis":
             raise ValueError("production Gemini quota requires Redis")
         if self.primary_provider not in ("auto", "ollama", *CLOUD_PROVIDERS):
             raise ValueError("unsupported primary_provider")
-        if self.selected_provider in CLOUD_PROVIDERS and self.ai_provider_config_source == "database" and not self.sources_for(self.selected_provider):
-            raise ValueError("selected platform has no enabled database account")
+        if self.selected_provider in CLOUD_PROVIDERS and self.ai_provider_config_source == "database" and self.selected_provider not in self.registry_pools:
+            raise ValueError("selected platform has no database pool")
         if self.selected_provider != "gemini" and self.selected_provider in CLOUD_PROVIDERS and self.ai_provider_config_source != "database":
             raise ValueError("non-Gemini cloud providers require database configuration")
         if not 60 <= self.job_retention_seconds <= 86400:
@@ -238,6 +245,18 @@ class Settings(BaseSettings):
 
     def sources_for(self, platform):
         return [p for p in self.enabled_cloud_sources if p.platform == platform]
+
+    def current_registry(self):
+        """One immutable account snapshot for a new workflow, never an env fallback."""
+        if self.ai_provider_config_source != "database" or self._registry_snapshot:
+            return self
+        from .provider_registry import load_registry
+        pools, sources = load_registry(self.ai_provider_database_url, self.ai_provider_encryption_key,
+            **({"require_private": True} if self.registry_ownership == "private" else {}))
+        result = self.model_copy(update={"registry_pools": pools, "cloud_providers": sources,
+            "gemini_providers": [s for s in sources if s.platform == "gemini"]})
+        result._registry_snapshot = True
+        return result
 
     @property
     def selected_provider(self) -> str:

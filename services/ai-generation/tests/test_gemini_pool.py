@@ -210,7 +210,7 @@ def test_teacher_pool_admission_failure_writes_no_request_checkpoint(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_429_does_not_retry_sent_request_but_next_job_can_use_other_source(monkeypatch):
+async def test_429_tries_another_source_in_the_same_request(monkeypatch):
     cfg = settings()
     store = QuotaStore(cfg)
     monkeypatch.setattr("app.model_gateway.quota_store", lambda _: store)
@@ -222,9 +222,6 @@ async def test_429_does_not_retry_sent_request_but_next_job_can_use_other_source
         return httpx.Response(200, json={"choices": [{"message": {"content": '{"ok":true}'}}]})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         gateway = ModelGateway(cfg, client)
-        with pytest.raises(ProviderHttpError):
-            await gateway.complete([{"role":"user","content":"test"}], {}, time.monotonic()+5, "batch")
-        assert len(calls) == 1
         result, _ = await gateway.complete([{"role":"user","content":"test"}], {}, time.monotonic()+5, "batch")
         assert result == {"ok": True} and len(calls) == 2
         assert calls[0].headers["Authorization"] != calls[1].headers["Authorization"]

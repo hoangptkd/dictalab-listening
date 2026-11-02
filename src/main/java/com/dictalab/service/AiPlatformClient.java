@@ -58,6 +58,10 @@ public class AiPlatformClient {
         var pending = http.sendAsync(request, ignored -> BoundedProviderBody.bytes(100000));
         try {
             var response = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            if (response.statusCode() == 429) {
+                int delay = ProviderGuard.retryAfterSeconds(response.headers().firstValue("Retry-After").orElse("60"), Instant.now());
+                throw new ProviderGuard.Unavailable("Gemini đã hết nguồn khả dụng tạm thời.", Math.max(1, delay));
+            }
             if (response.statusCode() != 200) throw new IllegalStateException("AI text transport rejected request");
             JsonNode result = json.reader().with(tools.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                     .readTree(response.body());

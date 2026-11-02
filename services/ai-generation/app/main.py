@@ -39,6 +39,12 @@ async def lifespan(_app):
                 logger.warning("ai_job_publish_unavailable")
             await asyncio.sleep(2)
     dispatcher = asyncio.create_task(dispatch_jobs()) if settings.jobs_enabled else None
+    async def retain_usage():
+        from .provider_admin import cleanup_usage
+        while True:
+            await asyncio.to_thread(cleanup_usage, settings)
+            await asyncio.sleep(3600)
+    retention = asyncio.create_task(retain_usage()) if settings.provider_telemetry_database_url else None
     try:
         yield
     finally:
@@ -46,6 +52,10 @@ async def lifespan(_app):
             dispatcher.cancel()
             with suppress(asyncio.CancelledError):
                 await dispatcher
+        if retention:
+            retention.cancel()
+            with suppress(asyncio.CancelledError):
+                await retention
         await asyncio.to_thread(flush, shutdown=True)
 
 
@@ -54,6 +64,8 @@ from .job_api import router as job_router
 app.include_router(job_router)
 from .text_gateway import router as text_router
 app.include_router(text_router)
+from .provider_admin import router as provider_admin_router
+app.include_router(provider_admin_router)
 logger = logging.getLogger("dictalab.ai_generation")
 logger.addFilter(RedactingFilter())
 
@@ -79,6 +91,19 @@ semaphore = asyncio.Semaphore(settings.effective_max_concurrency) if settings.ef
 
 @app.middleware("http")
 async def bound_job_requests(request: Request, call_next):
+    if request.url.path.startswith("/v1/admin/gemini"):
+        from .provider_admin import authorize
+        try:
+            authorize(request.headers.get("X-Provider-Admin-Token"), request.headers.get("X-Admin-Actor"))
+        except HTTPException as error:
+            return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
+        if request.method in ("PUT", "POST"):
+            body = bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > 8192:
+                    return JSONResponse(status_code=413, content={"detail": "management input exceeds limit"})
+            request._body = bytes(body)
     if request.method == "POST" and request.url.path == "/v1/text/completions":
         if not settings.service_token or not _authorized(request.headers.get("X-Service-Token")):
             return JSONResponse(status_code=401, content={"error": "invalid service token"})
@@ -161,6 +186,14 @@ async def live() -> dict[str, str]:
 
 @app.get("/health/ready")
 async def ready() -> dict[str, str]:
+    try:
+        current = await asyncio.to_thread(settings.current_registry) if settings.selected_provider in CLOUD_PROVIDERS else settings
+    except Exception:
+        raise HTTPException(503, "AI provider registry is not ready") from None
+    return await _ready(current)
+
+
+async def _ready(settings):
     try:
         artifact = load_artifact(settings) if settings.conversation_enabled else None
         timeout = httpx.Timeout(min(settings.timeout_seconds, 3.0))
@@ -278,7 +311,8 @@ async def create_task(payload: ConversationTaskRequest, request: Request,
                 async with httpx.AsyncClient(timeout=timeout, limits=httpx.Limits(max_connections=settings.effective_http_max_connections)) as client:
                     server_payload = payload.model_copy(update={"promptVersion": version,
                                                                "instruction": artifact["instruction"]})
-                    runtime_settings = settings.model_copy(update={"timeout_seconds": runtime_seconds})
+                    current = await asyncio.to_thread(settings.current_registry) if settings.selected_provider in CLOUD_PROVIDERS else settings
+                    runtime_settings = current.model_copy(update={"timeout_seconds": runtime_seconds})
                     task = await asyncio.wait_for(run_workflow(server_payload, runtime_settings, client),
                                                   timeout=runtime_seconds)
             except TimeoutError as exc:
@@ -314,7 +348,7 @@ async def create_task(payload: ConversationTaskRequest, request: Request,
 async def http_error(_: Request, exc: HTTPException) -> JSONResponse:
     detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
     logger.warning("conversation_request_rejected status=%s reason=%s", exc.status_code, redact(detail))
-    return JSONResponse(status_code=exc.status_code, content={"error": redact(detail)})
+    return JSONResponse(status_code=exc.status_code, content={"error": redact(detail)}, headers=exc.headers)
 
 
 @app.exception_handler(RequestValidationError)

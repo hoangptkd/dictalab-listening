@@ -34,7 +34,7 @@
             if (s0 === "register")             return { route: "register", params: {}, query: q };
             if (s0 === "reset-password" || s0 === "verify-email") return { route: s0, params: {}, query: q };
             if (s0 === "account" || s0 === "support") return { route: s0, params: {}, query: q };
-            if (s0 === "admin" && (s1 === "users" || s1 === "support")) return { route: `admin-${s1}`, params: {}, query: q };
+            if (s0 === "admin" && (s1 === "users" || s1 === "support" || s1 === "gemini")) return { route: `admin-${s1}`, params: {}, query: q };
             if (s0 === "catalog") return { route: "catalog", params: {level: q.get("level") || "A1", page, sort: q.get("sort") || "", lesson: q.get("lesson") || "", start: q.get("start") || ""}, query: q };
             if (s0 === "listening")            return { route: "listening", params: { sessionId: s1 || null, page, level: q.get("level") || "", view: q.get("view") || "", edit: q.get("edit") || "" }, query: q };
             if (s0 === "conversation")         return { route: "conversation", params: { sessionId: s1 || null }, query: q };
@@ -66,6 +66,7 @@
                 case "admin-users": return "/admin/users";
                 case "admin-listening": return `/admin/listening?page=${encodeURIComponent(params.page || 1)}${params.edit ? `&edit=${encodeURIComponent(params.edit)}` : ""}`;
                 case "admin-support": return "/admin/support";
+                case "admin-gemini": return "/admin/gemini";
                 case "catalog": return `/catalog?level=${encodeURIComponent(params.level || "A1")}&page=${encodeURIComponent(params.page || 1)}${params.sort ? `&sort=${encodeURIComponent(params.sort)}` : ""}${params.lesson ? `&lesson=${encodeURIComponent(params.lesson)}` : ""}${params.start === "1" ? "&start=1" : ""}`;
                 case "conversation": return params.sessionId ? `/conversation/${encodeURIComponent(params.sessionId)}` : "/conversation";
                 case "scenario": return params.sessionId ? `/conversation/${encodeURIComponent(params.sessionId)}` : "/conversation";
@@ -800,6 +801,7 @@
             case "account":
             case "support":
             case "admin-users":
+            case "admin-gemini":
             case "admin-support": {
                 if (route.startsWith("admin-") && state.currentUser?.role !== "ADMIN") {
                     showToast("Tài khoản này không có quyền quản trị.", true);
@@ -810,7 +812,8 @@
                 else if (!route.startsWith("admin-") && !(route === "support" && (query?.has("id") || query?.has("category")))
                     && !(route === "account" && query?.has("orderCode"))) router.replace(route);
                 _showView(route);
-                await window.DictaLabAccount?.show(route);
+                if (route === "admin-gemini") await window.DictaLabGemini?.show();
+                else await window.DictaLabAccount?.show(route);
                 return;
             }
             case "listening": {
@@ -1098,7 +1101,7 @@
             catalog: "catalog", practice: "practice", result: "result",
             history: "history", dashboard: "dashboard", listening: "listening", conversation: "conversation", vocabulary: "vocabulary",
             room: "room", admin: "admin", account: "account", support: "support",
-            "admin-users": "admin-users", "admin-support": "admin-support", "admin-listening": "admin-listening", login: null, register: null
+            "admin-users": "admin-users", "admin-support": "admin-support", "admin-listening": "admin-listening", "admin-gemini": "admin-gemini", login: null, register: null
         }[route] || "catalog";
 
         const target = document.querySelector(`#${viewId}-view`);
@@ -1115,7 +1118,7 @@
         if (document.body.dataset.route === "vocabulary" && viewId !== "vocabulary") window.DictaLabVocabulary?.leave();
         if (isAdminArea) {
             stopRecordedAudio();
-            const title = {admin: "Bài nghe", "admin-users": "Người dùng", "admin-support": "Yêu cầu hỗ trợ", "admin-listening": "Nghe hiểu"}[viewId];
+            const title = {admin: "Bài nghe", "admin-users": "Người dùng", "admin-support": "Yêu cầu hỗ trợ", "admin-listening": "Nghe hiểu", "admin-gemini": "Nguồn Gemini"}[viewId];
             document.title = `${title} · Quản trị DictaLab`;
         }
         if (["listening", "admin-listening"].includes(document.body.dataset.route) && viewId !== document.body.dataset.route) window.DictaLabListening?.leave();

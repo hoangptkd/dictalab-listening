@@ -1,5 +1,76 @@
 # Tài khoản AI trong PostgreSQL
 
+## Quản lý Gemini trên giao diện
+
+Trang `/admin/gemini` dành cho admin, gồm thêm/sửa nguồn, thay key, bật/tắt,
+kiểm tra kết nối, giới hạn chung, thống kê 90 ngày và lịch sử thay đổi. API key
+chỉ được nhập/thay; phản hồi và lịch sử không chứa key thô. Kiểm tra kết nối
+chỉ gọi danh sách model của Google, không gửi prompt sinh nội dung.
+
+Luồng quản trị cần Core dùng `DICTALAB_AI_TEXT_TRANSPORT=python` và AI dùng
+registry database. Core chỉ chuyển tiếp thao tác đã xác thực qua HTTP nội bộ;
+không cấp DSN hoặc master key cho Core. Cấu hình admin lưu xong có hiệu lực
+với workflow mới; workflow đang chạy giữ snapshot cũ. API/worker đọc lại
+registry trước workflow mới, không dùng env key nếu DB không đọc được.
+Tắt hết nguồn là trạng thái hợp lệ để tạm dừng cloud; yêu cầu mới bị từ chối.
+
+### Chuẩn bị schema và quyền
+
+Sao lưu registry bằng quy trình hiện có trước khi áp dụng migration bổ sung:
+
+```powershell
+python tools/ai-eval/provider_accounts.py init-management --env-file data/microservices/ai-registry-owner.env
+```
+
+Lệnh dùng owner đã có để áp dụng `002_provider_management.sql` một lần và
+kiểm tra checksum khi chạy lại. Không thay đổi schema v1 hoặc tài khoản hiện có.
+Tạo hai role đăng nhập riêng bằng quy trình quản trị PostgreSQL hiện có, không
+superuser, không membership, không quyền DDL. Ví dụ tên role bên dưới:
+
+```sql
+GRANT CONNECT ON DATABASE dictalab_ai TO dictalab_ai_manager, dictalab_ai_usage;
+GRANT USAGE ON SCHEMA public TO dictalab_ai_manager, dictalab_ai_usage;
+GRANT SELECT ON ai_provider_pools, ai_provider_accounts, ai_provider_labels,
+    ai_provider_management, ai_provider_audit, ai_provider_usage TO dictalab_ai_manager;
+GRANT INSERT, UPDATE ON ai_provider_accounts, ai_provider_labels,
+    ai_provider_management TO dictalab_ai_manager;
+GRANT UPDATE ON ai_provider_pools TO dictalab_ai_manager;
+GRANT INSERT ON ai_provider_audit TO dictalab_ai_manager;
+GRANT USAGE ON SEQUENCE ai_provider_audit_id_seq TO dictalab_ai_manager;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ai_provider_usage TO dictalab_ai_usage;
+GRANT USAGE ON SEQUENCE ai_provider_usage_id_seq TO dictalab_ai_usage;
+```
+
+Role gọi Gemini giữ nguyên quyền đọc registry. Role telemetry không có quyền
+đọc/sửa key hoặc cấu hình nguồn. Role quản trị không có quyền sửa/xóa audit.
+Không đưa file owner vào service. Pool Gemini phải được khởi tạo trước bằng CLI.
+
+Trong file Core được bảo vệ, đặt `DICTALAB_AI_PROVIDER_ADMIN_TOKEN`; trong file
+AI API đặt `AI_PROVIDER_ADMIN_TOKEN` cùng giá trị, khác token thực thi AI hiện có,
+32–256 ký tự ASCII không khoảng trắng. AI API nhận
+`AI_PROVIDER_ADMIN_DATABASE_URL` của role manager, cùng host/port/database với
+DSN đọc registry. Cả API và worker nhận `AI_PROVIDER_TELEMETRY_DATABASE_URL`
+của role usage. Worker không nhận token hoặc DSN quản trị. Compose hỗ trợ các
+biến `AI_PROVIDER_ADMIN_CONTAINER_DATABASE_URL` và
+`AI_PROVIDER_TELEMETRY_CONTAINER_DATABASE_URL` cho địa chỉ trong container.
+Đây là bước cấu hình ban đầu; các lần sửa nguồn sau đó không cần restart.
+
+### Xoay nguồn và thống kê
+
+Gemini vẫn luân phiên các nguồn cùng model. Chỉ sau HTTP 429 mới thử nguồn khác,
+mỗi nguồn một lần trong thời hạn ban đầu. `Retry-After` áp dụng cho nguồn vừa lỗi;
+không tự gửi lại sau timeout, 5xx hoặc kết quả chưa rõ. Không đổi nền tảng/model.
+
+Thống kê phân biệt lần gọi nguồn với yêu cầu kết thúc, ghi token thực tế khi API
+trả về; thiếu token là không có dữ liệu, không coi là 0. Biểu đồ ngày/tháng dùng
+múi giờ Asia/Bangkok; RPD nội bộ tiếp tục reset theo Pacific. Giới hạn vận hành
+đang tắt thì UI báo rõ; bộ đếm không phải số quota còn lại do Google xác nhận.
+Dữ liệu sử dụng quá 90 ngày được dọn khi ghi và hàng giờ tại API; lịch sử cấu
+hình được giữ riêng. Lỗi ghi thống kê không tạo thêm lần gọi Gemini.
+
+Quay lui: tắt token quản trị và dùng bản ứng dụng trước; giữ các bảng bổ sung
+để bảo toàn audit/thống kê. Migration này không xóa registry hoặc đổi key cũ.
+
 ## Phạm vi
 
 Áp dụng local, chưa deploy production. Có hai cấu hình: `legacy` giữ registry

@@ -22,6 +22,8 @@ logger.addFilter(RedactingFilter())
 
 @trace_job
 async def execute(event, settings):
+    if event.payload.kind not in ("tts", "scenario_tts") and settings.selected_provider in ("gemini", "deepseek", "openai_compatible"):
+        settings = await asyncio.to_thread(settings.current_registry)
     if event.payload.kind == "scenario":
         from .scenario_workflow import execute as execute_scenario
         return await execute_scenario(event, settings)

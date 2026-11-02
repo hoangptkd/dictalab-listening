@@ -59,7 +59,10 @@ async def complete(payload: TextRequest, x_service_token: str | None = Header(de
         raise HTTPException(503, "text gateway is disabled")
     if payload.deadline.tzinfo is None:
         raise HTTPException(400, "deadline must include timezone")
-    selected = select_model(settings, payload)
+    try:
+        selected = select_model(await asyncio.to_thread(settings.current_registry), payload)
+    except ValueError:
+        raise HTTPException(503, "provider configuration unavailable") from None
     remaining = payload.deadline.timestamp() - time.time()
     if not 0 < remaining <= 61:
         raise HTTPException(400, "invalid text deadline")
@@ -92,7 +95,12 @@ async def complete(payload: TextRequest, x_service_token: str | None = Header(de
                 raise ValueError("invalid text output or provenance")
             return {"schemaVersion": "1", "requestId": str(payload.requestId), "provider": provider,
                     "model": gateway.last_model, "task": result}
-    except Exception:
+    except Exception as error:
+        from .gemini_pool import QuotaUnavailable, retry_seconds
+        from .providers.base import ProviderHttpError
+        if isinstance(error, QuotaUnavailable) or isinstance(error, ProviderHttpError) and error.status == 429:
+            delay = error.retry_after if isinstance(error, QuotaUnavailable) else retry_seconds(error.retry_after)
+            raise HTTPException(429, "Gemini sources temporarily unavailable", headers={"Retry-After": str(delay)}) from None
         # Provider exceptions can contain request text and credential-bearing URLs.
         raise HTTPException(503, "text outcome failed or unknown; automatic replay disabled") from None
     finally:

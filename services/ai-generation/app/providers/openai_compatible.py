@@ -55,6 +55,7 @@ class OpenAiCompatibleProvider(ModelProvider):
         self._temperature = temperature
         self._client = client
         self._max_tokens = max_tokens
+        self.last_usage = {}
         self._provider_name = provider_name
         self._extra_headers = dict(extra_headers or {})
         self._use_json_schema = use_json_schema
@@ -118,6 +119,10 @@ class OpenAiCompatibleProvider(ModelProvider):
                 )
             response.raise_for_status()
             data = response.json()
+            usage = data.get("usage") or {}
+            self.last_usage = {target: usage[name] for target, name in
+                (("input_tokens", "prompt_tokens"), ("output_tokens", "completion_tokens"))
+                if type(usage.get(name)) is int and 0 <= usage[name] < 2**63}
             choice = (data.get("choices") or [{}])[0]
             from ..observability import record_response
             usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}

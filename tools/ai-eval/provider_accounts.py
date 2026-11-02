@@ -74,11 +74,19 @@ def replace_env(path, text):
 def apply_accounts(dsn, master, payload):
     # One transaction: invalid accounts cannot leave a half-imported pool.
     with connect(dsn, readonly=False) as db:
+        managed = db.execute("SELECT to_regclass('ai_provider_management') AS name").fetchone()["name"]
+        if managed:
+            db.execute("SELECT revision FROM ai_provider_management WHERE singleton=1 FOR UPDATE")
         for pool in payload.get("pools", []):
             save_pool(db, pool["platform"], pool["default_model"], pool["global_rpm_limit"],
                       pool["global_rpd_limit"], pool["enabled"])
         for source in payload.get("accounts", []):
             save_source(db, master, source)
+        if managed:
+            db.execute("UPDATE ai_provider_management SET revision=revision+1 WHERE singleton=1")
+            db.execute("INSERT INTO ai_provider_audit(actor_id,action,changes) VALUES (0,'operator_updated',%s::jsonb)",
+                (json.dumps({"sourceIds": [s["id"] for s in payload.get("accounts", [])],
+                    "platforms": [p["platform"] for p in payload.get("pools", [])]}),))
     return load_registry(dsn, master)
 
 
@@ -182,7 +190,7 @@ def import_env(path, payload, config=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command",choices=("import-env","upsert","list","probe","init-private","copy-registry"))
+    parser.add_argument("command",choices=("import-env","upsert","list","probe","init-private","init-management","copy-registry"))
     parser.add_argument("--env-file",type=Path)
     parser.add_argument("--platform",choices=("gemini","deepseek","openai_compatible"),default="gemini")
     parser.add_argument("--generate",action="store_true",help="Probe only: send at most one bounded paid generation; never retry")
@@ -191,7 +199,12 @@ def main():
     try:
         # An explicit file always wins over ambient credentials, including for later upserts/probes.
         path = args.env_file or ROOT/".env"
-        config = dict(dotenv_values(path, interpolate=False)) if args.env_file or args.command in ("init-private", "copy-registry") else environment(path)
+        config = dict(dotenv_values(path, interpolate=False)) if args.env_file or args.command in ("init-private", "init-management", "copy-registry") else environment(path)
+        if args.command == "init-management":
+            from app.provider_admin import initialize_management
+            initialize_management(config["AI_PROVIDER_DATABASE_URL"])
+            print("Gemini management schema verified; no account data changed.")
+            return
         if args.command == "init-private":
             from app.registry_migration import initialize
             initialize(config["AI_PROVIDER_DATABASE_URL"])
