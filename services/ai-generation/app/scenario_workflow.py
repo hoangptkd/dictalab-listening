@@ -25,7 +25,8 @@ from . import scenario_prompts_personalized_fewshot_v2 as previous_personalized_
 from . import scenario_prompts_personalized_fewshot_v3 as previous_personalized_fewshot_v3
 from . import scenario_prompts_personalized_fewshot_v4 as previous_personalized_fewshot_v4
 from . import scenario_prompts_personalized_fewshot_v5 as previous_personalized_fewshot_v5
-from . import scenario_prompts_personalized_fewshot_v6 as personalized_fewshot
+from . import scenario_prompts_personalized_fewshot_v6 as previous_personalized_fewshot_v6
+from . import scenario_prompts_personalized_fewshot_v7 as personalized_fewshot
 
 V4_PROMPT_VERSION = "SCENARIO_LISTENING_V4"
 OUTPUT_TOKENS = {"EXTRACT": 2600, "GENERATE": 3200, "QUESTIONS": 4000,
@@ -404,6 +405,27 @@ class PersonalizedQuestionReview(QuestionReview):
     questionChecks: list[PersonalizedQuestionCheck] = Field(min_length=6, max_length=6)
 
 
+class QuestionEvidenceCheck(StrictModel):
+    activityId: Literal["a1", "a2", "a3"]
+    questionId: str
+    requestedMeaningEn: str = Field(min_length=1, max_length=200)
+    answerUnitsVi: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(max_length=4)
+    reasonVi: str = Field(min_length=1, max_length=300)
+    answerSupported: bool
+    distinctMeaning: bool
+    factSupported: bool
+    questionMatchesFact: bool
+    speechActSupported: bool
+    noAnswerLeak: bool
+    vietnameseNatural: bool
+    skillAppropriate: bool
+    groundingSupported: bool
+
+
+class QuestionEvidenceReview(PersonalizedQuestionReview):
+    questionChecks: list[QuestionEvidenceCheck] = Field(min_length=6, max_length=6)
+
+
 class PersonalizedRubricCheck(RubricCheck):
     category: Literal["SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS", "PROFILE", "LEARNING_GOAL"]
 
@@ -501,19 +523,24 @@ def prompt_hash():
     return hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def personalized_question_review_model(release):
+    return QuestionEvidenceReview if getattr(release, "QUESTION_REVIEW_VERSION", 1) == 2 else PersonalizedQuestionReview
+
+
 def personalized_prompt_hash(release=personalized_fewshot):
     instructions = {**release.INSTRUCTIONS, "GRADE": getattr(release, "GRADE", V4_INSTRUCTIONS["GRADE"])}
+    question_review = personalized_question_review_model(release)
     models = (LearningContext, PersonalizedSpecification, PersonalizedExtraction, Dialogue, PersonalizedQuestions,
-              PersonalizedContent, Translations, PersonalizedQuestionReview, PersonalizedReview, Grade)
+              PersonalizedContent, Translations, question_review, PersonalizedReview, Grade)
     manifest = {"version": release.PROMPT_VERSION, "instructions": instructions, "outputTokens": OUTPUT_TOKENS,
                 "schemas": {m.__name__: m.model_json_schema() for m in models},
-                "reviewResponseSchemas": {m.__name__: response_schema(m) for m in (PersonalizedQuestionReview, PersonalizedReview)}}
+                "reviewResponseSchemas": {m.__name__: response_schema(m) for m in (question_review, PersonalizedReview)}}
     return hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def personalized_release(requested_hash):
     # Dispatch by the immutable job pin, including jobs queued before this release.
-    for release in (personalized_fewshot, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4, previous_personalized_fewshot_v3, previous_personalized_fewshot_v2, previous_personalized_fewshot, personalized):
+    for release in (personalized_fewshot, previous_personalized_fewshot_v6, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4, previous_personalized_fewshot_v3, previous_personalized_fewshot_v2, previous_personalized_fewshot, personalized):
         if requested_hash == personalized_prompt_hash(release):
             return release
     raise ValueError("scenario prompt mismatch")
@@ -678,7 +705,8 @@ def validate_question_review(verdict, content, flexible=False):
             or not all(meanings) or len(set(meanings)) != len(meanings)
             or any(not q.answerUnitsVi or (not flexible and len(q.answerUnitsVi) != 1) or any(not unit.strip() for unit in q.answerUnitsVi) for q in verdict.questionChecks)
             or any(not q.reasonVi.strip() or not all((q.answerSupported, q.distinctMeaning, q.factSupported,
-                q.questionMatchesFact, q.speechActSupported, q.atomicMeaning, q.noAnswerLeak, q.vietnameseNatural))
+                q.questionMatchesFact, q.speechActSupported, q.noAnswerLeak, q.vietnameseNatural))
+                or isinstance(q, QuestionCheck) and not q.atomicMeaning
                 for q in verdict.questionChecks)):
         raise ValueError("question quality rejected")
     if isinstance(verdict, PersonalizedQuestionReview) and any(not q.skillAppropriate or not q.groundingSupported for q in verdict.questionChecks):
@@ -729,7 +757,7 @@ async def execute(event, settings):
     payload = event.payload
     is_personalized = payload.contractVersion == "scenario-job.v2"
     release = personalized_release(payload.promptHash) if is_personalized else None
-    advisory = release in (personalized_fewshot, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4)
+    advisory = release in (personalized_fewshot, previous_personalized_fewshot_v6, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4)
     flexible = advisory or release is previous_personalized_fewshot_v3
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)} if is_personalized else {}
     instructions = {**release.INSTRUCTIONS, "GRADE": getattr(release, "GRADE", V4_INSTRUCTIONS["GRADE"])} if is_personalized else INSTRUCTIONS
@@ -783,7 +811,7 @@ async def execute(event, settings):
             question_review_ok = False
             try:
                 question_review = await call("REVIEW_QUESTIONS", {"content": content.model_dump(),
-                    "groundedQuestions": questions.model_dump(), **context}, PersonalizedQuestionReview if is_personalized else QuestionReview)
+                    "groundedQuestions": questions.model_dump(), **context}, personalized_question_review_model(release) if is_personalized else QuestionReview)
                 (validate_question_review.__wrapped__ if advisory else validate_question_review)(question_review, content, flexible)
                 question_review_ok = True
             except (ValueError, QualityRejected) as invalid:

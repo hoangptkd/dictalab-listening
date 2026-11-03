@@ -112,13 +112,15 @@ def personal_payload(phase="GENERATE", context=None, **changes):
     return payload(phase, **{**values, **changes})
 
 
-def personal_responses():
+def personal_responses(release=None):
     responses = generation_responses()
     for activity in responses[1]["activities"]:
         for q in activity["questions"]:
             q.update(supportKind="direct", inferenceReasonEn="")
     for q in responses[2]["questionChecks"]:
         q.update(skillAppropriate=True, groundingSupported=True)
+        if getattr(release or workflow.personalized_fewshot, "QUESTION_REVIEW_VERSION", 1) == 2:
+            q.pop("atomicMeaning")
     responses[4]["rubricChecks"] += [dict(category=k, passed=True, reasonVi="Đã đối chiếu với cấu hình bài luyện") for k in ("PROFILE", "LEARNING_GOAL")]
     return responses
 
@@ -189,7 +191,7 @@ def test_personalization_rejects_inconsistent_jobs_before_model_calls(fault):
 
 @pytest.mark.parametrize("fault", ["focus", "profile", "grounding", "inference", "skill"])
 def test_personalized_quality_gates_fail_closed(fault):
-    responses = personal_responses()
+    responses = personal_responses(workflow.previous_personalized_fewshot_v3)
     context = learning_context()
     if fault == "focus":
         context["focusSkill"] = "reason"

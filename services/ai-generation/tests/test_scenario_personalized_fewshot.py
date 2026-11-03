@@ -106,15 +106,17 @@ def test_missing_prompt_marker_fails_closed(monkeypatch):
 
 @pytest.mark.parametrize("release", [w.personalized, fewshot, corrected, w.previous_personalized_fewshot_v3,
                                     w.previous_personalized_fewshot_v4, w.previous_personalized_fewshot_v5,
-                                    w.personalized_fewshot])
+                                    w.previous_personalized_fewshot_v6, w.personalized_fewshot])
 def test_every_actual_stage_message_uses_job_pin_including_grade(release):
     pin = w.personalized_prompt_hash(release)
     extracted = {**extraction_response(), "learnerMode": "listener", "learnerCharacterId": None, "genre": "discussion"}
-    for phase, responses in (("EXTRACT", [extracted]), ("GENERATE", personal_responses()), ("GRADE", [EXAMPLE["grade"]])):
+    for phase, responses in (("EXTRACT", [extracted]), ("GENERATE", personal_responses(release)), ("GRADE", [EXAMPLE["grade"]])):
         payload = personal_payload(phase, promptHash=pin)
         result, calls = execute(payload, responses)
         assert result["promptHash"] == pin and result["promptVersion"] == release.PROMPT_VERSION
         assert capability_metadata(payload, Settings())["promptVersion"] == release.PROMPT_VERSION
+        if phase == "GENERATE":
+            assert result["task"]["qualityPassed"] is True
         for purpose, messages in calls:
             stage = purpose.removeprefix("scenario_").upper()
             expected = getattr(release, "GRADE", w.V4_INSTRUCTIONS["GRADE"]) if stage == "GRADE" else release.INSTRUCTIONS[stage]
@@ -161,7 +163,8 @@ def test_compact_references_keep_complete_outputs_and_valid_labels(example):
         assert projected['target'] == context_data['target']
         assert all(context_data['profile'][k] == value for k, value in projected.get('profile', {}).items())
     context = w.LearningContext.model_validate(context_data)
-    result = MODELS[stage].model_validate(example['expectedOutput'])
+    model = w.personalized_question_review_model(w.personalized_fewshot) if stage == 'REVIEW_QUESTIONS' else MODELS[stage]
+    result = model.model_validate(example['expectedOutput'])
     if stage == 'EXTRACT':
         w.validate_extraction(result, data['inputVi'])
     elif stage == 'GENERATE':
@@ -198,7 +201,7 @@ def test_compact_references_keep_complete_outputs_and_valid_labels(example):
 def test_compact_review_covers_real_faults_without_reviving_one_detail_rule():
     examples = [e for e in w.personalized_fewshot.EXAMPLES if e['stage'] == 'REVIEW_QUESTIONS']
     accepted, rejected = sorted(examples, key=lambda e: not e['expectedOutput']['valid'])
-    assert any(len(c['answerUnitsVi']) == 2 and c['atomicMeaning']
+    assert any(len(c['answerUnitsVi']) == 2
                for c in accepted['expectedOutput']['questionChecks'])
     data = rejected['input']
     quote = data['groundedQuestions']['activities'][0]['questions'][0]['evidence'][0]['quoteEn']
@@ -213,6 +216,21 @@ def test_compact_review_covers_real_faults_without_reviving_one_detail_rule():
     after = sum(len(w.personalized_fewshot.INSTRUCTIONS[s].encode()) for s in fewshot.STAGES)
     assert after < before * .8
     assert w.personalized_prompt_hash(w.previous_personalized_fewshot_v5) == '358201f08eb87c7d4d2306220c3828a92cda57ac93d57faed80a508d892fa1c1'
+
+
+def test_current_review_schema_removes_atomic_flag_without_changing_historical_jobs():
+    model = w.personalized_question_review_model(w.personalized_fewshot)
+    assert 'atomicMeaning' not in json.dumps(w.response_schema(model))
+    assert all('atomicMeaning' not in p for p in w.personalized_fewshot.INSTRUCTIONS.values())
+    assert len([f for f in w.QuestionEvidenceCheck.model_fields.values() if f.annotation is bool]) == 9
+    response = personal_responses()[2]
+    model.model_validate(response)
+    response['questionChecks'][0]['atomicMeaning'] = True
+    with pytest.raises(ValueError):
+        model.model_validate(response)
+    assert w.personalized_question_review_model(w.previous_personalized_fewshot_v6) is w.PersonalizedQuestionReview
+    assert w.personalized_prompt_hash(w.previous_personalized_fewshot_v6) == 'c1dcc2e3cc29847ba09b6d53a447a45e8bfe48ae13e9dfb4e2e131173f1e6a18'
+    assert w.personalized_fewshot.GRADE == w.previous_personalized_fewshot_v6.GRADE
 
 
 def test_corrected_output_contracts_match_personalized_schemas_and_examples():
@@ -245,7 +263,7 @@ def test_corrected_output_contracts_match_personalized_schemas_and_examples():
 @pytest.mark.parametrize("field", [name for name, field in w.PersonalizedQuestionCheck.model_fields.items() if field.annotation is bool])
 @pytest.mark.parametrize("fault", ["missing", "false"])
 def test_personalized_question_review_requires_all_ten_checks(field, fault):
-    responses = personal_responses()
+    responses = personal_responses(w.previous_personalized_fewshot_v3)
     if fault == "missing":
         responses[2]["questionChecks"][0].pop(field)
     else:
@@ -257,7 +275,7 @@ def test_personalized_question_review_requires_all_ten_checks(field, fault):
 @pytest.mark.parametrize("category", ["SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS", "PROFILE", "LEARNING_GOAL"])
 @pytest.mark.parametrize("fault", ["missing", "false", "duplicate"])
 def test_personalized_review_requires_each_of_five_rubrics(category, fault):
-    responses = personal_responses()
+    responses = personal_responses(w.previous_personalized_fewshot_v3)
     checks = responses[4]["rubricChecks"]
     selected = next(check for check in checks if check["category"] == category)
     if fault == "missing":
