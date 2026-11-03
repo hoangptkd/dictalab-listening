@@ -170,7 +170,7 @@ def test_corrected_output_contracts_match_personalized_schemas_and_examples():
             assert {check["category"] for check in output["rubricChecks"]} == set(categories)
     assert {stage for stage in corrected.STAGES if corrected.INSTRUCTIONS[stage] != fewshot.INSTRUCTIONS[stage]} == {"REVIEW_QUESTIONS", "REVIEW"}
     assert corrected.EXAMPLE_SET_HASH == fewshot.EXAMPLE_SET_HASH
-    assert w.personalized_prompt_hash() == w.personalized_prompt_hash(corrected)
+    assert w.personalized_release(w.personalized_prompt_hash(corrected)) is corrected
 
 
 @pytest.mark.parametrize("field", [name for name, field in w.PersonalizedQuestionCheck.model_fields.items() if field.annotation is bool])

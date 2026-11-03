@@ -43,6 +43,9 @@ final class ScenarioContent {
         content(task,spec,profile,null);
     }
     static void content(JsonNode task, JsonNode spec, JsonNode profile,JsonNode context) {
+        content(task,spec,profile,context,false);
+    }
+    static void content(JsonNode task, JsonNode spec, JsonNode profile,JsonNode context,boolean flexible) {
         fields(task,"activities","translations","qualityPassed"); check(task.path("qualityPassed").isBoolean() && task.path("qualityPassed").asBoolean());
         list(task.path("activities"),3,3); list(task.path("translations"),6,18);
         var speakers = new HashSet<String>(); spec.path("characters").forEach(c -> speakers.add(c.path("id").asText()));
@@ -59,7 +62,7 @@ final class ScenarioContent {
                 expected.add(a.path("id").asText() + "/" + sid);
             }
             check(heardSpeakers.equals(speakers));
-            check(words >= profile.path("minWordsPerActivity").asInt() && words <= profile.path("maxWordsPerActivity").asInt()); total += words;
+            if (!flexible) check(words >= profile.path("minWordsPerActivity").asInt() && words <= profile.path("maxWordsPerActivity").asInt()); total += words;
             var ids = new HashSet<String>();
             for (var q : a.path("questions")) {
                 if (context==null) fields(q,"id","type","skill","promptVi","answerVi","evidence");
@@ -88,7 +91,7 @@ final class ScenarioContent {
             check(ids.equals(Set.of("q1","q2")));
         }
         check(context==null || focusCovered);
-        check(total <= profile.path("maxWordsPerSession").asInt()); var actual = new HashSet<String>();
+        if (!flexible) check(total <= profile.path("maxWordsPerSession").asInt()); var actual = new HashSet<String>();
         for (var t : task.path("translations")) {
             fields(t,"activityId","segmentId","textVi"); text(t,"textVi",800);
             check(actual.add(id(t,"activityId") + "/" + id(t,"segmentId")));

@@ -21,7 +21,8 @@ from .scenario_prompts_v5 import INSTRUCTIONS as V5_INSTRUCTIONS
 from .scenario_contract import LearningContext
 from . import scenario_prompts_personalized as personalized
 from . import scenario_prompts_personalized_fewshot as previous_personalized_fewshot
-from . import scenario_prompts_personalized_fewshot_v2 as personalized_fewshot
+from . import scenario_prompts_personalized_fewshot_v2 as previous_personalized_fewshot_v2
+from . import scenario_prompts_personalized_fewshot_v3 as personalized_fewshot
 
 V4_PROMPT_VERSION = "SCENARIO_LISTENING_V4"
 OUTPUT_TOKENS = {"EXTRACT": 2600, "GENERATE": 3200, "QUESTIONS": 4000,
@@ -509,7 +510,7 @@ def personalized_prompt_hash(release=personalized_fewshot):
 
 def personalized_release(requested_hash):
     # Dispatch by the immutable job pin, including jobs queued before this release.
-    for release in (personalized_fewshot, previous_personalized_fewshot, personalized):
+    for release in (personalized_fewshot, previous_personalized_fewshot_v2, previous_personalized_fewshot, personalized):
         if requested_hash == personalized_prompt_hash(release):
             return release
     raise ValueError("scenario prompt mismatch")
@@ -563,7 +564,7 @@ def validate_extraction(extracted, input_vi):
 
 
 @trace_gate
-def validate_dialogue(dialogue, spec, profile):
+def validate_dialogue(dialogue, spec, profile, flexible=False):
     if [a.id for a in dialogue.activities] != ["a1", "a2", "a3"]:
         raise ValueError("invalid activity order")
     speakers = {c.id for c in spec.characters}
@@ -577,10 +578,10 @@ def validate_dialogue(dialogue, spec, profile):
         if {s.speakerId for s in activity.segments} != speakers:
             raise ValueError("both speakers required")
         count = sum(len(re.findall(r"\S+", s.textEn)) for s in activity.segments)
-        if not profile.minWordsPerActivity <= count <= profile.maxWordsPerActivity:
+        if not flexible and not profile.minWordsPerActivity <= count <= profile.maxWordsPerActivity:
             raise ValueError("activity word limit")
         total += count
-    if total > profile.maxWordsPerSession:
+    if not flexible and total > profile.maxWordsPerSession:
         raise ValueError("session word limit")
 
 
@@ -640,8 +641,8 @@ def attach_questions(dialogue, questions, context=None):
 
 
 @trace_gate
-def validate_content(content, spec, profile, translations=None):
-    validate_dialogue(content, spec, profile)
+def validate_content(content, spec, profile, translations=None, flexible=False):
+    validate_dialogue(content, spec, profile, flexible)
     for activity in content.activities:
         segments = {s.id: s for s in activity.segments}
         if len({q.id for q in activity.questions}) != 2:
@@ -666,13 +667,13 @@ def validate_content(content, spec, profile, translations=None):
 
 
 @trace_gate
-def validate_question_review(verdict, content):
+def validate_question_review(verdict, content, flexible=False):
     expected = {(a.id, q.id) for a in content.activities for q in a.questions}
     checked = {(q.activityId, q.questionId) for q in verdict.questionChecks}
     meanings = [" ".join(q.requestedMeaningEn.casefold().split()) for q in verdict.questionChecks]
     if (not verdict.valid or verdict.issues or checked != expected or len(verdict.questionChecks) != len(expected)
             or not all(meanings) or len(set(meanings)) != len(meanings)
-            or any(len(q.answerUnitsVi) != 1 or not q.answerUnitsVi[0].strip() for q in verdict.questionChecks)
+            or any(not q.answerUnitsVi or (not flexible and len(q.answerUnitsVi) != 1) or any(not unit.strip() for unit in q.answerUnitsVi) for q in verdict.questionChecks)
             or any(not q.reasonVi.strip() or not all((q.answerSupported, q.distinctMeaning, q.factSupported,
                 q.questionMatchesFact, q.speechActSupported, q.atomicMeaning, q.noAnswerLeak, q.vietnameseNatural))
                 for q in verdict.questionChecks)):
@@ -724,6 +725,7 @@ async def execute(event, settings):
     deadline = time.monotonic() + remaining
     payload = event.payload
     is_personalized = payload.contractVersion == "scenario-job.v2"
+    flexible = is_personalized and personalized_release(payload.promptHash) is personalized_fewshot
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)} if is_personalized else {}
     instructions = {**personalized_release(payload.promptHash).INSTRUCTIONS, "GRADE": V4_INSTRUCTIONS["GRADE"]} if is_personalized else INSTRUCTIONS
     calls = []
@@ -763,24 +765,24 @@ async def execute(event, settings):
                     (payload.profile.minWordsPerActivity + payload.profile.maxWordsPerActivity) // 2,
                     payload.profile.maxWordsPerSession // 3)}}, Dialogue)
             try:
-                validate_dialogue(dialogue, payload.specification, payload.profile)
+                validate_dialogue(dialogue, payload.specification, payload.profile, flexible)
             except ValueError as invalid:
                 raise QualityRejected("invalid dialogue") from invalid
             questions = await call("QUESTIONS", {"dialogue": dialogue.model_dump(), **context}, PersonalizedQuestions if is_personalized else Questions)
             try:
                 content = attach_questions(dialogue, questions, payload.learningContext)
-                validate_content(content, payload.specification, payload.profile)
+                validate_content(content, payload.specification, payload.profile, flexible=flexible)
             except ValueError as invalid:
                 raise QualityRejected("invalid scenario content") from invalid
             question_review = await call("REVIEW_QUESTIONS", {"content": content.model_dump(),
                 "groundedQuestions": questions.model_dump(), **context}, PersonalizedQuestionReview if is_personalized else QuestionReview)
             try:
-                validate_question_review(question_review, content)
+                validate_question_review(question_review, content, flexible)
             except ValueError as invalid:
                 raise QualityRejected("question quality rejected") from invalid
             translated = await call("TRANSLATE", {**dialogue.model_dump(), **context}, Translations)
             try:
-                validate_content(content, payload.specification, payload.profile, translated)
+                validate_content(content, payload.specification, payload.profile, translated, flexible)
             except ValueError as invalid:
                 raise QualityRejected("invalid translations") from invalid
             verdict = await call("REVIEW", {"inputVi": payload.inputVi, "specification": payload.specification.model_dump(),

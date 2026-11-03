@@ -1,0 +1,45 @@
+# Quy tắc kiểm duyệt bài nghe tình huống
+
+Tài liệu mô tả mã nguồn few-shot V3 sau thay đổi, không khẳng định runtime đang chạy đã cập nhật. Có hai loại kiểm tra: **backend** dùng điều kiện cố định; **AI reviewer** đưa ra nhận định ngữ nghĩa và có thể nhầm. Nếu điều kiện backend thất bại, hoặc reviewer báo lỗi, hệ thống từ chối bài.
+
+## Đã thay đổi trong V3
+
+- Số từ tối thiểu/tối đa mỗi activity và tối đa cả bài chỉ là hướng dẫn viết theo profile; Python và Core không từ chối V3 vì số từ vượt hoặc thiếu ngưỡng. Các giới hạn ký tự/segment bên dưới vẫn áp dụng.
+- Một câu hỏi có thể yêu cầu nhiều thông tin. Đáp án phải trả lời đầy đủ, bằng chứng hỗ trợ các thông tin đó. `atomicMeaning` là tên trường cũ giữ tương thích, V3 yêu cầu AI dùng nó để kiểm tra câu rõ ràng và có thể trả lời, không dùng để cấm nhiều thông tin. Reviewer vẫn có thể từ chối nếu đánh giá sai.
+- Ví dụ reviewer cũ dạy từ chối câu hỏi do gộp thông tin được bỏ khỏi prompt V3. Job cũ giữ chính sách theo pin cũ.
+
+## 1. EXTRACT — phân tích yêu cầu
+
+**Backend:** đúng hai nhân vật với ID khác nhau; người nghe không gắn vào nhân vật, người tham gia phải gắn vào vai có thật trong đặc tả. Yêu cầu hợp lệ phải có ít nhất một trích dẫn đầu vào; từng trích dẫn thông tin do người dùng cung cấp và suy luận phải có nguyên văn trong đầu vào. Không được trùng nội dung khai báo. Tối đa sáu trích dẫn do người dùng cung cấp, bốn suy luận và bốn giả định theo schema; tổng suy luận và giả định không quá bốn. Các trường phải theo định dạng, độ dài và danh sách nhãn schema.
+
+**Prompt:** giữ vai, quan hệ, điều kiện, thời gian, số lượng và độ chắc chắn; phân biệt dữ kiện người dùng, suy luận và giả định. Có thể chọn bối cảnh hư cấu nếu yêu cầu chỉ mô tả kỹ năng. Từ chối yêu cầu thực sự không an toàn hoặc không thể hiểu.
+
+## 2. GENERATE — hội thoại
+
+**Backend:** đúng ba activity theo thứ tự a1–a3, mỗi activity có 2–6 segment và cả hai nhân vật. ID segment không trùng trong activity; speaker phải thuộc đặc tả. Mỗi đoạn tiếng Anh có 1–600 ký tự. Không loại V3 theo số từ.
+
+**Prompt:** các phần liên kết; giữ vai và dữ kiện đã cho, phân biệt sự thật, ý kiến, giả định, đề xuất và việc đã đồng ý. Có thể thêm chi tiết hợp lý phục vụ bối cảnh. Không bắt buộc mọi hội thoại có giao dịch hoặc kết thúc bằng thỏa thuận. Từ vựng, cú pháp, mật độ và suy luận theo profile; đủ nội dung phục vụ mục tiêu nghe. Chiều dài mục tiêu là hướng dẫn mềm.
+
+## 3. QUESTIONS — câu hỏi, đáp án và bằng chứng
+
+**Backend:** đúng q1 và q2 trong mỗi activity; kỹ năng thuộc profile, ít nhất một câu đạt focusSkill. Sáu factEn không được trống hoặc trùng nguyên văn sau chuẩn hóa. Bằng chứng gồm 1–3 trích dẫn chính xác từ segment của cùng activity. Nhãn suy luận phải hợp chính sách profile và có giải thích; nhãn khác không được chứa giải thích suy luận. Câu gắn agreement phải có trích dẫn theo thứ tự từ cả hai người. Một số cách hỏi về proposal bị chặn nếu khẳng định hai bên đã đồng ý. Câu hỏi tối đa 300 ký tự, đáp án 200, factEn 300, mỗi trích dẫn 400.
+
+**Prompt:** câu hỏi có thể gồm nhiều thông tin, đáp án bao phủ đủ các phần. Bảo toàn điều kiện, phủ định và mức chắc chắn; không biến đề xuất thành thỏa thuận. Không hỏi trùng nghĩa, không lộ đáp án, không dựa vào kiến thức ngoài. Suy luận phải có căn cứ và không có đáp án cạnh tranh hợp lý. Người học có thể trả lời tiếng Việt, tiếng Anh hoặc kết hợp.
+
+## 4. REVIEW_QUESTIONS — AI xét câu hỏi
+
+AI trả đủ sáu bản kiểm, lý do, đơn vị đáp án và mười cờ: `answerSupported`, `distinctMeaning`, `factSupported`, `questionMatchesFact`, `speechActSupported`, `atomicMeaning`, `noAnswerLeak`, `vietnameseNatural`, `skillAppropriate`, `groundingSupported`. Backend yêu cầu đủ và đúng ID, câu mô tả nghĩa khác nhau sau chuẩn hóa, có ít nhất một answerUnitsVi không rỗng, các cờ true, lý do không rỗng, `valid=true` và `issues=[]`. Schema hiện cho tối đa bốn answerUnitsVi mỗi câu. Reviewer có thể nhận diện sai; qua gate không chứng minh nội dung đúng.
+
+## 5. TRANSLATE và REVIEW — bản dịch và nội dung
+
+**Backend:** có đúng một bản dịch cho mỗi segment, không thiếu/trùng ID; mỗi bản dịch 1–800 ký tự và không được sao nguyên văn một câu tiếng Anh có ít nhất ba từ. Reviewer phải trả đúng năm rubric `SOURCE_ROLES`, `DIALOGUE`, `TRANSLATIONS`, `PROFILE`, `LEARNING_GOAL`, mỗi rubric một lần; đúng một bản kiểm cho mỗi bản dịch. Tất cả rubric và bốn cờ của từng bản dịch phải đạt, lý do không rỗng, `valid=true` và không có issues.
+
+**Prompt:** AI kiểm vai và dữ kiện gốc; tính liên tục, logic và mức phù hợp profile; mục tiêu học; nghĩa, thuật ngữ, tiếng Việt và độ tự nhiên của từng bản dịch. Các mức thời gian, phủ định và độ chắc chắn cần được giữ. Tên riêng và từ viết tắt phù hợp được phép giữ; từ tiếng Anh thông thường chưa dịch có thể bị reviewer từ chối.
+
+## 6. GRADE — chấm câu trả lời
+
+Prompt V4 nhận câu trả lời bằng tiếng Anh, tiếng Việt hoặc kết hợp, xem xét ý nghĩa và chấp nhận diễn đạt tương đương. Backend yêu cầu đúng hai ID câu hỏi và các trạng thái hợp lệ `CAPTURED`, `PARTIAL`, `MISSED`, `INCORRECT`, `UNCERTAIN`. Đoạn evidenceVi nếu có phải trích nguyên văn câu người học; các trạng thái CAPTURED/PARTIAL/INCORRECT cần bằng chứng không rỗng.
+
+## Các điểm có thể còn cứng nhắc để xem xét
+
+Số activity/segment/câu hỏi cố định; tối đa ba trích dẫn evidence và bốn đơn vị đáp án; bằng chứng phải trích nguyên văn cùng activity; cờ reviewer và rubric đều bắt buộc đạt; bài bị từ chối khi có bất kỳ issue; kiểm tra trùng nghĩa và lộ đáp án có thể chưa hiểu ngữ cảnh; reviewer tự đánh giá nhãn kỹ năng, độ khó, bản dịch và sự nhất quán có thể sai. Chính sách độ khó vẫn được reviewer xét dù số từ không còn là ngưỡng backend.
