@@ -124,7 +124,7 @@ def personal_responses():
 
 
 @pytest.mark.parametrize("code", ["general-communication", "toeic-listening", "ielts-listening"])
-def test_personalized_context_reaches_every_stage_and_keeps_grade_v4(code):
+def test_personalized_context_reaches_every_stage_and_uses_current_grade(code):
     context = learning_context(code)
     result, calls = execute(personal_payload(context=context), personal_responses())
     assert result["promptVersion"] == workflow.personalized_fewshot.PROMPT_VERSION
@@ -132,7 +132,7 @@ def test_personalized_context_reaches_every_stage_and_keeps_grade_v4(code):
     for _, messages in calls:
         assert json.loads(messages[1]["content"])["learningContext"] == personal_payload(context=context).learningContext.model_dump(exclude_none=True)
     _, grade_calls = execute(personal_payload("GRADE", context=context), [EXAMPLE["grade"]])
-    assert grade_calls[0][1][0]["content"] == workflow.V4_INSTRUCTIONS["GRADE"]
+    assert grade_calls[0][1][0]["content"] == workflow.personalized_fewshot.GRADE
 
 
 def test_personalized_prompt_pin_and_legacy_payload_fingerprint_are_stable():

@@ -1,6 +1,6 @@
 # Quy tắc kiểm duyệt bài nghe tình huống
 
-Tài liệu mô tả mã nguồn few-shot V4, không khẳng định runtime đang chạy đã cập nhật. Backend vẫn từ chối khi kiểm tra cấu trúc hoặc bằng chứng thất bại. Kết luận và lỗi định dạng đầu ra của AI reviewer được lưu để tham khảo, không tự động từ chối bài. Khi một reviewer không đạt hoặc trả sai định dạng, `qualityPassed` là `false` và `reviewAdvisory` lưu kết quả tương ứng. Lỗi kết nối hoặc timeout tới nhà cung cấp vẫn có thể khiến tác vụ thất bại. Những job pin phiên bản cũ giữ chính sách cũ.
+Tài liệu mô tả mã nguồn few-shot V5, không khẳng định runtime đang chạy đã cập nhật. Backend vẫn từ chối khi kiểm tra cấu trúc hoặc bằng chứng thất bại. Kết luận và lỗi định dạng đầu ra của AI reviewer được lưu để tham khảo, không tự động từ chối bài. Khi một reviewer không đạt hoặc trả sai định dạng, `qualityPassed` là `false` và `reviewAdvisory` lưu kết quả tương ứng. Lỗi kết nối hoặc timeout tới nhà cung cấp vẫn có thể khiến tác vụ thất bại. Những job pin phiên bản cũ giữ chính sách cũ.
 
 ## Đã thay đổi trong V3
 
@@ -38,7 +38,7 @@ AI trả đủ sáu bản kiểm, lý do, đơn vị đáp án và mười cờ:
 
 ## 6. GRADE — chấm câu trả lời
 
-Prompt V4 nhận câu trả lời bằng tiếng Anh, tiếng Việt hoặc kết hợp, xem xét ý nghĩa và chấp nhận diễn đạt tương đương. Backend yêu cầu đúng hai ID câu hỏi và các trạng thái hợp lệ `CAPTURED`, `PARTIAL`, `MISSED`, `INCORRECT`, `UNCERTAIN`. Đoạn evidenceVi nếu có phải trích nguyên văn câu người học; các trạng thái CAPTURED/PARTIAL/INCORRECT cần bằng chứng không rỗng.
+Prompt GRADE V5 nhận câu trả lời bằng tiếng Anh, tiếng Việt hoặc kết hợp, xem xét ý nghĩa và chấp nhận diễn đạt tương đương. QUESTIONS bỏ cả hạn chế một ý lẫn câu cho phép nhiều ý được thêm trước đó. REVIEW_QUESTIONS giữ tên trường `atomicMeaning` để tương thích dữ liệu, với nghĩa câu hỏi rõ ràng và trả lời được từ hội thoại. GRADE không giới hạn một ý: `CAPTURED` khi đúng đủ thông tin được hỏi; `PARTIAL` khi đúng một phần nhưng phần còn lại thiếu hoặc sai; `INCORRECT` khi trả lời sai và không đúng thông tin nào được hỏi; `MISSED` khi không có câu trả lời liên quan; `UNCERTAIN` khi chưa xác định được ý nghĩa câu trả lời. Ví dụ hỏi giờ và địa điểm gặp, trả lời đúng địa điểm nhưng sai giờ phải là `PARTIAL`. Backend yêu cầu đúng hai ID câu hỏi. Đoạn evidenceVi nếu có phải trích nguyên văn câu người học; các trạng thái CAPTURED/PARTIAL/INCORRECT cần bằng chứng không rỗng.
 
 ## Các điểm có thể còn cứng nhắc để xem xét
 

@@ -23,7 +23,8 @@ from . import scenario_prompts_personalized as personalized
 from . import scenario_prompts_personalized_fewshot as previous_personalized_fewshot
 from . import scenario_prompts_personalized_fewshot_v2 as previous_personalized_fewshot_v2
 from . import scenario_prompts_personalized_fewshot_v3 as previous_personalized_fewshot_v3
-from . import scenario_prompts_personalized_fewshot_v4 as personalized_fewshot
+from . import scenario_prompts_personalized_fewshot_v4 as previous_personalized_fewshot_v4
+from . import scenario_prompts_personalized_fewshot_v5 as personalized_fewshot
 
 V4_PROMPT_VERSION = "SCENARIO_LISTENING_V4"
 OUTPUT_TOKENS = {"EXTRACT": 2600, "GENERATE": 3200, "QUESTIONS": 4000,
@@ -500,7 +501,7 @@ def prompt_hash():
 
 
 def personalized_prompt_hash(release=personalized_fewshot):
-    instructions = {**release.INSTRUCTIONS, "GRADE": V4_INSTRUCTIONS["GRADE"]}
+    instructions = {**release.INSTRUCTIONS, "GRADE": getattr(release, "GRADE", V4_INSTRUCTIONS["GRADE"])}
     models = (LearningContext, PersonalizedSpecification, PersonalizedExtraction, Dialogue, PersonalizedQuestions,
               PersonalizedContent, Translations, PersonalizedQuestionReview, PersonalizedReview, Grade)
     manifest = {"version": release.PROMPT_VERSION, "instructions": instructions, "outputTokens": OUTPUT_TOKENS,
@@ -511,7 +512,7 @@ def personalized_prompt_hash(release=personalized_fewshot):
 
 def personalized_release(requested_hash):
     # Dispatch by the immutable job pin, including jobs queued before this release.
-    for release in (personalized_fewshot, previous_personalized_fewshot_v3, previous_personalized_fewshot_v2, previous_personalized_fewshot, personalized):
+    for release in (personalized_fewshot, previous_personalized_fewshot_v4, previous_personalized_fewshot_v3, previous_personalized_fewshot_v2, previous_personalized_fewshot, personalized):
         if requested_hash == personalized_prompt_hash(release):
             return release
     raise ValueError("scenario prompt mismatch")
@@ -727,10 +728,10 @@ async def execute(event, settings):
     payload = event.payload
     is_personalized = payload.contractVersion == "scenario-job.v2"
     release = personalized_release(payload.promptHash) if is_personalized else None
-    advisory = release is personalized_fewshot
-    flexible = release in (personalized_fewshot, previous_personalized_fewshot_v3)
+    advisory = release in (personalized_fewshot, previous_personalized_fewshot_v4)
+    flexible = advisory or release is previous_personalized_fewshot_v3
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)} if is_personalized else {}
-    instructions = {**personalized_release(payload.promptHash).INSTRUCTIONS, "GRADE": V4_INSTRUCTIONS["GRADE"]} if is_personalized else INSTRUCTIONS
+    instructions = {**release.INSTRUCTIONS, "GRADE": getattr(release, "GRADE", V4_INSTRUCTIONS["GRADE"])} if is_personalized else INSTRUCTIONS
     calls = []
     async with httpx.AsyncClient(timeout=remaining, limits=httpx.Limits(max_connections=settings.effective_http_max_connections)) as client:
         async def call(purpose, data, model):

@@ -104,7 +104,8 @@ def test_missing_prompt_marker_fails_closed(monkeypatch):
         fewshot.compile_instructions(fewshot.EXAMPLES)
 
 
-@pytest.mark.parametrize("release", [w.personalized, fewshot, corrected])
+@pytest.mark.parametrize("release", [w.personalized, fewshot, corrected, w.previous_personalized_fewshot_v3,
+                                    w.previous_personalized_fewshot_v4, w.personalized_fewshot])
 def test_every_actual_stage_message_uses_job_pin_including_grade(release):
     pin = w.personalized_prompt_hash(release)
     extracted = {**extraction_response(), "learnerMode": "listener", "learnerCharacterId": None, "genre": "discussion"}
@@ -115,7 +116,7 @@ def test_every_actual_stage_message_uses_job_pin_including_grade(release):
         assert capability_metadata(payload, Settings())["promptVersion"] == release.PROMPT_VERSION
         for purpose, messages in calls:
             stage = purpose.removeprefix("scenario_").upper()
-            expected = w.V4_INSTRUCTIONS["GRADE"] if stage == "GRADE" else release.INSTRUCTIONS[stage]
+            expected = getattr(release, "GRADE", w.V4_INSTRUCTIONS["GRADE"]) if stage == "GRADE" else release.INSTRUCTIONS[stage]
             assert messages[0]["content"] == expected
             if stage == "GRADE":
                 assert "Example input JSON:" not in messages[0]["content"]
