@@ -359,10 +359,11 @@ public class ScenarioEngine {
             boolean previousV4="e3b045db46013c6e9694ae450f8beeb168bc1b452cb1548bcbe43a4eb247535b".equals(input.path("promptHash").asText());
             boolean previousV5="6a3a61aa0762dce1e0898bec5f1cf46b5ae6189dddbe3015828a35667ebe6f8f".equals(input.path("promptHash").asText());
             boolean previousPersonalized="bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa".equals(input.path("promptHash").asText());
-            ScenarioContent.check(personalized ? previousPersonalized || release.personalizedPromptHash().equals(input.path("promptHash").asText())
+            boolean previousFewshot="54f9fdeda01717f5c8853239357dad6dff2e0fa94df929f6c82e6d2497af52a1".equals(input.path("promptHash").asText());
+            ScenarioContent.check(personalized ? previousPersonalized || previousFewshot || release.personalizedPromptHash().equals(input.path("promptHash").asText())
                     : legacy || previousV3 || previousV4 || previousV5 || release.promptHash().equals(input.path("promptHash").asText()));
             ScenarioContent.check(input.path("promptHash").asText().equals(result.path("promptHash").asText())
-                    && (personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4") : legacy ? "SCENARIO_LISTENING_V1" : previousV3 ? "SCENARIO_LISTENING_V3" : previousV4 ? "SCENARIO_LISTENING_V4" : previousV5 ? "SCENARIO_LISTENING_V5_CANDIDATE_1" : "SCENARIO_LISTENING_V5_GRADE_V4_1").equals(result.path("promptVersion").asText())
+                    && (personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : previousFewshot ? "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4" : "SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4") : legacy ? "SCENARIO_LISTENING_V1" : previousV3 ? "SCENARIO_LISTENING_V3" : previousV4 ? "SCENARIO_LISTENING_V4" : previousV5 ? "SCENARIO_LISTENING_V5_CANDIDATE_1" : "SCENARIO_LISTENING_V5_GRADE_V4_1").equals(result.path("promptVersion").asText())
                     && input.path("programHash").asText().equals(result.path("programHash").asText()));
             var expected=kind.equals("GENERATE") ? (legacy ? List.of("GENERATE","TRANSLATE","REVIEW")
                     : previousV3 ? List.of("GENERATE","FACTS","QUESTIONS","TRANSLATE","REVIEW")

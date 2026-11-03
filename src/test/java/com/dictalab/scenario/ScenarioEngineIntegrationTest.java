@@ -74,9 +74,10 @@ class ScenarioEngineIntegrationTest {
         String phase=input.path("phase").asText(); boolean tts=input.path("kind").asText().equals("tts");
         boolean personalized=input.path("contractVersion").asText().equals("scenario-job.v2");
         boolean previousPersonalized=input.path("promptHash").asText().equals("bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa");
+        boolean previousFewshot=input.path("promptHash").asText().equals("54f9fdeda01717f5c8853239357dad6dff2e0fa94df929f6c82e6d2497af52a1");
         var result=object().put("schemaVersion","1").put("generationId",id).put("requestId",id)
                 .put("provider",tts ? "cartesia" : "ollama").put("model","fixture-model").put("modelDigest","fixture-digest")
-                .put("promptVersion",tts ? "TTS_WAV_V1" : personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4") : "SCENARIO_LISTENING_V5_GRADE_V4_1")
+                .put("promptVersion",tts ? "TTS_WAV_V1" : personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : previousFewshot ? "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4" : "SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4") : "SCENARIO_LISTENING_V5_GRADE_V4_1")
                 .put("promptHash",input.path("promptHash").asText(release.promptHash())).put("programHash",input.path("programHash").asText());
         if (tts) result.set("task",object().put("contentType","audio/wav").put("size",wave().length).put("audioBase64",Base64.getEncoder().encodeToString(wave())));
         else {
@@ -116,9 +117,10 @@ class ScenarioEngineIntegrationTest {
         return new ScenarioPersonalization.Preference(code,2,new ScenarioGoalRequest.Target(scale.scaleId(),"LISTENING",target),current,"detail",version);
     }
 
-    @Test void queuedPersonalizedBaselineSettlesWithoutBeingRelabelledFewshot() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa", "54f9fdeda01717f5c8853239357dad6dff2e0fa94df929f6c82e6d2497af52a1"})
+    void queuedPersonalizedReleaseSettlesWithoutBeingRelabelled(String baseline) {
         String current=release.personalizedPromptHash();
-        String baseline="bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa";
         personalization.save(user,id(),preference("toeic-listening","250","",0));
         when(release.personalizedPromptHash()).thenReturn(baseline);
         var pending=engine.createDraft(user,id(),new ScenarioEngine.DraftRequest("","toeic-listening",2,""));
@@ -136,16 +138,18 @@ class ScenarioEngineIntegrationTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings={"old_version","wrong_hash","relabel_baseline"})
+    @org.junit.jupiter.params.provider.ValueSource(strings={"old_version","old_fewshot_version","wrong_hash","relabel_baseline","relabel_fewshot"})
     void personalizedResultCannotSwapPromptHashOrVersion(String fault) {
         personalization.save(user,id(),preference("toeic-listening","250","",0));
         if (fault.equals("relabel_baseline")) when(release.personalizedPromptHash())
                 .thenReturn("bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa");
+        if (fault.equals("relabel_fewshot")) when(release.personalizedPromptHash())
+                .thenReturn("54f9fdeda01717f5c8853239357dad6dff2e0fa94df929f6c82e6d2497af52a1");
         doAnswer(call -> {
             var response=done(call.getArgument(1),call.getArgument(3));
             var result=(ObjectNode)response.path("result");
             if (fault.equals("wrong_hash")) result.put("promptHash","0".repeat(64));
-            else result.put("promptVersion",fault.equals("old_version") ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4");
+            else result.put("promptVersion",fault.equals("old_version") ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : fault.equals("old_fewshot_version") ? "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4" : "SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4");
             return response;
         }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
         var pending=engine.createDraft(user,id(),new ScenarioEngine.DraftRequest("","toeic-listening",2,""));

@@ -201,3 +201,22 @@ Các kiểm tra gọi gateway giả lập, cơ sở dữ liệu H2 và exporter 
 6. Lưu mọi response thô, lỗi và usage ở thư mục riêng ngoài Git; đọc cả bài được gate duyệt để phát hiện lỗi lọt. Chưa có kết quả bước này thì không tuyên bố few-shot mới đã tăng chất lượng, giảm chi phí hoặc đạt chuẩn CEFR/TOEIC/IELTS.
 
 Không thêm RAG, kho vector, dịch vụ chọn ví dụ hay cơ chế train trong lần tích hợp này. Các phần đó chưa cần thiết để ví dụ theo bước đến đúng model và có thể kiểm chứng.
+
+## 10. Sửa hợp đồng reviewer sau khi duyệt thủ công ngày 03/11/2026
+
+Hai mâu thuẫn được xác nhận trong prompt few-shot cá nhân hóa V1:
+
+- REVIEW_QUESTIONS kế thừa Output Contract `all eight boolean checks` từ V5, dù `PersonalizedQuestionCheck` đã có 10 cờ bắt buộc. Hai cờ bổ sung là `skillAppropriate` và `groundingSupported`.
+- REVIEW kế thừa yêu cầu đúng ba rubric, nhưng phần cá nhân hóa, schema `PersonalizedReview` và ví dụ đã yêu cầu năm: `SOURCE_ROLES`, `DIALOGUE`, `TRANSLATIONS`, `PROFILE`, `LEARNING_GOAL`.
+
+Đây là lỗi chỉ dẫn prompt, không phải thiếu trường trong schema hoặc thiếu gate backend. Luồng chưa cá nhân hóa vẫn sử dụng đúng 8 cờ/3 rubric. Không sửa schema chung thành 10/5 vì sẽ phá hợp đồng đó.
+
+Bản sửa `SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4` thay Output Contract thành `all ten boolean checks` kèm danh sách đầy đủ, và `exactly five rubricChecks, one each for SOURCE_ROLES,DIALOGUE,TRANSLATIONS,PROFILE,LEARNING_GOAL`. Phần Personalized Rubric dẫn lại cùng hợp đồng năm mục. Pin mới: `6a857865dddd79783a50c6dbf45bfdd281feeb56b681bdff34abd24c4df5b2e3`.
+
+Chỉ hai instruction reviewer thay đổi. Bộ 13 ví dụ, schema, gate, token budget và GRADE V4 giữ nguyên. Worker/Core nhận cả baseline, few-shot V1 và V2 theo đúng cặp version/hash; job cũ không bị gắn nhãn lại. Resource pin cho job mới chuyển sang V2. Runtime đã chạy cần phát hành đồng bộ Core/worker/API và cập nhật approved pin theo quy trình hiện có; việc đổi source không tự xác nhận runtime đã cập nhật.
+
+Kiểm tra hồi quy đối chiếu Output Contract với schema và ví dụ; từng cờ thiếu/false hoặc rubric thiếu/false/trùng đều phải bị từ chối. Kiểm tra cả job pin cũ, pin mới, sai hash và tráo phiên bản. Snapshot `prompts-fewshot-duyet-thu-cong.md` của lượt 20 bài giữ làm bằng chứng lịch sử; bản sửa được xuất riêng thành `prompts-fewshot-duyet-thu-cong-v2.md`.
+
+Loại bỏ mâu thuẫn giúp model nhận chỉ dẫn nhất quán, nhưng không chứng minh tăng chất lượng ngữ nghĩa hay giảm false acceptance. Không gán kết quả 14/20 của V1 cho V2, không sinh lại bộ 20 bài trong nhiệm vụ sửa hợp đồng này.
+
+Kết quả kiểm tra bản sửa: 216 test Python workflow/few-shot/tracing/jobs, 17 test benchmark offline và 107 test Java liên quan đều đạt; kiểm tra UTF-8 và `git diff --check` đạt. Các test dùng gateway giả lập, không tạo bài AI mới. Chưa restart local hoặc deploy production trong nhiệm vụ này.

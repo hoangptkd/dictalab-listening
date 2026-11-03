@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from app import scenario_prompts_personalized_fewshot as fewshot
+from app import scenario_prompts_personalized_fewshot_v2 as corrected
 from app import scenario_workflow as w
 from app.config import Settings
 from app.jobs import capability_metadata, execution_fingerprint, digest
@@ -67,6 +68,7 @@ def test_reference_pair_matches_current_context_schema_and_gate(example):
 
 def test_examples_are_stage_local_and_baseline_is_unchanged():
     assert w.personalized_prompt_hash(w.personalized) == BASELINE
+    assert w.personalized_prompt_hash(fewshot) == "54f9fdeda01717f5c8853239357dad6dff2e0fa94df929f6c82e6d2497af52a1"
     assert w.prompt_hash() == "d43a3e228449dc64d7b6c103c2013558ac6e9415feabad8ff50e083900b0ae21"
     assert len(fewshot.EXAMPLES) == len({e["id"] for e in fewshot.EXAMPLES}) == 13
     evaluation_briefs = set()
@@ -102,7 +104,7 @@ def test_missing_prompt_marker_fails_closed(monkeypatch):
         fewshot.compile_instructions(fewshot.EXAMPLES)
 
 
-@pytest.mark.parametrize("release", [w.personalized, fewshot])
+@pytest.mark.parametrize("release", [w.personalized, fewshot, corrected])
 def test_every_actual_stage_message_uses_job_pin_including_grade(release):
     pin = w.personalized_prompt_hash(release)
     extracted = {**extraction_response(), "learnerMode": "listener", "learnerCharacterId": None, "genre": "discussion"}
@@ -142,3 +144,58 @@ def test_trace_metadata_lists_only_examples_for_executed_phase():
     assert w.example_metadata(pin, "GENERATE")["exampleSetHash"] == fewshot.EXAMPLE_SET_HASH
     assert w.example_metadata(BASELINE, "GENERATE") == w.example_metadata(pin, "GRADE") == {
         "promptMode": "zero-shot", "exampleIdsByStage": {}}
+
+
+def test_corrected_output_contracts_match_personalized_schemas_and_examples():
+    question_contract = corrected.INSTRUCTIONS["REVIEW_QUESTIONS"].split("OUTPUT CONTRACT\n")[1].split("\n\nEXAMPLES")[0]
+    checks = {name for name, field in w.PersonalizedQuestionCheck.model_fields.items() if field.annotation is bool}
+    assert len(checks) == 10
+    assert "all ten boolean checks (" + ",".join(
+        name for name in w.PersonalizedQuestionCheck.model_fields if name in checks) + ")" in question_contract
+    assert "all eight boolean checks" not in corrected.INSTRUCTIONS["REVIEW_QUESTIONS"]
+    review_contract = corrected.INSTRUCTIONS["REVIEW"].split("OUTPUT CONTRACT\n")[1].split("\n\nEXAMPLES")[0]
+    rubric_schema = w.PersonalizedReview.model_json_schema()
+    categories = rubric_schema["$defs"]["PersonalizedRubricCheck"]["properties"]["category"]["enum"]
+    assert len(categories) == 5
+    assert "exactly five rubricChecks, one each for " + ",".join(categories) in review_contract
+    assert rubric_schema["properties"]["rubricChecks"]["minItems"] == rubric_schema["properties"]["rubricChecks"]["maxItems"] == 5
+    assert "exactly SOURCE_ROLES,DIALOGUE,TRANSLATIONS in rubricChecks" not in corrected.INSTRUCTIONS["REVIEW"]
+    for example in corrected.EXAMPLES:
+        output = example["expectedOutput"]
+        if example["stage"] == "REVIEW_QUESTIONS":
+            for check in output["questionChecks"]:
+                assert {name for name, value in check.items() if type(value) is bool} == checks
+        elif example["stage"] == "REVIEW":
+            assert len(output["rubricChecks"]) == len(categories)
+            assert {check["category"] for check in output["rubricChecks"]} == set(categories)
+    assert {stage for stage in corrected.STAGES if corrected.INSTRUCTIONS[stage] != fewshot.INSTRUCTIONS[stage]} == {"REVIEW_QUESTIONS", "REVIEW"}
+    assert corrected.EXAMPLE_SET_HASH == fewshot.EXAMPLE_SET_HASH
+    assert w.personalized_prompt_hash() == w.personalized_prompt_hash(corrected)
+
+
+@pytest.mark.parametrize("field", [name for name, field in w.PersonalizedQuestionCheck.model_fields.items() if field.annotation is bool])
+@pytest.mark.parametrize("fault", ["missing", "false"])
+def test_personalized_question_review_requires_all_ten_checks(field, fault):
+    responses = personal_responses()
+    if fault == "missing":
+        responses[2]["questionChecks"][0].pop(field)
+    else:
+        responses[2]["questionChecks"][0][field] = False
+    with pytest.raises(w.QualityRejected):
+        execute(personal_payload(), responses)
+
+
+@pytest.mark.parametrize("category", ["SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS", "PROFILE", "LEARNING_GOAL"])
+@pytest.mark.parametrize("fault", ["missing", "false", "duplicate"])
+def test_personalized_review_requires_each_of_five_rubrics(category, fault):
+    responses = personal_responses()
+    checks = responses[4]["rubricChecks"]
+    selected = next(check for check in checks if check["category"] == category)
+    if fault == "missing":
+        checks.remove(selected)
+    elif fault == "false":
+        selected["passed"] = False
+    else:
+        selected["category"] = next(check["category"] for check in checks if check["category"] != category)
+    with pytest.raises(w.QualityRejected):
+        execute(personal_payload(), responses)

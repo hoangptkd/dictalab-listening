@@ -20,7 +20,8 @@ from .observability import trace_gate, trace_job
 from .scenario_prompts_v5 import INSTRUCTIONS as V5_INSTRUCTIONS
 from .scenario_contract import LearningContext
 from . import scenario_prompts_personalized as personalized
-from . import scenario_prompts_personalized_fewshot as personalized_fewshot
+from . import scenario_prompts_personalized_fewshot as previous_personalized_fewshot
+from . import scenario_prompts_personalized_fewshot_v2 as personalized_fewshot
 
 V4_PROMPT_VERSION = "SCENARIO_LISTENING_V4"
 OUTPUT_TOKENS = {"EXTRACT": 2600, "GENERATE": 3200, "QUESTIONS": 4000,
@@ -508,7 +509,7 @@ def personalized_prompt_hash(release=personalized_fewshot):
 
 def personalized_release(requested_hash):
     # Dispatch by the immutable job pin, including jobs queued before this release.
-    for release in (personalized_fewshot, personalized):
+    for release in (personalized_fewshot, previous_personalized_fewshot, personalized):
         if requested_hash == personalized_prompt_hash(release):
             return release
     raise ValueError("scenario prompt mismatch")
