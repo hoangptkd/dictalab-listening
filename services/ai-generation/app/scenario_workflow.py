@@ -24,7 +24,8 @@ from . import scenario_prompts_personalized_fewshot as previous_personalized_few
 from . import scenario_prompts_personalized_fewshot_v2 as previous_personalized_fewshot_v2
 from . import scenario_prompts_personalized_fewshot_v3 as previous_personalized_fewshot_v3
 from . import scenario_prompts_personalized_fewshot_v4 as previous_personalized_fewshot_v4
-from . import scenario_prompts_personalized_fewshot_v5 as personalized_fewshot
+from . import scenario_prompts_personalized_fewshot_v5 as previous_personalized_fewshot_v5
+from . import scenario_prompts_personalized_fewshot_v6 as personalized_fewshot
 
 V4_PROMPT_VERSION = "SCENARIO_LISTENING_V4"
 OUTPUT_TOKENS = {"EXTRACT": 2600, "GENERATE": 3200, "QUESTIONS": 4000,
@@ -512,7 +513,7 @@ def personalized_prompt_hash(release=personalized_fewshot):
 
 def personalized_release(requested_hash):
     # Dispatch by the immutable job pin, including jobs queued before this release.
-    for release in (personalized_fewshot, previous_personalized_fewshot_v4, previous_personalized_fewshot_v3, previous_personalized_fewshot_v2, previous_personalized_fewshot, personalized):
+    for release in (personalized_fewshot, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4, previous_personalized_fewshot_v3, previous_personalized_fewshot_v2, previous_personalized_fewshot, personalized):
         if requested_hash == personalized_prompt_hash(release):
             return release
     raise ValueError("scenario prompt mismatch")
@@ -728,7 +729,7 @@ async def execute(event, settings):
     payload = event.payload
     is_personalized = payload.contractVersion == "scenario-job.v2"
     release = personalized_release(payload.promptHash) if is_personalized else None
-    advisory = release in (personalized_fewshot, previous_personalized_fewshot_v4)
+    advisory = release in (personalized_fewshot, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4)
     flexible = advisory or release is previous_personalized_fewshot_v3
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)} if is_personalized else {}
     instructions = {**release.INSTRUCTIONS, "GRADE": getattr(release, "GRADE", V4_INSTRUCTIONS["GRADE"])} if is_personalized else INSTRUCTIONS

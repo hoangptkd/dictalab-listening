@@ -105,7 +105,8 @@ def test_missing_prompt_marker_fails_closed(monkeypatch):
 
 
 @pytest.mark.parametrize("release", [w.personalized, fewshot, corrected, w.previous_personalized_fewshot_v3,
-                                    w.previous_personalized_fewshot_v4, w.personalized_fewshot])
+                                    w.previous_personalized_fewshot_v4, w.previous_personalized_fewshot_v5,
+                                    w.personalized_fewshot])
 def test_every_actual_stage_message_uses_job_pin_including_grade(release):
     pin = w.personalized_prompt_hash(release)
     extracted = {**extraction_response(), "learnerMode": "listener", "learnerCharacterId": None, "genre": "discussion"}
@@ -142,9 +143,76 @@ def test_trace_metadata_lists_only_examples_for_executed_phase():
     pin = w.personalized_prompt_hash()
     assert set(w.example_metadata(pin, "EXTRACT")["exampleIdsByStage"]) == {"EXTRACT"}
     assert set(w.example_metadata(pin, "GENERATE")["exampleIdsByStage"]) == set(fewshot.STAGES) - {"EXTRACT"}
-    assert w.example_metadata(pin, "GENERATE")["exampleSetHash"] == fewshot.EXAMPLE_SET_HASH
+    assert w.example_metadata(pin, "GENERATE")["exampleSetHash"] == w.personalized_fewshot.EXAMPLE_SET_HASH
     assert w.example_metadata(BASELINE, "GENERATE") == w.example_metadata(pin, "GRADE") == {
         "promptMode": "zero-shot", "exampleIdsByStage": {}}
+
+
+@pytest.mark.parametrize("example", w.personalized_fewshot.EXAMPLES, ids=lambda e: e['id'])
+def test_compact_references_keep_complete_outputs_and_valid_labels(example):
+    data, stage = example['input'], example['stage']
+    reference = next(e for e in fewshot.EXAMPLES if e['id'] == example['metadata']['contextSourceId'])
+    context_data = copy.deepcopy(reference['input']['learningContext'])
+    if 'learningContext' in data:
+        projected = data['learningContext']
+        context_data['focusSkill'] = projected['focusSkill']
+        assert set(projected) <= {'programCode', 'target', 'focusSkill', 'profile'}
+        assert projected['programCode'] == context_data['programCode']
+        assert projected['target'] == context_data['target']
+        assert all(context_data['profile'][k] == value for k, value in projected.get('profile', {}).items())
+    context = w.LearningContext.model_validate(context_data)
+    result = MODELS[stage].model_validate(example['expectedOutput'])
+    if stage == 'EXTRACT':
+        w.validate_extraction(result, data['inputVi'])
+    elif stage == 'GENERATE':
+        w.validate_dialogue(result, w.PersonalizedSpecification.model_validate(data['specification']),
+                           w.PersonalizedProfile.model_validate(data['profile']), flexible=True)
+    elif stage == 'QUESTIONS':
+        w.attach_questions(w.Dialogue.model_validate(data['dialogue']), result, context)
+    elif stage == 'REVIEW_QUESTIONS':
+        questions = w.PersonalizedQuestions.model_validate(data['groundedQuestions'])
+        dialogue = w.Dialogue.model_validate(data['content'])
+        if result.valid:
+            content = w.attach_questions(dialogue, questions, context)
+            w.validate_question_review(result, content, flexible=True)
+        else:
+            content = w.PersonalizedContent.model_validate({'activities': [
+                {**a, 'questions': [{**{k: v for k, v in q.items() if k not in ('factEn', 'speechAct')},
+                                     'type': 'MEANING_RECALL_VI'}
+                                    for q in draft['questions']]}
+                for a, draft in zip(data['content']['activities'], data['groundedQuestions']['activities'])]})
+            with pytest.raises(ValueError):
+                w.validate_question_review(result, content, flexible=True)
+    elif stage == 'TRANSLATE':
+        assert {(a['id'], s['id']) for a in data['activities'] for s in a['segments']} == {
+            (s.activityId, s.segmentId) for s in result.segments}
+    else:
+        translations = w.Translations.model_validate(data['translations'])
+        if result.valid:
+            w.validate_review(result, translations)
+        else:
+            with pytest.raises(ValueError):
+                w.validate_review(result, translations)
+
+
+def test_compact_review_covers_real_faults_without_reviving_one_detail_rule():
+    examples = [e for e in w.personalized_fewshot.EXAMPLES if e['stage'] == 'REVIEW_QUESTIONS']
+    accepted, rejected = sorted(examples, key=lambda e: not e['expectedOutput']['valid'])
+    assert any(len(c['answerUnitsVi']) == 2 and c['atomicMeaning']
+               for c in accepted['expectedOutput']['questionChecks'])
+    data = rejected['input']
+    quote = data['groundedQuestions']['activities'][0]['questions'][0]['evidence'][0]['quoteEn']
+    assert not any(quote in s['textEn'] for s in data['content']['activities'][0]['segments'])
+    assert any(quote in s['textEn'] for s in data['content']['activities'][1]['segments'])
+    checks = rejected['expectedOutput']['questionChecks']
+    assert checks[0]['answerSupported'] and not checks[0]['groundingSupported']
+    assert checks[2]['requestedMeaningEn'] == checks[3]['requestedMeaningEn']
+    assert not checks[2]['distinctMeaning'] and not checks[3]['distinctMeaning']
+    assert not checks[4]['speechActSupported'] and not checks[4]['answerSupported']
+    before = sum(len(w.previous_personalized_fewshot_v5.INSTRUCTIONS[s].encode()) for s in fewshot.STAGES)
+    after = sum(len(w.personalized_fewshot.INSTRUCTIONS[s].encode()) for s in fewshot.STAGES)
+    assert after < before * .8
+    assert w.personalized_prompt_hash(w.previous_personalized_fewshot_v5) == '358201f08eb87c7d4d2306220c3828a92cda57ac93d57faed80a508d892fa1c1'
 
 
 def test_corrected_output_contracts_match_personalized_schemas_and_examples():

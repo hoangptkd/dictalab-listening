@@ -1,6 +1,15 @@
 # Quy tắc kiểm duyệt bài nghe tình huống
 
-Tài liệu mô tả mã nguồn few-shot V5, không khẳng định runtime đang chạy đã cập nhật. Backend vẫn từ chối khi kiểm tra cấu trúc hoặc bằng chứng thất bại. Kết luận và lỗi định dạng đầu ra của AI reviewer được lưu để tham khảo, không tự động từ chối bài. Khi một reviewer không đạt hoặc trả sai định dạng, `qualityPassed` là `false` và `reviewAdvisory` lưu kết quả tương ứng. Lỗi kết nối hoặc timeout tới nhà cung cấp vẫn có thể khiến tác vụ thất bại. Những job pin phiên bản cũ giữ chính sách cũ.
+Tài liệu mô tả mã nguồn few-shot V6, không khẳng định runtime đang chạy đã cập nhật. Backend vẫn từ chối khi kiểm tra cấu trúc hoặc bằng chứng thất bại. Kết luận và lỗi định dạng đầu ra của AI reviewer được lưu để tham khảo, không tự động từ chối bài. Khi một reviewer không đạt hoặc trả sai định dạng, `qualityPassed` là `false` và `reviewAdvisory` lưu kết quả tương ứng. Lỗi kết nối hoặc timeout tới nhà cung cấp vẫn có thể khiến tác vụ thất bại. Những job pin phiên bản cũ giữ chính sách cũ.
+
+## Few-shot gọn hơn — 04/11/2026
+
+- Bộ ví dụ `scenario_personalized_fewshot_examples_v2.json` có 9 mẫu được gửi, thay cho 12 mẫu ở bản trước. Đây là mẫu do agent soạn, chưa phải đáp án chuẩn do con người phê duyệt.
+- Các ngữ cảnh ví dụ chỉ giữ trường cần cho từng bước; bỏ hash, phiên bản, nguồn thang điểm, metadata hiệu chỉnh và thông số âm thanh. TRANSLATE không lặp ngữ cảnh học. REVIEW_QUESTIONS không lặp hai bản cùng câu hỏi. Đầu vào thực tế vẫn có đầy đủ ngữ cảnh đã được backend kiểm tra.
+- Đầu ra mẫu vẫn đầy đủ schema: ba activity, sáu câu hỏi hoặc sáu kiểm tra khi bước đó yêu cầu, mười cờ REVIEW_QUESTIONS và năm rubric REVIEW.
+- REVIEW_QUESTIONS có một mẫu đạt gồm câu hỏi hai chi tiết có căn cứ và một mẫu không đạt với ba lỗi: quote nằm ở activity khác, hai câu hỏi trùng ý và nhầm đề xuất thành thỏa thuận. REVIEW cũng giữ cả mẫu đạt và không đạt.
+- Tổng dung lượng UTF-8 của sáu system prompt giảm từ 80.196 xuống 59.406 byte (25,9%). Đây là số byte đo trực tiếp, không phải số token hay bằng chứng chất lượng AI tăng. Riêng REVIEW_QUESTIONS dài hơn do thêm mẫu lỗi; tổng sáu bước ngắn hơn. GRADE giữ nguyên bản V5.
+- Các mẫu sai activity và nhầm agreement còn được backend chặn trước reviewer trong luồng bình thường. Ví dụ reviewer minh họa cách đánh giá khi kiểm tra riêng; không biến reviewer trở lại thành điều kiện chặn xuất bản.
 
 ## Đã thay đổi trong V3
 

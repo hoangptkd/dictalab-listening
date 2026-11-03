@@ -16,11 +16,11 @@ STAGES = ("EXTRACT", "GENERATE", "QUESTIONS", "REVIEW_QUESTIONS", "TRANSLATE", "
 MARKER = "EXAMPLES\nNone: this candidate is evaluated zero-shot."
 
 
-def compile_instructions(examples):
+def compile_instructions(examples, instructions=None):
     if (not examples or len({e["id"] for e in examples}) != len(examples)
             or {e["stage"] for e in examples} != set(STAGES)):
         raise ValueError("Invalid personalized few-shot example IDs/stages")
-    result = dict(baseline.INSTRUCTIONS)
+    result = dict(baseline.INSTRUCTIONS if instructions is None else instructions)
     for stage in STAGES:
         if result[stage].count(MARKER) != 1:
             raise ValueError("Missing or ambiguous personalized examples marker")
