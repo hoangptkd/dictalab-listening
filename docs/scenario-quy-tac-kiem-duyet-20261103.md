@@ -1,6 +1,6 @@
 # Quy tắc kiểm duyệt bài nghe tình huống
 
-Tài liệu mô tả mã nguồn few-shot V3 sau thay đổi, không khẳng định runtime đang chạy đã cập nhật. Có hai loại kiểm tra: **backend** dùng điều kiện cố định; **AI reviewer** đưa ra nhận định ngữ nghĩa và có thể nhầm. Nếu điều kiện backend thất bại, hoặc reviewer báo lỗi, hệ thống từ chối bài.
+Tài liệu mô tả mã nguồn few-shot V4, không khẳng định runtime đang chạy đã cập nhật. Backend vẫn từ chối khi kiểm tra cấu trúc hoặc bằng chứng thất bại. Kết luận và lỗi định dạng đầu ra của AI reviewer được lưu để tham khảo, không tự động từ chối bài. Khi một reviewer không đạt hoặc trả sai định dạng, `qualityPassed` là `false` và `reviewAdvisory` lưu kết quả tương ứng. Lỗi kết nối hoặc timeout tới nhà cung cấp vẫn có thể khiến tác vụ thất bại. Những job pin phiên bản cũ giữ chính sách cũ.
 
 ## Đã thay đổi trong V3
 
@@ -42,4 +42,4 @@ Prompt V4 nhận câu trả lời bằng tiếng Anh, tiếng Việt hoặc kế
 
 ## Các điểm có thể còn cứng nhắc để xem xét
 
-Số activity/segment/câu hỏi cố định; tối đa ba trích dẫn evidence và bốn đơn vị đáp án; bằng chứng phải trích nguyên văn cùng activity; cờ reviewer và rubric đều bắt buộc đạt; bài bị từ chối khi có bất kỳ issue; kiểm tra trùng nghĩa và lộ đáp án có thể chưa hiểu ngữ cảnh; reviewer tự đánh giá nhãn kỹ năng, độ khó, bản dịch và sự nhất quán có thể sai. Chính sách độ khó vẫn được reviewer xét dù số từ không còn là ngưỡng backend.
+Số activity/segment/câu hỏi cố định; tối đa ba trích dẫn evidence và bốn đơn vị đáp án; bằng chứng phải trích nguyên văn cùng activity. Reviewer vẫn đánh giá các cờ, rubric, trùng nghĩa, lộ đáp án, kỹ năng, độ khó, bản dịch và sự nhất quán, nhưng kết luận chỉ mang tính tham khảo. Bài có thể được xuất bản dù reviewer cảnh báo lỗi nội dung; cần xem lại cảnh báo khi đánh giá chất lượng. Chính sách độ khó vẫn được reviewer xét dù số từ không còn là ngưỡng backend.

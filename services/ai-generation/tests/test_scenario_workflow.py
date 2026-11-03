@@ -202,7 +202,27 @@ def test_personalized_quality_gates_fail_closed(fault):
     else:
         responses[2]["questionChecks"][0]["skillAppropriate"] = False
     with pytest.raises(workflow.QualityRejected):
-        execute(personal_payload(context=context), responses)
+        execute(personal_payload(context=context, promptHash=workflow.personalized_prompt_hash(workflow.previous_personalized_fewshot_v3)), responses)
+
+
+@pytest.mark.parametrize("index", [2, 4])
+def test_current_reviewer_verdict_is_advisory(index):
+    responses = personal_responses()
+    responses[index]["valid"] = False
+    responses[index]["issues"] = ["Review finding"]
+    result, calls = execute(personal_payload(), responses)
+    assert len(calls) == 5
+    assert result["task"]["qualityPassed"] is False
+    key = "questions" if index == 2 else "review"
+    assert result["reviewAdvisory"][key]["issues"] == ["Review finding"]
+
+
+def test_current_invalid_reviewer_response_is_advisory():
+    responses = personal_responses()
+    responses[2] = {}
+    result, calls = execute(personal_payload(), responses)
+    assert len(calls) == 5 and result["task"]["qualityPassed"] is False
+    assert result["reviewAdvisory"]["questions"] is None
 
 
 def test_inference_contract_accepts_premise_explanation_after_mocked_review():

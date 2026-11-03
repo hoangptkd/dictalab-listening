@@ -76,9 +76,10 @@ class ScenarioEngineIntegrationTest {
         boolean previousPersonalized=input.path("promptHash").asText().equals("bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa");
         boolean previousFewshot=input.path("promptHash").asText().equals("54f9fdeda01717f5c8853239357dad6dff2e0fa94df929f6c82e6d2497af52a1");
         boolean previousFewshotV2=input.path("promptHash").asText().equals("6a857865dddd79783a50c6dbf45bfdd281feeb56b681bdff34abd24c4df5b2e3");
+        boolean previousFewshotV3=input.path("promptHash").asText().equals("f5f347bcac1dd0767f3af409704778357cd0ce39dd2a2d7f325671bc22abee1f");
         var result=object().put("schemaVersion","1").put("generationId",id).put("requestId",id)
                 .put("provider",tts ? "cartesia" : "ollama").put("model","fixture-model").put("modelDigest","fixture-digest")
-                .put("promptVersion",tts ? "TTS_WAV_V1" : personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : previousFewshot ? "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4" : previousFewshotV2 ? "SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4" : "SCENARIO_PERSONALIZED_FEWSHOT_V3_GRADE_V4") : "SCENARIO_LISTENING_V5_GRADE_V4_1")
+                .put("promptVersion",tts ? "TTS_WAV_V1" : personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : previousFewshot ? "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4" : previousFewshotV2 ? "SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4" : previousFewshotV3 ? "SCENARIO_PERSONALIZED_FEWSHOT_V3_GRADE_V4" : "SCENARIO_PERSONALIZED_FEWSHOT_V4_GRADE_V4") : "SCENARIO_LISTENING_V5_GRADE_V4_1")
                 .put("promptHash",input.path("promptHash").asText(release.promptHash())).put("programHash",input.path("programHash").asText());
         if (tts) result.set("task",object().put("contentType","audio/wav").put("size",wave().length).put("audioBase64",Base64.getEncoder().encodeToString(wave())));
         else {
@@ -323,6 +324,19 @@ class ScenarioEngineIntegrationTest {
         var audio=dispatch(engine.play(user,sid,aid,id(),new ScenarioEngine.PlayRequest(session.path("version").asLong(),"s1")));
         assertThat(audio.path("status").asText()).isEqualTo("UNKNOWN");
         assertThat(engine.session(user,sid).path("status").asText()).isEqualTo("ACTIVE");
+    }
+
+    @Test void personalizedAdvisoryReviewDoesNotBlockPublication() {
+        personalization.save(user,id(),preference("toeic-listening","250","",0));
+        var extraction=dispatch(engine.createDraft(user,id(),new ScenarioEngine.DraftRequest("","toeic-listening",2,"")));
+        var draft=engine.draft(user,extraction.path("draftId").asText());
+        doAnswer(call -> {
+            var response=(ObjectNode)done(call.getArgument(1),call.getArgument(3));
+            ((ObjectNode)response.path("result").path("task")).put("qualityPassed",false);
+            return response;
+        }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        var operation=dispatch(engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong())));
+        assertThat(operation.path("status").asText()).isEqualTo("SUCCEEDED");
     }
 
     @Test void cancellationAndDeletedOwnerCannotPublishLateResults() {

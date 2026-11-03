@@ -182,7 +182,7 @@ def test_personalized_question_review_requires_all_ten_checks(field, fault):
     else:
         responses[2]["questionChecks"][0][field] = False
     with pytest.raises(w.QualityRejected):
-        execute(personal_payload(), responses)
+        execute(personal_payload(promptHash=w.personalized_prompt_hash(w.previous_personalized_fewshot_v3)), responses)
 
 
 @pytest.mark.parametrize("category", ["SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS", "PROFILE", "LEARNING_GOAL"])
@@ -198,4 +198,4 @@ def test_personalized_review_requires_each_of_five_rubrics(category, fault):
     else:
         selected["category"] = next(check["category"] for check in checks if check["category"] != category)
     with pytest.raises(w.QualityRejected):
-        execute(personal_payload(), responses)
+        execute(personal_payload(promptHash=w.personalized_prompt_hash(w.previous_personalized_fewshot_v3)), responses)

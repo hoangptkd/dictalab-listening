@@ -46,7 +46,10 @@ final class ScenarioContent {
         content(task,spec,profile,context,false);
     }
     static void content(JsonNode task, JsonNode spec, JsonNode profile,JsonNode context,boolean flexible) {
-        fields(task,"activities","translations","qualityPassed"); check(task.path("qualityPassed").isBoolean() && task.path("qualityPassed").asBoolean());
+        content(task,spec,profile,context,flexible,false);
+    }
+    static void content(JsonNode task, JsonNode spec, JsonNode profile,JsonNode context,boolean flexible,boolean advisory) {
+        fields(task,"activities","translations","qualityPassed"); check(task.path("qualityPassed").isBoolean() && (advisory || task.path("qualityPassed").asBoolean()));
         list(task.path("activities"),3,3); list(task.path("translations"),6,18);
         var speakers = new HashSet<String>(); spec.path("characters").forEach(c -> speakers.add(c.path("id").asText()));
         var expected = new HashSet<String>(); int total = 0, ordinal = 0; boolean focusCovered=false;

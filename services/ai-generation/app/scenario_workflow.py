@@ -22,7 +22,8 @@ from .scenario_contract import LearningContext
 from . import scenario_prompts_personalized as personalized
 from . import scenario_prompts_personalized_fewshot as previous_personalized_fewshot
 from . import scenario_prompts_personalized_fewshot_v2 as previous_personalized_fewshot_v2
-from . import scenario_prompts_personalized_fewshot_v3 as personalized_fewshot
+from . import scenario_prompts_personalized_fewshot_v3 as previous_personalized_fewshot_v3
+from . import scenario_prompts_personalized_fewshot_v4 as personalized_fewshot
 
 V4_PROMPT_VERSION = "SCENARIO_LISTENING_V4"
 OUTPUT_TOKENS = {"EXTRACT": 2600, "GENERATE": 3200, "QUESTIONS": 4000,
@@ -510,7 +511,7 @@ def personalized_prompt_hash(release=personalized_fewshot):
 
 def personalized_release(requested_hash):
     # Dispatch by the immutable job pin, including jobs queued before this release.
-    for release in (personalized_fewshot, previous_personalized_fewshot_v2, previous_personalized_fewshot, personalized):
+    for release in (personalized_fewshot, previous_personalized_fewshot_v3, previous_personalized_fewshot_v2, previous_personalized_fewshot, personalized):
         if requested_hash == personalized_prompt_hash(release):
             return release
     raise ValueError("scenario prompt mismatch")
@@ -725,7 +726,9 @@ async def execute(event, settings):
     deadline = time.monotonic() + remaining
     payload = event.payload
     is_personalized = payload.contractVersion == "scenario-job.v2"
-    flexible = is_personalized and personalized_release(payload.promptHash) is personalized_fewshot
+    release = personalized_release(payload.promptHash) if is_personalized else None
+    advisory = release is personalized_fewshot
+    flexible = release in (personalized_fewshot, previous_personalized_fewshot_v3)
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)} if is_personalized else {}
     instructions = {**personalized_release(payload.promptHash).INSTRUCTIONS, "GRADE": V4_INSTRUCTIONS["GRADE"]} if is_personalized else INSTRUCTIONS
     calls = []
@@ -774,24 +777,35 @@ async def execute(event, settings):
                 validate_content(content, payload.specification, payload.profile, flexible=flexible)
             except ValueError as invalid:
                 raise QualityRejected("invalid scenario content") from invalid
-            question_review = await call("REVIEW_QUESTIONS", {"content": content.model_dump(),
-                "groundedQuestions": questions.model_dump(), **context}, PersonalizedQuestionReview if is_personalized else QuestionReview)
+            question_review = None
+            question_review_ok = False
             try:
-                validate_question_review(question_review, content, flexible)
-            except ValueError as invalid:
-                raise QualityRejected("question quality rejected") from invalid
+                question_review = await call("REVIEW_QUESTIONS", {"content": content.model_dump(),
+                    "groundedQuestions": questions.model_dump(), **context}, PersonalizedQuestionReview if is_personalized else QuestionReview)
+                (validate_question_review.__wrapped__ if advisory else validate_question_review)(question_review, content, flexible)
+                question_review_ok = True
+            except (ValueError, QualityRejected) as invalid:
+                if not advisory:
+                    raise QualityRejected("question quality rejected") from invalid
             translated = await call("TRANSLATE", {**dialogue.model_dump(), **context}, Translations)
             try:
                 validate_content(content, payload.specification, payload.profile, translated, flexible)
             except ValueError as invalid:
                 raise QualityRejected("invalid translations") from invalid
-            verdict = await call("REVIEW", {"inputVi": payload.inputVi, "specification": payload.specification.model_dump(),
-                "profile": payload.profile.model_dump(), "dialogue": dialogue.model_dump(),
-                "translations": translated.model_dump(), **context}, PersonalizedReview if is_personalized else Review)
+            verdict = None
+            review_ok = False
             try:
-                validate_review(verdict, translated)
-            except ValueError as invalid:
-                raise QualityRejected("semantic quality rejected") from invalid
-            result = {**content.model_dump(), "translations": translated.model_dump()["segments"], "qualityPassed": True}
-    return {**metadata(settings, is_personalized, payload.promptHash), "generationId": str(event.jobId), "requestId": str(event.requestId),
+                verdict = await call("REVIEW", {"inputVi": payload.inputVi, "specification": payload.specification.model_dump(),
+                    "profile": payload.profile.model_dump(), "dialogue": dialogue.model_dump(),
+                    "translations": translated.model_dump(), **context}, PersonalizedReview if is_personalized else Review)
+                (validate_review.__wrapped__ if advisory else validate_review)(verdict, translated)
+                review_ok = True
+            except (ValueError, QualityRejected) as invalid:
+                if not advisory:
+                    raise QualityRejected("semantic quality rejected") from invalid
+            result = {**content.model_dump(), "translations": translated.model_dump()["segments"], "qualityPassed": question_review_ok and review_ok}
+    review_metadata = ({"reviewAdvisory": {"questionsPassed": question_review_ok, "reviewPassed": review_ok,
+                       "questions": question_review.model_dump() if question_review else None,
+                       "review": verdict.model_dump() if verdict else None}} if advisory and payload.phase == "GENERATE" else {})
+    return {**metadata(settings, is_personalized, payload.promptHash), **review_metadata, "generationId": str(event.jobId), "requestId": str(event.requestId),
             "programHash": payload.programHash, "calls": calls, "task": result}

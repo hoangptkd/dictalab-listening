@@ -361,10 +361,11 @@ public class ScenarioEngine {
             boolean previousPersonalized="bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa".equals(input.path("promptHash").asText());
             boolean previousFewshot="54f9fdeda01717f5c8853239357dad6dff2e0fa94df929f6c82e6d2497af52a1".equals(input.path("promptHash").asText());
             boolean previousFewshotV2="6a857865dddd79783a50c6dbf45bfdd281feeb56b681bdff34abd24c4df5b2e3".equals(input.path("promptHash").asText());
-            ScenarioContent.check(personalized ? previousPersonalized || previousFewshot || previousFewshotV2 || release.personalizedPromptHash().equals(input.path("promptHash").asText())
+            boolean previousFewshotV3="f5f347bcac1dd0767f3af409704778357cd0ce39dd2a2d7f325671bc22abee1f".equals(input.path("promptHash").asText());
+            ScenarioContent.check(personalized ? previousPersonalized || previousFewshot || previousFewshotV2 || previousFewshotV3 || release.personalizedPromptHash().equals(input.path("promptHash").asText())
                     : legacy || previousV3 || previousV4 || previousV5 || release.promptHash().equals(input.path("promptHash").asText()));
             ScenarioContent.check(input.path("promptHash").asText().equals(result.path("promptHash").asText())
-                    && (personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : previousFewshot ? "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4" : previousFewshotV2 ? "SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4" : "SCENARIO_PERSONALIZED_FEWSHOT_V3_GRADE_V4") : legacy ? "SCENARIO_LISTENING_V1" : previousV3 ? "SCENARIO_LISTENING_V3" : previousV4 ? "SCENARIO_LISTENING_V4" : previousV5 ? "SCENARIO_LISTENING_V5_CANDIDATE_1" : "SCENARIO_LISTENING_V5_GRADE_V4_1").equals(result.path("promptVersion").asText())
+                    && (personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : previousFewshot ? "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4" : previousFewshotV2 ? "SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4" : previousFewshotV3 ? "SCENARIO_PERSONALIZED_FEWSHOT_V3_GRADE_V4" : "SCENARIO_PERSONALIZED_FEWSHOT_V4_GRADE_V4") : legacy ? "SCENARIO_LISTENING_V1" : previousV3 ? "SCENARIO_LISTENING_V3" : previousV4 ? "SCENARIO_LISTENING_V4" : previousV5 ? "SCENARIO_LISTENING_V5_CANDIDATE_1" : "SCENARIO_LISTENING_V5_GRADE_V4_1").equals(result.path("promptVersion").asText())
                     && input.path("programHash").asText().equals(result.path("programHash").asText()));
             var expected=kind.equals("GENERATE") ? (legacy ? List.of("GENERATE","TRANSLATE","REVIEW")
                     : previousV3 ? List.of("GENERATE","FACTS","QUESTIONS","TRANSLATE","REVIEW")
@@ -378,8 +379,12 @@ public class ScenarioEngine {
         }
         JsonNode task=result.path("task"); byte[] wav=null; String url=null;
         if (kind.equals("EXTRACT")) ScenarioContent.specification(task,"scenario-job.v2".equals(input.path("contractVersion").asText()));
-        else if (kind.equals("GENERATE")) ScenarioContent.content(task,input.path("specification"),input.path("profile"),input.has("learningContext") ? input.path("learningContext") : null,
-                "scenario-job.v2".equals(input.path("contractVersion").asText()) && "f5f347bcac1dd0767f3af409704778357cd0ce39dd2a2d7f325671bc22abee1f".equals(input.path("promptHash").asText()));
+        else if (kind.equals("GENERATE")) {
+            String pin=input.path("promptHash").asText();
+            boolean advisory="scenario-job.v2".equals(input.path("contractVersion").asText()) && "aa79b767fee0970408e4fe420d1d97615595fdd195e16d8e919f28881f265485".equals(pin);
+            boolean flexible=advisory || "scenario-job.v2".equals(input.path("contractVersion").asText()) && "f5f347bcac1dd0767f3af409704778357cd0ce39dd2a2d7f325671bc22abee1f".equals(pin);
+            ScenarioContent.content(task,input.path("specification"),input.path("profile"),input.has("learningContext") ? input.path("learningContext") : null,flexible,advisory);
+        }
         else if (kind.equals("GRADE")) ScenarioContent.grade(task,input.path("answers"));
         else {
             ScenarioContent.check("TTS_WAV_V1".equals(result.path("promptVersion").asText()));
