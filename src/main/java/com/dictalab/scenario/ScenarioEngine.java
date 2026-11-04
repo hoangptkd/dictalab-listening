@@ -27,14 +27,16 @@ public class ScenarioEngine {
     private final S3MediaLifecycle lifecycle;
     private final boolean local;
     private final ScenarioPersonalization personalization;
+    private final ScenarioEngineProperties config;
 
     public ScenarioEngine(ScenarioData data, ScenarioOperations operations, ScenarioRelease release,
                           AiPlatformClient ai, MediaStorageService media,
-                          S3MediaLifecycle lifecycle, Environment environment, ScenarioPersonalization personalization) {
+                          S3MediaLifecycle lifecycle, Environment environment, ScenarioPersonalization personalization, ScenarioEngineProperties config) {
         this.data=data; this.operations=operations; this.release=release;
         this.ai=ai; this.media=media; this.lifecycle=lifecycle;
         this.local=environment.acceptsProfiles(Profiles.of("local"));
         this.personalization=personalization;
+        this.config=config;
     }
 
     public record DraftRequest(String inputVi, String programCode, int programVersion, String profileId) {}
@@ -122,6 +124,15 @@ public class ScenarioEngine {
                     INSERT INTO scenario_sessions(id,user_id,draft_id,title_vi,status,parent_session_id,family_id)
                     VALUES (?,?,?,?,'PREPARING',?,?)
                     """,session,user,request.draftId(),tree((String)draft.get("specification_json")).path("titleVi").asText(),draft.get("parent_session_id"),draft.get("family_id"));
+            var recipe=config.ttsRecipe();
+            if (recipe!=null) {
+                var provenance=object(); var snapshot=provenance.putObject("ttsRecipe"); snapshot.set("recipe",recipe);
+                snapshot.put("recipeHash",ScenarioJson.hash(ScenarioJson.canonical(recipe)));
+                var mapping=snapshot.putObject("speakerVoices"); int index=0;
+                for (var character : tree((String)draft.get("specification_json")).path("characters"))
+                    mapping.put(character.path("id").asText(),recipe.path("voices").get(index++).asText());
+                data.db.update("UPDATE scenario_sessions SET provenance_json=? WHERE id=?",provenance.toString(),session);
+            }
             var payload=payload(draft,"GENERATE"); payload.put("inputVi",(String)draft.get("input_vi")); payload.set("specification",tree((String)draft.get("specification_json")));
             return operations.create(user,"session",key,request,"GENERATE",session,payload);
         });
@@ -175,10 +186,20 @@ public class ScenarioEngine {
         }
         if (completed || transcript) result.set("translations",content.path("translations"));
         var attempts=result.putArray("attempts");
-        for (var attempt : data.db.queryForList("SELECT * FROM scenario_attempts WHERE activity_id=? ORDER BY ordinal",aid)) {
+        var savedAttempts=data.db.queryForList("SELECT * FROM scenario_attempts WHERE activity_id=? ORDER BY ordinal",aid);
+        var grades=data.db.queryForList("SELECT id,resource_id,error_code FROM scenario_operations WHERE kind='GRADE' AND resource_id IN (SELECT id FROM scenario_attempts WHERE activity_id=?) ORDER BY created_at,id",aid);
+        for (var attempt : savedAttempts) {
             var item=attempts.addObject().put("attemptId",(String)attempt.get("id")).put("ordinal",number(attempt,"ordinal")).put("status",(String)attempt.get("status"));
             item.set("answers",tree((String)attempt.get("answers_json"))); item.set("support",tree((String)attempt.get("support_json")));
             if (attempt.get("result_json")!=null) item.set("result",tree((String)attempt.get("result_json")));
+            var ops=grades.stream().filter(g -> g.get("resource_id").equals(attempt.get("id"))).toList();
+            int remaining=Math.max(0,3-ops.size());
+            var retry=item.putObject("gradeRetry").put("allowed",!completed && attempt==savedAttempts.get(savedAttempts.size()-1)
+                    && "FAILED".equals(attempt.get("status")) && remaining>0).put("remaining",remaining);
+            if (!ops.isEmpty()) {
+                var last=ops.get(ops.size()-1); retry.put("operationId",(String)last.get("id"));
+                if (last.get("error_code")!=null) retry.put("errorCode",(String)last.get("error_code"));
+            }
         }
         return result;
     }
@@ -240,6 +261,28 @@ public class ScenarioEngine {
         });
     }
 
+    public JsonNode retryGrade(long user,String session,String activity,String attempt,String key,VersionRequest request) {
+        return data.tx.execute(tx -> {
+            data.lockUser(user); data.activity(user,session,activity);
+            String scope="retry-grade/"+attempt;
+            var prior=operations.prior(user,scope,key,request); if (prior!=null) return prior;
+            editable(user,session,activity,request.expectedVersion());
+            var s=data.owned("scenario_sessions",user,session);
+            requireProgram(user,data.owned("scenario_drafts",user,(String)s.get("draft_id")));
+            var attempts=data.db.queryForList("SELECT id,status FROM scenario_attempts WHERE activity_id=? ORDER BY ordinal",activity);
+            require(!attempts.isEmpty() && attempts.get(attempts.size()-1).get("id").equals(attempt)
+                    && "FAILED".equals(attempts.get(attempts.size()-1).get("status"))
+                    && attempts.stream().noneMatch(a -> "PENDING".equals(a.get("status"))));
+            var ops=data.db.queryForList("SELECT payload_json FROM scenario_operations WHERE user_id=? AND kind='GRADE' AND resource_id=? ORDER BY created_at,id",user,attempt);
+            require(!ops.isEmpty() && ops.size()<3);
+            // Retry the saved submission, including its historical prompt and support snapshot.
+            var input=tree((String)ops.get(0).get("payload_json"));
+            data.db.update("UPDATE scenario_attempts SET status='PENDING' WHERE id=? AND status='FAILED'",attempt);
+            bump(session);
+            return operations.create(user,scope,key,request,"GRADE",attempt,input);
+        });
+    }
+
     public JsonNode help(long user,String session,String activity,String key,HelpRequest request) {
         return data.tx.execute(tx -> data.receipt(user,"help/"+activity,key,request,() -> {
             var a=editable(user,session,activity,request.expectedVersion());
@@ -291,8 +334,11 @@ public class ScenarioEngine {
             JsonNode segment=null;
             for (var part : tree((String)a.get("private_json")).path("activity").path("segments")) if (part.path("id").asText().equals(request.segmentId())) segment=part;
             require(segment!=null);
-            // Fixed server TTS recipe; cache is private to this activity and never accepts learner text.
-            String fingerprint=ScenarioJson.hash("scenario-tts-v1/"+a.get("content_hash")+"/"+segment.toString());
+            var tts=ttsPayload(s,segment);
+            // Keep the historical cache namespace for sessions created before voice snapshots.
+            String fingerprint=ScenarioJson.hash(tts.path("kind").asText().equals("tts")
+                    ? "scenario-tts-v1/"+a.get("content_hash")+"/"+segment.toString()
+                    : "scenario-tts-v2/"+a.get("content_hash")+"/"+request.segmentId()+"/"+ScenarioJson.canonical(tts));
             var rows=data.db.queryForList("SELECT id,status FROM scenario_media WHERE activity_id=? AND segment_id=? AND fingerprint=?",activity,request.segmentId(),fingerprint);
             String mediaId;
             JsonNode result;
@@ -305,17 +351,31 @@ public class ScenarioEngine {
                     if ("FAILED".equals(rows.get(0).get("status")) && ops.size()<3) {
                         requireProgram(user,draft);
                         data.db.update("UPDATE scenario_media SET status='PENDING' WHERE id=?",mediaId);
-                        result=operations.create(user,"tts/"+mediaId+"/"+ops.size(),key,request,"TTS",mediaId,object().put("kind","tts").put("text",segment.path("textEn").asText()));
+                        result=operations.create(user,"tts/"+mediaId+"/"+ops.size(),key,request,"TTS",mediaId,tts);
                     } else result=operations.get(user,ops.get(0));
                 }
             } else {
                 requireProgram(user,draft); mediaId=id();
                 data.db.update("INSERT INTO scenario_media(id,activity_id,segment_id,fingerprint,status) VALUES (?,?,?,?,'PENDING')",mediaId,activity,request.segmentId(),fingerprint);
-                result=operations.create(user,"tts/"+mediaId,key,request,"TTS",mediaId,object().put("kind","tts").put("text",segment.path("textEn").asText()));
+                result=operations.create(user,"tts/"+mediaId,key,request,"TTS",mediaId,tts);
             }
             data.db.update("UPDATE scenario_activities SET plays=plays+1 WHERE id=?",activity); bump(session);
             ((ObjectNode)result).put("sessionVersion",request.expectedVersion()+1); return result;
         }));
+    }
+
+    private ObjectNode ttsPayload(Map<String,Object> session,JsonNode segment) {
+        var payload=object().put("kind","tts").put("text",segment.path("textEn").asText());
+        if (session.get("provenance_json")==null) return payload;
+        var snapshot=tree((String)session.get("provenance_json")).path("ttsRecipe");
+        if (snapshot.isMissingNode()) return payload;
+        String text=segment.path("textEn").asText(),speaker=segment.path("speakerId").asText();
+        if (!safeInput(text,1200).equals(text) || text.contains("[REDACTED]"))
+            throw new ScenarioFailure(422,"TTS_TEXT_REDACTED","Đoạn nghe chứa dữ liệu bị che; không tạo audio khác với bản chép.");
+        String voice=snapshot.path("speakerVoices").path(speaker).asText();
+        require(!voice.isBlank());
+        payload.put("kind","scenario_tts").put("speakerId",speaker).put("voiceId",voice);
+        payload.set("recipe",snapshot.path("recipe")); return payload;
     }
 
     public void serveMedia(long user,String id,jakarta.servlet.http.HttpServletRequest request,jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
@@ -395,7 +455,12 @@ public class ScenarioEngine {
         }
         else if (kind.equals("GRADE")) ScenarioContent.grade(task,input.path("answers"));
         else {
-            ScenarioContent.check("TTS_WAV_V1".equals(result.path("promptVersion").asText()));
+            boolean multiVoice=input.path("kind").asText().equals("scenario_tts");
+            ScenarioContent.check((multiVoice ? "TTS_WAV_V2" : "TTS_WAV_V1").equals(result.path("promptVersion").asText()));
+            if (multiVoice) ScenarioContent.check(input.path("recipe").path("model").asText().equals(result.path("model").asText())
+                    && input.path("speakerId").asText().equals(result.path("speakerId").asText())
+                    && input.path("voiceId").asText().equals(result.path("voiceId").asText())
+                    && ScenarioJson.hash(ScenarioJson.canonical(input.path("recipe"))).equals(result.path("recipeHash").asText()));
             try { wav=ai.audio(result); } catch (IllegalStateException invalid) { throw new IllegalArgumentException("Invalid audio result"); }
             if (media.s3Enabled()) url=media.storeConversationAudio(wav);
         }
@@ -414,6 +479,11 @@ public class ScenarioEngine {
                         data.db.update("INSERT INTO scenario_activities(id,session_id,ordinal,private_json,content_hash) VALUES (?,?,?,?,?)",id(),resource,++ordinal,privateData.toString(),ScenarioJson.hash(ScenarioJson.canonical(privateData)));
                     }
                     var provenance=result.deepCopy(); ((ObjectNode)provenance).remove("task");
+                    var pendingSession=data.owned("scenario_sessions",user,resource);
+                    if (pendingSession.get("provenance_json")!=null) {
+                        var snapshot=tree((String)pendingSession.get("provenance_json")).path("ttsRecipe");
+                        if (!snapshot.isMissingNode()) ((ObjectNode)provenance).set("ttsRecipe",snapshot);
+                    }
                     data.db.update("UPDATE scenario_sessions SET status='ACTIVE',provenance_json=?,version=version+1 WHERE id=? AND user_id=? AND status='PREPARING'",provenance.toString(),resource,user);
                 }
                 case "GRADE" -> {

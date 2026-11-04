@@ -34,7 +34,7 @@ async def submit(payload: JobRequest, request: Request,
         raise HTTPException(503, "model demonstration is disabled")
     if expected not in ("tts", "conversation_demo") and request.headers.get("X-AI-Provider") != settings.selected_provider:
         raise HTTPException(409, "provider/quota configuration mismatch")
-    if (payload.payload.kind != expected or x_user_scope != payload.userScope
+    if (payload.payload.kind not in ({"tts", "scenario_tts"} if expected == "tts" else {expected}) or x_user_scope != payload.userScope
             or request.headers.get("X-Request-Id") != str(payload.requestId)
             or request.headers.get("Idempotency-Key") != payload.idempotencyKey):
         raise HTTPException(400, "job/header contract mismatch")

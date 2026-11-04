@@ -7,6 +7,14 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ScenarioContentTest {
+    @Test void voiceRecipeRequiresTwoDistinctConfiguredVoicesAndKeepsLegacyDefaultDisabled() {
+        var legacy=new ScenarioEngineProperties(true,1,"","",false,java.util.Set.of());
+        assertThat(legacy.ttsRecipe()).isNull();
+        String recipe="{\"id\":\"pair-v1\",\"model\":\"sonic-3.6\",\"apiVersion\":\"2026-08-14\",\"language\":\"en\",\"outputFormat\":\"wav-pcm16-mono-24000\",\"voices\":[\"00000000-0000-0000-0000-000000000001\",\"00000000-0000-0000-0000-000000000002\"]}";
+        assertThat(new ScenarioEngineProperties(true,1,"","",false,java.util.Set.of(),java.util.Map.of(),recipe).ttsRecipe().path("id").asText()).isEqualTo("pair-v1");
+        for (String invalid : java.util.List.of(recipe.replace("000000000002","000000000001"),recipe.replace("\"en\"","\"vi\""),recipe.replace("sonic-3.6","invalid model")))
+            assertThatThrownBy(() -> new ScenarioEngineProperties(true,1,"","",false,java.util.Set.of(),java.util.Map.of(),invalid)).isInstanceOf(IllegalArgumentException.class);
+    }
     @Test void explorerReusesAllLegacySuggestionsInSixGroups() {
         var suggestions=com.dictalab.service.ConversationService.scenarioSuggestions();
         assertThat(suggestions).hasSize(24);

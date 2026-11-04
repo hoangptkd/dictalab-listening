@@ -256,3 +256,47 @@ budgets enabled and Progress reads in remote mode after local history parity. He
 recorded in `docs/microservices-implementation.md`; production cutover is pending.
 The [R13 integration](../../docs/model-demo-guided-r13.md) is evaluation-only and
 does not change the production conversation artifact approval gate.
+
+### Scenario playback and character voices
+
+Scenario sessions can freeze a server-owned two-voice recipe without changing the
+generation or grading prompts. This is opt-in; existing sessions and all legacy
+`kind=tts` jobs keep `TTS_WAV_V1` and their existing audio cache.
+
+Set Core `DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON` to one recipe object, and set
+`DICTALAB_AI_SCENARIO_TTS_RECIPES` to a JSON array containing the same object on
+both AI API and worker. Recipe fields are `id`, `model`, `apiVersion`, `language`
+(`en`), `outputFormat` (`wav-pcm16-mono-24000`), and `voices` (exactly two distinct,
+provider-verified voice UUIDs). Voice IDs are configuration, not API credentials.
+Keep the Cartesia credential only in protected AI runtime configuration.
+
+Core maps characters in the confirmed specification's order to those two voices,
+then stores the recipe and speaker mapping in session provenance. V2 TTS uses
+`kind=scenario_tts` on the existing authenticated `/v1/tts/jobs` endpoint; callers
+cannot supply a voice through the public playback API. Cache keys include the
+immutable text, speaker, voice and recipe. Core verifies returned V2 metadata
+before accepting audio. Content that would be redacted is rejected before TTS
+instead of silently synthesizing a different transcript.
+
+Deploy API/worker support before configuring Core to admit V2 sessions. Validate
+both voices with short samples first. When changing recipes, keep old recipes in
+the AI allowlist while their sessions need uncached audio. To stop new V2
+admissions, clear the Core recipe setting; keep the V2-capable services and old
+allowlist entries for existing sessions/jobs. Do not downgrade the worker while
+V2 sessions or jobs still need service. No migration, cache deletion or rewrite
+of old sessions is required.
+
+A failed scenario grade can be requested again with
+`POST /api/v2/scenarios/sessions/{session}/activities/{activity}/attempts/{attempt}/retry-grade`,
+using the current `expectedVersion` and `Idempotency-Key`. Only the latest FAILED
+attempt is eligible, with at most three GRADE operations including its first call.
+The retry reuses the original answers, support snapshot and historical payload;
+it does not spend another learner submission. UNKNOWN is never replayed. Retain
+its operation ID for investigation. These are technical retries, not extra
+pedagogical attempts or a change to completion/scoring policy.
+
+After completion, the learner sees the activity review before continuing and can
+replay completed activities. `plays` still records playback requests, not proof
+of listening. The UI separates initial/latest grades and assistance; neither
+summary is a certificate score. Provider WAV validation and browser decoding do
+not replace human review of pronunciation or voice quality.

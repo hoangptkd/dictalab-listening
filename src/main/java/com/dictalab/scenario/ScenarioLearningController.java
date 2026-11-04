@@ -58,6 +58,11 @@ public class ScenarioLearningController {
             @RequestHeader(value="Idempotency-Key",required=false) String key,HttpServletRequest http) throws IOException {
         return noStore(engine.answer(owner.id(),session,activity,key,read(http,ScenarioEngine.AnswersRequest.class)));
     }
+    @PostMapping(value="/sessions/{session}/activities/{activity}/attempts/{attempt}/retry-grade",consumes="application/json")
+    ResponseEntity<JsonNode> retryGrade(@AuthenticationPrincipal DictaLabPrincipal owner,@PathVariable String session,@PathVariable String activity,@PathVariable String attempt,
+            @RequestHeader(value="Idempotency-Key",required=false) String key,HttpServletRequest http) throws IOException {
+        return noStore(engine.retryGrade(owner.id(),session,activity,attempt,key,read(http,ScenarioEngine.VersionRequest.class)));
+    }
     @PostMapping(value="/sessions/{session}/activities/{activity}/help",consumes="application/json")
     ResponseEntity<JsonNode> help(@AuthenticationPrincipal DictaLabPrincipal owner,@PathVariable String session,@PathVariable String activity,
             @RequestHeader(value="Idempotency-Key",required=false) String key,HttpServletRequest http) throws IOException {

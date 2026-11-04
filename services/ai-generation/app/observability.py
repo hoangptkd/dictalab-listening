@@ -206,7 +206,7 @@ def trace_job(function):
             output = result.get("task", result)
             if event.payload.kind == "conversation_demo":
                 output = {"mode": result["mode"], "arms": result["arms"]}
-            elif event.payload.kind == "tts":
+            elif event.payload.kind in ("tts", "scenario_tts"):
                 output = {k: v for k, v in output.items() if k != "audioBase64"}
             _safe(span, "update", output=content(output))
             _safe(span, "score", name="operation_success", value=1,

@@ -35,6 +35,25 @@ def tracing(monkeypatch):
     provider.shutdown()
 
 
+def test_scenario_tts_trace_excludes_audio_and_preserves_voice_metadata(tracing):
+    from test_jobs import voice_request
+    from app.jobs import JobEvent, digest, capability_metadata
+    req = voice_request()
+    event = JobEvent(**req.model_dump(), payloadHash=digest(req.payload.model_dump()))
+
+    @obs.trace_job
+    async def run(event, settings):
+        return {**capability_metadata(event.payload, settings), "task": {"contentType": "audio/wav", "size": 64, "audioBase64": "PRIVATE_AUDIO_SENTINEL"}}
+
+    result = asyncio.run(run(event, Settings()))
+    assert result["task"]["audioBase64"] == "PRIVATE_AUDIO_SENTINEL"
+    exporter, _ = tracing
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert "PRIVATE_AUDIO_SENTINEL" not in json.dumps(dict(spans[0].attributes))
+    assert event.payload.voiceId in json.dumps(dict(spans[0].attributes))
+
+
 async def complete(envelope, settings=None):
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=envelope))) as client:
         return await ModelGateway(settings or Settings(), client).complete(

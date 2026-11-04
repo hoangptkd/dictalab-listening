@@ -9,12 +9,12 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness(api, storage = new Map()) {
     const nodes = new Map(), calls = [], timers = [];
     function node(key) {
-        if (!nodes.has(key)) nodes.set(key, {listeners: {}, value: '', textContent: '', addEventListener(name, fn) {this.listeners[name] = fn;}, setAttribute() {}, focus() {}, pause() {}, load() {}, removeAttribute() {}});
+        if (!nodes.has(key)) nodes.set(key, {listeners: {}, value: '', textContent: '', addEventListener(name, fn) {this.listeners[name] = fn;}, setAttribute() {}, focus() {}, async play() {}, pause() {}, load() {}, removeAttribute(name) {delete this[name];}});
         return nodes.get(key);
     }
     const root = {innerHTML: '', setAttribute() {}, removeAttribute() {},
         querySelector(selector) {
-            if (selector === 'audio') return null;
+            if (selector === 'audio') return this.innerHTML.includes('id="scenario-audio"') ? node('#scenario-audio') : null;
             if (selector.startsWith('#') && (this.innerHTML.includes(`id="${selector.slice(1)}"`) || [...nodes.values()].some(n => n.innerHTML?.includes(`id="${selector.slice(1)}"`)))) return node(selector);
             return null;
         },
@@ -39,6 +39,101 @@ function session() {
         activities: [{activityId: 'activity-1', ordinal: 1, status: 'READY', plays: 0, transcriptOpened: false, hintOpened: false,
             segments: [{segmentId: 's1', speakerId: 'a'}], questions: [{questionId: 'q1', promptVi: 'Mở cửa lúc nào?'}, {questionId: 'q2', promptVi: 'Khách cần gì?'}], attempts: []}]};
 }
+
+function graded(status = 'CAPTURED', support = {}) {
+    return {attemptId: 'attempt-1', ordinal: 1, status: 'GRADED', support,
+        answers: [{questionId: 'q1', textVi: 'At nine'}, {questionId: 'q2', textVi: 'Bánh'}],
+        result: {facts: [{questionId: 'q1', status, evidenceVi: 'At nine'}, {questionId: 'q2', status, evidenceVi: 'Bánh'}]}};
+}
+
+test('completion opens a persisted answer review before the next activity and supports replay', async () => {
+    const s = session(); s.activities[0].attempts = [graded()];
+    s.activities.push({...structuredClone(s.activities[0]), activityId: 'activity-2', ordinal: 2, attempts: []});
+    const storage = new Map();
+    const api = async (url, options = {}) => {
+        if (url.endsWith('/complete')) {
+            s.version++; s.activities[0].status = 'COMPLETED';
+            s.activities[0].questions[0].answerVi = 'Chín giờ';
+            s.activities[0].questions[0].evidence = [{segmentId: 's1', quoteEn: 'At nine.'}];
+            return s;
+        }
+        if (url.endsWith('/play')) return {status: 'READY', mediaId: 'cached-media'};
+        return s;
+    };
+    const h = harness(api, storage); await h.module.show(s.sessionId);
+    h.node('#scenario-complete').listeners.click(); await tick(); await tick();
+    assert.match(h.root.innerHTML, /Chữa hoạt động 1/);
+    assert.match(h.root.innerHTML, /Đáp án: Chín giờ/);
+    assert.match(h.root.innerHTML, /Bằng chứng ở đoạn s1/);
+    assert.doesNotMatch(h.root.innerHTML, /id="scenario-answer"/);
+    const reloaded = harness(api, storage); await reloaded.module.show(s.sessionId);
+    assert.match(reloaded.root.innerHTML, /Chữa hoạt động 1/);
+    reloaded.node('data-play:0').listeners.click(); await tick(); await tick();
+    assert.match(reloaded.node('#scenario-audio').src, /cached-media$/);
+    reloaded.node('#scenario-next').listeners.click(); await tick();
+    assert.match(reloaded.root.innerHTML, /Hoạt động 2 \/ 2/);
+    assert.doesNotMatch(reloaded.root.innerHTML, /Đáp án: Chín giờ/);
+});
+
+test('failed grading returns to saved answers and retry uses the same attempt endpoint', async () => {
+    const s = session(); s.activities[0].attempts = [{...graded(), status: 'FAILED', result: null,
+        gradeRetry: {allowed: true, remaining: 2, operationId: 'failed-op', errorCode: 'AI_JOB_FAILED'}}];
+    const storage = new Map([['dictalab:scenario:10:operation', JSON.stringify({operationId: 'failed-op', action: 'GRADE', sessionId: s.sessionId})]]);
+    const h = harness(async (url, options = {}) => {
+        if (url.endsWith('/retry-grade')) return {operationId: 'retry-op', stage: 'GRADE', status: 'PENDING'};
+        if (url.endsWith('/operations/retry-op')) return {status: 'RUNNING'};
+        if (url.endsWith('/operations/failed-op')) return {status: 'FAILED', errorCode: 'AI_JOB_FAILED'};
+        return s;
+    }, storage);
+    await h.module.show(s.sessionId);
+    assert.match(h.root.innerHTML, /At nine/);
+    assert.match(h.root.innerHTML, /Thử chấm lại câu trả lời đã lưu/);
+    h.node('data-retry-grade:0').listeners.click(); await tick(); await tick();
+    const post = h.calls.find(c => c.options.method === 'POST');
+    assert.match(post.url, /activities\/activity-1\/attempts\/attempt-1\/retry-grade$/);
+    assert.deepEqual(JSON.parse(JSON.stringify(post.options.body)), {expectedVersion: 1});
+    assert.equal(h.calls.filter(c => c.options.method === 'POST').length, 1);
+});
+
+test('unknown grading preserves the lesson without offering a fresh paid retry', async () => {
+    const s = session(); s.activities[0].attempts = [{...graded(), status: 'UNKNOWN', result: null, gradeRetry: {allowed: false, operationId: 'uncertain'}}];
+    const storage = new Map([['dictalab:scenario:10:operation', JSON.stringify({operationId: 'uncertain', action: 'GRADE', sessionId: s.sessionId})]]);
+    const h = harness(async url => url.includes('/operations/') ? {status: 'UNKNOWN'} : s, storage);
+    await h.module.show(s.sessionId);
+    assert.match(h.root.innerHTML, /At nine/);
+    assert.doesNotMatch(h.root.innerHTML, /data-retry-grade=/);
+    assert.equal(h.calls.filter(c => c.options.method === 'POST').length, 0);
+});
+
+test('playback separates autoplay and decode errors and ignores late errors after navigation', async () => {
+    const s = session(); s.specification.characters = [{id: 'a', name: 'Alice', roleVi: 'Khách'}];
+    const h = harness(async url => url.endsWith('/play') ? {status: 'READY', mediaId: 'cached'} : s);
+    await h.module.show(s.sessionId);
+    assert.match(h.root.innerHTML, /Nghe đoạn s1 · Alice/);
+    h.node('#scenario-audio').play = async () => {const error = new Error('blocked'); error.name = 'NotAllowedError'; throw error;};
+    h.node('data-play:0').listeners.click(); await tick(); await tick();
+    assert.match(h.node('#scenario-status').textContent, /chặn tự phát/);
+    h.node('#scenario-audio').listeners.error();
+    assert.match(h.node('#scenario-status').textContent, /Không tải hoặc giải mã/);
+    const lateError = h.node('#scenario-audio').listeners.error;
+    h.module.leave(); h.node('#scenario-status').textContent = 'new page'; lateError();
+    assert.equal(h.node('#scenario-status').textContent, 'new page');
+});
+
+test('summary retains missing first grades in the denominator and identifies assistance', async () => {
+    const s = session(); s.status = 'COMPLETED';
+    s.activities = [0, 1, 2].map(i => ({...structuredClone(s.activities[0]), status: 'COMPLETED', activityId: `a${i}`, ordinal: i+1,
+        attempts: [graded(i === 1 ? 'UNCERTAIN' : 'CAPTURED', i === 1 ? {transcriptOpened: true} : {})]}));
+    s.activities[0].attempts.unshift({...graded(), status: 'FAILED', result: null});
+    const h = harness(async () => s); await h.module.show(s.sessionId);
+    assert.match(h.root.innerHTML, /Lần trả lời đầu:.*có kết quả 4\/6 câu; 2 câu chưa chấm được/);
+    assert.match(h.root.innerHTML, /Lần chấm thành công mới nhất:.*có kết quả 6\/6 câu/);
+    assert.match(h.root.innerHTML, /1 hoạt động có dùng hỗ trợ/);
+    assert.match(h.root.innerHTML, /2 chưa đủ căn cứ/);
+    h.node('data-review:0').listeners.click(); await tick();
+    assert.match(h.root.innerHTML, /id="scenario-audio"/);
+    assert.match(h.root.innerHTML, /Xem tổng kết/);
+});
 test('session renders real question counts, escapes provider text and shows no fabricated score', async () => {
     const h = harness(async () => session()); await h.module.show('session-1');
     assert.match(h.root.innerHTML, /Hoạt động 1 \/ 1/);

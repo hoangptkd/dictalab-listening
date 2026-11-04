@@ -172,6 +172,77 @@ def wav_bytes():
     return output.getvalue()
 
 
+def voice_recipe():
+    return {"id": "qa-pair-v1", "model": "sonic-3.6", "apiVersion": "2026-08-14", "language": "en",
+            "outputFormat": "wav-pcm16-mono-24000", "voices": ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"]}
+
+
+def voice_request(index=0):
+    return request(payload={"kind": "scenario_tts", "text": "At nine.", "speakerId": f"c{index+1}",
+                            "voiceId": voice_recipe()["voices"][index], "recipe": voice_recipe()})
+
+
+@pytest.mark.asyncio
+async def test_scenario_tts_executes_distinct_frozen_voices_and_returns_verifiable_metadata():
+    settings = Settings(cartesia_api_key="test-only", cartesia_voice="changed-legacy-default", scenario_tts_recipes=[voice_recipe()])
+    calls = []
+    def respond(req):
+        calls.append((json.loads(req.content), req.headers["Cartesia-Version"]))
+        return httpx.Response(200, content=wav_bytes(), headers={"Content-Type": "audio/wav"})
+    for i in range(2):
+        req = voice_request(i)
+        event = JobEvent(**req.model_dump(), payloadHash=digest(req.payload.model_dump()))
+        client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+        with patch("app.worker.httpx.AsyncClient", return_value=client):
+            result = await execute(event, settings)
+        assert result["promptVersion"] == "TTS_WAV_V2"
+        assert result["recipeHash"] == digest(voice_recipe())
+        assert result["voiceId"] == voice_recipe()["voices"][i]
+        assert result["speakerId"] == f"c{i+1}"
+        tts.validate_wav(base64.b64decode(result["task"]["audioBase64"]))
+    assert [body["voice"]["id"] for body, _ in calls] == voice_recipe()["voices"]
+    assert all(body["model_id"] == "sonic-3.6" and version == "2026-08-14" for body, version in calls)
+
+
+def test_scenario_recipe_validation_and_legacy_job_replay_are_compatible(tmp_path):
+    from app.jobs import execution_fingerprint
+    settings = Settings(jobs_database=str(tmp_path / "voices.sqlite"), scenario_tts_recipes=[voice_recipe()])
+    store = JobStore(settings.jobs_database)
+    legacy = request("tts")
+    assert legacy.payload.model_dump() == {"kind": "tts", "text": "At nine."}
+    store.register(legacy, settings)
+    old_body = store.pending()[0]
+    assert JobEvent.model_validate_json(old_body).payloadHash == digest({"kind": "tts", "text": "At nine."})
+    assert process(old_body, settings, store, lambda _: {"task": {"audioBase64": "retained"}}) == "ACK"
+    assert JobStore(settings.jobs_database).register(legacy, settings) == str(legacy.jobId)
+    req = voice_request()
+    fingerprint = execution_fingerprint(req.payload, settings)
+    assert execution_fingerprint(req.payload, settings.model_copy(update={"cartesia_voice": "another-default"})) == fingerprint
+    with pytest.raises(ValueError):
+        store.register(req, Settings())
+    store.register(req, settings)
+    assert store.register(req, settings) == str(req.jobId)
+    for changes in ({"voiceId": "not-approved"}, {"text": "Contact private@example.com"}):
+        with pytest.raises(ValueError):
+            voice_request().payload.model_validate({**req.payload.model_dump(), **changes})
+    for invalid in ({**voice_recipe(), "voices": [voice_recipe()["voices"][0]] * 2},
+                    {**voice_recipe(), "voices": ["not-a-uuid", "also-invalid"]}):
+        with pytest.raises(ValueError):
+            Settings(scenario_tts_recipes=[invalid])
+
+
+def test_scenario_tts_uses_existing_internal_endpoint_and_rejects_other_routes(monkeypatch, tmp_path):
+    from app import main
+    settings = Settings(jobs_enabled=True, service_token="test-only", jobs_database=str(tmp_path / "endpoint.sqlite"), scenario_tts_recipes=[voice_recipe()])
+    monkeypatch.setattr(main, "settings", settings)
+    req = voice_request()
+    headers = {"X-Service-Token": "test-only", "X-User-Scope": req.userScope, "X-Request-Id": str(req.requestId), "Idempotency-Key": req.idempotencyKey}
+    client = TestClient(main.app)
+    assert client.post("/v1/tts/jobs", json=req.model_dump(mode="json"), headers=headers).status_code == 202
+    headers["X-AI-Provider"] = settings.selected_provider
+    assert client.post("/v1/coach/reports", json=req.model_dump(mode="json"), headers=headers).status_code == 400
+
+
 def test_wav_validation():
     audio = wav_bytes()
     tts.validate_wav(audio)

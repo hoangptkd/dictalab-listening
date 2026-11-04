@@ -6,7 +6,7 @@
     const labels = {CAPTURED: "Hiểu đúng", PARTIAL: "Hiểu một phần", MISSED: "Bỏ lỡ", INCORRECT: "Chưa đúng", UNCERTAIN: "Chưa đủ căn cứ"};
     const profiles = {supported: "Có hỗ trợ", standard: "Tiêu chuẩn", challenge: "Thử thách", a1: "A1", a2: "A2", b1: "B1", b2: "B2", c1: "C1", c2: "C2"};
     const skills = {detail: "Nghe chi tiết", "main-idea": "Hiểu ý chính", reason: "Hiểu lý do", purpose: "Hiểu mục đích", "speaker-attitude": "Hiểu quan điểm", "supported-inference": "Nghe và suy luận"};
-    let revision = 0, owner = null, abort = null, timer = null, session = null, busy = false;
+    let revision = 0, owner = null, abort = null, timer = null, session = null, busy = false, playback = 0;
     const memory = new Map();
     const storageKey = (suffix, user = owner) => `dictalab:scenario:${user}:${suffix}`;
     function read(suffix, fallback, user = owner) { const key = storageKey(suffix,user); try { return JSON.parse(sessionStorage.getItem(key)) ?? memory.get(key) ?? fallback; } catch (_) { return memory.get(key) ?? fallback; } }
@@ -15,7 +15,7 @@
     const request = (path, options = {}) => bridge().api(base + path, {...options, signal: abort?.signal, cache: "no-store"});
     function status(message) { const node = root()?.querySelector("#scenario-status"); if (node) node.textContent = message; }
     function frame(html) { stopAudio(); root().innerHTML = `<div class="scenario-browser">${html}<p id="scenario-status" class="scenario-status" role="status" aria-live="polite"></p></div>`; }
-    function stopAudio() { const audio = root()?.querySelector("audio"); if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); } }
+    function stopAudio() { playback++; const audio = root()?.querySelector("audio"); if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); } }
     function leave() { revision++; clearTimeout(timer); timer = null; abort?.abort(); abort = null; stopAudio(); busy = false; }
     async function mutation(path, body) {
         // Keep the same key after transport failure and across reload, until Core acknowledges registration.
@@ -189,6 +189,11 @@
                 }
             } else if (["FAILED", "UNKNOWN", "CANCELLED", "EXPIRED"].includes(op.status)) {
                 save("operation", null);
+                if (pending.sessionId && ["GRADE", "TTS"].includes(pending.action)) {
+                    await openSession(pending.sessionId, token);
+                    if (current(token)) status(`Tác vụ ${op.status}: ${op.errorCode || op.status}. Mã tác vụ: ${pending.operationId}. ${op.status === "UNKNOWN" ? "Chưa xác định kết quả; hệ thống không tự gọi lại để tránh phí trùng." : "Bài và câu trả lời đã lưu vẫn được giữ."}`);
+                    return;
+                }
                 frame(`<h2>Tác vụ ${escape(op.status)}</h2><p>${op.status === "UNKNOWN" ? "Chưa xác định được kết quả từ nhà cung cấp. Hệ thống không tự gọi lại để tránh phí trùng." : "Tác vụ không hoàn tất. Bài và câu trả lời đã lưu vẫn được giữ."}</p><p>Mã: ${escape(op.errorCode || op.status)}</p><a href="/conversation${pending.sessionId ? "/" + encodeURIComponent(pending.sessionId) : ""}" data-session="${escape(pending.sessionId || "")}">Quay lại bài học</a>`);
                 bindSessionLinks();
             } else if (Date.now() - started < 300000) timer = setTimeout(() => { check().catch(error => { if (current(token)) status(error.message); }); }, Math.max(1500, Math.min(10000, op.pollAfterMs || 2000)));
@@ -218,12 +223,20 @@
     }
     function answerKey(activity) { return `answers:${session.sessionId}:${activity.activityId}`; }
     function renderSession() {
-        const activity = session.activities.find(a => a.status !== "COMPLETED");
+        const selected = read(`review:${session.sessionId}`, null);
+        const review = session.activities.find(a => a.activityId === selected && a.status === "COMPLETED");
+        const activity = review || session.activities.find(a => a.status !== "COMPLETED");
         frame(`<div class="scenario-session-topbar"><h2>${escape(session.titleVi)}</h2><a href="/conversation" data-session="">Tình huống khác</a><button id="scenario-refresh" type="button">Tải lại bài</button></div>
             ${contextHtml(session.learningContext)}<p>${escape(session.specification.settingVi)}</p><p>${escape(session.specification.goalVi)}</p><p>Trạng thái: ${escape(session.status)}</p>
-            ${activity ? activityHtml(activity) : completedHtml()}`);
+            ${session.activities.filter(a => a.status === "COMPLETED").map(a => `<button type="button" data-review="${escape(a.activityId)}">Chữa hoạt động ${a.ordinal}</button>`).join("")}
+            ${review ? reviewHtml(review) : activity ? activityHtml(activity) : completedHtml()}`);
         bindSessionLinks(); root().querySelector("#scenario-refresh").addEventListener("click", () => run(token => openSession(session.sessionId, token)));
-        if (activity) bindActivity(activity);
+        root().querySelectorAll("[data-review]").forEach(button => button.addEventListener("click", () => run(() => {
+            save(`review:${session.sessionId}`, button.dataset.review); renderSession();
+        })));
+        if (activity) bindAudio(activity);
+        if (review) root().querySelector("#scenario-next").addEventListener("click", () => run(() => { save(`review:${session.sessionId}`, null); renderSession(); }));
+        else if (activity) bindActivity(activity);
         else root().querySelector("#scenario-remix")?.addEventListener("submit", event => {
             event.preventDefault(); const form = new FormData(event.currentTarget);
             run(async token => {
@@ -232,17 +245,37 @@
             });
         });
     }
-    function activityHtml(a) {
-        const drafts = read(answerKey(a), {}), latest = a.attempts.at(-1);
+    function audioHtml(a) {
+        const names = new Map(session.specification.characters.map(c => [c.id, c.name]));
         return `<section class="scenario-audio-panel"><h3>Hoạt động ${a.ordinal} / ${session.activities.length}</h3>
             <div class="scenario-context-card">${session.specification.characters.map(c => `<span>${escape(c.name)} · ${escape(c.roleVi)}</span>`).join(" / ")}</div>
-            <div>${a.segments.map(s => `<button type="button" data-play="${escape(s.segmentId)}">Nghe đoạn ${escape(s.segmentId)} · ${escape(s.speakerId)}</button>${s.textEn ? `<p lang="en">${escape(s.textEn)}</p>` : ""}`).join("")}</div><audio id="scenario-audio" controls preload="none" aria-label="Audio đoạn hội thoại"></audio>
-            <button type="button" data-help="HINT">Gợi ý cách nghe</button><button type="button" data-help="TRANSCRIPT">Mở bản chép và dịch (có hỗ trợ)</button>
+            <div>${a.segments.map(s => `<button type="button" data-play="${escape(s.segmentId)}">Nghe đoạn ${escape(s.segmentId)} · ${escape(names.get(s.speakerId) || s.speakerId)}</button>${s.textEn ? `<p lang="en">${escape(s.textEn)}</p>` : ""}`).join("")}</div><audio id="scenario-audio" controls preload="none" aria-label="Audio đoạn hội thoại"></audio>
             ${a.translations ? a.translations.map(t => `<p>${escape(t.segmentId)}: ${escape(t.textVi)}</p>`).join("") : ""}
-            <p>Lượt nghe: ${a.plays}. ${a.transcriptOpened || a.hintOpened ? "Kết quả sẽ ghi nhận đã dùng hỗ trợ." : "Chưa dùng gợi ý/bản chép."}</p></section>
+            <p>Lần yêu cầu phát: ${a.plays}. ${a.transcriptOpened || a.hintOpened ? "Kết quả ghi nhận đã dùng hỗ trợ." : "Chưa dùng gợi ý/bản chép trước khi hoàn thành."}</p></section>`;
+    }
+    function attemptsHtml(a) {
+        return a.attempts.map(t => `<section><h4>Lần ${t.ordinal} · ${escape(t.status)}</h4>
+            <p>${t.support?.transcriptOpened || t.support?.hintOpened ? "Có dùng hỗ trợ khi nộp." : "Không dùng gợi ý/bản chép khi nộp."}</p>
+            ${t.answers.map(answer => `<p>${escape(answer.questionId)}: ${escape(answer.textVi)}</p>`).join("")}
+            ${t.result ? t.result.facts.map(f => `<p>${escape(f.questionId)}: ${escape(labels[f.status])}${f.evidenceVi ? ` — “${escape(f.evidenceVi)}”` : ""}</p>`).join("") : ""}
+            ${["FAILED", "UNKNOWN"].includes(t.status) ? `<p>${t.status === "UNKNOWN" ? "Chưa xác định kết quả; không tự gọi AI lại để tránh phí trùng." : "Chưa chấm được; đây không phải câu trả lời sai."} ${escape(t.gradeRetry?.errorCode)} · Mã tác vụ: ${escape(t.gradeRetry?.operationId)}</p>` : ""}
+            ${a.status !== "COMPLETED" && t.gradeRetry?.allowed ? `<button type="button" data-retry-grade="${escape(t.attemptId)}">Thử chấm lại câu trả lời đã lưu (còn ${t.gradeRetry.remaining} lần)</button>` : ""}
+            ${t.status === "FAILED" && t.gradeRetry?.remaining === 0 ? "<p>Đã hết lượt thử chấm lại. Giữ mã tác vụ để được hỗ trợ; không cần gửi lặp.</p>" : ""}</section>`).join("");
+    }
+    function reviewHtml(a) {
+        return `<h3>Chữa hoạt động ${a.ordinal}</h3>${audioHtml(a)}${attemptsHtml(a)}
+            ${a.questions.map(q => `<section><h4>${escape(q.promptVi)}</h4><p>Đáp án: ${escape(q.answerVi)}</p>
+                ${(q.evidence || []).map(e => `<p>Bằng chứng ở đoạn ${escape(e.segmentId)}: <span lang="en">“${escape(e.quoteEn)}”</span></p>`).join("")}</section>`).join("")}
+            <button type="button" id="scenario-next">${session.status === "COMPLETED" ? "Xem tổng kết" : "Sang hoạt động tiếp theo"}</button>`;
+    }
+    function activityHtml(a) {
+        const drafts = read(answerKey(a), {}), latest = a.attempts.at(-1);
+        return `${audioHtml(a)}<section>
+            <button type="button" data-help="HINT">Gợi ý cách nghe</button><button type="button" data-help="TRANSCRIPT">Mở bản chép và dịch (có hỗ trợ)</button>
+            </section>
             <form id="scenario-answer"><p id="scenario-answer-help">Bạn có thể trả lời bằng tiếng Anh hoặc tiếng Việt. AI chấm theo ý hiểu.</p>${a.questions.map(q => `<div class="scenario-input-card"><label for="answer-${escape(q.questionId)}">${escape(q.promptVi)}</label><textarea id="answer-${escape(q.questionId)}" name="${escape(q.questionId)}" rows="3" maxlength="1500" aria-describedby="scenario-answer-help">${escape(drafts[q.questionId] ?? latest?.answers.find(answer => answer.questionId === q.questionId)?.textVi ?? "")}</textarea></div>`).join("")}
             <button class="primary-button" ${a.attempts.length >= 3 || latest?.status === "PENDING" ? "disabled" : ""}>Lưu và chấm câu trả lời (${a.attempts.length}/3)</button></form>
-            ${a.attempts.map(t => `<section><h4>Lần ${t.ordinal} · ${escape(t.status)}</h4>${t.result ? t.result.facts.map(f => `<p>${escape(f.questionId)}: ${escape(labels[f.status])}${f.evidenceVi ? ` — “${escape(f.evidenceVi)}”` : ""}</p>`).join("") : ""}</section>`).join("")}
+            ${attemptsHtml(a)}
             ${a.attempts.some(t => t.status === "GRADED") && latest?.status !== "PENDING" ? '<button type="button" id="scenario-complete">Hoàn thành hoạt động và xem đáp án</button>' : ""}`;
     }
     function bindActivity(a) {
@@ -259,27 +292,44 @@
             const result = await mutation(`/sessions/${session.sessionId}/activities/${a.activityId}/help`, {expectedVersion: session.version, kind: button.dataset.help});
             if (current(token)) { await openSession(session.sessionId, token); if (result.hintVi) status(result.hintVi); }
         })));
+        root().querySelectorAll("[data-retry-grade]").forEach(button => button.addEventListener("click", () => run(async token => {
+            const op = await mutation(`/sessions/${session.sessionId}/activities/${a.activityId}/attempts/${button.dataset.retryGrade}/retry-grade`, {expectedVersion: session.version});
+            if (current(token)) await track({...op, action: "GRADE", sessionId: session.sessionId}, token);
+        })));
+        root().querySelector("#scenario-complete")?.addEventListener("click", () => run(async token => {
+            const result = await mutation(`/sessions/${session.sessionId}/activities/${a.activityId}/complete`, {expectedVersion: session.version});
+            if (current(token)) { session = result; save(`review:${session.sessionId}`, a.activityId); renderSession(); }
+        }));
+    }
+    function bindAudio(a) {
         root().querySelectorAll("[data-play]").forEach(button => button.addEventListener("click", () => run(async token => {
             const op = await mutation(`/sessions/${session.sessionId}/activities/${a.activityId}/play`, {expectedVersion: session.version, segmentId: button.dataset.play});
             if (!current(token)) return;
             if (op.status === "READY") { await openSession(session.sessionId, token); if (current(token)) await playMedia(op.mediaId); }
             else await track({...op, action: "TTS", sessionId: session.sessionId}, token);
         })));
-        root().querySelector("#scenario-complete")?.addEventListener("click", () => run(async token => {
-            const result = await mutation(`/sessions/${session.sessionId}/activities/${a.activityId}/complete`, {expectedVersion: session.version});
-            if (current(token)) { session = result; renderSession(); }
-        }));
     }
     async function playMedia(id) {
         const audio = root().querySelector("#scenario-audio"); if (!audio) return;
+        const token = revision, turn = ++playback;
+        const active = () => current(token) && turn === playback && root()?.querySelector("#scenario-audio") === audio;
+        audio.addEventListener("error", () => { if (active()) status("Không tải hoặc giải mã được audio. Bấm nghe lại đoạn này; audio đã lưu sẽ được dùng lại."); }, {once: true});
         audio.src = `${base}/media/${encodeURIComponent(id)}`;
-        try { await audio.play(); } catch (_) { status("Audio đã sẵn sàng. Bấm nút phát trên trình nghe."); }
+        try { await audio.play(); } catch (error) {
+            if (!active() || error.name === "AbortError") return;
+            status(error.name === "NotAllowedError" ? "Trình duyệt chặn tự phát. Bấm nút phát trên trình nghe."
+                : "Không phát được audio. Bấm nghe lại đoạn này; audio đã lưu sẽ được dùng lại.");
+        }
     }
     function completedHtml() {
         if (session.status !== "COMPLETED") return "<p>Bài đang chuẩn bị hoặc gặp lỗi. Hãy tải lại để xem trạng thái đã lưu.</p>";
-        const facts = session.activities.flatMap(a => a.attempts[0]?.result?.facts || []), captured = facts.filter(f => f.status === "CAPTURED").length;
-        return `<h3>Đã hoàn thành</h3><p>Lần trả lời đầu: hiểu đúng ${captured}/${facts.length} ý đã được chấm. Đây không phải điểm chứng chỉ.</p>
-            ${session.activities.map(a => `<details><summary>Hoạt động ${a.ordinal}: bản chép và đáp án</summary>${a.segments.map(s => `<p lang="en">${escape(s.textEn)}</p>`).join("")}${a.questions.map(q => `<p>${escape(q.promptVi)} — ${escape(q.answerVi)}</p>`).join("")}</details>`).join("")}
+        const summary = latest => {
+            const attempts = session.activities.map(a => latest ? a.attempts.filter(t => t.status === "GRADED").at(-1) : a.attempts[0]);
+            const facts = attempts.flatMap(t => t?.status === "GRADED" ? t.result?.facts || [] : []);
+            const total = session.activities.reduce((n, a) => n + a.questions.length, 0);
+            return `<p>${latest ? "Lần chấm thành công mới nhất" : "Lần trả lời đầu"}: ${facts.filter(f => f.status === "CAPTURED").length} câu hiểu đúng; có kết quả ${facts.length}/${total} câu; ${total - facts.length} câu chưa chấm được; ${facts.filter(f => f.status === "PARTIAL").length} hiểu một phần; ${facts.filter(f => f.status === "UNCERTAIN").length} chưa đủ căn cứ. ${attempts.filter(t => t?.support?.transcriptOpened || t?.support?.hintOpened).length} hoạt động có dùng hỗ trợ.</p>`;
+        };
+        return `<h3>Đã hoàn thành</h3>${summary(false)}${summary(true)}<p>Đây không phải điểm chứng chỉ. Kết quả có hỗ trợ không phải phép đo nghe độc lập.</p>
             <form id="scenario-remix"><label for="scenario-remix-input">Bạn muốn biến thể như thế nào?</label><textarea id="scenario-remix-input" name="inputVi" maxlength="1200" required rows="3"></textarea>
             ${session.learningContext ? `<p>Biến thể giữ mục tiêu và mức luyện của bài này: ${escape(profiles[session.learningContext.profile.id])}.</p>` : `<label for="scenario-remix-profile">Mức luyện</label><select id="scenario-remix-profile" name="profileId">${Object.keys(profiles).map(p => `<option value="${p}">${profiles[p]}</option>`).join("")}</select>`}<button class="primary-button">Xem trước biến thể mới</button></form>`;
     }

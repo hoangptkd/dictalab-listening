@@ -48,6 +48,7 @@ class ScenarioEngineIntegrationTest {
     @MockitoBean AiUsageBudget budget;
     @MockitoBean ScenarioRelease release;
     @MockitoBean MediaStorageService media;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean ScenarioEngineProperties engineConfig;
     AppUser owner;
     long user;
     JsonNode fixture;
@@ -71,7 +72,7 @@ class ScenarioEngineIntegrationTest {
     }
     ScenarioEngine.DraftRequest input() { return new ScenarioEngine.DraftRequest("Tôi muốn đặt bánh để nhận ngày mai","general-communication",1,"supported"); }
     JsonNode done(String id,JsonNode input) {
-        String phase=input.path("phase").asText(); boolean tts=input.path("kind").asText().equals("tts");
+        String phase=input.path("phase").asText(); boolean multiVoice=input.path("kind").asText().equals("scenario_tts"),tts=multiVoice || input.path("kind").asText().equals("tts");
         boolean personalized=input.path("contractVersion").asText().equals("scenario-job.v2");
         boolean previousPersonalized=input.path("promptHash").asText().equals("bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa");
         boolean previousFewshot=input.path("promptHash").asText().equals("54f9fdeda01717f5c8853239357dad6dff2e0fa94df929f6c82e6d2497af52a1");
@@ -86,7 +87,12 @@ class ScenarioEngineIntegrationTest {
                 .put("provider",tts ? "cartesia" : "ollama").put("model","fixture-model").put("modelDigest","fixture-digest")
                 .put("promptVersion",tts ? "TTS_WAV_V1" : personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : previousFewshot ? "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4" : previousFewshotV2 ? "SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4" : previousFewshotV3 ? "SCENARIO_PERSONALIZED_FEWSHOT_V3_GRADE_V4" : previousFewshotV4 ? "SCENARIO_PERSONALIZED_FEWSHOT_V4_GRADE_V4" : previousFewshotV5 ? "SCENARIO_PERSONALIZED_FEWSHOT_V5_GRADE_V5" : previousFewshotV6 ? "SCENARIO_PERSONALIZED_FEWSHOT_V6_GRADE_V5" : harnessV9 ? "SCENARIO_PERSONALIZED_FEWSHOT_V9_HARNESS_V2_GRADE_V5" : harness ? "SCENARIO_PERSONALIZED_FEWSHOT_V8_HARNESS_V1_GRADE_V5" : "SCENARIO_PERSONALIZED_FEWSHOT_V7_GRADE_V5") : "SCENARIO_LISTENING_V5_GRADE_V4_1")
                 .put("promptHash",input.path("promptHash").asText(release.promptHash())).put("programHash",input.path("programHash").asText());
-        if (tts) result.set("task",object().put("contentType","audio/wav").put("size",wave().length).put("audioBase64",Base64.getEncoder().encodeToString(wave())));
+        if (tts) {
+            result.set("task",object().put("contentType","audio/wav").put("size",wave().length).put("audioBase64",Base64.getEncoder().encodeToString(wave())));
+            if (multiVoice) result.put("promptVersion","TTS_WAV_V2").put("model",input.path("recipe").path("model").asText())
+                    .put("speakerId",input.path("speakerId").asText()).put("voiceId",input.path("voiceId").asText())
+                    .put("recipeHash",ScenarioJson.hash(ScenarioJson.canonical(input.path("recipe"))));
+        }
         else {
             result.set("task",fixture.path(switch(phase) { case "EXTRACT" -> "specification"; case "GENERATE" -> "content"; default -> "grade"; }).deepCopy());
             if (personalized && phase.equals("EXTRACT")) ((ObjectNode)result.path("task")).put("learnerMode","listener").put("learnerRoleVi","Người nghe").put("genre","information-exchange");
@@ -484,6 +490,81 @@ class ScenarioEngineIntegrationTest {
         mvc.perform(post("/api/v2/scenarios/drafts").with(user(DictaLabPrincipal.from(owner))).with(csrf()).header("Idempotency-Key",id())
                 .contentType("application/json").content(json(input()).replace("\"supported\"","null")))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @Test void gradeRetryPreservesSubmissionAndHistoricalPayloadWithoutSpendingAnotherLearnerAttempt() {
+        var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        doAnswer(call -> object().put("schemaVersion","1").put("jobId",(String)call.getArgument(1)).put("status","FAILED")).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        var failed=dispatch(engine.answer(user,sid,aid,id(),answers(session))); String attempt=failed.path("attemptId").asText();
+        String original=db.queryForObject("SELECT payload_json FROM scenario_operations WHERE id=?",String.class,failed.path("operationId").asText());
+        String support=db.queryForObject("SELECT support_json FROM scenario_attempts WHERE id=?",String.class,attempt);
+        session=engine.session(user,sid);
+        assertThat(session.path("activities").get(0).path("attempts").get(0).path("gradeRetry").path("allowed").asBoolean()).isTrue();
+        var request=new ScenarioEngine.VersionRequest(session.path("version").asLong()); String key=id();
+        var retry=engine.retryGrade(user,sid,aid,attempt,key,request);
+        assertThat(engine.retryGrade(user,sid,aid,attempt,key,request)).isEqualTo(retry);
+        assertThat(db.queryForObject("SELECT payload_json FROM scenario_operations WHERE id=?",String.class,retry.path("operationId").asText())).isEqualTo(original);
+        assertThatThrownBy(() -> engine.retryGrade(user,sid,aid,attempt,id(),request)).isInstanceOf(ScenarioFailure.class);
+        doAnswer(call -> done(call.getArgument(1),call.getArgument(3))).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        assertThat(dispatch(retry).path("status").asText()).isEqualTo("SUCCEEDED");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_attempts WHERE activity_id=?",Integer.class,aid)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT support_json FROM scenario_attempts WHERE id=?",String.class,attempt)).isEqualTo(support);
+        session=engine.session(user,sid);
+        engine.completeActivity(user,sid,aid,id(),new ScenarioEngine.VersionRequest(session.path("version").asLong()));
+    }
+
+    @Test void gradeRetryIsBoundedAndUnknownCannotCreateAnotherPaidOperation() throws Exception {
+        var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        doAnswer(call -> object().put("schemaVersion","1").put("jobId",(String)call.getArgument(1)).put("status","FAILED")).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        var failed=dispatch(engine.answer(user,sid,aid,id(),answers(session))); String attempt=failed.path("attemptId").asText();
+        for (int i=0;i<2;i++) {
+            session=engine.session(user,sid);
+            dispatch(engine.retryGrade(user,sid,aid,attempt,id(),new ScenarioEngine.VersionRequest(session.path("version").asLong())));
+        }
+        var version=new ScenarioEngine.VersionRequest(engine.session(user,sid).path("version").asLong());
+        assertThatThrownBy(() -> engine.retryGrade(user,sid,aid,attempt,id(),version)).isInstanceOf(ScenarioFailure.class);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_operations WHERE kind='GRADE' AND resource_id=?",Integer.class,attempt)).isEqualTo(3);
+        db.update("UPDATE scenario_attempts SET status='UNKNOWN' WHERE id=?",attempt);
+        assertThatThrownBy(() -> engine.retryGrade(user,sid,aid,attempt,id(),version)).isInstanceOf(ScenarioFailure.class);
+        var other=users.saveAndFlush(new AppUser(id()+"@retry.test","Other","unused",Instant.now()));
+        assertThatThrownBy(() -> engine.retryGrade(other.getId(),sid,aid,attempt,id(),version)).isInstanceOf(ScenarioFailure.class);
+        mvc.perform(post("/api/v2/scenarios/sessions/"+sid+"/activities/"+aid+"/attempts/"+attempt+"/retry-grade")
+                .with(user(DictaLabPrincipal.from(owner))).header("Idempotency-Key",id()).contentType("application/json")
+                .content("{\"expectedVersion\":"+version.expectedVersion()+"}")).andExpect(status().isForbidden());
+    }
+
+    JsonNode recipe() {
+        return tree("{\"id\":\"qa-voices-v1\",\"model\":\"fixture-model\",\"apiVersion\":\"2026-08-14\",\"language\":\"en\",\"outputFormat\":\"wav-pcm16-mono-24000\",\"voices\":[\"00000000-0000-0000-0000-000000000001\",\"00000000-0000-0000-0000-000000000002\"]}");
+    }
+
+    @Test void voiceSnapshotSurvivesGenerationAndConfigurationChangeAndCachesEachSpeaker() {
+        var recipe=recipe(); doReturn(recipe).when(engineConfig).ttsRecipe();
+        var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        doReturn(null).when(engineConfig).ttsRecipe();
+        for (int i=0;i<2;i++) {
+            session=engine.session(user,sid);
+            var result=dispatch(engine.play(user,sid,aid,id(),new ScenarioEngine.PlayRequest(session.path("version").asLong(),"s"+(i+1))));
+            assertThat(result.path("status").asText()).isEqualTo("SUCCEEDED");
+            var payload=tree(db.queryForObject("SELECT payload_json FROM scenario_operations WHERE id=?",String.class,result.path("operationId").asText()));
+            assertThat(payload.path("kind").asText()).isEqualTo("scenario_tts");
+            assertThat(payload.path("voiceId").asText()).isEqualTo(recipe.path("voices").get(i).asText());
+            assertThat(payload.path("recipe")).isEqualTo(recipe);
+        }
+        session=engine.session(user,sid);
+        assertThat(engine.play(user,sid,aid,id(),new ScenarioEngine.PlayRequest(session.path("version").asLong(),"s1")).path("status").asText()).isEqualTo("READY");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_operations WHERE kind='TTS' AND user_id=?",Integer.class,user)).isEqualTo(2);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"voiceId","speakerId","recipeHash","model"})
+    void wrongVoiceMetadataCannotPublishAudio(String field) {
+        doReturn(recipe()).when(engineConfig).ttsRecipe();
+        var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        doAnswer(call -> {
+            var response=done(call.getArgument(1),call.getArgument(3));
+            ((ObjectNode)response.path("result")).put(field,"wrong"); return response;
+        }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        assertThat(dispatch(engine.play(user,sid,aid,id(),new ScenarioEngine.PlayRequest(session.path("version").asLong(),"s1"))).path("status").asText()).isEqualTo("FAILED");
     }
 
     @Test void manualAudioRetriesAreBoundedAndUnknownNeverCreatesAnotherPaidJob() {

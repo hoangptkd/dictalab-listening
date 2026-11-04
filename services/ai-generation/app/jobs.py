@@ -17,7 +17,7 @@ from .config import CLOUD_PROVIDERS
 
 QUEUE = "dictalab.ai.platform.v1"
 DLQ = QUEUE + ".dead"
-Payload = Annotated[coach.CoachInput | review.ReviewInput | tts.TtsInput | conversation_demo.ConversationDemoInput | scenario_workflow.ScenarioInput, Field(discriminator="kind")]
+Payload = Annotated[coach.CoachInput | review.ReviewInput | tts.TtsInput | tts.ScenarioTtsInput | conversation_demo.ConversationDemoInput | scenario_workflow.ScenarioInput, Field(discriminator="kind")]
 
 
 def canonical(value):
@@ -56,6 +56,11 @@ class JobEvent(JobRequest):
 
 
 def capability_metadata(payload, settings):
+    if payload.kind == "scenario_tts":
+        return {"provider": "cartesia", "model": payload.recipe.model, "modelDigest": "provider-managed",
+                "promptVersion": "TTS_WAV_V2", "schemaVersion": "1",
+                "promptHash": digest({"instruction": "Cartesia PCM 24000 mono 16-bit WAV", "input": tts.ScenarioTtsInput.model_json_schema()}),
+                "recipeHash": digest(payload.recipe.model_dump()), "speakerId": payload.speakerId, "voiceId": payload.voiceId}
     if payload.kind == "scenario":
         return scenario_workflow.metadata(settings, payload.contractVersion == "scenario-job.v2", payload.promptHash)
     if payload.kind == "conversation_demo":
@@ -73,6 +78,9 @@ def capability_metadata(payload, settings):
 
 
 def execution_fingerprint(payload, settings):
+    if payload.kind == "scenario_tts":
+        # The immutable recipe, not the current legacy default voice, defines this execution.
+        return digest({"payload": payload.model_dump(), "metadata": capability_metadata(payload, settings), "url": settings.cartesia_url})
     return digest({"payload": payload.model_dump(), "metadata": capability_metadata(payload, settings),
         "pool": [{k: v for k, v in p.model_dump().items() if k != "api_key"}
                  for p in settings.sources_for(settings.selected_provider)] if settings.gemini_quota_enabled else [],
@@ -115,6 +123,8 @@ class JobStore:
             db.close()
 
     def register(self, request: JobRequest, settings):
+        if request.payload.kind == "scenario_tts" and request.payload.recipe not in settings.scenario_tts_recipes:
+            raise ValueError("scenario TTS recipe is not approved")
         now = time.time()
         deadline = request.deadline.timestamp()
         maximum = 3600 if request.payload.kind == "conversation_demo" else 240 if request.payload.kind == "scenario" else 90
