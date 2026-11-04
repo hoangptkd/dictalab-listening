@@ -19,7 +19,7 @@ BASE = ["GENERATE", "QUESTIONS", "REVIEW_QUESTIONS", "TRANSLATE", "REVIEW"]
 
 def run(script, *, payload=None, hook=None):
     calls, deadlines = [], []
-    value = payload or personal_payload()
+    value = payload or personal_payload(promptHash=w.personalized_prompt_hash(w.harness_release))
 
     class Gateway:
         def __init__(self, settings, client):

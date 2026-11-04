@@ -106,7 +106,7 @@ def test_missing_prompt_marker_fails_closed(monkeypatch):
 
 @pytest.mark.parametrize("release", [w.personalized, fewshot, corrected, w.previous_personalized_fewshot_v3,
                                     w.previous_personalized_fewshot_v4, w.previous_personalized_fewshot_v5,
-                                    w.previous_personalized_fewshot_v6, w.personalized_fewshot, w.harness_release])
+                                    w.previous_personalized_fewshot_v6, w.personalized_fewshot, w.harness_release, w.harness_v9])
 def test_every_actual_stage_message_uses_job_pin_including_grade(release):
     pin = w.personalized_prompt_hash(release)
     extracted = {**extraction_response(), "learnerMode": "listener", "learnerCharacterId": None, "genre": "discussion"}

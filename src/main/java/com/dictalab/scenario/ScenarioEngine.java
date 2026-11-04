@@ -366,11 +366,12 @@ public class ScenarioEngine {
             boolean previousFewshotV5="358201f08eb87c7d4d2306220c3828a92cda57ac93d57faed80a508d892fa1c1".equals(input.path("promptHash").asText());
             boolean previousFewshotV6="c1dcc2e3cc29847ba09b6d53a447a45e8bfe48ae13e9dfb4e2e131173f1e6a18".equals(input.path("promptHash").asText());
             boolean previousFewshotV7="defd36c45a53aa6ac5002d0acb50996a5790fd87554646e36f9830dd3a225504".equals(input.path("promptHash").asText());
-            boolean harness=personalized && "a98960f21fabe1f652f68fac72794c41e5c18870a400059cef4b03f50a9a838b".equals(input.path("promptHash").asText());
+            boolean harnessV9=personalized && "df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303".equals(input.path("promptHash").asText());
+            boolean harness=harnessV9 || personalized && "a98960f21fabe1f652f68fac72794c41e5c18870a400059cef4b03f50a9a838b".equals(input.path("promptHash").asText());
             ScenarioContent.check(personalized ? previousPersonalized || previousFewshot || previousFewshotV2 || previousFewshotV3 || previousFewshotV4 || previousFewshotV5 || previousFewshotV6 || previousFewshotV7 || harness
                     : legacy || previousV3 || previousV4 || previousV5 || release.promptHash().equals(input.path("promptHash").asText()));
             ScenarioContent.check(input.path("promptHash").asText().equals(result.path("promptHash").asText())
-                    && (personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : previousFewshot ? "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4" : previousFewshotV2 ? "SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4" : previousFewshotV3 ? "SCENARIO_PERSONALIZED_FEWSHOT_V3_GRADE_V4" : previousFewshotV4 ? "SCENARIO_PERSONALIZED_FEWSHOT_V4_GRADE_V4" : previousFewshotV5 ? "SCENARIO_PERSONALIZED_FEWSHOT_V5_GRADE_V5" : previousFewshotV6 ? "SCENARIO_PERSONALIZED_FEWSHOT_V6_GRADE_V5" : previousFewshotV7 ? "SCENARIO_PERSONALIZED_FEWSHOT_V7_GRADE_V5" : "SCENARIO_PERSONALIZED_FEWSHOT_V8_HARNESS_V1_GRADE_V5") : legacy ? "SCENARIO_LISTENING_V1" : previousV3 ? "SCENARIO_LISTENING_V3" : previousV4 ? "SCENARIO_LISTENING_V4" : previousV5 ? "SCENARIO_LISTENING_V5_CANDIDATE_1" : "SCENARIO_LISTENING_V5_GRADE_V4_1").equals(result.path("promptVersion").asText())
+                    && (personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : previousFewshot ? "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4" : previousFewshotV2 ? "SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4" : previousFewshotV3 ? "SCENARIO_PERSONALIZED_FEWSHOT_V3_GRADE_V4" : previousFewshotV4 ? "SCENARIO_PERSONALIZED_FEWSHOT_V4_GRADE_V4" : previousFewshotV5 ? "SCENARIO_PERSONALIZED_FEWSHOT_V5_GRADE_V5" : previousFewshotV6 ? "SCENARIO_PERSONALIZED_FEWSHOT_V6_GRADE_V5" : previousFewshotV7 ? "SCENARIO_PERSONALIZED_FEWSHOT_V7_GRADE_V5" : harnessV9 ? "SCENARIO_PERSONALIZED_FEWSHOT_V9_HARNESS_V2_GRADE_V5" : "SCENARIO_PERSONALIZED_FEWSHOT_V8_HARNESS_V1_GRADE_V5") : legacy ? "SCENARIO_LISTENING_V1" : previousV3 ? "SCENARIO_LISTENING_V3" : previousV4 ? "SCENARIO_LISTENING_V4" : previousV5 ? "SCENARIO_LISTENING_V5_CANDIDATE_1" : "SCENARIO_LISTENING_V5_GRADE_V4_1").equals(result.path("promptVersion").asText())
                     && input.path("programHash").asText().equals(result.path("programHash").asText()));
             var expected=kind.equals("GENERATE") ? (legacy ? List.of("GENERATE","TRANSLATE","REVIEW")
                     : previousV3 ? List.of("GENERATE","FACTS","QUESTIONS","TRANSLATE","REVIEW")
@@ -388,7 +389,7 @@ public class ScenarioEngine {
         if (kind.equals("EXTRACT")) ScenarioContent.specification(task,"scenario-job.v2".equals(input.path("contractVersion").asText()));
         else if (kind.equals("GENERATE")) {
             String pin=input.path("promptHash").asText();
-            boolean advisory="scenario-job.v2".equals(input.path("contractVersion").asText()) && Set.of("aa79b767fee0970408e4fe420d1d97615595fdd195e16d8e919f28881f265485", "358201f08eb87c7d4d2306220c3828a92cda57ac93d57faed80a508d892fa1c1", "c1dcc2e3cc29847ba09b6d53a447a45e8bfe48ae13e9dfb4e2e131173f1e6a18", "defd36c45a53aa6ac5002d0acb50996a5790fd87554646e36f9830dd3a225504", "a98960f21fabe1f652f68fac72794c41e5c18870a400059cef4b03f50a9a838b").contains(pin);
+            boolean advisory="scenario-job.v2".equals(input.path("contractVersion").asText()) && Set.of("aa79b767fee0970408e4fe420d1d97615595fdd195e16d8e919f28881f265485", "358201f08eb87c7d4d2306220c3828a92cda57ac93d57faed80a508d892fa1c1", "c1dcc2e3cc29847ba09b6d53a447a45e8bfe48ae13e9dfb4e2e131173f1e6a18", "defd36c45a53aa6ac5002d0acb50996a5790fd87554646e36f9830dd3a225504", "a98960f21fabe1f652f68fac72794c41e5c18870a400059cef4b03f50a9a838b", "df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303").contains(pin);
             boolean flexible=advisory || "scenario-job.v2".equals(input.path("contractVersion").asText()) && "f5f347bcac1dd0767f3af409704778357cd0ce39dd2a2d7f325671bc22abee1f".equals(pin);
             ScenarioContent.content(task,input.path("specification"),input.path("profile"),input.has("learningContext") ? input.path("learningContext") : null,flexible,advisory);
         }
@@ -430,7 +431,7 @@ public class ScenarioEngine {
         });
     }
 
-    /** Finite V8 protocol: one patch and one format retry per dependent review stage. */
+    /** Finite V8/V9 protocol: one patch and one format retry per dependent review stage. */
     static void validateHarnessCalls(JsonNode result) {
         var purposes=new ArrayList<String>();
         for (var call : result.path("calls")) purposes.add(call.path("purpose").asText());
@@ -457,10 +458,11 @@ public class ScenarioEngine {
             }
         }
         var report=result.path("qualityHarness");
+        boolean v9="df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303".equals(result.path("promptHash").asText());
         ScenarioContent.check(cursor==purposes.size() && extra<=4
                 && report.path("extraCalls").isIntegralNumber() && report.path("extraCalls").asInt()==extra
-                && report.path("policyVersion").asText().equals("scenario-quality-harness.v1")
-                && report.path("policyHash").asText().equals("ac1a80c90c9f24149f14a9221c0c7382e653d94fccbd823b3862c55fa043bc6b"));
+                && report.path("policyVersion").asText().equals(v9 ? "scenario-quality-harness.v2" : "scenario-quality-harness.v1")
+                && report.path("policyHash").asText().equals(v9 ? "e15c2b30a59f2b505b047b1920ebdff9c4cb7ccb2ae87cf9cf24803e2e8c2a66" : "ac1a80c90c9f24149f14a9221c0c7382e653d94fccbd823b3862c55fa043bc6b"));
     }
 
     void failed(Map<String,Object> op,String status) {

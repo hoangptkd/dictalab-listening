@@ -1,4 +1,4 @@
-"""V8 scoped repair; in-memory artifacts only, never replay a partially executed job."""
+"""Versioned scoped repair; in-memory artifacts only, never replay a partial job."""
 from __future__ import annotations
 
 import hashlib
@@ -27,6 +27,7 @@ def issue(code, stage, *, activity=None, item=None, semantic=False):
 @dataclass
 class State:
     deadline: float
+    policy: dict = field(default_factory=lambda: w.harness_release.HARNESS_POLICY)
     extra_calls: int = 0
     attempts: list = field(default_factory=list)
     validations: list = field(default_factory=list)
@@ -34,7 +35,7 @@ class State:
     format_retries: set = field(default_factory=set)
 
     def available(self, count):
-        return self.extra_calls + count <= w.harness_release.HARNESS_POLICY["maxExtraCalls"] and time.monotonic() < self.deadline
+        return self.extra_calls + count <= self.policy["maxExtraCalls"] and time.monotonic() < self.deadline
 
     async def extra(self, call, purpose, data, model):
         if not self.available(1):
@@ -52,12 +53,12 @@ class State:
             _safe(span, "update", output=trace_content(row))
 
     def report(self):
-        return {"policyVersion": w.harness_release.HARNESS_POLICY["version"],
-                "policyHash": digest(w.harness_release.HARNESS_POLICY), "extraCalls": self.extra_calls,
+        return {"policyVersion": self.policy["version"],
+                "policyHash": digest(self.policy), "extraCalls": self.extra_calls,
                 "artifacts": self.artifacts, "validations": self.validations, "attempts": self.attempts}
 
 
-def question_issues(questions, dialogue, payload):
+def question_issues(questions, dialogue, payload, *, detailed=False):
     try:
         merged = w.attach_questions(dialogue, questions, payload.learningContext)
         w.validate_content(merged, payload.specification, payload.profile, flexible=True)
@@ -75,7 +76,10 @@ def question_issues(questions, dialogue, payload):
                  "unsupported inference policy or missing premise explanation": "inference_policy",
                  "inference support mismatch": "inference_support",
                  "duplicate or empty fact": "duplicate_fact", "missing learning focus coverage": "focus_coverage"}
-        return [issue(codes.get(str(error), "question_structure"), "QUESTIONS", activity=activity, item=item)]
+        row = issue(codes.get(str(error), "question_structure"), "QUESTIONS", activity=activity, item=item)
+        if detailed:
+            row["constraint"] = str(error)
+        return [row]
 
 
 def translation_issues(translations, merged, payload):
@@ -92,7 +96,7 @@ def translation_issues(translations, merged, payload):
         return [issue("translation_coverage", "TRANSLATE")]
 
 
-def review_status(verdict, artifact, stage):
+def review_status(verdict, artifact, stage, *, detailed=False):
     """Coverage/schema UNKNOWN differs from a complete review reporting semantic FAIL."""
     if verdict is None:
         return "UNKNOWN", []
@@ -112,8 +116,11 @@ def review_status(verdict, artifact, stage):
     for row in rows:
         for flag, value in row.model_dump().items():
             if value is False:
-                issues.append(issue("semantic_" + flag, stage, activity=row.activityId,
-                                    item=getattr(row, key), semantic=True))
+                finding = issue("semantic_" + flag, stage, activity=row.activityId,
+                                item=getattr(row, key), semantic=True)
+                if detailed:
+                    finding["reasonVi"] = row.reasonVi
+                issues.append(finding)
     try:
         if is_questions:
             w.validate_question_review.__wrapped__(verdict, artifact, True)
@@ -153,7 +160,7 @@ def merge_patch(original, patch, allowed, stage):
     return candidate
 
 
-def non_regressing(previous, current, allowed, stage):
+def non_regressing(previous, current, allowed, stage, *, scoped=False):
     if previous is None:
         return True
     key = "questionId" if stage == "QUESTIONS" else "segmentId"
@@ -161,20 +168,56 @@ def non_regressing(previous, current, allowed, stage):
     new_rows = current.questionChecks if stage == "QUESTIONS" else current.translationChecks
     new = {(r.activityId, getattr(r, key)): r.model_dump() for r in new_rows}
     for row in old_rows:
+        if scoped and (row.activityId, getattr(row, key)) not in allowed:
+            continue
         values = new.get((row.activityId, getattr(row, key)), {})
         if any(value is True and values.get(flag) is not True for flag, value in row.model_dump().items()):
             return False
-    if stage == "TRANSLATE":
+    if stage == "TRANSLATE" and not scoped:
         rubrics = {r.category: r.passed for r in current.rubricChecks}
         if any(r.passed and not rubrics.get(r.category, False) for r in previous.rubricChecks):
             return False
     return True
 
 
+def item_map(artifact, stage):
+    return ({(a.id, q.id): q for a in artifact.activities for q in a.questions} if stage == "QUESTIONS" else
+            {(t.activityId, t.segmentId): t for t in artifact.segments})
+
+
+def retain_unrepaired_findings(previous, current, changed, stage):
+    """An unchanged item cannot lose an earlier failure merely because the judge changed its mind."""
+    if previous is None:
+        return current
+    verdict = current.model_copy(deep=True)
+    key = "questionId" if stage == "QUESTIONS" else "segmentId"
+    field_name = "questionChecks" if stage == "QUESTIONS" else "translationChecks"
+    old = {(r.activityId, getattr(r, key)): r for r in getattr(previous, field_name)}
+    for row in getattr(verdict, field_name):
+        ident = (row.activityId, getattr(row, key))
+        if ident in changed:
+            continue
+        before = old[ident]
+        for flag, value in before.model_dump().items():
+            if value is False:
+                setattr(row, flag, False)
+                row.reasonVi = before.reasonVi
+                verdict.valid = False
+    if stage == "TRANSLATE":
+        old_rubrics = {r.category: r for r in previous.rubricChecks}
+        for row in verdict.rubricChecks:
+            # A translation patch cannot repair frozen dialogue/spec/profile defects.
+            if row.category != "TRANSLATIONS" and not old_rubrics[row.category].passed:
+                row.passed = False
+                row.reasonVi = old_rubrics[row.category].reasonVi
+                verdict.valid = False
+    return verdict
+
+
 async def generate(dialogue, payload, call, deadline):
-    state = State(deadline)
-    with observation("scenario.quality_harness", metadata={"harnessPolicyVersion": w.harness_release.HARNESS_POLICY["version"],
-                     "harnessPolicyHash": digest(w.harness_release.HARNESS_POLICY)}) as span:
+    state = State(deadline, policy=w.personalized_release(payload.promptHash).HARNESS_POLICY)
+    with observation("scenario.quality_harness", metadata={"harnessPolicyVersion": state.policy["version"],
+                     "harnessPolicyHash": digest(state.policy)}) as span:
         outcome = "FAILED_OR_UNKNOWN"
         try:
             result = await _generate(dialogue, payload, call, state)
@@ -193,6 +236,7 @@ async def generate(dialogue, payload, call, deadline):
 
 
 async def _generate(dialogue, payload, call, state):
+    scoped = state.policy["version"] == "scenario-quality-harness.v2"
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)}
     frozen = {"dialogue": digest(dialogue), "specification": digest(payload.specification),
               "learningContext": digest(payload.learningContext)}
@@ -207,10 +251,12 @@ async def _generate(dialogue, payload, call, state):
                 "profile": payload.profile.model_dump(), "dialogue": dialogue.model_dump(),
                 "translations": translations.model_dump(), **context}
 
-    async def review(stage, artifact, *, extra=False, retry_format=True):
+    async def review(stage, artifact, *, extra=False, retry_format=True, repair_context=None):
         purpose = "REVIEW_QUESTIONS" if stage == "QUESTIONS" else "REVIEW"
         model = w.QuestionEvidenceReview if stage == "QUESTIONS" else w.PersonalizedReview
         data = question_data(artifact) if stage == "QUESTIONS" else translation_data(artifact)
+        if repair_context is not None:
+            data["repairContext"] = repair_context
         verdict = None
         try:
             verdict = await (state.extra(call, purpose, data, model) if extra else call(purpose, data, model))
@@ -225,7 +271,7 @@ async def _generate(dialogue, payload, call, state):
                     verdict = await state.extra(call, purpose, data, model)
                 except ValueError:
                     pass
-        status, issues = review_status(verdict, artifact, stage)
+        status, issues = review_status(verdict, artifact, stage, detailed=scoped)
         # Coverage-only errors can be retried once just like malformed JSON, with actual failed output.
         if (status == "UNKNOWN" and verdict is not None and retry_format
                 and purpose not in state.format_retries and state.available(1)):
@@ -237,7 +283,7 @@ async def _generate(dialogue, payload, call, state):
                 verdict = await state.extra(call, purpose, data, model)
             except ValueError:
                 verdict = None
-            status, issues = review_status(verdict, artifact, stage)
+            status, issues = review_status(verdict, artifact, stage, detailed=scoped)
         state.record(purpose, status, issues)
         return verdict, status, issues
 
@@ -268,19 +314,36 @@ async def _generate(dialogue, payload, call, state):
                 if attempt["candidateHash"] == attempt["originalHash"]:
                     attempt["reason"] = "unchanged_patch"
                     return original, previous, None
-                errors = (question_issues(candidate, dialogue, payload) if stage == "QUESTIONS" else
+                changed = allowed
+                repair_context = None
+                if scoped:
+                    before, after = item_map(original, stage), item_map(candidate, stage)
+                    changed = {k for k in allowed if digest(before[k]) != digest(after[k])}
+                    attempt["changedTargets"] = [{"activityId": a, item_key: i} for a, i in sorted(changed)]
+                    attempt["unchangedTargets"] = [{"activityId": a, item_key: i} for a, i in sorted(allowed - changed)]
+                    repair_context = {"priorFindings": issues, "changedTargets": attempt["changedTargets"],
+                        "unchangedTargets": attempt["unchangedTargets"],
+                        "originalItems": [{"activityId": a, item_key: i, "value": before[(a, i)].model_dump()}
+                                          for a, i in sorted(allowed)]}
+                errors = (question_issues(candidate, dialogue, payload, detailed=scoped) if stage == "QUESTIONS" else
                           translation_issues(candidate, merged, payload))
                 state.record(purpose, "FAIL" if errors else "PASS", errors)
                 if errors:
                     attempt["reason"] = "deterministic_validation"
                     return original, previous, None
-                verdict, status, semantic = await review(stage, candidate, extra=True, retry_format=False)
-                unresolved_targets = targets(semantic, stage) & allowed
-                if status == "UNKNOWN" or unresolved_targets or not non_regressing(previous, verdict, allowed, stage):
+                verdict, status, semantic = await review(stage, candidate, extra=True, retry_format=False,
+                                                        repair_context=repair_context)
+                unresolved_targets = targets(semantic, stage) & changed
+                if status == "UNKNOWN" or unresolved_targets or not non_regressing(previous, verdict, changed, stage, scoped=scoped):
                     attempt["reason"] = "review_unknown_or_regression"
                     return original, previous, None
+                if scoped:
+                    verdict = retain_unrepaired_findings(previous, verdict, changed, stage)
+                    status, semantic = review_status(verdict, candidate, stage, detailed=True)
+                    state.record("REPAIR_REVIEW", status, semantic)
+                    attempt["remainingIssueCodes"] = sorted({i["code"] for i in semantic})
                 # A global review false is still advisory, even when localized fixes are accepted.
-                attempt.update(accepted=True, reason="accepted")
+                attempt.update(accepted=True, reason="accepted_with_warnings" if scoped and status != "PASS" else "accepted")
                 return candidate, verdict, status
             except ValueError:
                 return original, previous, None
@@ -289,13 +352,13 @@ async def _generate(dialogue, payload, call, state):
                       "reason": attempt["reason"], "candidateHash": attempt.get("candidateHash")})
 
     questions = await call("QUESTIONS", {"dialogue": dialogue.model_dump(), **context}, w.PersonalizedQuestions)
-    errors = question_issues(questions, dialogue, payload)
+    errors = question_issues(questions, dialogue, payload, detailed=scoped)
     state.record("QUESTIONS", "FAIL" if errors else "PASS", errors)
     question_review = None
     question_status = None
     if errors:
         questions, question_review, question_status = await repair("QUESTIONS", questions, errors)
-        if question_issues(questions, dialogue, payload):
+        if question_issues(questions, dialogue, payload, detailed=scoped):
             raise w.QualityRejected("invalid scenario content after bounded repair")
     merged = w.attach_questions(dialogue, questions, payload.learningContext)
     if question_status is None:

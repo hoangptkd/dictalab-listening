@@ -51,4 +51,15 @@ class ScenarioHarnessTest {
             assertThatThrownBy(() -> ScenarioEngine.validateHarnessCalls(path)).isInstanceOf(IllegalArgumentException.class);
         }
     }
+
+    @Test void v9RequiresItsOwnPolicyAndRetainsTheSameBoundedProtocol() {
+        var path=transcript(2,"GENERATE","QUESTIONS","REPAIR_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW");
+        path.put("promptHash","df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303");
+        assertThatThrownBy(() -> ScenarioEngine.validateHarnessCalls(path)).isInstanceOf(IllegalArgumentException.class);
+        ((ObjectNode)path.path("qualityHarness")).put("policyVersion","scenario-quality-harness.v2")
+                .put("policyHash","e15c2b30a59f2b505b047b1920ebdff9c4cb7ccb2ae87cf9cf24803e2e8c2a66");
+        assertThatCode(() -> ScenarioEngine.validateHarnessCalls(path)).doesNotThrowAnyException();
+        path.put("promptHash","a98960f21fabe1f652f68fac72794c41e5c18870a400059cef4b03f50a9a838b");
+        assertThatThrownBy(() -> ScenarioEngine.validateHarnessCalls(path)).isInstanceOf(IllegalArgumentException.class);
+    }
 }

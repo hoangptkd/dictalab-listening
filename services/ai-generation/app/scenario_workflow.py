@@ -1,7 +1,7 @@
 """Bounded production scenario jobs. Core owns authorization, admission and learning state.
 
 No tools, URL fetching or automatic replay of a partially completed workflow.
-Only the separately pinned V8 release permits bounded, scoped quality repair.
+Separately pinned harness releases permit bounded, scoped quality repair.
 """
 import asyncio
 import hashlib
@@ -28,6 +28,7 @@ from . import scenario_prompts_personalized_fewshot_v5 as previous_personalized_
 from . import scenario_prompts_personalized_fewshot_v6 as previous_personalized_fewshot_v6
 from . import scenario_prompts_personalized_fewshot_v7 as personalized_fewshot
 from . import scenario_prompts_personalized_fewshot_v8 as harness_release
+from . import scenario_prompts_personalized_fewshot_v9 as harness_v9
 
 V4_PROMPT_VERSION = "SCENARIO_LISTENING_V4"
 OUTPUT_TOKENS = {"EXTRACT": 2600, "GENERATE": 3200, "QUESTIONS": 4000,
@@ -541,7 +542,7 @@ def personalized_question_review_model(release):
     return QuestionEvidenceReview if getattr(release, "QUESTION_REVIEW_VERSION", 1) == 2 else PersonalizedQuestionReview
 
 
-def personalized_prompt_hash(release=harness_release):
+def personalized_prompt_hash(release=harness_v9):
     instructions = {**release.INSTRUCTIONS, "GRADE": getattr(release, "GRADE", V4_INSTRUCTIONS["GRADE"])}
     question_review = personalized_question_review_model(release)
     models = (LearningContext, PersonalizedSpecification, PersonalizedExtraction, Dialogue, PersonalizedQuestions,
@@ -557,7 +558,7 @@ def personalized_prompt_hash(release=harness_release):
 
 def personalized_release(requested_hash):
     # Dispatch by the immutable job pin, including jobs queued before this release.
-    for release in (harness_release, personalized_fewshot, previous_personalized_fewshot_v6, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4, previous_personalized_fewshot_v3, previous_personalized_fewshot_v2, previous_personalized_fewshot, personalized):
+    for release in (harness_v9, harness_release, personalized_fewshot, previous_personalized_fewshot_v6, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4, previous_personalized_fewshot_v3, previous_personalized_fewshot_v2, previous_personalized_fewshot, personalized):
         if requested_hash == personalized_prompt_hash(release):
             return release
     raise ValueError("scenario prompt mismatch")
@@ -783,7 +784,7 @@ async def execute(event, settings):
     payload = event.payload
     is_personalized = payload.contractVersion == "scenario-job.v2"
     release = personalized_release(payload.promptHash) if is_personalized else None
-    advisory = release in (harness_release, personalized_fewshot, previous_personalized_fewshot_v6, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4)
+    advisory = release in (harness_v9, harness_release, personalized_fewshot, previous_personalized_fewshot_v6, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4)
     flexible = advisory or release is previous_personalized_fewshot_v3
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)} if is_personalized else {}
     instructions = {**release.INSTRUCTIONS, "GRADE": getattr(release, "GRADE", V4_INSTRUCTIONS["GRADE"])} if is_personalized else INSTRUCTIONS
@@ -834,7 +835,7 @@ async def execute(event, settings):
                 validate_dialogue(dialogue, payload.specification, payload.profile, flexible)
             except ValueError as invalid:
                 raise QualityRejected("invalid dialogue") from invalid
-            if release is harness_release:
+            if release in (harness_v9, harness_release):
                 from .scenario_harness import generate
                 result, harness_metadata = await generate(dialogue, payload, call, deadline)
                 return {**metadata(settings, True, payload.promptHash), **harness_metadata,

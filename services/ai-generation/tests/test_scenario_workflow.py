@@ -129,7 +129,7 @@ def personal_responses(release=None):
 def test_personalized_context_reaches_every_stage_and_uses_current_grade(code):
     context = learning_context(code)
     result, calls = execute(personal_payload(context=context), personal_responses())
-    assert result["promptVersion"] == workflow.harness_release.PROMPT_VERSION
+    assert result["promptVersion"] == workflow.harness_v9.PROMPT_VERSION
     assert result["promptHash"] == workflow.personalized_prompt_hash()
     for _, messages in calls:
         assert json.loads(messages[1]["content"])["learningContext"] == personal_payload(context=context).learningContext.model_dump(exclude_none=True)

@@ -183,3 +183,67 @@ bảo đảm đúng ngữ nghĩa tuyệt đối; cần benchmark cùng corpus v�
   scalar an toàn; nội dung output tiếp tục theo capture/redaction hiện có.
 - Chưa chạy lại 20 case live, chưa đổi pin phê duyệt của engine/program trên máy
   production và chưa triển khai/restart dịch vụ trong đợt này.
+
+## V9 — sửa theo kết quả 30 đầu vào V8 (04/11/2026)
+
+Lượt V8 sau triển khai đã chạy 30 happy case: EXTRACT 30/30, tạo bài 23/30,
+22 bài có cả hai reviewer PASS, 7 bài từ chối. Đây là tín hiệu tự động, không phải
+nhãn human gold. Output và trace nằm trong thư mục riêng
+`data/personalized-harness30-v8-20261104/`; không đưa dữ liệu runtime vào Git.
+
+### Nguyên nhân đã đối chiếu với output và code
+
+1. Repair câu hỏi nhận mã lỗi nhưng thiếu hợp đồng liên quan: trích dẫn nguyên
+   văn trong cùng activity, agreement cần bằng chứng hai phía theo thứ tự,
+   `direct/synthesis` phải có `inferenceReasonEn` rỗng. Trong 7 bài từ chối,
+   patch có thể lặp lại lỗi cũ hoặc sửa trích dẫn rồi tạo lỗi conditional schema.
+2. `review_status` bỏ mất `reasonVi` khi chuyển nhận xét sang issue. Repair bản
+   dịch biết cờ sai nhưng không biết reviewer đang chỉ ra lỗi nào trong đoạn.
+3. Chống no-op chỉ so hash của cả artifact. Bài 11 sửa được một đoạn, giữ nguyên
+   đoạn khác dịch sai phạm vi thời gian; recheck đổi false thành true ở đoạn
+   giữ nguyên và cả patch được nhận là đã đạt.
+4. Chống regression so tất cả cờ của cả bài. Bài 04 sửa nhiều lỗi chính tả thật
+   nhưng reviewer đổi ý ở một đoạn không sửa, khiến toàn bộ patch bị bỏ.
+
+### Thay đổi có phạm vi
+
+- Release V9/policy v2 riêng; V8 và các pin lịch sử vẫn dispatch theo hợp đồng cũ.
+- Repair nhận mô tả constraint hoặc `reasonVi`, cùng hợp đồng trích dẫn,
+  speech act, skill/support kind. Không thêm ví dụ đặc thù từ corpus vào prompt.
+- Recheck nhận finding cũ, target thực sự thay đổi, target giữ nguyên và giá trị
+  gốc. Các stage EXTRACT, GENERATE, QUESTIONS, TRANSLATE và GRADE giữ prompt cũ.
+- So hash từng item. Một item giữ nguyên không được tự xóa cờ false trước đó.
+  Patch hữu ích được giữ, nhưng kết quả vẫn `qualityPassed=false` nếu còn lỗi.
+- Chống regression vẫn áp dụng với item thực sự sửa. Cờ false mới ở item ngoài
+  phạm vi sửa được giữ thành cảnh báo, không gán là lỗi do patch gây ra rồi bỏ
+  phần sửa hữu ích. Rubric sai về dialogue/spec/profile bất biến không thể được
+  xóa bằng patch bản dịch.
+- Tối đa 4 extra calls, một patch mỗi stage, deadline gốc, strict schema,
+  bằng chứng nguyên văn, bảo vệ item ngoài target và policy advisory giữ nguyên.
+  Không regenerate toàn bài, không tự tăng quota hoặc đổi model.
+
+Pin V9: `df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303`.
+Policy hash: `e15c2b30a59f2b505b047b1920ebdff9c4cb7ccb2ae87cf9cf24803e2e8c2a66`.
+
+### Kiểm chứng trước benchmark mới
+
+- Python: 234 test PASS trong `test_scenario_harness`, `test_scenario_harness_v9`,
+  `test_scenario_workflow`, `test_scenario_personalized_fewshot`.
+- Java: 64 test PASS trong `ScenarioHarnessTest`, `ScenarioEngineIntegrationTest`,
+  `ScenarioContentTest`; kiểm tra policy/hash V9 và từ chối gắn nhầm policy V8.
+- Replay offline toàn bộ output V8 bằng code mới: 60/60 pha cùng kết quả, chặn
+  network. Bằng chứng gốc không bị ghi đè.
+- Phát lại output model đã lưu của bài 04/11 qua policy V9 (không gọi model):
+  bài 04 giữ patch hữu ích và cảnh báo mới; bài 11 giữ phần sửa hữu ích nhưng
+  chuyển từ PASS sai sang cảnh báo vì đoạn lỗi chưa thay đổi. Đây chỉ chứng minh
+  quyết định của code, chưa chứng minh prompt V9 làm model sửa tốt hơn.
+
+Benchmark tiếp theo giao GPT-6.1 Sol high: chạy lại cùng 30 input/profile/focus,
+model, temperature và token budget; lưu riêng output V9, kiểm tra patch thực tế,
+replay offline, đối chiếu Langfuse và so sánh mô tả với V8. Các lượt live độc lập
+có biến thiên; không suy ra tác động nhân quả chỉ từ tỷ lệ PASS giữa hai lượt.
+
+Giới hạn: reviewer vẫn có thể sai ở nội dung đã thay đổi; lỗi chưa được sửa vẫn
+có thể được trả cho người học với cảnh báo theo policy advisory đã chọn. V9
+không biến reviewer thành bộ chấm đã hiệu chỉnh với human gold; chưa deploy
+production và chưa kiểm tra TTS/GRADE trong benchmark sinh bài này.
