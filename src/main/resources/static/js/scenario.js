@@ -4,6 +4,8 @@
     const root = () => document.querySelector("#conversation-content");
     const escape = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
     const labels = {CAPTURED: "Hiểu đúng", PARTIAL: "Hiểu một phần", MISSED: "Bỏ lỡ", INCORRECT: "Chưa đúng", UNCERTAIN: "Chưa đủ căn cứ"};
+    const stageLabels = {EXTRACT: "Phân tích tình huống", GENERATE: "Tạo bài luyện", GRADE: "Chấm câu trả lời", TTS: "Tạo âm thanh"};
+    const statusLabels = {COMPLETED: "Hoàn thành", ACTIVE: "Đang diễn ra", PREPARING: "Đang chuẩn bị", PREPARATION_FAILED: "Lỗi chuẩn bị bài", GENERATION_FAILED: "Lỗi tạo bài", FAILED: "Tác vụ không hoàn tất", UNKNOWN: "Chưa xác định được kết quả", CANCELLED: "Đã huỷ", EXPIRED: "Đã hết hạn"};
     const profiles = {supported: "Có hỗ trợ", standard: "Tiêu chuẩn", challenge: "Thử thách", a1: "A1", a2: "A2", b1: "B1", b2: "B2", c1: "C1", c2: "C2"};
     const skills = {detail: "Nghe chi tiết", "main-idea": "Hiểu ý chính", reason: "Hiểu lý do", purpose: "Hiểu mục đích", "speaker-attitude": "Hiểu quan điểm", "supported-inference": "Nghe và suy luận"};
     let revision = 0, owner = null, abort = null, timer = null, session = null, busy = false, playback = 0;
@@ -67,9 +69,9 @@
             <p>Luyện kỹ năng theo mục tiêu; kết quả bài này không quy đổi thành điểm TOEIC hoặc band IELTS.</p>
             <button id="scenario-create-button" class="primary-button" ${available ? "" : "disabled"}>Phân tích và xem trước</button>
             ${available ? "" : "<p>Chương trình đang chờ duyệt bộ sinh bài. Bài đã lưu vẫn có thể mở.</p>"}
-            </form><aside class="scenario-suggestions-col"><h2>Gợi ý bài luyện</h2><p>${escape(recommendations.messageVi)}</p>
+            </form>${recommendations.suggestions.length > 0 ? `<aside class="scenario-suggestions-col"><h2>Gợi ý bài luyện</h2><p>${escape(recommendations.messageVi)}</p>
             ${recommendations.suggestions.slice(0,3).map((s,index) => `<button class="scenario-suggestion-card" type="button" data-recommendation="${index}"><strong>${escape(s.titleVi)}</strong><span>${escape(s.reasonVi || s.inputVi)}</span></button>`).join("")}
-            ${goals.map(g => `<p class="scenario-goal-display">Mục tiêu tự khai: ${escape(g.programCode)} · ${escape(g.target.component)} · ${escape(g.target.value)}</p>`).join("")}</aside></div>
+            ${goals.map(g => `<p class="scenario-goal-display">Mục tiêu tự khai: ${escape(profiles[g.target.value] || g.target.value)}</p>`).join("")}</aside>` : ""}</div>
             <section class="scenario-explorer"><h2>Gợi ý để bạn tùy chỉnh</h2><p>Chọn một gợi ý, rồi sửa mô tả theo nhu cầu của bạn. Bạn cũng có thể nhập tình huống hoàn toàn mới.</p>
             <div class="scenario-program-pills" role="group" aria-label="Nhóm gợi ý">${groups.map((g,i) => `<button class="scenario-pill" type="button" data-group="${escape(g.id)}" aria-pressed="${i === 0}">${escape(g.title)}</button>`).join("")}</div>
             <div class="scenario-group-grid">${suggestions.suggestions.map((s,index) => `<button class="scenario-group-card" data-suggestion="${index}" data-suggestion-group="${escape(s.groupId || s.id)}" ${index && (s.groupId || s.id) !== groups[0].id ? "hidden" : ""} type="button"><strong>${escape(s.titleVi)}</strong></button>`).join("")}</div></section>
@@ -175,7 +177,7 @@
     async function track(operation, token) { save("operation", operation); await wait(operation, token); }
     async function wait(pending, token, started = Date.now()) {
         if (!current(token)) return;
-        frame(`<div class="scenario-waiting"><h2>Đang xử lý ${escape(pending.stage || pending.action)}</h2><p>Yêu cầu đã được lưu. Có thể rời trang rồi quay lại.</p><button id="scenario-check" type="button">Kiểm tra trạng thái</button></div>`);
+        frame(`<div class="scenario-waiting"><h2>Đang xử lý: ${escape(stageLabels[pending.stage || pending.action] || pending.stage || pending.action)}</h2><p>Yêu cầu đã được lưu. Có thể rời trang rồi quay lại.</p><button id="scenario-check" type="button">Kiểm tra trạng thái</button></div>`);
         const check = async () => {
             const op = await request(`/operations/${encodeURIComponent(pending.operationId)}`);
             if (!current(token)) return;
@@ -194,7 +196,7 @@
                     if (current(token)) status(`Tác vụ ${op.status}: ${op.errorCode || op.status}. Mã tác vụ: ${pending.operationId}. ${op.status === "UNKNOWN" ? "Chưa xác định kết quả; hệ thống không tự gọi lại để tránh phí trùng." : "Bài và câu trả lời đã lưu vẫn được giữ."}`);
                     return;
                 }
-                frame(`<h2>Tác vụ ${escape(op.status)}</h2><p>${op.status === "UNKNOWN" ? "Chưa xác định được kết quả từ nhà cung cấp. Hệ thống không tự gọi lại để tránh phí trùng." : "Tác vụ không hoàn tất. Bài và câu trả lời đã lưu vẫn được giữ."}</p><p>Mã: ${escape(op.errorCode || op.status)}</p><a href="/conversation${pending.sessionId ? "/" + encodeURIComponent(pending.sessionId) : ""}" data-session="${escape(pending.sessionId || "")}">Quay lại bài học</a>`);
+                frame(`<h2>${escape(statusLabels[op.status] || op.status)}</h2><p>${op.status === "UNKNOWN" ? "Chưa xác định được kết quả từ nhà cung cấp. Hệ thống không tự gọi lại để tránh phí trùng." : "Tác vụ không hoàn tất. Bài và câu trả lời đã lưu vẫn được giữ."}</p><p>Mã lỗi: ${escape(op.errorCode || "—")}</p><a href="/conversation${pending.sessionId ? "/" + encodeURIComponent(pending.sessionId) : ""}" data-session="${escape(pending.sessionId || "")}">Quay lại bài học</a>`);
                 bindSessionLinks();
             } else if (Date.now() - started < 300000) timer = setTimeout(() => { check().catch(error => { if (current(token)) status(error.message); }); }, Math.max(1500, Math.min(10000, op.pollAfterMs || 2000)));
             else status("Tác vụ còn đang chạy. Bấm kiểm tra trạng thái để tiếp tục, không cần gửi yêu cầu mới.");
@@ -210,7 +212,7 @@
             <h3>Dữ kiện bạn cung cấp</h3><ul>${s.constraintsVi.map(a => `<li>${escape(a)}</li>`).join("")}</ul>
             <h3>Suy luận và giả định cần xác nhận</h3><ul>${s.assumptionsVi.map(a => `<li>${escape(a)}</li>`).join("")}</ul>
             <p>${s.characters.map(c => `${escape(c.name)}: ${escape(c.roleVi)}`).join(" · ")}</p>
-            <button class="primary-button" id="scenario-confirm">Xác nhận và tạo bài</button><a href="/conversation" data-session="">Viết tình huống khác</a>`);
+            <div class="scenario-result-actions"><button class="primary-button" id="scenario-confirm">Xác nhận và tạo bài</button><a href="/conversation" data-session="">Viết tình huống khác</a></div>`);
         bindSessionLinks();
         root().querySelector("#scenario-confirm").addEventListener("click", () => run(async token => {
             const op = await mutation("/sessions", {draftId: draft.draftId, draftVersion: draft.version});
@@ -227,7 +229,7 @@
         const review = session.activities.find(a => a.activityId === selected && a.status === "COMPLETED");
         const activity = review || session.activities.find(a => a.status !== "COMPLETED");
         frame(`<div class="scenario-session-topbar"><h2>${escape(session.titleVi)}</h2><a href="/conversation" data-session="">Tình huống khác</a><button id="scenario-refresh" type="button">Tải lại bài</button></div>
-            ${contextHtml(session.learningContext)}<p>${escape(session.specification.settingVi)}</p><p>${escape(session.specification.goalVi)}</p><p>Trạng thái: ${escape(session.status)}</p>
+            ${contextHtml(session.learningContext)}<p>${escape(session.specification.settingVi)}</p><p>${escape(session.specification.goalVi)}</p><p>Trạng thái: ${escape(statusLabels[session.status] || session.status)}</p>
             ${session.activities.filter(a => a.status === "COMPLETED").map(a => `<button type="button" data-review="${escape(a.activityId)}">Chữa hoạt động ${a.ordinal}</button>`).join("")}
             ${review ? reviewHtml(review) : activity ? activityHtml(activity) : completedHtml()}`);
         bindSessionLinks(); root().querySelector("#scenario-refresh").addEventListener("click", () => run(token => openSession(session.sessionId, token)));
@@ -249,14 +251,14 @@
         const names = new Map(session.specification.characters.map(c => [c.id, c.name]));
         return `<section class="scenario-audio-panel"><h3>Hoạt động ${a.ordinal} / ${session.activities.length}</h3>
             <div class="scenario-context-card">${session.specification.characters.map(c => `<span>${escape(c.name)} · ${escape(c.roleVi)}</span>`).join(" / ")}</div>
-            <div>${a.segments.map(s => `<button type="button" data-play="${escape(s.segmentId)}">Nghe đoạn ${escape(s.segmentId)} · ${escape(names.get(s.speakerId) || s.speakerId)}</button>${s.textEn ? `<p lang="en">${escape(s.textEn)}</p>` : ""}`).join("")}</div><audio id="scenario-audio" controls preload="none" aria-label="Audio đoạn hội thoại"></audio>
+            <div>${a.segments.map((s, si) => `<button type="button" data-play="${escape(s.segmentId)}">Nghe đoạn ${si + 1} · ${escape(names.get(s.speakerId) || s.speakerId)}</button>${s.textEn ? `<p lang="en">${escape(s.textEn)}</p>` : ""}`).join("")}</div><audio id="scenario-audio" controls preload="none" aria-label="Audio đoạn hội thoại"></audio>
             ${a.translations ? a.translations.map(t => `<p>${escape(t.segmentId)}: ${escape(t.textVi)}</p>`).join("") : ""}
             <p>Lần yêu cầu phát: ${a.plays}. ${a.transcriptOpened || a.hintOpened ? "Kết quả ghi nhận đã dùng hỗ trợ." : "Chưa dùng gợi ý/bản chép trước khi hoàn thành."}</p></section>`;
     }
     function attemptsHtml(a) {
-        return a.attempts.map(t => `<section><h4>Lần ${t.ordinal} · ${escape(t.status)}</h4>
+        return a.attempts.map(t => `<section><h4>Lần ${t.ordinal} · ${escape(labels[t.status] || statusLabels[t.status] || t.status)}</h4>
             <p>${t.support?.transcriptOpened || t.support?.hintOpened ? "Có dùng hỗ trợ khi nộp." : "Không dùng gợi ý/bản chép khi nộp."}</p>
-            ${t.answers.map(answer => `<p>${escape(answer.questionId)}: ${escape(answer.textVi)}</p>`).join("")}
+            ${t.answers.map(answer => `<p>Câu ${escape(answer.questionId.replace(/^q/, ""))}: ${escape(answer.textVi)}</p>`).join("")}
             ${t.result ? t.result.facts.map(f => `<p>${escape(f.questionId)}: ${escape(labels[f.status])}${f.evidenceVi ? ` — “${escape(f.evidenceVi)}”` : ""}</p>`).join("") : ""}
             ${["FAILED", "UNKNOWN"].includes(t.status) ? `<p>${t.status === "UNKNOWN" ? "Chưa xác định kết quả; không tự gọi AI lại để tránh phí trùng." : "Chưa chấm được; đây không phải câu trả lời sai."} ${escape(t.gradeRetry?.errorCode)} · Mã tác vụ: ${escape(t.gradeRetry?.operationId)}</p>` : ""}
             ${a.status !== "COMPLETED" && t.gradeRetry?.allowed ? `<button type="button" data-retry-grade="${escape(t.attemptId)}">Thử chấm lại câu trả lời đã lưu (còn ${t.gradeRetry.remaining} lần)</button>` : ""}
@@ -273,7 +275,7 @@
         return `${audioHtml(a)}<section>
             <button type="button" data-help="HINT">Gợi ý cách nghe</button><button type="button" data-help="TRANSCRIPT">Mở bản chép và dịch (có hỗ trợ)</button>
             </section>
-            <form id="scenario-answer"><p id="scenario-answer-help">Bạn có thể trả lời bằng tiếng Anh hoặc tiếng Việt. AI chấm theo ý hiểu.</p>${a.questions.map(q => `<div class="scenario-input-card"><label for="answer-${escape(q.questionId)}">${escape(q.promptVi)}</label><textarea id="answer-${escape(q.questionId)}" name="${escape(q.questionId)}" rows="3" maxlength="1500" aria-describedby="scenario-answer-help">${escape(drafts[q.questionId] ?? latest?.answers.find(answer => answer.questionId === q.questionId)?.textVi ?? "")}</textarea></div>`).join("")}
+            <form id="scenario-answer"><p id="scenario-answer-help">Bạn có thể trả lời bằng tiếng Anh hoặc tiếng Việt. AI chấm theo ý hiểu.</p>${a.questions.map(q => `<div class="scenario-input-card"><label for="answer-${escape(q.questionId)}">${escape(q.promptVi)}</label><textarea id="answer-${escape(q.questionId)}" name="${escape(q.questionId)}" class="scenario-answer-field" rows="3" maxlength="1500" aria-describedby="scenario-answer-help">${escape(drafts[q.questionId] ?? latest?.answers.find(answer => answer.questionId === q.questionId)?.textVi ?? "")}</textarea></div>`).join("")}
             <button class="primary-button" ${a.attempts.length >= 3 || latest?.status === "PENDING" ? "disabled" : ""}>Lưu và chấm câu trả lời (${a.attempts.length}/3)</button></form>
             ${attemptsHtml(a)}
             ${a.attempts.some(t => t.status === "GRADED") && latest?.status !== "PENDING" ? '<button type="button" id="scenario-complete">Hoàn thành hoạt động và xem đáp án</button>' : ""}`;
@@ -322,15 +324,20 @@
         }
     }
     function completedHtml() {
-        if (session.status !== "COMPLETED") return "<p>Bài đang chuẩn bị hoặc gặp lỗi. Hãy tải lại để xem trạng thái đã lưu.</p>";
+        if (session.status !== "COMPLETED") {
+            const isTerminalError = ["PREPARATION_FAILED", "GENERATION_FAILED", "FAILED"].includes(session.status);
+            return isTerminalError
+                ? `<p>Bài gặp lỗi: ${escape(statusLabels[session.status] || session.status)}. Hãy tạo bài mới hoặc liên hệ hỗ trợ.</p><p><a href="/conversation" data-session="">Tạo bài mới</a></p>`
+                : "<p>Bài đang chuẩn bị. Hãy tải lại để xem trạng thái đã lưu.</p>";
+        }
         const summary = latest => {
             const attempts = session.activities.map(a => latest ? a.attempts.filter(t => t.status === "GRADED").at(-1) : a.attempts[0]);
             const facts = attempts.flatMap(t => t?.status === "GRADED" ? t.result?.facts || [] : []);
             const total = session.activities.reduce((n, a) => n + a.questions.length, 0);
-            return `<p>${latest ? "Lần chấm thành công mới nhất" : "Lần trả lời đầu"}: ${facts.filter(f => f.status === "CAPTURED").length} câu hiểu đúng; có kết quả ${facts.length}/${total} câu; ${total - facts.length} câu chưa chấm được; ${facts.filter(f => f.status === "PARTIAL").length} hiểu một phần; ${facts.filter(f => f.status === "UNCERTAIN").length} chưa đủ căn cứ. ${attempts.filter(t => t?.support?.transcriptOpened || t?.support?.hintOpened).length} hoạt động có dùng hỗ trợ.</p>`;
+            return `<p>${latest ? "Lần chấm thành công mới nhất" : "Lần trả lời đầu"}: ${facts.filter(f => f.status === "CAPTURED").length} câu hiểu đúng; có kết quả ${facts.length}/${total} câu; ${total - facts.length} câu chưa chấm được; ${facts.filter(f => f.status === "PARTIAL").length} hiểu một phần; ${facts.filter(f => f.status === "INCORRECT").length} chưa đúng; ${facts.filter(f => f.status === "MISSED").length} bỏ lỡ; ${facts.filter(f => f.status === "UNCERTAIN").length} chưa đủ căn cứ. ${attempts.filter(t => t?.support?.transcriptOpened || t?.support?.hintOpened).length} hoạt động có dùng hỗ trợ.</p>`;
         };
         return `<h3>Đã hoàn thành</h3>${summary(false)}${summary(true)}<p>Đây không phải điểm chứng chỉ. Kết quả có hỗ trợ không phải phép đo nghe độc lập.</p>
-            <form id="scenario-remix"><label for="scenario-remix-input">Bạn muốn biến thể như thế nào?</label><textarea id="scenario-remix-input" name="inputVi" maxlength="1200" required rows="3"></textarea>
+            <form id="scenario-remix"><label for="scenario-remix-input">Bạn muốn biến thể như thế nào?</label><textarea id="scenario-remix-input" name="inputVi" class="scenario-answer-field" maxlength="1200" required rows="3"></textarea>
             ${session.learningContext ? `<p>Biến thể giữ mục tiêu và mức luyện của bài này: ${escape(profiles[session.learningContext.profile.id])}.</p>` : `<label for="scenario-remix-profile">Mức luyện</label><select id="scenario-remix-profile" name="profileId">${Object.keys(profiles).map(p => `<option value="${p}">${profiles[p]}</option>`).join("")}</select>`}<button class="primary-button">Xem trước biến thể mới</button></form>`;
     }
     window.DictaLabScenario = {show, leave};

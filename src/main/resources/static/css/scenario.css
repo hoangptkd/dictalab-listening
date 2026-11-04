@@ -12,10 +12,36 @@
 .scenario-profile-options input { accent-color: var(--green); }
 .scenario-profile-options label:focus-within { outline: 2px solid var(--ink); outline-offset: 3px; }
 .scenario-group-grid [hidden] { display: none; }
-.scenario-personalization { border: 1px solid var(--line); padding: 20px; margin-bottom: 24px; border-radius: 4px; }
+.scenario-personalization { border: 1px solid var(--line); padding: 14px 16px; margin-bottom: 20px; border-radius: 4px; }
 .scenario-personalization form, #scenario-personalization-fields { display: grid; gap: 10px; }
 .scenario-personalization select, .scenario-personalization input { min-height: 44px; padding: 8px; max-width: 100%; }
 .scenario-personalization :is(select,input,button):focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+/* V5: Style goal-form controls with design tokens */
+.scenario-personalization select,
+.scenario-personalization input[type="number"],
+.scenario-personalization input[type="text"] {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--paper);
+    color: var(--ink);
+    width: 100%;
+    box-sizing: border-box;
+}
+.scenario-personalization button[type="submit"] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 8px 20px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--paper);
+    color: var(--ink);
+    cursor: pointer;
+    font-size: .9rem;
+}
+.scenario-personalization button[type="submit"]:hover { background: var(--cream); }
 
 .scenario-browser {
     max-width: 1160px;
@@ -962,3 +988,17 @@
 }
 
 .scenario-unavailable-notice strong { color: var(--ink); }
+
+
+/* ── V7: Mobile session header wrap ──────────────────────────── */
+@media (max-width: 600px) {
+    .scenario-session-topbar { flex-wrap: wrap; row-gap: 8px; }
+    .scenario-session-topbar h2 { flex-basis: 100%; font-size: 1rem; margin: 0; }
+}
+
+/* ── V6: Answer block label alignment ───────────────────────── */
+.scenario-input-card label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
