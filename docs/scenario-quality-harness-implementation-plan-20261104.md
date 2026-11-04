@@ -247,3 +247,80 @@ Giới hạn: reviewer vẫn có thể sai ở nội dung đã thay đổi; lỗ
 có thể được trả cho người học với cảnh báo theo policy advisory đã chọn. V9
 không biến reviewer thành bộ chấm đã hiệu chỉnh với human gold; chưa deploy
 production và chưa kiểm tra TTS/GRADE trong benchmark sinh bài này.
+
+## Kết quả V9: 50 đầu vào và kiểm thử người dùng local (04/11/2026)
+
+### Benchmark 50 đầu vào mới
+
+Chạy với model `gemini-3.5-flash-lite`, temperature 0 và pin V9 ở trên.
+Corpus tổng hợp gồm 18 bài giao tiếp, 16 bài TOEIC Listening và 16 bài IELTS
+Listening; đa dạng mức mục tiêu và kỹ năng. Đây là happy case, chưa có nhãn
+human gold. Lượt này kiểm tra trực tiếp workflow Python, không tạo 50 phiên
+người dùng qua trình duyệt hoặc HTTP Core.
+
+| Chỉ số | Kết quả |
+|---|---:|
+| EXTRACT thành công | 50/50 |
+| GENERATE thành công | 48/50 |
+| Từ chối sau sửa có giới hạn | 2/50 |
+| Replay offline cùng kết quả | 100/100 pha |
+| Output model sai schema trong kiểm tra offline | 0 |
+| Logical model calls | 330 |
+| Trace Langfuse đã truy vấn lại | 100 |
+| Observations Langfuse đã truy vấn lại | 798 |
+
+- Bài 13: `invalid scenario content after bounded repair`.
+- Bài 16: `invalid translations after bounded repair`.
+- GENERATE thành công không bảo đảm nội dung đúng hoàn toàn; reviewer vẫn có
+  thể bỏ sót lỗi. Không suy ra chất lượng tăng chỉ từ tỷ lệ 48/50 vì corpus này
+  khác corpus 30 đầu vào trước.
+- Giữ toàn bộ input, output, HTTP/provider attempts, trace và integrity manifest
+  tại `data/personalized-harness50-v9-20261104/capture/` trên máy thực hiện.
+  Replay không gọi model; không sinh lại các bài lỗi để thay bằng chứng.
+
+### Kiểm thử toàn luồng bằng trình duyệt local
+
+Môi trường preview đang có tại `http://127.0.0.1:18082/conversation`, dùng AI
+và TTS thật. Hoàn thành một bài giao tiếp CEFR B1 và tạo một remix. Mục tiêu
+TOEIC Listening 350 và IELTS Listening 6.5 đã được lưu và đọc lại; chưa chạy
+trọn bài của hai chương trình đó trong lượt kiểm thử này.
+
+| Luồng | Kết quả |
+|---|---|
+| Đăng nhập, chọn mục tiêu, chọn gợi ý rồi sửa mô tả | Đạt |
+| EXTRACT → xem trước → xác nhận → GENERATE | Đạt luồng |
+| Nghe audio, mở gợi ý và bản chép/dịch | 12/12 đoạn tải và giải mã được |
+| Trả lời tiếng Anh và tiếng Việt | Đạt |
+| Câu hỏi nhiều ý, chỉ trả lời đúng một phần | Chấm PARTIAL |
+| Sửa đủ ý và chấm lại | Chuyển CAPTURED |
+| Nháp qua tải lại toàn trang | Được giữ |
+| Hoàn thành 3 hoạt động, xem tổng kết | Đạt |
+| Lịch sử, mở lại bài hoàn thành, remix | Đạt luồng |
+| Mobile 390×844 | Không tràn ngang; đã xem ảnh |
+| Đăng xuất, bảo vệ route, đăng nhập lại | Đạt; giữ bài đã hoàn thành |
+
+20 tác vụ đều SUCCEEDED: 2 EXTRACT, 2 GENERATE, 12 TTS và 4 GRADE. Lần trả lời
+đầu có 5/6 CAPTURED và 1/6 PARTIAL do chủ động trả lời thiếu; sau sửa đạt 6/6
+CAPTURED. Các lượt này có mở bản chép, không phải đo trình độ người học.
+Không ghi nhận JavaScript error/unhandled rejection trong khoảng theo dõi.
+Có một HTTP 401 khi polling; sau đó đăng nhập được làm mới và tác vụ thành công.
+
+### Hai vấn đề nội dung còn mở
+
+1. **TRANSLATE:** “You are very welcome.” ở lời đáp cảm ơn được dịch thành
+   “Bạn rất hoan nghênh.” Cần dịch theo chức năng giao tiếp, chẳng hạn “Không có
+   gì.” Kiểm tra tự động chưa phát hiện lỗi này.
+2. **EXTRACT khi remix:** yêu cầu đổi sang quầy đồ uống nhà ga và mua mang đi
+   khiến vai người học chuyển từ khách hàng sang “Người nghe”, dù không yêu cầu
+   đổi vai. Các yêu cầu đã nói rõ cũng bị lặp lại trong nhóm giả định. Cần giữ
+   các vai không được yêu cầu thay đổi và phân loại đúng dữ kiện/giả định.
+
+Bằng chứng riêng tại `data/local-user-flow-20261104/`: `report.md`,
+`results.json`, request/response scenario và ảnh chụp. `summarize.py` dựng lại
+số liệu từ bằng chứng đã lưu, không gọi AI. Dữ liệu runtime, credential, cookie
+và auth header không được đưa vào commit tài liệu này.
+
+Giới hạn: kiểm tra audio xác nhận đường tải và giải mã trong trình duyệt, chưa
+có người nghe đánh giá giọng/độ tự nhiên. Không thay đổi source, prompt hoặc gate
+trong hai lượt kiểm thử; không triển khai production. Hai lỗi nội dung trên
+vẫn còn mở, chưa được coi là đã sửa hoặc được chứng nhận bởi tỷ lệ thành công.
