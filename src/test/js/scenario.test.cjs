@@ -305,3 +305,68 @@ test('unsaved personalization changes block generation with the previous saved t
     assert.equal(h.calls.filter(c=>c.options?.method==='POST').length,0);
     assert.match(h.node('#scenario-status').textContent,/Hãy lưu mục tiêu/);
 });
+
+test('play-all stops when autoplay is blocked and does not request remaining segments', async () => {
+    const s = session(); s.activities[0].segments.push({segmentId: 's2', speakerId: 'a'}, {segmentId: 's3', speakerId: 'a'});
+    let n = 0;
+    const h = harness(async url => url.endsWith('/play') ? {status: 'READY', mediaId: 'cached-' + (++n)} : s);
+    await h.module.show(s.sessionId);
+    const audio = h.node('#scenario-audio');
+    audio.paused = true;
+    audio.play = async () => { const e = new Error('blocked'); e.name = 'NotAllowedError'; throw e; };
+    h.node('#scenario-play-all').listeners.click(); await tick(); await tick(); await tick();
+    // Loop should stop after first blocked segment — only 1 play request, not 3
+    assert.equal(n, 1);
+    assert.match(h.node('#scenario-status').textContent, /chặn tự phát/);
+});
+
+test('draft restores preview on catalog route after remix extract', async () => {
+    const draft = {draftId: 'remix-draft', version: 1, status: 'READY', specification: {titleVi: 'Remix', settingVi: 'Office', learnerRoleVi: 'Listener', goalVi: 'Listen', constraintsVi: [], assumptionsVi: [], characters: []}};
+    const storage = new Map([['dictalab:scenario:10:draft', JSON.stringify({draftId: draft.draftId})]]);
+    const h = harness(async () => draft, storage);
+    // Catalog route (no id) with saved draft → show preview without a new EXTRACT
+    await h.module.show();
+    assert.match(h.root.innerHTML, /scenario-confirm/);
+    assert.match(h.root.innerHTML, /Remix/);
+    // No POST requests (no new EXTRACT)
+    assert.equal(h.calls.filter(c => c.options?.method === 'POST').length, 0);
+    // Reload at session route does NOT fetch the draft
+    const storage2 = new Map([['dictalab:scenario:10:draft', JSON.stringify({draftId: draft.draftId})]]);
+    const s = session();
+    const h2 = harness(async url => url.includes('/drafts/') ? draft : s, storage2);
+    await h2.module.show(s.sessionId);
+    // Should show session, not draft preview
+    assert.doesNotMatch(h2.root.innerHTML, /scenario-confirm/);
+});
+
+test('cold-start duplicate recommendations are hidden when all suggestions overlap with explorer', async () => {
+    const suggestion = {id: 'cafe', groupId: 'food', groupTitleVi: 'Food', titleVi: 'Order coffee', inputVi: 'Order coffee'};
+    const h = harness(async url => {
+        if (url.endsWith('/catalog')) return {enabled: true, generationAvailable: true, difficultyProfiles: ['b1'], practicePrograms: []};
+        if (url.endsWith('/suggestions')) return {suggestions: [suggestion]};
+        if (url.endsWith('/recommendations')) return {basis: 'COLD_START', messageVi: 'Not enough history', suggestions: [suggestion]};
+        if (url.endsWith('/learning-goals')) return [];
+        if (url.endsWith('/learning-preferences')) return {preferences: []};
+        return {sessions: []};
+    });
+    await h.module.show();
+    // Recommendation aside should be hidden (all items overlap with explorer)
+    assert.doesNotMatch(h.root.innerHTML, /data-recommendation="0"/);
+    // Explorer should still show
+    assert.match(h.root.innerHTML, /data-suggestion="0"/);
+});
+
+test('grading result shows correction cue for PARTIAL and INCORRECT facts', async () => {
+    const s = session();
+    s.activities[0].attempts = [{
+        ordinal: 1, attemptId: 'a1', status: 'GRADED',
+        support: {transcriptOpened: false, hintOpened: false},
+        answers: [{questionId: 'q1', textVi: 'Some answer'}],
+        result: {facts: [{questionId: 'q1', status: 'PARTIAL', evidenceVi: 'Some answer'}]}
+    }];
+    const h = harness(async () => s);
+    await h.module.show(s.sessionId);
+    assert.match(h.root.innerHTML, /Hiểu một phần/);
+    assert.match(h.root.innerHTML, /Hãy nghe lại/);
+    assert.match(h.root.innerHTML, /Câu 1:/);
+});
