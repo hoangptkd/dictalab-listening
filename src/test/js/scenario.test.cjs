@@ -1,4 +1,4 @@
-const {test} = require('node:test');
+﻿const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
@@ -109,7 +109,7 @@ test('playback separates autoplay and decode errors and ignores late errors afte
     const s = session(); s.specification.characters = [{id: 'a', name: 'Alice', roleVi: 'Khách'}];
     const h = harness(async url => url.endsWith('/play') ? {status: 'READY', mediaId: 'cached'} : s);
     await h.module.show(s.sessionId);
-    assert.match(h.root.innerHTML, /Nghe đoạn s1 · Alice/);
+    assert.match(h.root.innerHTML, /Đoạn 1 · Alice/);
     h.node('#scenario-audio').play = async () => {const error = new Error('blocked'); error.name = 'NotAllowedError'; throw error;};
     h.node('data-play:0').listeners.click(); await tick(); await tick();
     assert.match(h.node('#scenario-status').textContent, /chặn tự phát/);

@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
     "use strict";
     const base = "/api/v2/scenarios", bridge = () => window.DictaLabListeningBridge;
     const root = () => document.querySelector("#conversation-content");
@@ -42,6 +42,14 @@
         try {
             const pending = read("operation", null);
             if (pending && (!id || pending.sessionId === id)) { await wait(pending, token); return; }
+            const savedDraft = !id && !pending ? read("draft", null) : null;
+            if (savedDraft?.draftId) {
+                try {
+                    const draft = await request(`/drafts/${encodeURIComponent(savedDraft.draftId)}`);
+                    if (current(token) && draft.status === "READY") { await preview(draft, token); return; }
+                } catch (_) { /* draft expired/gone — fall through to catalog */ }
+                save("draft", null);
+            }
             if (id) await openSession(id, token); else return await catalog(token);
         } catch (error) { if (current(token) && error.name !== "AbortError") status(error.message); }
     }
@@ -183,7 +191,7 @@
             if (!current(token)) return;
             if (op.status === "SUCCEEDED") {
                 save("operation", null);
-                if (pending.action === "EXTRACT") await preview(await request(`/drafts/${encodeURIComponent(op.draftId)}`), token);
+                if (pending.action === "EXTRACT") { save("draft", {draftId: op.draftId, sessionId: pending.sessionId}); await preview(await request(`/drafts/${encodeURIComponent(op.draftId)}`), token); }
                 else if (pending.action === "GENERATE") bridge().navigate("conversation", {sessionId: op.sessionId});
                 else {
                     await openSession(pending.sessionId, token);
@@ -196,7 +204,7 @@
                     if (current(token)) status(`Tác vụ ${op.status}: ${op.errorCode || op.status}. Mã tác vụ: ${pending.operationId}. ${op.status === "UNKNOWN" ? "Chưa xác định kết quả; hệ thống không tự gọi lại để tránh phí trùng." : "Bài và câu trả lời đã lưu vẫn được giữ."}`);
                     return;
                 }
-                frame(`<h2>${escape(statusLabels[op.status] || op.status)}</h2><p>${op.status === "UNKNOWN" ? "Chưa xác định được kết quả từ nhà cung cấp. Hệ thống không tự gọi lại để tránh phí trùng." : "Tác vụ không hoàn tất. Bài và câu trả lời đã lưu vẫn được giữ."}</p><p>Mã lỗi: ${escape(op.errorCode || "—")}</p><a href="/conversation${pending.sessionId ? "/" + encodeURIComponent(pending.sessionId) : ""}" data-session="${escape(pending.sessionId || "")}">Quay lại bài học</a>`);
+                frame(`<h2>${escape(statusLabels[op.status] || op.status)}</h2><p>${op.status === "UNKNOWN" ? "Chưa xác định được kết quả từ nhà cung cấp. Hệ thống không tự gọi lại để tránh phí trùng." : "Tác vụ không hoàn tất. Bài và câu trả lời đã lưu vẫn được giữ."}</p><p>Mã: ${escape(op.status)}${op.errorCode && op.errorCode !== op.status ? " · " + escape(op.errorCode) : ""}</p><a href="/conversation${pending.sessionId ? "/" + encodeURIComponent(pending.sessionId) : ""}" data-session="${escape(pending.sessionId || "")}">Quay lại bài học</a>`);
                 bindSessionLinks();
             } else if (Date.now() - started < 300000) timer = setTimeout(() => { check().catch(error => { if (current(token)) status(error.message); }); }, Math.max(1500, Math.min(10000, op.pollAfterMs || 2000)));
             else status("Tác vụ còn đang chạy. Bấm kiểm tra trạng thái để tiếp tục, không cần gửi yêu cầu mới.");
@@ -215,6 +223,7 @@
             <div class="scenario-result-actions"><button class="primary-button" id="scenario-confirm">Xác nhận và tạo bài</button><a href="/conversation" data-session="">Viết tình huống khác</a></div>`);
         bindSessionLinks();
         root().querySelector("#scenario-confirm").addEventListener("click", () => run(async token => {
+            save("draft", null);
             const op = await mutation("/sessions", {draftId: draft.draftId, draftVersion: draft.version});
             if (current(token)) await track({...op, action: "GENERATE"}, token);
         }));
@@ -251,13 +260,14 @@
         const names = new Map(session.specification.characters.map(c => [c.id, c.name]));
         return `<section class="scenario-audio-panel"><h3>Hoạt động ${a.ordinal} / ${session.activities.length}</h3>
             <div class="scenario-context-card">${session.specification.characters.map(c => `<span>${escape(c.name)} · ${escape(c.roleVi)}</span>`).join(" / ")}</div>
-            <div>${a.segments.map((s, si) => `<button type="button" data-play="${escape(s.segmentId)}">Nghe đoạn ${si + 1} · ${escape(names.get(s.speakerId) || s.speakerId)}</button>${s.textEn ? `<p lang="en">${escape(s.textEn)}</p>` : ""}`).join("")}</div><audio id="scenario-audio" controls preload="none" aria-label="Audio đoạn hội thoại"></audio>
-            ${a.translations ? a.translations.map(t => `<p>${escape(t.segmentId)}: ${escape(t.textVi)}</p>`).join("") : ""}
-            <p>Lần yêu cầu phát: ${a.plays}. ${a.transcriptOpened || a.hintOpened ? "Kết quả ghi nhận đã dùng hỗ trợ." : "Chưa dùng gợi ý/bản chép trước khi hoàn thành."}</p></section>`;
+            <div class="scenario-audio-controls"><button type="button" class="primary-button" id="scenario-play-all">▶ Nghe toàn bộ hội thoại</button></div>
+            <div class="scenario-segment-list">${a.segments.map((s, si) => `<button type="button" class="scenario-support-btn" data-play="${escape(s.segmentId)}">Đoạn ${si + 1} · ${escape(names.get(s.speakerId) || s.speakerId)}</button>${s.textEn ? `<p lang="en" class="scenario-segment-text">${escape(s.textEn)}</p>` : ""}`).join("")}</div><audio id="scenario-audio" controls preload="none" aria-label="Audio đoạn hội thoại"></audio>
+            ${a.translations ? a.translations.map((t, ti) => `<p><strong>Đoạn ${ti + 1}:</strong> ${escape(t.textVi)}</p>`).join("") : ""}
+            <p>Lần yêu cầu phát: ${a.plays}. ${a.transcriptOpened && a.hintOpened ? "Ghi nhận: đã dùng cả gợi ý và bản chép." : a.transcriptOpened ? "Ghi nhận: đã mở bản chép." : a.hintOpened ? "Ghi nhận: đã dùng gợi ý chiến lược (không ảnh hưởng như mở bản chép)." : "Chưa dùng gợi ý/bản chép trước khi hoàn thành."}</p></section>`;
     }
     function attemptsHtml(a) {
         return a.attempts.map(t => `<section><h4>Lần ${t.ordinal} · ${escape(labels[t.status] || statusLabels[t.status] || t.status)}</h4>
-            <p>${t.support?.transcriptOpened || t.support?.hintOpened ? "Có dùng hỗ trợ khi nộp." : "Không dùng gợi ý/bản chép khi nộp."}</p>
+            <p>${t.support?.transcriptOpened && t.support?.hintOpened ? "Dùng cả gợi ý và bản chép khi nộp." : t.support?.transcriptOpened ? "Có mở bản chép khi nộp." : t.support?.hintOpened ? "Chỉ dùng gợi ý chiến lược khi nộp." : "Không dùng gợi ý/bản chép khi nộp."}</p>
             ${t.answers.map(answer => `<p>Câu ${escape(answer.questionId.replace(/^q/, ""))}: ${escape(answer.textVi)}</p>`).join("")}
             ${t.result ? t.result.facts.map(f => `<p>${escape(f.questionId)}: ${escape(labels[f.status])}${f.evidenceVi ? ` — “${escape(f.evidenceVi)}”` : ""}</p>`).join("") : ""}
             ${["FAILED", "UNKNOWN"].includes(t.status) ? `<p>${t.status === "UNKNOWN" ? "Chưa xác định kết quả; không tự gọi AI lại để tránh phí trùng." : "Chưa chấm được; đây không phải câu trả lời sai."} ${escape(t.gradeRetry?.errorCode)} · Mã tác vụ: ${escape(t.gradeRetry?.operationId)}</p>` : ""}
@@ -276,7 +286,9 @@
             <button type="button" data-help="HINT">Gợi ý cách nghe</button><button type="button" data-help="TRANSCRIPT">Mở bản chép và dịch (có hỗ trợ)</button>
             </section>
             <form id="scenario-answer"><p id="scenario-answer-help">Bạn có thể trả lời bằng tiếng Anh hoặc tiếng Việt. AI chấm theo ý hiểu.</p>${a.questions.map(q => `<div class="scenario-input-card"><label for="answer-${escape(q.questionId)}">${escape(q.promptVi)}</label><textarea id="answer-${escape(q.questionId)}" name="${escape(q.questionId)}" class="scenario-answer-field" rows="3" maxlength="1500" aria-describedby="scenario-answer-help">${escape(drafts[q.questionId] ?? latest?.answers.find(answer => answer.questionId === q.questionId)?.textVi ?? "")}</textarea></div>`).join("")}
-            <button class="primary-button" ${a.attempts.length >= 3 || latest?.status === "PENDING" ? "disabled" : ""}>Lưu và chấm câu trả lời (${a.attempts.length}/3)</button></form>
+            <button class="primary-button" ${a.attempts.length >= 3 || latest?.status === "PENDING" ? "disabled" : ""}>Lưu và chấm câu trả lời (${a.attempts.length}/3)</button>
+            ${a.attempts.length >= 3 && !a.attempts.some(t => t.status === "GRADED") && !a.attempts.some(t => t.gradeRetry?.allowed) ? `<p class="scenario-unavailable-notice"><strong>Bài bị chặn:</strong> Cả ${a.attempts.length} lần chấm đều không có kết quả. Giữ mã tác vụ ở trên để liên hệ hỗ trợ. Không cần gửi yêu cầu mới.</p>` : ""}
+            </form>
             ${attemptsHtml(a)}
             ${a.attempts.some(t => t.status === "GRADED") && latest?.status !== "PENDING" ? '<button type="button" id="scenario-complete">Hoàn thành hoạt động và xem đáp án</button>' : ""}`;
     }
@@ -310,6 +322,27 @@
             if (op.status === "READY") { await openSession(session.sessionId, token); if (current(token)) await playMedia(op.mediaId); }
             else await track({...op, action: "TTS", sessionId: session.sessionId}, token);
         })));
+        // OPT-02: Play-all button — requests each segment in order and plays sequentially
+        root().querySelector("#scenario-play-all")?.addEventListener("click", () => run(async token => {
+            for (const seg of a.segments) {
+                if (!current(token)) return;
+                const op = await mutation(`/sessions/${session.sessionId}/activities/${a.activityId}/play`, {expectedVersion: session.version, segmentId: seg.segmentId});
+                if (!current(token)) return;
+                if (op.status !== "READY") { await track({...op, action: "TTS", sessionId: session.sessionId}, token); return; }
+                // Reload session to sync version before next mutation
+                const loaded = await request(`/sessions/${encodeURIComponent(session.sessionId)}`);
+                if (!current(token)) return;
+                session = loaded;
+                await playMedia(op.mediaId);
+                // Wait for audio to finish before playing next segment
+                await new Promise(resolve => {
+                    const audio = root()?.querySelector("#scenario-audio");
+                    if (!audio || audio.paused) { resolve(); return; }
+                    audio.addEventListener("ended", resolve, {once: true});
+                    audio.addEventListener("error", resolve, {once: true});
+                });
+            }
+        }));
     }
     async function playMedia(id) {
         const audio = root().querySelector("#scenario-audio"); if (!audio) return;

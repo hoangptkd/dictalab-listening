@@ -1002,3 +1002,27 @@
     margin-bottom: 8px;
     font-weight: 500;
 }
+
+/* ── OPT-02: Audio controls layout ──────────────────────────── */
+.scenario-audio-controls {
+    margin-bottom: 12px;
+}
+
+.scenario-segment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.scenario-segment-text {
+    margin: 2px 0 4px 12px;
+    font-size: .875rem;
+    color: var(--ink-soft);
+    line-height: 1.4;
+}
+
+/* ── FLOW-H02: Blocked activity notice ──────────────────────── */
+.scenario-unavailable-notice {
+    margin-top: 12px;
+}
