@@ -190,16 +190,19 @@ def test_personalized_trace_records_context_and_fingerprint_without_network(trac
     prefix = "langfuse.trace.metadata."
     metadata = {key.removeprefix(prefix): json.loads(value) for key, value in span.attributes.items() if key.startswith(prefix)}
     assert metadata["programCode"] == "ielts-listening"
-    assert metadata["programVersion"] == 2
+    assert metadata["programVersion"] == "2"  # Langfuse propagated attributes require short strings.
     assert metadata["focusSkill"] == "detail"
     assert metadata["calibrationStatus"] == "INTERNAL_PRACTICE_UNCALIBRATED"
     assert len(metadata["learningContextHash"]) == 64
     assert metadata["promptHash"] == event.payload.promptHash
-    from app import scenario_prompts_personalized_fewshot as fewshot
+    from app.scenario_workflow import personalized_release
+    fewshot = personalized_release(event.payload.promptHash)
     assert metadata["promptMode"] == "few-shot"
     assert metadata["exampleSetHash"] == fewshot.EXAMPLE_SET_HASH
     assert metadata["exampleSetVersion"] == fewshot.EXAMPLE_SET_VERSION
-    assert metadata["exampleIdsByStage"] == {"EXTRACT": fewshot.EXAMPLE_IDS["EXTRACT"]}
+    # Structured metadata stays on the root observation; only short scalars propagate.
+    assert "exampleIdsByStage" not in metadata
+    assert json.loads(span.attributes["langfuse.observation.metadata.exampleIdsByStage"]) == {"EXTRACT": fewshot.EXAMPLE_IDS["EXTRACT"]}
     assert "learningContext" in span.attributes["langfuse.observation.input"]
     assert scores[-1]["value"] == 1
 

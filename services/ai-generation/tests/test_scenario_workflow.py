@@ -129,7 +129,7 @@ def personal_responses(release=None):
 def test_personalized_context_reaches_every_stage_and_uses_current_grade(code):
     context = learning_context(code)
     result, calls = execute(personal_payload(context=context), personal_responses())
-    assert result["promptVersion"] == workflow.personalized_fewshot.PROMPT_VERSION
+    assert result["promptVersion"] == workflow.harness_release.PROMPT_VERSION
     assert result["promptHash"] == workflow.personalized_prompt_hash()
     for _, messages in calls:
         assert json.loads(messages[1]["content"])["learningContext"] == personal_payload(context=context).learningContext.model_dump(exclude_none=True)
@@ -219,10 +219,10 @@ def test_current_reviewer_verdict_is_advisory(index):
     assert result["reviewAdvisory"][key]["issues"] == ["Review finding"]
 
 
-def test_current_invalid_reviewer_response_is_advisory():
+def test_v7_invalid_reviewer_response_is_advisory_without_retry():
     responses = personal_responses()
     responses[2] = {}
-    result, calls = execute(personal_payload(), responses)
+    result, calls = execute(personal_payload(promptHash=workflow.personalized_prompt_hash(workflow.personalized_fewshot)), responses)
     assert len(calls) == 5 and result["task"]["qualityPassed"] is False
     assert result["reviewAdvisory"]["questions"] is None
 

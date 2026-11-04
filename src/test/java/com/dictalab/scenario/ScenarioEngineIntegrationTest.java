@@ -80,9 +80,10 @@ class ScenarioEngineIntegrationTest {
         boolean previousFewshotV4=input.path("promptHash").asText().equals("aa79b767fee0970408e4fe420d1d97615595fdd195e16d8e919f28881f265485");
         boolean previousFewshotV5=input.path("promptHash").asText().equals("358201f08eb87c7d4d2306220c3828a92cda57ac93d57faed80a508d892fa1c1");
         boolean previousFewshotV6=input.path("promptHash").asText().equals("c1dcc2e3cc29847ba09b6d53a447a45e8bfe48ae13e9dfb4e2e131173f1e6a18");
+        boolean harness=input.path("promptHash").asText().equals("a98960f21fabe1f652f68fac72794c41e5c18870a400059cef4b03f50a9a838b");
         var result=object().put("schemaVersion","1").put("generationId",id).put("requestId",id)
                 .put("provider",tts ? "cartesia" : "ollama").put("model","fixture-model").put("modelDigest","fixture-digest")
-                .put("promptVersion",tts ? "TTS_WAV_V1" : personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : previousFewshot ? "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4" : previousFewshotV2 ? "SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4" : previousFewshotV3 ? "SCENARIO_PERSONALIZED_FEWSHOT_V3_GRADE_V4" : previousFewshotV4 ? "SCENARIO_PERSONALIZED_FEWSHOT_V4_GRADE_V4" : previousFewshotV5 ? "SCENARIO_PERSONALIZED_FEWSHOT_V5_GRADE_V5" : previousFewshotV6 ? "SCENARIO_PERSONALIZED_FEWSHOT_V6_GRADE_V5" : "SCENARIO_PERSONALIZED_FEWSHOT_V7_GRADE_V5") : "SCENARIO_LISTENING_V5_GRADE_V4_1")
+                .put("promptVersion",tts ? "TTS_WAV_V1" : personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : previousFewshot ? "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4" : previousFewshotV2 ? "SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4" : previousFewshotV3 ? "SCENARIO_PERSONALIZED_FEWSHOT_V3_GRADE_V4" : previousFewshotV4 ? "SCENARIO_PERSONALIZED_FEWSHOT_V4_GRADE_V4" : previousFewshotV5 ? "SCENARIO_PERSONALIZED_FEWSHOT_V5_GRADE_V5" : previousFewshotV6 ? "SCENARIO_PERSONALIZED_FEWSHOT_V6_GRADE_V5" : harness ? "SCENARIO_PERSONALIZED_FEWSHOT_V8_HARNESS_V1_GRADE_V5" : "SCENARIO_PERSONALIZED_FEWSHOT_V7_GRADE_V5") : "SCENARIO_LISTENING_V5_GRADE_V4_1")
                 .put("promptHash",input.path("promptHash").asText(release.promptHash())).put("programHash",input.path("programHash").asText());
         if (tts) result.set("task",object().put("contentType","audio/wav").put("size",wave().length).put("audioBase64",Base64.getEncoder().encodeToString(wave())));
         else {
@@ -94,6 +95,8 @@ class ScenarioEngineIntegrationTest {
             var calls=result.putArray("calls");
         for (String purpose : phase.equals("GENERATE") ? List.of("GENERATE","QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW") : List.of(phase))
                 calls.addObject().put("purpose",purpose).put("provider","ollama").put("model","fixture-model");
+            if (harness && phase.equals("GENERATE")) result.putObject("qualityHarness").put("extraCalls",0)
+                    .put("policyVersion","scenario-quality-harness.v1").put("policyHash","ac1a80c90c9f24149f14a9221c0c7382e653d94fccbd823b3862c55fa043bc6b");
         }
         var state=object().put("jobId",id).put("schemaVersion","1").put("status","DONE"); state.set("result",result); return state;
     }
@@ -123,7 +126,7 @@ class ScenarioEngineIntegrationTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings={"bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa", "54f9fdeda01717f5c8853239357dad6dff2e0fa94df929f6c82e6d2497af52a1", "f5f347bcac1dd0767f3af409704778357cd0ce39dd2a2d7f325671bc22abee1f", "aa79b767fee0970408e4fe420d1d97615595fdd195e16d8e919f28881f265485", "358201f08eb87c7d4d2306220c3828a92cda57ac93d57faed80a508d892fa1c1", "c1dcc2e3cc29847ba09b6d53a447a45e8bfe48ae13e9dfb4e2e131173f1e6a18"})
+    @org.junit.jupiter.params.provider.ValueSource(strings={"bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa", "54f9fdeda01717f5c8853239357dad6dff2e0fa94df929f6c82e6d2497af52a1", "f5f347bcac1dd0767f3af409704778357cd0ce39dd2a2d7f325671bc22abee1f", "aa79b767fee0970408e4fe420d1d97615595fdd195e16d8e919f28881f265485", "358201f08eb87c7d4d2306220c3828a92cda57ac93d57faed80a508d892fa1c1", "c1dcc2e3cc29847ba09b6d53a447a45e8bfe48ae13e9dfb4e2e131173f1e6a18", "defd36c45a53aa6ac5002d0acb50996a5790fd87554646e36f9830dd3a225504"})
     void queuedPersonalizedReleaseSettlesWithoutBeingRelabelled(String baseline) {
         String current=release.personalizedPromptHash();
         personalization.save(user,id(),preference("toeic-listening","250","",0));
@@ -340,6 +343,30 @@ class ScenarioEngineIntegrationTest {
         }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
         var operation=dispatch(engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong())));
         assertThat(operation.path("status").asText()).isEqualTo("SUCCEEDED");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"wrong_provider","wrong_model","wrong_hash","wrong_extra","wrong_order"})
+    void personalizedHarnessRejectsForgedProvenance(String fault) {
+        personalization.save(user,id(),preference("toeic-listening","250","",0));
+        var extraction=dispatch(engine.createDraft(user,id(),new ScenarioEngine.DraftRequest("","toeic-listening",2,"")));
+        var draft=engine.draft(user,extraction.path("draftId").asText());
+        doAnswer(call -> {
+            var response=done(call.getArgument(1),call.getArgument(3));
+            var result=(ObjectNode)response.path("result");
+            var first=(ObjectNode)result.path("calls").get(0);
+            switch (fault) {
+                case "wrong_provider" -> first.put("provider","gemini");
+                case "wrong_model" -> first.put("model","");
+                case "wrong_hash" -> result.put("promptHash","0".repeat(64));
+                case "wrong_extra" -> ((ObjectNode)result.path("qualityHarness")).put("extraCalls",1);
+                case "wrong_order" -> first.put("purpose","QUESTIONS");
+            }
+            return response;
+        }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        var op=engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong()));
+        assertThat(dispatch(op).path("status").asText()).isEqualTo("FAILED");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_activities WHERE session_id=?",Integer.class,op.path("sessionId").asText())).isZero();
     }
 
     @Test void cancellationAndDeletedOwnerCannotPublishLateResults() {

@@ -147,7 +147,10 @@ def operation(name, settings, input, metadata, user_id=None):
     try:
         if client() is not None:
             from langfuse import propagate_attributes
-            stack.enter_context(propagate_attributes(user_id=user_id, metadata=metadata,
+            # Propagated attributes have small scalar values; full metadata stays on the root span.
+            propagated = {key: str(value) for key, value in metadata.items()
+                          if isinstance(value, (str, int, float, bool)) and len(str(value)) <= 200}
+            stack.enter_context(propagate_attributes(user_id=user_id, metadata=propagated,
                 tags=["dictalab", "evaluation" if _evaluation.get() else "application"] +
                      (["instrumentation-smoke"] if _evaluation.get().get("responseOrigin") == "synthetic-fixture-not-live-model" else []),
                 trace_name=name))

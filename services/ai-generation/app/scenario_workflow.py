@@ -1,7 +1,7 @@
 """Bounded production scenario jobs. Core owns authorization, admission and learning state.
 
-No tools, URL fetching, automatic repair or automatic replay of a partially completed
-workflow. Each operation pins this prompt/schema hash in its durable fingerprint.
+No tools, URL fetching or automatic replay of a partially completed workflow.
+Only the separately pinned V8 release permits bounded, scoped quality repair.
 """
 import asyncio
 import hashlib
@@ -27,6 +27,7 @@ from . import scenario_prompts_personalized_fewshot_v4 as previous_personalized_
 from . import scenario_prompts_personalized_fewshot_v5 as previous_personalized_fewshot_v5
 from . import scenario_prompts_personalized_fewshot_v6 as previous_personalized_fewshot_v6
 from . import scenario_prompts_personalized_fewshot_v7 as personalized_fewshot
+from . import scenario_prompts_personalized_fewshot_v8 as harness_release
 
 V4_PROMPT_VERSION = "SCENARIO_LISTENING_V4"
 OUTPUT_TOKENS = {"EXTRACT": 2600, "GENERATE": 3200, "QUESTIONS": 4000,
@@ -388,6 +389,19 @@ class PersonalizedQuestions(Questions):
     activities: list[PersonalizedActivityQuestions] = Field(min_length=3, max_length=3)
 
 
+class QuestionReplacement(StrictModel):
+    activityId: Literal["a1", "a2", "a3"]
+    question: PersonalizedQuestionDraft
+
+
+class QuestionPatch(StrictModel):
+    replacements: list[QuestionReplacement] = Field(min_length=1, max_length=6)
+
+
+class TranslationPatch(StrictModel):
+    replacements: list[Translation] = Field(min_length=1, max_length=18)
+
+
 class PersonalizedActivity(Activity):
     questions: list[PersonalizedQuestion] = Field(min_length=2, max_length=2)
 
@@ -527,7 +541,7 @@ def personalized_question_review_model(release):
     return QuestionEvidenceReview if getattr(release, "QUESTION_REVIEW_VERSION", 1) == 2 else PersonalizedQuestionReview
 
 
-def personalized_prompt_hash(release=personalized_fewshot):
+def personalized_prompt_hash(release=harness_release):
     instructions = {**release.INSTRUCTIONS, "GRADE": getattr(release, "GRADE", V4_INSTRUCTIONS["GRADE"])}
     question_review = personalized_question_review_model(release)
     models = (LearningContext, PersonalizedSpecification, PersonalizedExtraction, Dialogue, PersonalizedQuestions,
@@ -535,12 +549,15 @@ def personalized_prompt_hash(release=personalized_fewshot):
     manifest = {"version": release.PROMPT_VERSION, "instructions": instructions, "outputTokens": OUTPUT_TOKENS,
                 "schemas": {m.__name__: m.model_json_schema() for m in models},
                 "reviewResponseSchemas": {m.__name__: response_schema(m) for m in (question_review, PersonalizedReview)}}
+    if hasattr(release, "HARNESS_POLICY"):
+        manifest["harness"] = {"policy": release.HARNESS_POLICY,
+                               "schemas": {m.__name__: response_schema(m) for m in (QuestionPatch, TranslationPatch)}}
     return hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def personalized_release(requested_hash):
     # Dispatch by the immutable job pin, including jobs queued before this release.
-    for release in (personalized_fewshot, previous_personalized_fewshot_v6, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4, previous_personalized_fewshot_v3, previous_personalized_fewshot_v2, previous_personalized_fewshot, personalized):
+    for release in (harness_release, personalized_fewshot, previous_personalized_fewshot_v6, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4, previous_personalized_fewshot_v3, previous_personalized_fewshot_v2, previous_personalized_fewshot, personalized):
         if requested_hash == personalized_prompt_hash(release):
             return release
     raise ValueError("scenario prompt mismatch")
@@ -551,7 +568,8 @@ def example_metadata(requested_hash, phase):
     if release is personalized or phase == "GRADE":
         return {"promptMode": "zero-shot", "exampleIdsByStage": {}}
     stages = ("EXTRACT",) if phase == "EXTRACT" else personalized_fewshot.STAGES[1:]
-    return {"promptMode": "few-shot", "exampleSetVersion": release.EXAMPLE_SET_VERSION,
+    return {**({"harnessPolicyVersion": release.HARNESS_POLICY["version"]} if hasattr(release, "HARNESS_POLICY") else {}),
+            "promptMode": "few-shot", "exampleSetVersion": release.EXAMPLE_SET_VERSION,
             "exampleSetHash": release.EXAMPLE_SET_HASH,
             "exampleIdsByStage": {stage: release.EXAMPLE_IDS[stage] for stage in stages}}
 
@@ -617,44 +635,52 @@ def validate_dialogue(dialogue, spec, profile, flexible=False):
 
 @trace_gate
 def validate_questions(questions, dialogue, context=None):
+    activity_id = question_id = None
+    def invalid(message):
+        error = ValueError(message)
+        error.activity_id, error.question_id = activity_id, question_id
+        return error
     if [a.id for a in questions.activities] != [a.id for a in dialogue.activities]:
-        raise ValueError("question activity mismatch")
+        raise invalid("question activity mismatch")
     meanings = set()
     for activity, drafted in zip(dialogue.activities, questions.activities):
+        activity_id, question_id = activity.id, None
         if [q.id for q in drafted.questions] != ["q1", "q2"]:
-            raise ValueError("question IDs mismatch")
+            raise invalid("question IDs mismatch")
         segments = {s.id: s.textEn for s in activity.segments}
         for fact in drafted.questions:
+            question_id = fact.id
             if context is not None:
                 if fact.skill not in context.profile.skills:
-                    raise ValueError("question skill outside practice profile")
+                    raise invalid("question skill outside practice profile")
                 if fact.supportKind == "inference":
                     if (context.profile.inferencePolicy != "SUPPORTED_INFERENCE" or fact.skill != "supported-inference"
                             or not fact.inferenceReasonEn.strip()):
-                        raise ValueError("unsupported inference policy or missing premise explanation")
+                        raise invalid("unsupported inference policy or missing premise explanation")
                 elif fact.inferenceReasonEn or fact.skill == "supported-inference":
-                    raise ValueError("inference support mismatch")
+                    raise invalid("inference support mismatch")
             meaning = " ".join(fact.factEn.casefold().split())
             if not meaning or meaning in meanings:
-                raise ValueError("duplicate or empty fact")
+                raise invalid("duplicate or empty fact")
             meanings.add(meaning)
             # A proposal cannot be phrased as an already agreed arrangement in the learner question.
             if fact.speechAct == "proposal" and re.search(
                     r"\b(?:họ|cả hai|hai người|hai bên)\s+(?:đã\s+)?(?:thống nhất|đồng ý|chốt|quyết định|xác nhận)\b",
                     fact.promptVi, re.IGNORECASE):
-                raise ValueError("proposal question asserts agreement")
+                raise invalid("proposal question asserts agreement")
             for evidence in fact.evidence:
                 if (not evidence.quoteEn.strip() or evidence.segmentId not in segments
                         or evidence.quoteEn not in segments[evidence.segmentId]):
-                    raise ValueError("unanchored fact evidence")
+                    raise invalid("unanchored fact evidence")
             if fact.speechAct == "agreement":
                 positions = {s.id: i for i, s in enumerate(activity.segments)}
                 evidence_positions = [positions[e.segmentId] for e in fact.evidence]
                 if (len({s.speakerId for s in activity.segments if any(e.segmentId == s.id for e in fact.evidence)}) < 2
                         or evidence_positions != sorted(evidence_positions)):
-                    raise ValueError("agreement requires ordered evidence from both speakers")
+                    raise invalid("agreement requires ordered evidence from both speakers")
     if context is not None and not any(q.skill == context.focusSkill for a in questions.activities for q in a.questions):
-        raise ValueError("missing learning focus coverage")
+        activity_id = question_id = None
+        raise invalid("missing learning focus coverage")
 
 
 def attach_questions(dialogue, questions, context=None):
@@ -757,14 +783,16 @@ async def execute(event, settings):
     payload = event.payload
     is_personalized = payload.contractVersion == "scenario-job.v2"
     release = personalized_release(payload.promptHash) if is_personalized else None
-    advisory = release in (personalized_fewshot, previous_personalized_fewshot_v6, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4)
+    advisory = release in (harness_release, personalized_fewshot, previous_personalized_fewshot_v6, previous_personalized_fewshot_v5, previous_personalized_fewshot_v4)
     flexible = advisory or release is previous_personalized_fewshot_v3
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)} if is_personalized else {}
     instructions = {**release.INSTRUCTIONS, "GRADE": getattr(release, "GRADE", V4_INSTRUCTIONS["GRADE"])} if is_personalized else INSTRUCTIONS
     calls = []
+    harness_metadata = {}
     async with httpx.AsyncClient(timeout=remaining, limits=httpx.Limits(max_connections=settings.effective_http_max_connections)) as client:
         async def call(purpose, data, model):
-            gateway = ModelGateway(settings.model_copy(update={"num_predict": OUTPUT_TOKENS[purpose]}), client)
+            token_stage = {"REPAIR_QUESTIONS": "QUESTIONS", "REPAIR_TRANSLATIONS": "TRANSLATE"}.get(purpose, purpose)
+            gateway = ModelGateway(settings.model_copy(update={"num_predict": OUTPUT_TOKENS[token_stage]}), client)
             schema = response_schema(model)
             if purpose == "GENERATE":
                 schema["$defs"]["Segment"]["properties"]["speakerId"]["enum"] = [c.id for c in payload.specification.characters]
@@ -776,7 +804,12 @@ async def execute(event, settings):
             try:
                 return model.model_validate(raw)
             except ValueError as invalid:
-                raise QualityRejected("invalid scenario response") from invalid
+                error = QualityRejected("invalid scenario response")
+                # Private feedback for a single schema-only review retry, never an exception dump.
+                error.failed_output = raw
+                error.schema_issues = [{"type": issue["type"], "loc": list(issue["loc"])}
+                                       for issue in invalid.errors(include_input=False, include_url=False)[:12]]
+                raise error from invalid
 
         if payload.phase == "EXTRACT":
             extracted = await call("EXTRACT", {"inputVi": payload.inputVi, **context}, PersonalizedExtraction if is_personalized else Extraction)
@@ -801,6 +834,12 @@ async def execute(event, settings):
                 validate_dialogue(dialogue, payload.specification, payload.profile, flexible)
             except ValueError as invalid:
                 raise QualityRejected("invalid dialogue") from invalid
+            if release is harness_release:
+                from .scenario_harness import generate
+                result, harness_metadata = await generate(dialogue, payload, call, deadline)
+                return {**metadata(settings, True, payload.promptHash), **harness_metadata,
+                        "generationId": str(event.jobId), "requestId": str(event.requestId),
+                        "programHash": payload.programHash, "calls": calls, "task": result}
             questions = await call("QUESTIONS", {"dialogue": dialogue.model_dump(), **context}, PersonalizedQuestions if is_personalized else Questions)
             try:
                 content = attach_questions(dialogue, questions, payload.learningContext)
