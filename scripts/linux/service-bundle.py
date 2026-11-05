@@ -48,7 +48,11 @@ def payload_name(name):
         return True
     path = safe_name(name)
     if name.startswith('ai/app/'):
-        return path.suffix in ('.py', '.lua') or name.startswith('ai/app/sql/') and path.suffix == '.sql'
+        return (path.suffix in ('.py', '.lua')
+                or name.startswith('ai/app/sql/') and path.suffix == '.sql'
+                or name in {'ai/app/scenario_fewshot_examples_v1.json',
+                            'ai/app/scenario_personalized_fewshot_examples_v1.json',
+                            'ai/app/scenario_personalized_fewshot_examples_v2.json'})
     return name.startswith('artifacts/prompts/') and path.suffix == '.json'
 
 
@@ -221,7 +225,7 @@ def runtime_check(release):
         [str(python), '-I', '-m', 'pip', '--isolated', '--disable-pip-version-check', 'check'],
         [str(python), '-I', '-B', '-c',
          'import os, sys; sys.path.insert(0, os.getcwd()); '
-         'import app.main, app.worker; from app.config import Settings; '
+         'import app.main, app.worker, app.scenario_workflow; from app.config import Settings; '
          'from app.registry import load_artifact; from app.conversation_demo import artifact; '
          'from app.registry_migration import schema_checksum; '
          'load_artifact(Settings()); artifact(Settings()); schema_checksum()'],

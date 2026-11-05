@@ -3,7 +3,7 @@ import copy
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import httpx
@@ -34,6 +34,20 @@ def request(value):
     identifier = uuid4()
     return JobRequest(jobId=identifier, requestId=identifier, userScope="b" * 64, idempotencyKey=str(identifier),
                       deadline=datetime.now(timezone.utc) + timedelta(seconds=220), payload=value)
+
+
+@pytest.mark.parametrize("provider", ["gemini", "ollama"])
+def test_worker_uses_current_registry_snapshot_before_scenario_execution(provider):
+    from app.worker import execute as execute_job
+    settings = Settings(scenario_enabled=True).model_copy(update={"primary_provider": provider})
+    snapshot = settings.model_copy()
+    event = request(payload())
+    with patch.object(Settings, "current_registry", return_value=snapshot) as refresh, \
+            patch.object(workflow, "execute", new_callable=AsyncMock, return_value={"fixture": True}) as run:
+        assert asyncio.run(execute_job(event, settings)) == {"fixture": True}
+        run.assert_awaited_once_with(event, snapshot if provider == "gemini" else settings)
+        assert run.await_args.args[1] is (snapshot if provider == "gemini" else settings)
+        assert refresh.call_count == (1 if provider == "gemini" else 0)
 
 
 def execute(value, responses):
