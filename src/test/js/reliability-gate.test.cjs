@@ -83,6 +83,11 @@ test('demo CI retains local checks, immutable packaging and coordinated deployme
     assert.ok(deploy.includes("vars.PRODUCTION_DEPLOY_TARGET == 'ec2-services'"));
     assert.ok(deploy.includes('test "$VPS_HOST" = 54.254.221.170'));
     assert.ok(deploy.includes('--postgres-major 17 --migrate-core --rollback-compatible'));
+    assert.match(deploy, /scp .*scripts\/linux\/service-bundle\.py/);
+    assert.ok(deploy.includes('cp -a /opt/dictalab/tools/service-bundle.py "$evidence/service-bundle.py.before"'));
+    const install = deploy.indexOf('install -o root -g root -m 644 "$stage/service-release.py" "$stage/service-schema.py" "$stage/service-bundle.py"');
+    assert.ok(install >= 0 && install < deploy.indexOf('/opt/dictalab/tools/service-bundle.py stage'),
+        'Install the verifier from this release before staging its new payload format');
     assert.ok(deploy.includes('/usr/local/sbin/dictalab-services start'));
     assert.match(deploy, /permissions:\r?\n\s+contents: read\r?\n\s+id-token: write/);
     assert.ok(deploy.includes('ipaddress.IPv4Address(sys.argv[1])'));

@@ -249,7 +249,7 @@ jobs:
           stage="/home/ubuntu/dictalab-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           test "$VPS_USER" = ubuntu
           ssh "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" "install -d -m 700 '$stage'"
-          scp "${ssh_options[@]}" target/services.tar.gz scripts/linux/service-release.py scripts/linux/service-schema.py "$VPS_USER@$VPS_HOST:$stage/"
+          scp "${ssh_options[@]}" target/services.tar.gz scripts/linux/service-release.py scripts/linux/service-schema.py scripts/linux/service-bundle.py "$VPS_USER@$VPS_HOST:$stage/"
 
       - name: Activate coordinated EC2 release with owner migration and rollback
         shell: bash
@@ -276,7 +276,9 @@ jobs:
           sudo -n test ! -e /etc/caddy/dictalab-maintenance
           sudo -n install -d -m 700 "$evidence"
           sudo -n cp -a /opt/dictalab/tools/service-release.py "$evidence/service-release.py.before"
-          sudo -n install -o root -g root -m 644 "$stage/service-release.py" "$stage/service-schema.py" /opt/dictalab/tools/
+          sudo -n cp -a /opt/dictalab/tools/service-schema.py "$evidence/service-schema.py.before"
+          sudo -n cp -a /opt/dictalab/tools/service-bundle.py "$evidence/service-bundle.py.before"
+          sudo -n install -o root -g root -m 644 "$stage/service-release.py" "$stage/service-schema.py" "$stage/service-bundle.py" /opt/dictalab/tools/
           python=/opt/dictalab/services/current/venv/bin/python
           sudo -n "$python" /opt/dictalab/tools/service-bundle.py stage "$stage/services.tar.gz" --sha256 "$3"
           sudo -n "$python" /opt/dictalab/tools/service-release.py "$stage/services.tar.gz" --sha256 "$3" --postgres-major 17 --migrate-core --rollback-compatible --maintenance

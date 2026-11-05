@@ -42,3 +42,8 @@ Merge/push does not enable scenario release flags or provision Gemini management
 Existing configuration, private registry, source keys and local training pause are unchanged.
 Scenario activation still requires approved program/prompt hashes. Gemini management still requires its documented owner migration, restricted roles and separate internal management token.
 The main push triggers the existing CI/CD workflow. Its actual result and public health must be checked separately before reporting production deployment success.
+
+### First CI delivery follow-up
+
+Run `42081867478` passed build/required checks but staging rejected the new bundle with `ValueError; no deployment performed`. The workflow updated release/schema helpers but left the host's bundle verifier unchanged; its old payload allowlist rejects the newly required few-shot JSON. Public health remained `200 / UP`.
+The delivery correction transfers, backs up and installs the bundle verifier from the same revision before staging. A workflow regression check requires that order. Existing validation and rollback gates remain enabled.
