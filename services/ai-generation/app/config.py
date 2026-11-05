@@ -77,6 +77,7 @@ class Settings(BaseSettings):
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     gemini_api_key: str = Field(default="", repr=False)
     gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_fallback_models: list[str] = Field(default_factory=list)
     deepseek_model: str = "deepseek-flash"
     ai_provider_config_source: str = Field(default="env", validation_alias="AI_PROVIDER_CONFIG_SOURCE")
     ai_provider_database_url: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_DATABASE_URL")
@@ -156,6 +157,10 @@ class Settings(BaseSettings):
         quota_uri = urlsplit(self.gemini_quota_redis_url)
         if quota_uri.scheme not in ("redis", "rediss") or not quota_uri.hostname or quota_uri.fragment:
             raise ValueError("invalid Gemini quota Redis URL")
+        if (len(self.gemini_fallback_models) > 3
+                or len(set(self.gemini_fallback_models)) != len(self.gemini_fallback_models)
+                or any(not re.fullmatch(r"gemini-[a-zA-Z0-9_.-]{1,93}", model) for model in self.gemini_fallback_models)):
+            raise ValueError("Gemini fallback models require at most three distinct Gemini model IDs")
         ids, quotas = set(), set()
         for source in (self.cloud_providers if self.ai_provider_config_source == "database" else self.gemini_providers):
             if self.ai_provider_config_source == "env" and source.platform != "gemini":

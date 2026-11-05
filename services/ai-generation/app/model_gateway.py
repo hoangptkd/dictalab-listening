@@ -1,8 +1,8 @@
 """Model gateway — selects the configured provider.
 
 Primary: local Ollama in development, Gemini in production, or an explicit
-provider. There is no automatic cloud fallback; a failed local call fails the
-task so the caller can retry under its own policy.
+provider. Scenario jobs may opt into configured Gemini model fallback after an
+explicit server rejection. Unknown outcomes and local failures are never replayed.
 
 The gateway writes provider name and call duration to every log entry. API keys
 are never written to logs.
@@ -30,13 +30,14 @@ logger = logging.getLogger("dictalab.ai_generation.model_gateway")
 
 
 class ModelGateway:
-    """Selects local vs. cloud provider; never falls back automatically."""
+    """Selects providers; Gemini model fallback requires explicit caller opt-in."""
 
     def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
         self._settings = settings
         self._client = client
         self.last_model = settings.active_cloud_model if settings.selected_provider in CLOUD_PROVIDERS else settings.model
         self.last_source_id = None
+        self.model_fallbacks = []
         self._snapshot_loaded = False
         self._local = OllamaProvider(
             ollama_url=settings.ollama_url,
@@ -69,6 +70,7 @@ class ModelGateway:
         deepseek_reasoning_effort: str | None = None,
         deepseek_cache_prefix: bool = False,
         json_object: bool = False,
+        allow_model_fallback: bool = False,
     ) -> tuple[dict[str, Any], str]:
         """Call the selected provider.
 
@@ -77,6 +79,8 @@ class ModelGateway:
         (result_dict, provider_name)
         """
         started = time.monotonic()
+        self.model_fallbacks = []
+        self.last_source_id = None
         if not self._snapshot_loaded and self._settings.selected_provider in CLOUD_PROVIDERS:
             self._settings = await asyncio.wait_for(asyncio.to_thread(self._settings.current_registry),
                 max(0, deadline - time.monotonic()))
@@ -94,27 +98,37 @@ class ModelGateway:
         if provider in CLOUD_PROVIDERS:
             async with asyncio.timeout(max(0, deadline - time.monotonic())):
                 return await self._complete_cloud(messages, schema, deadline, purpose, temperature,
-                    deepseek_thinking, deepseek_reasoning_effort, deepseek_cache_prefix, json_object, started)
+                    deepseek_thinking, deepseek_reasoning_effort, deepseek_cache_prefix, json_object, started,
+                    allow_model_fallback)
         result = await self._local.complete(messages, schema, deadline, purpose, temperature=temperature)
         self._log(self._local.name, purpose, started)
         return result, self._local.name
 
     async def _complete_cloud(self, messages, schema, deadline, purpose, temperature,
-                              deepseek_thinking, deepseek_reasoning_effort, deepseek_cache_prefix, json_object, started):
+                              deepseek_thinking, deepseek_reasoning_effort, deepseek_cache_prefix, json_object, started,
+                              allow_model_fallback):
         from .provider_admin import record_attempt, finish_request
         provider = self._settings.selected_provider
         attempted, request_id = set(), uuid4()
-        last_429 = None
+        model, preferred_project = self._settings.active_cloud_model, None
+        fallbacks = [m for m in self._settings.gemini_fallback_models if m != model] if provider == "gemini" and allow_model_fallback else []
+        if self._settings.gemini_quota_enabled:
+            fallbacks = [m for m in fallbacks if any(s.model == m for s in self._settings.sources_for(provider))]
+        last_rejection = None
         while True:
             if deadline - time.monotonic() < 1:
-                if last_429:
+                if last_rejection:
                     await asyncio.to_thread(finish_request, self._settings, request_id)
-                    raise last_429
+                    raise last_rejection
                 raise QuotaUnavailable(1)
             selected = self._primary_cloud
+            if provider == "gemini" and model != self._settings.active_cloud_model:
+                selected = GeminiProvider(base_url=self._settings.active_cloud_base_url,
+                    api_key=self._settings.active_cloud_api_key, model=model,
+                    temperature=self._settings.temperature, client=self._client, max_tokens=self._settings.num_predict)
             if json_object:
                 selected = OpenAiCompatibleProvider(base_url=self._settings.active_cloud_base_url,
-                    api_key=self._settings.active_cloud_api_key, model=self._settings.active_cloud_model,
+                    api_key=self._settings.active_cloud_api_key, model=model,
                     temperature=self._settings.temperature, client=self._client,
                     max_tokens=self._settings.num_predict, provider_name=provider,
                     chat_completions_path="/chat/completions" if provider == "gemini" else None)
@@ -125,12 +139,13 @@ class ModelGateway:
                     raise QuotaUnavailable(1)
                 store = quota_store(self._settings)
                 try:
-                    source = await asyncio.to_thread(store.select, self._settings.active_cloud_model,
-                        estimate_tokens(messages, self._settings.num_predict, schema), attempted)
+                    source = await asyncio.to_thread(store.select, model,
+                        estimate_tokens(messages, self._settings.num_predict, schema), attempted,
+                        **({"preferred_project": preferred_project} if preferred_project else {}))
                 except QuotaUnavailable:
-                    if last_429:
+                    if last_rejection:
                         await asyncio.to_thread(finish_request, self._settings, request_id)
-                        raise last_429
+                        raise last_rejection
                     raise
                 attempted.add(source.id)
                 common = dict(base_url=source.url, api_key=source.api_key, model=source.model,
@@ -145,6 +160,8 @@ class ModelGateway:
                         chat_completions_path="/chat/completions" if source.platform == "gemini" else None,
                         cache_stable_prefix=deepseek_cache_prefix))
                 self.last_model, self.last_source_id = source.model, source.id
+            else:
+                self.last_model = model
             attempt_started = time.monotonic()
             outcome, done = "failure", True
             try:
@@ -159,8 +176,17 @@ class ModelGateway:
                     remaining = [s for s in self._settings.sources_for(provider)
                         if s.model == source.model and s.id not in attempted]
                     if remaining and deadline - time.monotonic() >= 1:
-                        last_429, done = error, False
+                        last_rejection, done = error, False
                         continue
+                if (provider == "gemini" and error.server_failure and fallbacks
+                        and deadline - time.monotonic() >= 1):
+                    replacement = fallbacks.pop(0)
+                    self.model_fallbacks.append({"fromModel": model, "toModel": replacement, "httpStatus": error.status})
+                    logger.warning("gemini_model_fallback purpose=%s from_model=%s to_model=%s http_status=%s",
+                                   purpose, model, replacement, error.status)
+                    model, preferred_project = replacement, source.project_id if source else None
+                    last_rejection, done = error, False
+                    continue
                 raise
             except (TimeoutError, httpx.TransportError):
                 if source:

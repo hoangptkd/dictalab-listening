@@ -113,6 +113,28 @@ def test_cloud_cached_tokens_are_not_double_counted(tracing):
     assert "safe reasoning" in str(attrs)
 
 
+def test_model_fallback_preserves_actual_provider_model_and_routing_metadata(tracing):
+    from test_gemini_model_fallback import config, rejected, success, FALLBACK, PRIMARY
+    calls = []
+    def handler(request):
+        calls.append(request)
+        if len(calls) == 1:
+            return rejected()
+        response = success().json()
+        response["model"] = FALLBACK + "-actual-version"
+        return httpx.Response(200, json=response)
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            await ModelGateway(config(), client).complete([], {}, time.monotonic()+10,
+                "scenario_generate", allow_model_fallback=True)
+    asyncio.run(run())
+    attrs = tracing[0].get_finished_spans()[-1].attributes
+    assert attrs["langfuse.observation.model.name"] == FALLBACK + "-actual-version"
+    assert json.loads(attrs["langfuse.observation.metadata.requestedModel"]) == PRIMARY
+    assert json.loads(attrs["langfuse.observation.metadata.modelFallbacks"]) == [
+        {"fromModel": PRIMARY, "toModel": FALLBACK, "httpStatus": 503}]
+
+
 def test_export_failure_never_repeats_execution(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING_ENABLED", "true")
     class Broken:

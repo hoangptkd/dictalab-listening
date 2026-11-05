@@ -471,11 +471,23 @@ public class ScenarioEngine {
                     : previousV3 ? List.of("GENERATE","FACTS","QUESTIONS","TRANSLATE","REVIEW")
                     : List.of("GENERATE","QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW")) : List.of(kind);
             boolean harnessGeneration=harness && kind.equals("GENERATE");
+            var callModels=new HashSet<String>(); callModels.add(result.path("model").asText());
+            if (result.has("modelRouting")) {
+                var routing=result.path("modelRouting");
+                ScenarioContent.fields(routing,"primaryModel","fallbackModels");
+                ScenarioContent.check(provider.equals("gemini")
+                        && ScenarioContent.text(routing,"primaryModel",100).equals(result.path("model").asText())
+                        && routing.path("primaryModel").asText().matches("gemini-[a-zA-Z0-9_.-]{1,93}"));
+                ScenarioContent.list(routing.path("fallbackModels"),0,3);
+                for (var model : routing.path("fallbackModels"))
+                    ScenarioContent.check(model.isTextual() && model.asText().matches("gemini-[a-zA-Z0-9_.-]{1,93}")
+                            && callModels.add(model.asText()));
+            }
             ScenarioContent.list(result.path("calls"),expected.size(),harnessGeneration ? 9 : expected.size()); int n=0;
             for (var call : result.path("calls")) {
                 ScenarioContent.fields(call,"purpose","provider","model");
                 ScenarioContent.check((harnessGeneration || expected.get(n++).equals(call.path("purpose").asText())) && provider.equals(call.path("provider").asText())
-                        && result.path("model").asText().equals(call.path("model").asText()));
+                        && callModels.contains(call.path("model").asText()));
             }
             if (harnessGeneration) validateHarnessCalls(result);
         }

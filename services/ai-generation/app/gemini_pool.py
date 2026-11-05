@@ -130,7 +130,7 @@ class QuotaStore:
             self.daily["__global__"][1] += 1
             return [1, 0]
 
-    def select(self, model, tokens, excluded=()):
+    def select(self, model, tokens, excluded=(), preferred_project=None):
         model = model.removeprefix("models/")
         sources = [p for p in self.settings.enabled_gemini_sources if p.model == model and p.id not in excluded]
         if not sources:
@@ -138,6 +138,8 @@ class QuotaStore:
         with self.lock:
             start = self.cursor % len(sources)
             self.cursor += 1
+        if preferred_project is not None:
+            start = next((i for i, source in enumerate(sources) if source.project_id == preferred_project), start)
         retry = 86400
         for offset in range(len(sources)):
             source = sources[(start + offset) % len(sources)]

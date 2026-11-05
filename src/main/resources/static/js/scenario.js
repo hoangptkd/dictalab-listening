@@ -18,7 +18,7 @@
     const request = (path, options = {}) => bridge().api(base + path, {...options, signal: abort?.signal, cache: "no-store"});
     function status(message) { const node = root()?.querySelector("#scenario-status"); if (node) node.textContent = message; }
     function operationFailure(op) {
-        if (op.errorCode === 'AI_PROVIDER_UNAVAILABLE') return 'Nhà cung cấp AI tạm quá tải (HTTP 503). Chưa nhận được kết quả hợp lệ. Hệ thống giữ dữ liệu đã lưu và không tự gửi lại yêu cầu để tránh gọi trùng. Hãy chờ rồi chủ động thử lại sau.';
+        if (op.errorCode === 'AI_PROVIDER_UNAVAILABLE') return 'Nhà cung cấp AI tạm quá tải hoặc gặp lỗi máy chủ. Chưa nhận được kết quả hợp lệ từ các model được cấu hình. Hệ thống giữ dữ liệu đã lưu và không tự gửi lại toàn bộ tác vụ để tránh gọi trùng. Hãy chờ rồi chủ động thử lại sau.';
         return op.status === 'UNKNOWN' ? 'Chưa xác định được kết quả từ nhà cung cấp. Hệ thống không tự gọi lại để tránh phí trùng.' : 'Tác vụ không hoàn tất. Mô tả và bài đã lưu vẫn được giữ. Bạn có thể sửa mô tả rồi chủ động tạo bài mới.';
     }
     function frame(html) { stopAudio(); root().innerHTML = `<div class="scenario-browser">${html}<p id="scenario-status" class="scenario-status" role="status" aria-live="polite"></p></div>`; }

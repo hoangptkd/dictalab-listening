@@ -193,7 +193,7 @@ test('provider overload is explained without replaying an unknown job', async ()
     const h = harness(async () => ({status: 'UNKNOWN', errorCode: 'AI_PROVIDER_UNAVAILABLE'}), storage);
     await h.module.show();
     assert.match(h.root.innerHTML, /Nhà cung cấp AI tạm quá tải/);
-    assert.match(h.root.innerHTML, /HTTP 503/);
+    assert.match(h.root.innerHTML, /lỗi máy chủ/);
     assert.match(h.root.innerHTML, /không tự gửi lại/);
     assert.equal(h.calls.length, 1); assert.equal(h.calls[0].options.method, undefined);
 });

@@ -106,6 +106,8 @@ async def phase(folder, payload, settings, budget):
 
 
 async def _phase(folder, payload, settings, budget):
+    # A model comparison must never silently measure a fallback model as the candidate.
+    settings = settings.model_copy(update={"gemini_fallback_models": []})
     folder.mkdir()
     write(folder / "input.json", payload.model_dump(mode="json"))
     write(folder / "started.json", {"at": now(), "jobId": str(uuid4())})

@@ -631,6 +631,7 @@ def test_review_requires_complete_translation_and_rubric_audits(fault):
 @pytest.mark.parametrize("failure,expected_error", [
     (httpx.ConnectError("translation connection failed after generation already succeeded"), "PROVIDER_OUTCOME_UNKNOWN"),
     (ProviderHttpError(503), "PROVIDER_UNAVAILABLE"),
+    (ProviderHttpError(500, server_failure=True), "PROVIDER_UNAVAILABLE"),
 ])
 def test_later_transport_failure_is_unknown_and_never_replayed(tmp_path, failure, expected_error):
     settings = Settings(scenario_enabled=True, jobs_database=str(tmp_path / "scenario.sqlite"))

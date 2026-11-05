@@ -113,7 +113,20 @@ class OpenAiCompatibleProvider(ModelProvider):
                 self._url, json=body, headers=headers, timeout=timeout
             )
             if response.status_code == 429 or response.status_code >= 500:
-                raise ProviderHttpError(response.status_code, response.headers.get("Retry-After"), self._provider_name)
+                server_failure = False
+                if self._provider_name == "gemini" and response.status_code in (500, 503):
+                    try:
+                        error = response.json()
+                        if isinstance(error, list) and len(error) == 1:
+                            error = error[0]
+                        # Gateway HTML/timeouts do not prove that Gemini rejected the generation.
+                        detail = error.get("error", {}) if isinstance(error, dict) and set(error) == {"error"} else {}
+                        server_failure = (isinstance(detail, dict) and detail.get("code") == response.status_code
+                            and detail.get("status") == {500: "INTERNAL", 503: "UNAVAILABLE"}[response.status_code])
+                    except ValueError:
+                        pass
+                raise ProviderHttpError(response.status_code, response.headers.get("Retry-After"), self._provider_name,
+                                        server_failure=server_failure)
             if response.status_code in (400, 401, 403, 422):
                 raise ProviderError(
                     f"{self._provider_name}:{purpose}:client_error:{response.status_code}"

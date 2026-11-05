@@ -581,7 +581,10 @@ def example_metadata(requested_hash, phase):
 def metadata(settings, is_personalized=False, requested_hash=None):
     from .config import CLOUD_PROVIDERS
     release = personalized_release(requested_hash or personalized_prompt_hash()) if is_personalized else None
-    return {"schemaVersion": "1", "provider": settings.selected_provider,
+    routing = ({"modelRouting": {"primaryModel": settings.active_cloud_model,
+                "fallbackModels": [m for m in settings.gemini_fallback_models if m != settings.active_cloud_model]}}
+               if settings.selected_provider == "gemini" and settings.gemini_fallback_models else {})
+    return {**routing, "schemaVersion": "1", "provider": settings.selected_provider,
             "model": settings.active_cloud_model if settings.selected_provider in CLOUD_PROVIDERS else settings.model,
             "modelDigest": settings.model_digest if settings.selected_provider == "ollama" else "provider-managed",
             "promptVersion": release.PROMPT_VERSION if is_personalized else PROMPT_VERSION,
@@ -793,10 +796,12 @@ async def execute(event, settings):
     instructions = {**release.INSTRUCTIONS, "GRADE": getattr(release, "GRADE", V4_INSTRUCTIONS["GRADE"])} if is_personalized else INSTRUCTIONS
     calls = []
     harness_metadata = {}
+    call_settings = settings
     async with httpx.AsyncClient(timeout=remaining, limits=httpx.Limits(max_connections=settings.effective_http_max_connections)) as client:
         async def call(purpose, data, model):
+            nonlocal call_settings
             token_stage = {"REPAIR_QUESTIONS": "QUESTIONS", "REPAIR_TRANSLATIONS": "TRANSLATE"}.get(purpose, purpose)
-            gateway = ModelGateway(settings.model_copy(update={"num_predict": OUTPUT_TOKENS[token_stage]}), client)
+            gateway = ModelGateway(call_settings.model_copy(update={"num_predict": OUTPUT_TOKENS[token_stage]}), client)
             schema = response_schema(model)
             if purpose == "GENERATE":
                 schema["$defs"]["Segment"]["properties"]["speakerId"]["enum"] = [c.id for c in payload.specification.characters]
@@ -804,13 +809,23 @@ async def execute(event, settings):
                 raw, provider = await asyncio.wait_for(gateway.complete(
                     [{"role": "system", "content": instructions[purpose]},
                      {"role": "user", "content": json.dumps(data, ensure_ascii=False)}],
-                    schema, deadline, "scenario_" + purpose.lower(), temperature=0), max(0.01, deadline - time.monotonic()))
+                    schema, deadline, "scenario_" + purpose.lower(), temperature=0,
+                    **({"allow_model_fallback": True} if call_settings.gemini_fallback_models else {})), max(0.01, deadline - time.monotonic()))
             except Exception as error:
                 logger.warning("scenario_call_failed job_id=%s phase=%s error_type=%s http_status=%s provider=%s model=%s source_id=%s completed_calls=%s",
                                event.jobId, purpose, type(error).__name__, getattr(error, "status", None),
                                settings.selected_provider, gateway.last_model, getattr(gateway, "last_source_id", None), len(calls))
                 raise
             calls.append({"purpose": purpose, "provider": provider, "model": gateway.last_model})
+            if getattr(gateway, "model_fallbacks", []):
+                # Keep later steps on the successful fallback; never replay earlier paid steps.
+                chain = call_settings.gemini_fallback_models
+                pools = {p: dict(policy) for p, policy in call_settings.registry_pools.items()}
+                if "gemini" in pools:
+                    pools["gemini"]["default_model"] = gateway.last_model
+                call_settings = call_settings.model_copy(update={"gemini_model": gateway.last_model,
+                    "registry_pools": pools, "gemini_fallback_models": chain[chain.index(gateway.last_model) + 1:]})
+                call_settings._registry_snapshot = True
             try:
                 return model.model_validate(raw)
             except ValueError as invalid:

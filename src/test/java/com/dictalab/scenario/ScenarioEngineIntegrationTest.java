@@ -391,6 +391,35 @@ class ScenarioEngineIntegrationTest {
         assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_activities WHERE session_id=?",Integer.class,op.path("sessionId").asText())).isZero();
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"valid","undeclared","duplicate","wrong_primary","wrong_provider","foreign_model","extra_field"})
+    void geminiFallbackRequiresExplicitConsistentModelProvenance(String fault) {
+        var extraction=dispatch(engine.createDraft(user,id(),input()));
+        var draft=engine.draft(user,extraction.path("draftId").asText());
+        when(ai.scenarioProvider()).thenReturn("gemini");
+        doAnswer(call -> {
+            var response=done(call.getArgument(1),call.getArgument(3));
+            var result=(ObjectNode)response.path("result");
+            result.put("provider","gemini").put("model","gemini-3.5-flash-lite");
+            int index=0;
+            for (var entry : result.path("calls")) ((ObjectNode)entry).put("provider","gemini")
+                    .put("model",index++==0 ? "gemini-3.5-flash-lite" : "gemini-3.1-flash-lite");
+            var routing=result.putObject("modelRouting").put("primaryModel","gemini-3.5-flash-lite");
+            var models=routing.putArray("fallbackModels").add("gemini-3.1-flash-lite");
+            switch (fault) {
+                case "undeclared" -> result.remove("modelRouting");
+                case "duplicate" -> models.add("gemini-3.1-flash-lite");
+                case "wrong_primary" -> routing.put("primaryModel","gemini-2.5-flash");
+                case "wrong_provider" -> result.put("provider","deepseek");
+                case "foreign_model" -> models.add("deepseek-chat");
+                case "extra_field" -> routing.put("unchecked",true);
+            }
+            return response;
+        }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        var op=engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong()));
+        assertThat(dispatch(op).path("status").asText()).isEqualTo(fault.equals("valid") ? "SUCCEEDED" : "FAILED");
+    }
+
     @Test void cancellationAndDeletedOwnerCannotPublishLateResults() {
         var op=engine.createDraft(user,id(),input()); String oid=op.path("operationId").asText();
         engine.cancel(user,oid,id(),new ScenarioEngine.VersionRequest(op.path("version").asLong())); operations.dispatch(oid);

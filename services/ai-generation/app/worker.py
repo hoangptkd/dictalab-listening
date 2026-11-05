@@ -84,7 +84,7 @@ def process(body, settings, store, runner=None):
             from .providers.base import ProviderHttpError
             # A later call can fail after an earlier paid call succeeded. Never replay the whole workflow.
             code = ("QUALITY_REJECTED" if isinstance(error, QualityRejected) else
-                    "PROVIDER_UNAVAILABLE" if isinstance(error, ProviderHttpError) and error.status == 503 else
+                    "PROVIDER_UNAVAILABLE" if isinstance(error, ProviderHttpError) and (error.status == 503 or error.server_failure) else
                     "PROVIDER_OUTCOME_UNKNOWN")
             state = store.finish(event, error=code,
                                  uncertain=not isinstance(error, QualityRejected))
