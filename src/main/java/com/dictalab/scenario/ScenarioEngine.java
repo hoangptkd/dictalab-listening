@@ -39,7 +39,10 @@ public class ScenarioEngine {
         this.config=config;
     }
 
-    public record DraftRequest(String inputVi, String programCode, int programVersion, String profileId) {}
+    public record DraftRequest(String inputVi, String programCode, int programVersion, String profileId,
+                               @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY) String focusSkill) {
+        public DraftRequest(String inputVi,String programCode,int programVersion,String profileId) { this(inputVi,programCode,programVersion,profileId,""); }
+    }
     public record SessionRequest(String draftId, long draftVersion) {}
     public record Answer(String questionId, String textVi) {}
     public record AnswersRequest(long expectedVersion, List<Answer> answers) {}
@@ -65,7 +68,7 @@ public class ScenarioEngine {
             var prior=operations.prior(user,"draft",key,request); if (prior != null) return prior;
             if (request.programVersion()>=2) {
                 var program=release.require(user,request.programCode(),request.programVersion());
-                return newDraft(user,key,request,"draft",request.inputVi(),request.profileId(),null,id(),program,personalization.forDraft(user,program));
+                return newDraft(user,key,request,"draft",request.inputVi(),request.profileId(),null,id(),program,personalization.forDraft(user,program,request.focusSkill()));
             }
             release.require(user);
             require(request.programCode()!=null && request.programCode().equals(release.program().code()) && request.programVersion()==release.program().version());
@@ -191,7 +194,18 @@ public class ScenarioEngine {
         for (var attempt : savedAttempts) {
             var item=attempts.addObject().put("attemptId",(String)attempt.get("id")).put("ordinal",number(attempt,"ordinal")).put("status",(String)attempt.get("status"));
             item.set("answers",tree((String)attempt.get("answers_json"))); item.set("support",tree((String)attempt.get("support_json")));
-            if (attempt.get("result_json")!=null) item.set("result",tree((String)attempt.get("result_json")));
+            if (attempt.get("result_json")!=null) {
+                var grade=tree((String)attempt.get("result_json"));
+                for (var fact : grade.path("facts")) if (Set.of("PARTIAL","INCORRECT","MISSED").contains(fact.path("status").asText())) {
+                    for (var q : content.path("activity").path("questions")) if (q.path("id").equals(fact.path("questionId"))) {
+                        var positions=new TreeSet<Integer>(); var source=content.path("activity").path("segments");
+                        for (var e : q.path("evidence")) for (int i=0;i<source.size();i++) if (source.get(i).path("id").equals(e.path("segmentId"))) positions.add(i+1);
+                        // Point to the listening source without exposing the answer or inventing missing meaning.
+                        ((ObjectNode)fact).put("feedbackVi",(positions.isEmpty() ? "Hãy nghe lại hoạt động. " : "Hãy nghe lại đoạn "+String.join(", ",positions.stream().map(String::valueOf).toList())+". ")+listeningStrategy(q.path("skill").asText()));
+                    }
+                }
+                item.set("result",grade);
+            }
             var ops=grades.stream().filter(g -> g.get("resource_id").equals(attempt.get("id"))).toList();
             int remaining=Math.max(0,3-ops.size());
             var retry=item.putObject("gradeRetry").put("allowed",!completed && attempt==savedAttempts.get(savedAttempts.size()-1)
@@ -292,7 +306,11 @@ public class ScenarioEngine {
             var result=object().put("version",request.expectedVersion()+1);
             if (request.kind().equals("TRANSCRIPT")) {
                 var content=tree((String)a.get("private_json")); result.set("segments",content.path("activity").path("segments")); result.set("translations",content.path("translations"));
-            } else result.put("hintVi","Nghe ý chính, lý do và quan điểm của người nói. Trả lời ngắn bằng tiếng Anh hoặc tiếng Việt, chỉ nêu điều câu hỏi yêu cầu.");
+            } else {
+                var strategies=new LinkedHashSet<String>();
+                for (var q : tree((String)a.get("private_json")).path("activity").path("questions")) strategies.add(listeningStrategy(q.path("skill").asText()));
+                result.put("hintVi",String.join(" ",strategies)+" Trả lời bằng tiếng Anh hoặc tiếng Việt theo điều bạn nghe được.");
+            }
             return result;
         }));
     }
@@ -579,9 +597,24 @@ public class ScenarioEngine {
         var suggested=suggestions().path("suggestions").deepCopy();
         if (facts>=6 && !counts.isEmpty()) {
             String focus=counts.entrySet().stream().max(Map.Entry.comparingByValue()).orElseThrow().getKey();
-            for (var item : suggested) ((ObjectNode)item).put("focusSkill",focus).put("reasonVi",focus.equals("detail") ? "Luyện bắt chi tiết đã bỏ lỡ" : "Luyện hiểu ý chính")
-                    .put("inputVi",item.path("inputVi").asText()+(focus.equals("detail") ? " Tôi muốn chú ý thông tin cụ thể trong lời nói." : " Tôi muốn tập trung vào ý chính của cuộc trao đổi."));
+            String objective=switch(focus) {
+                case "detail" -> "nghe chi tiết"; case "reason" -> "hiểu lý do"; case "purpose" -> "hiểu mục đích";
+                case "speaker-attitude" -> "hiểu quan điểm"; case "supported-inference" -> "suy luận có căn cứ"; default -> "hiểu ý chính";
+            };
+            for (var item : suggested) ((ObjectNode)item).put("focusSkill",focus).put("reasonVi","Luyện "+objective)
+                    .put("inputVi",item.path("inputVi").asText()+" Tôi muốn tập trung vào kỹ năng "+objective+".");
         }
         result.set("suggestions",suggested); return result;
+    }
+
+    private static String listeningStrategy(String skill) {
+        return switch(skill) {
+            case "detail" -> "Chú ý các thông tin cụ thể mà câu hỏi yêu cầu, đối chiếu đủ từng ý.";
+            case "reason" -> "Chú ý lời giải thích vì sao sự việc xảy ra, phân biệt nguyên nhân với kết quả.";
+            case "purpose" -> "Xác định người nói muốn đạt điều gì qua lời nói của họ.";
+            case "speaker-attitude" -> "Chú ý cách người nói thể hiện quan điểm hoặc cảm xúc.";
+            case "supported-inference" -> "Kết hợp các dấu hiệu được nói rõ; không thêm thông tin ngoài hội thoại.";
+            default -> "Xác định nội dung chính xuyên suốt cuộc trao đổi, thay vì chỉ một chi tiết.";
+        };
     }
 }

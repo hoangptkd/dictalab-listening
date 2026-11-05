@@ -1005,8 +1005,15 @@
 
 /* ── OPT-02: Audio controls layout ──────────────────────────── */
 .scenario-audio-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
     margin-bottom: 12px;
 }
+
+.scenario-personalization > summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+.scenario-personalization[open] > summary { margin-bottom: 16px; }
+.scenario-personalization > summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
 
 .scenario-segment-list {
     display: flex;

@@ -90,7 +90,15 @@ public class ScenarioLearningController {
     static <T> T read(HttpServletRequest request,Class<T> type) throws IOException {
         byte[] bytes=request.getInputStream().readNBytes(ScenarioJson.MAX_REQUEST_BYTES+1);
         if (bytes.length>ScenarioJson.MAX_REQUEST_BYTES) throw new ScenarioFailure(413,"REQUEST_TOO_LARGE","Yêu cầu vượt giới hạn 32 KiB.");
-        try { return ScenarioJson.read(bytes,type); }
+        try {
+            if (type==ScenarioEngine.DraftRequest.class) {
+                var body=ScenarioJson.read(bytes,JsonNode.class);
+                // Add only the optional field; all original required fields remain strictly validated.
+                if (body instanceof tools.jackson.databind.node.ObjectNode object && !object.has("focusSkill")) object.put("focusSkill","");
+                bytes=ScenarioJson.MAPPER.writeValueAsBytes(body);
+            }
+            return ScenarioJson.read(bytes,type);
+        }
         catch (RuntimeException invalid) { throw ScenarioData.invalid(); }
     }
 }

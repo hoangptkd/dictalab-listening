@@ -9,7 +9,14 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness(api, storage = new Map()) {
     const nodes = new Map(), calls = [], timers = [];
     function node(key) {
-        if (!nodes.has(key)) nodes.set(key, {listeners: {}, value: '', textContent: '', addEventListener(name, fn) {this.listeners[name] = fn;}, setAttribute() {}, focus() {}, async play() {}, pause() {}, load() {}, removeAttribute(name) {delete this[name];}});
+        if (!nodes.has(key)) nodes.set(key, {listeners: {}, events: {}, value: '', textContent: '',
+            addEventListener(name, fn, options = {}) {
+                (this.events[name] ||= []).push({fn, once: options.once});
+                this.listeners[name] = event => { for (const entry of [...this.events[name]]) { if (entry.once) this.removeEventListener(name, entry.fn); entry.fn(event || {type: name}); } };
+            },
+            removeEventListener(name, fn) {this.events[name] = (this.events[name] || []).filter(e => e.fn !== fn);},
+            hasAttribute() {return false;}, setAttribute() {}, focus() {}, async play() {this.paused = false;},
+            pause() {this.paused = true; this.listeners.pause?.({type:'pause'});}, load() {}, removeAttribute(name) {delete this[name];}});
         return nodes.get(key);
     }
     const root = {innerHTML: '', setAttribute() {}, removeAttribute() {},
@@ -22,6 +29,7 @@ function harness(api, storage = new Map()) {
             const attr = selector.slice(1, -1);
             return [...this.innerHTML.matchAll(new RegExp(`${attr}="([^"]*)"`, 'g'))].map((match, index) => {
                 const item = node(`${attr}:${index}`);
+                item.hasAttribute = name => this.innerHTML.slice(this.innerHTML.lastIndexOf('<', match.index), this.innerHTML.indexOf('>', match.index)).includes(name);
                 item.dataset = {[attr.replace('data-', '').replace(/-([a-z])/g, (_, c) => c.toUpperCase())]: match[1]}; return item;
             });
         }};
@@ -64,7 +72,7 @@ test('completion opens a persisted answer review before the next activity and su
     h.node('#scenario-complete').listeners.click(); await tick(); await tick();
     assert.match(h.root.innerHTML, /Chữa hoạt động 1/);
     assert.match(h.root.innerHTML, /Đáp án: Chín giờ/);
-    assert.match(h.root.innerHTML, /Bằng chứng ở đoạn s1/);
+    assert.match(h.root.innerHTML, /Bằng chứng ở đoạn 1/);
     assert.doesNotMatch(h.root.innerHTML, /id="scenario-answer"/);
     const reloaded = harness(api, storage); await reloaded.module.show(s.sessionId);
     assert.match(reloaded.root.innerHTML, /Chữa hoạt động 1/);
@@ -113,9 +121,9 @@ test('playback separates autoplay and decode errors and ignores late errors afte
     h.node('#scenario-audio').play = async () => {const error = new Error('blocked'); error.name = 'NotAllowedError'; throw error;};
     h.node('data-play:0').listeners.click(); await tick(); await tick();
     assert.match(h.node('#scenario-status').textContent, /chặn tự phát/);
+    const lateError = h.node('#scenario-audio').events.error[0].fn;
     h.node('#scenario-audio').listeners.error();
     assert.match(h.node('#scenario-status').textContent, /Không tải hoặc giải mã/);
-    const lateError = h.node('#scenario-audio').listeners.error;
     h.module.leave(); h.node('#scenario-status').textContent = 'new page'; lateError();
     assert.equal(h.node('#scenario-status').textContent, 'new page');
 });
@@ -128,7 +136,7 @@ test('summary retains missing first grades in the denominator and identifies ass
     const h = harness(async () => s); await h.module.show(s.sessionId);
     assert.match(h.root.innerHTML, /Lần trả lời đầu:.*có kết quả 4\/6 câu; 2 câu chưa chấm được/);
     assert.match(h.root.innerHTML, /Lần chấm thành công mới nhất:.*có kết quả 6\/6 câu/);
-    assert.match(h.root.innerHTML, /1 hoạt động có dùng hỗ trợ/);
+    assert.match(h.root.innerHTML, /0 hoạt động dùng gợi ý chiến lược; 1 hoạt động mở bản chép/);
     assert.match(h.root.innerHTML, /2 chưa đủ căn cứ/);
     h.node('data-review:0').listeners.click(); await tick();
     assert.match(h.root.innerHTML, /id="scenario-audio"/);
@@ -173,7 +181,7 @@ test('answer transport retry after reload keeps idempotency key and Vietnamese d
 test('unknown paid outcome does not submit another job or invent a completed session', async () => {
     const storage = new Map([['dictalab:scenario:10:operation', JSON.stringify({operationId: 'op', action: 'GENERATE'})]]);
     const h = harness(async () => ({status: 'UNKNOWN', errorCode: 'DEADLINE'}), storage); await h.module.show();
-    assert.match(h.root.innerHTML, /không tự gọi lại/); assert.match(h.root.innerHTML, /UNKNOWN/);
+    assert.match(h.root.innerHTML, /không tự gọi lại/); assert.match(h.root.innerHTML, /Chưa xác định được kết quả/);
     assert.equal(h.calls.length, 1); assert.equal(h.calls[0].options.method, undefined);
 });
 
@@ -330,21 +338,21 @@ test('draft restores preview on catalog route after remix extract', async () => 
     assert.match(h.root.innerHTML, /Remix/);
     // No POST requests (no new EXTRACT)
     assert.equal(h.calls.filter(c => c.options?.method === 'POST').length, 0);
-    // Reload at session route does NOT fetch the draft
-    const storage2 = new Map([['dictalab:scenario:10:draft', JSON.stringify({draftId: draft.draftId})]]);
     const s = session();
+    const storage2 = new Map([['dictalab:scenario:10:draft', JSON.stringify({draftId: draft.draftId, sourceSessionId: s.sessionId})]]);
     const h2 = harness(async url => url.includes('/drafts/') ? draft : s, storage2);
     await h2.module.show(s.sessionId);
-    // Should show session, not draft preview
-    assert.doesNotMatch(h2.root.innerHTML, /scenario-confirm/);
+    assert.match(h2.root.innerHTML, /scenario-confirm/);
+    const h3 = harness(async () => s, storage2); await h3.module.show('unrelated');
+    assert.doesNotMatch(h3.root.innerHTML, /scenario-confirm/);
 });
 
-test('cold-start duplicate recommendations are hidden when all suggestions overlap with explorer', async () => {
+for (const basis of ['COLD_START','RECENT_UNAIDED_FIRST_ATTEMPTS']) test(`generic duplicate recommendations are hidden for ${basis} when there is no personal reason`, async () => {
     const suggestion = {id: 'cafe', groupId: 'food', groupTitleVi: 'Food', titleVi: 'Order coffee', inputVi: 'Order coffee'};
     const h = harness(async url => {
         if (url.endsWith('/catalog')) return {enabled: true, generationAvailable: true, difficultyProfiles: ['b1'], practicePrograms: []};
         if (url.endsWith('/suggestions')) return {suggestions: [suggestion]};
-        if (url.endsWith('/recommendations')) return {basis: 'COLD_START', messageVi: 'Not enough history', suggestions: [suggestion]};
+        if (url.endsWith('/recommendations')) return {basis, messageVi: 'Not enough history', suggestions: [suggestion]};
         if (url.endsWith('/learning-goals')) return [];
         if (url.endsWith('/learning-preferences')) return {preferences: []};
         return {sessions: []};
@@ -369,4 +377,114 @@ test('grading result shows correction cue for PARTIAL and INCORRECT facts', asyn
     assert.match(h.root.innerHTML, /Hiểu một phần/);
     assert.match(h.root.innerHTML, /Hãy nghe lại/);
     assert.match(h.root.innerHTML, /Câu 1:/);
+});
+
+test('play-all continues through queued and cached segments, refreshing versions without resubmission', async () => {
+    const s = session(); s.activities[0].segments.push({segmentId:'s2'}, {segmentId:'s3'});
+    let checks = 0;
+    const h = harness(async (url, options = {}) => {
+        if (url.endsWith('/play')) {
+            const id = options.body.segmentId; s.version++;
+            return id === 's1' ? {operationId:'queued', stage:'TTS', status:'PENDING'} : {status:'READY', mediaId:id};
+        }
+        if (url.endsWith('/operations/queued')) return ++checks === 1 ? {status:'RUNNING'} : {status:'SUCCEEDED', mediaId:'s1'};
+        return s;
+    });
+    await h.module.show(s.sessionId);
+    h.node('#scenario-play-all').listeners.click(); await tick();
+    assert.equal(h.calls.filter(c => c.url.endsWith('/play')).length, 1);
+    await h.timers.shift()(); await tick();
+    for (let i=0; i<3; i++) {
+        assert.match(h.node('#scenario-audio').src, new RegExp(`s${i+1}$`));
+        h.node('#scenario-audio').ended = true;
+        h.node('#scenario-audio').listeners.pause();
+        h.node('#scenario-audio').listeners.ended(); await tick();
+        h.node('#scenario-audio').ended = false;
+    }
+    const plays = h.calls.filter(c => c.url.endsWith('/play'));
+    assert.deepEqual(plays.map(c => c.options.body.segmentId), ['s1','s2','s3']);
+    assert.deepEqual(plays.map(c => c.options.body.expectedVersion), [1,2,3]);
+    assert.match(h.node('#scenario-status').textContent, /Đã nghe xong/);
+    assert.equal(h.node('#scenario-audio').events.pause.length, 0);
+    assert.equal(h.storage.has('dictalab:scenario:10:operation'), false);
+});
+
+for (const interruption of ['pause','error','stop','leave']) test(`play-all cancels on ${interruption} without requesting more paid audio`, async () => {
+    const s=session(); s.activities[0].segments.push({segmentId:'s2'});
+    const h=harness(async url => url.endsWith('/play') ? {status:'READY',mediaId:'s1'} : s);
+    await h.module.show(s.sessionId); h.node('#scenario-play-all').listeners.click(); await tick();
+    if (interruption === 'leave') h.module.leave();
+    else if (interruption === 'stop') h.node('#scenario-stop-audio').listeners.click();
+    else h.node('#scenario-audio').listeners[interruption]();
+    await tick();
+    assert.equal(h.calls.filter(c=>c.url.endsWith('/play')).length,1);
+    assert.equal(h.node('#scenario-audio').events.ended.length,0);
+    if(interruption==='error') assert.match(h.node('#scenario-status').textContent,/Không tải hoặc giải mã/);
+});
+
+test('stopping queued play-all preserves its operation for reload and prevents late autoplay', async () => {
+    const s=session(), h=harness(async url=>url.endsWith('/play') ? {operationId:'queued',stage:'TTS',status:'PENDING'} : url.includes('/operations/') ? {status:'RUNNING'} : s);
+    await h.module.show(s.sessionId); h.node('#scenario-play-all').listeners.click(); await tick();
+    h.node('#scenario-stop-audio').listeners.click(); await tick();
+    const before=h.calls.length; await h.timers.shift()(); await tick();
+    assert.equal(h.calls.length,before);
+    assert.equal(JSON.parse(h.storage.get('dictalab:scenario:10:operation')).operationId,'queued');
+    assert.equal(h.node('#scenario-audio').src,undefined);
+});
+
+test('personalized recommendations with reused catalog IDs stay visible and propagate the actual skill', async () => {
+    const pref={programCode:'ielts-listening',programVersion:2,target:{scaleId:'ielts-listening-band',component:'LISTENING',value:'6.5'},focusSkill:'detail',version:3};
+    const original=personalizedApi([pref]);
+    const suggestion={id:'office',inputVi:'Cuộc họp',titleVi:'Cuộc họp'};
+    const h=harness(async (url, options={})=>{
+        if(url.endsWith('/suggestions')) return {suggestions:[suggestion]};
+        if(url.endsWith('/recommendations')) return {basis:'RECENT_UNAIDED_FIRST_ATTEMPTS',suggestions:[{...suggestion,inputVi:'Cuộc họp, hiểu lý do',focusSkill:'reason'}]};
+        return original(url,options);
+    });
+    await h.module.show(); assert.match(h.root.innerHTML,/data-recommendation="0"/);
+    assert.match(h.root.innerHTML, /<details class="scenario-personalization" >/);
+    h.node('data-recommendation:0').listeners.click();
+    const form=h.node('#scenario-create'); form.values=[['inputVi',h.node('#scenario-input').value]];
+    form.listeners.submit({preventDefault(){},currentTarget:form}); await tick(); await tick();
+    const posts=h.calls.filter(c=>c.options?.method==='POST');
+    assert.equal(posts.length,1); assert.ok(posts[0].url.endsWith('/drafts'));
+    assert.equal(posts[0].options.body.focusSkill,'reason'); assert.equal(posts[0].options.body.inputVi,'Cuộc họp, hiểu lý do');
+});
+
+test('active listening hides content goals and roles; correction uses safe backend cues with readable labels', async () => {
+    const s=session(); s.specification.characters=[{id:'a',name:'Alice',roleVi:'SECRET_ROLE'}]; s.specification.goalVi='SECRET_GOAL';
+    s.learningContext={programCode:'ielts-listening',target:{value:'6.5'},profile:{id:'standard'},focusSkill:'reason'};
+    s.activities[0].attempts=[graded('PARTIAL')]; s.activities[0].attempts[0].result.facts[0].feedbackVi='Hãy nghe lại đoạn 2. Chú ý lý do.';
+    const h=harness(async()=>s); await h.module.show(s.sessionId);
+    assert.doesNotMatch(h.root.innerHTML,/SECRET_ROLE|SECRET_GOAL|ielts-listening/);
+    assert.match(h.root.innerHTML,/IELTS Listening/); assert.match(h.root.innerHTML,/Hãy nghe lại đoạn 2/);
+});
+
+test('draft survives a lost confirmation response and deliberate exit clears it before navigation', async () => {
+    const draft={draftId:'draft',version:1,status:'READY',specification:{constraintsVi:[],assumptionsVi:[],characters:[]}};
+    const storage=new Map([['dictalab:scenario:10:draft',JSON.stringify({draftId:'draft'})]]);
+    const h=harness(async (url,options={})=>{ if(options.method==='POST') throw new Error('offline'); return draft; },storage);
+    await h.module.show(); h.node('#scenario-confirm').listeners.click(); await tick();
+    assert.equal(JSON.parse(storage.get('dictalab:scenario:10:draft')).draftId,'draft');
+    h.node('data-session:0').listeners.click({preventDefault(){}});
+    assert.equal(storage.has('dictalab:scenario:10:draft'),false);
+});
+
+test('stop cancels a late single-segment response while adopting the acknowledged session version', async () => {
+    const s=session(); let respond;
+    const h=harness(async url => url.endsWith('/play') ? await new Promise(resolve=>{respond=resolve;}) : s);
+    await h.module.show(s.sessionId); h.node('data-play:0').listeners.click(); await tick();
+    h.node('#scenario-stop-audio').listeners.click(); respond({status:'READY',mediaId:'late',sessionVersion:2}); await tick();
+    assert.equal(h.node('#scenario-audio').src,undefined);
+    h.node('data-play:0').listeners.click(); await tick();
+    assert.equal(h.calls.filter(c=>c.url.endsWith('/play'))[1].options.body.expectedVersion,2);
+    respond({status:'READY',mediaId:'second',sessionVersion:3}); await tick();
+    assert.match(h.node('#scenario-audio').src,/second$/);
+});
+
+test('recommendations incompatible with the saved target profile are not offered', async () => {
+    const pref={programCode:'general-communication',programVersion:3,target:{value:'a1'},version:1};
+    const api=personalizedApi([pref],'general-communication',3);
+    const h=harness(async (url,options)=>url.endsWith('/recommendations') ? {basis:'RECENT_UNAIDED_FIRST_ATTEMPTS',suggestions:[{id:'inference',focusSkill:'supported-inference',inputVi:'Suy luận'}]} : api(url,options));
+    await h.module.show(); assert.doesNotMatch(h.root.innerHTML,/data-recommendation/);
 });

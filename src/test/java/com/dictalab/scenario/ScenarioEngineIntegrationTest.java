@@ -397,6 +397,78 @@ class ScenarioEngineIntegrationTest {
         assertThat(engine.recommendations(user).path("isAssessedScore").asBoolean()).isFalse();
     }
 
+    @Test void correctionAndHintPointToListeningSkillsWithoutExposingAnswersOrChangingSavedGrades() {
+        var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        var hint=engine.help(user,sid,aid,id(),new ScenarioEngine.HelpRequest(session.path("version").asLong(),"HINT"));
+        assertThat(hint.path("hintVi").asText()).contains("thông tin cụ thể").doesNotContain("Chín giờ","we open at nine");
+        session=engine.session(user,sid);
+        assertThat(session.path("activities").get(0).path("hintOpened").asBoolean()).isTrue();
+        assertThat(session.path("activities").get(0).path("transcriptOpened").asBoolean()).isFalse();
+        doAnswer(call -> {
+            var response=done(call.getArgument(1),call.getArgument(3));
+            ((ObjectNode)response.path("result").path("task").path("facts").get(0)).put("status","PARTIAL");
+            return response;
+        }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        assertThat(dispatch(engine.answer(user,sid,aid,id(),answers(session))).path("status").asText()).isEqualTo("SUCCEEDED");
+        var visible=engine.session(user,sid).path("activities").get(0);
+        String cue=visible.path("attempts").get(0).path("result").path("facts").get(0).path("feedbackVi").asText();
+        assertThat(cue).contains("Hãy nghe lại đoạn 2","thông tin cụ thể").doesNotContain("Chín giờ","we open at nine");
+        assertThat(visible.toString()).doesNotContain("answerVi","quoteEn","textEn");
+        assertThat(db.queryForObject("SELECT result_json FROM scenario_attempts WHERE activity_id=?",String.class,aid)).doesNotContain("feedbackVi");
+        assertThat(engine.recommendations(user).path("observedFacts").asInt()).isZero();
+    }
+
+    @Test void explicitRecommendationSkillReachesTheDraftAndUnsupportedSkillsStayRejected() {
+        personalization.save(user,id(),preference("ielts-listening","6.5","",0));
+        var op=dispatch(engine.createDraft(user,id(),new ScenarioEngine.DraftRequest("Cuộc trao đổi ở công ty","ielts-listening",2,"","reason")));
+        var context=engine.draft(user,op.path("draftId").asText()).path("learningContext");
+        assertThat(context.path("focusSkill").asText()).isEqualTo("reason");
+        assertThat(context.path("target").path("value").asText()).isEqualTo("6.5");
+        assertThat(personalization.forDraft(user,registry.require("ielts-listening",2)).path("focusSkill").asText()).isEqualTo("main-idea");
+        var program=registry.require("general-communication",3);
+        personalization.save(user,id(),new ScenarioPersonalization.Preference(program.code(),program.version(),new ScenarioGoalRequest.Target("cefr-listening","LISTENING","a1"),"","main-idea",0));
+        assertThatThrownBy(() -> engine.createDraft(user,id(),new ScenarioEngine.DraftRequest("Cuộc gặp","general-communication",3,"","supported-inference"))).isInstanceOf(ScenarioFailure.class);
+    }
+
+    @Test void optionalDraftFocusPreservesLegacyFingerprintsAndStrictHttpValidation() throws Exception {
+        assertThat(json(input())).doesNotContain("focusSkill");
+        mvc.perform(post("/api/v2/scenarios/drafts").with(user(DictaLabPrincipal.from(owner))).with(csrf()).header("Idempotency-Key",id())
+                .contentType("application/json").content(json(input()))).andExpect(status().isOk());
+        mvc.perform(post("/api/v2/scenarios/drafts").with(user(DictaLabPrincipal.from(owner))).with(csrf()).header("Idempotency-Key",id())
+                .contentType("application/json").content("{\"programCode\":\"general-communication\",\"programVersion\":1,\"profileId\":\"supported\"}"))
+                .andExpect(status().isBadRequest());
+        personalization.save(user,id(),preference("ielts-listening","6.5","",0));
+        mvc.perform(post("/api/v2/scenarios/drafts").with(user(DictaLabPrincipal.from(owner))).with(csrf()).header("Idempotency-Key",id())
+                .contentType("application/json").content(json(new ScenarioEngine.DraftRequest("Cuộc họp","ielts-listening",2,"","reason"))))
+                .andExpect(status().isOk());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"reason,hiểu lý do","purpose,hiểu mục đích","speaker-attitude,hiểu quan điểm","supported-inference,suy luận có căn cứ"})
+    void recommendationsRetainTheActualWeakSkill(String skill,String label) {
+        var session=active(); String sid=session.path("sessionId").asText();
+        doAnswer(call -> {
+            var response=done(call.getArgument(1),call.getArgument(3));
+            for(var fact : response.path("result").path("task").path("facts")) ((ObjectNode)fact).put("status","PARTIAL");
+            return response;
+        }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        for(int i=0;i<3;i++) {
+            session=engine.session(user,sid); String aid=session.path("activities").get(i).path("activityId").asText();
+            var content=tree(db.queryForObject("SELECT private_json FROM scenario_activities WHERE id=?",String.class,aid));
+            for(var q : content.path("activity").path("questions")) ((ObjectNode)q).put("skill",skill);
+            db.update("UPDATE scenario_activities SET private_json=? WHERE id=?",json(content),aid);
+            assertThat(dispatch(engine.answer(user,sid,aid,id(),answers(session))).path("status").asText()).isEqualTo("SUCCEEDED");
+            session=engine.session(user,sid); engine.completeActivity(user,sid,aid,id(),new ScenarioEngine.VersionRequest(session.path("version").asLong()));
+        }
+        var recommendations=engine.recommendations(user);
+        assertThat(recommendations.path("basis").asText()).isEqualTo("RECENT_UNAIDED_FIRST_ATTEMPTS");
+        for(var suggestion : recommendations.path("suggestions")) {
+            assertThat(suggestion.path("focusSkill").asText()).isEqualTo(skill);
+            assertThat(suggestion.path("reasonVi").asText()).contains(label);
+            assertThat(suggestion.path("inputVi").asText()).contains(label);
+        }
+    }
+
     @Test void failedBudgetLedgerInsertRollsBackDailyCountersAndAllDomainRows() {
         String constraint="scenario_budget_fixture_"+id().replace("-","");
         db.execute("ALTER TABLE scenario_operation_budget ADD CONSTRAINT "+constraint+" CHECK (user_id<>"+user+")");
