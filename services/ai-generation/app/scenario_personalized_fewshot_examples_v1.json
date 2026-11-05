@@ -1,0 +1,3054 @@
+{
+  "version": "scenario-personalized-fewshot.v1",
+  "syntheticOnly": true,
+  "basedOn": "SCENARIO_PERSONALIZED_V1_GRADE_V4",
+  "notice": "Thirteen stage-specific reference pairs, adapted for personalized schemas. Agent-authored, not human gold. Excluded from evaluation inputs. GRADE remains V4 without examples.",
+  "examples": [
+    {
+      "id": "extract-indirect-invitation",
+      "stage": "EXTRACT",
+      "input": {
+        "inputVi": "Tôi muốn nghe để nhận ra khi người khác đang ngại nói thẳng lời từ chối.",
+        "learningContext": {
+          "contractVersion": "scenario-learning-context.v1",
+          "programCode": "ielts-listening",
+          "programVersion": 2,
+          "programHash": "bb2ec5cd120373be1384cea529187c0bb289f6d99064ed3c85a2c346c7c33b87",
+          "practiceMode": "guided-listening",
+          "layoutVersion": "three-activities.v1",
+          "focusSkill": "main-idea",
+          "targetProvenance": "USER_DECLARED_GOAL",
+          "currentProvenance": "UNKNOWN",
+          "currentValue": null,
+          "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+          "qualityPolicyVersion": "scenario-quality.v2-draft",
+          "skillTaxonomyVersion": "scenario-skills.v2",
+          "target": {
+            "scaleId": "ielts-listening-band",
+            "component": "LISTENING",
+            "value": "6.5"
+          },
+          "targetScale": {
+            "scaleId": "ielts-listening-band",
+            "component": "LISTENING",
+            "min": "0",
+            "max": "9",
+            "step": "0.5",
+            "labels": [],
+            "sourceUrl": "https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail",
+            "reviewedOn": "2026-10-31"
+          },
+          "profile": {
+            "id": "standard",
+            "version": 2,
+            "minWordsPerActivity": 30,
+            "maxWordsPerActivity": 100,
+            "maxWordsPerSession": 300,
+            "maxActivities": 3,
+            "maxSpeakers": 2,
+            "maxSegmentsPerActivity": 6,
+            "maxQuestionsPerSession": 6,
+            "maxFactsPerActivity": 3,
+            "maxDistractors": 1,
+            "maxCorrections": 0,
+            "inferencePolicy": "SUPPORTED_INFERENCE",
+            "speechRateWpm": 125,
+            "pauseMillis": 500,
+            "vocabularyGuidance": "Social, education and training discussions, explanations and academic topics. Explain specialist terms without assuming outside knowledge. Use varied paraphrases and topic vocabulary with clear context.",
+            "syntaxGuidance": "Varied compound and subordinate clauses, unambiguous references.",
+            "informationDensity": "Linked details and reasons; occasional contrast or correction.",
+            "skills": [
+              "detail",
+              "main-idea",
+              "reason",
+              "purpose",
+              "speaker-attitude",
+              "supported-inference"
+            ],
+            "allowedVoiceProfiles": [],
+            "targetRange": {
+              "scaleId": "ielts-listening-band",
+              "min": "5.5",
+              "max": "6.5"
+            }
+          },
+          "answerLanguages": [
+            "vi",
+            "en"
+          ]
+        }
+      },
+      "expectedOutput": {
+        "allowed": true,
+        "titleVi": "Nhận ra lời từ chối gián tiếp",
+        "settingVi": "Hai người bạn trao đổi về một buổi triển lãm giả định.",
+        "goalVi": "Người học nghe để nhận ra sự ngần ngại; hai nhân vật trao đổi lời mời và khả năng tham gia.",
+        "characters": [
+          {
+            "id": "linh",
+            "name": "Linh",
+            "roleVi": "Người mời bạn đi triển lãm"
+          },
+          {
+            "id": "robin",
+            "name": "Robin",
+            "roleVi": "Người bạn được mời"
+          }
+        ],
+        "assumptionsVi": [
+          "Hai người bạn hư cấu bàn về một buổi triển lãm; một người chưa muốn nhận lời."
+        ],
+        "topicIds": [
+          "social"
+        ],
+        "learnerCharacterId": null,
+        "providedFacts": [
+          {
+            "quoteVi": "Tôi muốn nghe để nhận ra khi người khác đang ngại nói thẳng lời từ chối."
+          }
+        ],
+        "inferredFacts": [],
+        "learnerMode": "listener",
+        "genre": "discussion"
+      },
+      "metadata": {
+        "focusVi": "Mục tiêu học trở thành một cảnh giao tiếp; không dựng lớp học về kỹ năng.",
+        "labelSource": "agent-authored-reference-not-human-gold",
+        "adaptedFrom": "extract-indirect-invitation"
+      }
+    },
+    {
+      "id": "extract-repair-staff",
+      "stage": "EXTRACT",
+      "input": {
+        "inputVi": "Tôi là nhân viên tiệm sửa đồng hồ. Khách muốn nhận lại đồng hồ trước trưa thứ Năm, nhưng tôi chưa biết thợ đã sửa xong chưa.",
+        "learningContext": {
+          "contractVersion": "scenario-learning-context.v1",
+          "programCode": "toeic-listening",
+          "programVersion": 2,
+          "programHash": "a05f4049cdf816773342b65d3ddb1b6b107504cf685c8efc9c292bf8a9df684c",
+          "practiceMode": "guided-listening",
+          "layoutVersion": "three-activities.v1",
+          "focusSkill": "main-idea",
+          "targetProvenance": "USER_DECLARED_GOAL",
+          "currentProvenance": "UNKNOWN",
+          "currentValue": null,
+          "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+          "qualityPolicyVersion": "scenario-quality.v2-draft",
+          "skillTaxonomyVersion": "scenario-skills.v2",
+          "target": {
+            "scaleId": "toeic-listening-score",
+            "component": "LISTENING",
+            "value": "350"
+          },
+          "targetScale": {
+            "scaleId": "toeic-listening-score",
+            "component": "LISTENING",
+            "min": "5",
+            "max": "495",
+            "step": "5",
+            "labels": [],
+            "sourceUrl": "https://www.iibc-global.org/english/toeic/test/lr/guide05.html",
+            "reviewedOn": "2026-10-31"
+          },
+          "profile": {
+            "id": "standard",
+            "version": 2,
+            "minWordsPerActivity": 30,
+            "maxWordsPerActivity": 100,
+            "maxWordsPerSession": 300,
+            "maxActivities": 3,
+            "maxSpeakers": 2,
+            "maxSegmentsPerActivity": 6,
+            "maxQuestionsPerSession": 6,
+            "maxFactsPerActivity": 3,
+            "maxDistractors": 1,
+            "maxCorrections": 0,
+            "inferencePolicy": "SUPPORTED_INFERENCE",
+            "speechRateWpm": 125,
+            "pauseMillis": 500,
+            "vocabularyGuidance": "Workplace, public services, travel, announcements and professional exchanges. Use business vocabulary in context. Use varied paraphrases and topic vocabulary with clear context.",
+            "syntaxGuidance": "Varied compound and subordinate clauses, unambiguous references.",
+            "informationDensity": "Linked details and reasons; occasional contrast or correction.",
+            "skills": [
+              "detail",
+              "main-idea",
+              "reason",
+              "purpose",
+              "speaker-attitude",
+              "supported-inference"
+            ],
+            "allowedVoiceProfiles": [],
+            "targetRange": {
+              "scaleId": "toeic-listening-score",
+              "min": "255",
+              "max": "375"
+            }
+          },
+          "answerLanguages": [
+            "vi",
+            "en"
+          ]
+        }
+      },
+      "expectedOutput": {
+        "allowed": true,
+        "titleVi": "Trao đổi về hạn nhận đồng hồ",
+        "settingVi": "Tại tiệm sửa đồng hồ.",
+        "goalVi": "Trao đổi với khách về yêu cầu nhận đồng hồ trước trưa thứ Năm khi chưa biết việc sửa đã hoàn tất chưa.",
+        "characters": [
+          {
+            "id": "linh",
+            "name": "Linh",
+            "roleVi": "Nhân viên tiệm sửa đồng hồ"
+          },
+          {
+            "id": "robin",
+            "name": "Robin",
+            "roleVi": "Khách gửi sửa đồng hồ"
+          }
+        ],
+        "assumptionsVi": [],
+        "topicIds": [
+          "services"
+        ],
+        "learnerCharacterId": "linh",
+        "providedFacts": [
+          {
+            "quoteVi": "Tôi là nhân viên tiệm sửa đồng hồ."
+          },
+          {
+            "quoteVi": "Khách muốn nhận lại đồng hồ trước trưa thứ Năm, nhưng tôi chưa biết thợ đã sửa xong chưa."
+          }
+        ],
+        "inferredFacts": [],
+        "learnerMode": "participant",
+        "genre": "transaction"
+      },
+      "metadata": {
+        "focusVi": "Giữ vai nhân viên của người học; hạn nhận là yêu cầu, chưa xác nhận sửa xong.",
+        "labelSource": "agent-authored-reference-not-human-gold",
+        "adaptedFrom": "extract-repair-staff"
+      }
+    },
+    {
+      "id": "extract-toeic-keeps-classmate-role",
+      "stage": "EXTRACT",
+      "input": {
+        "inputVi": "Tôi là học viên trao đổi với bạn cùng lớp về cách ôn phần từ vựng cho buổi kiểm tra vào thứ Tư.",
+        "learningContext": {
+          "contractVersion": "scenario-learning-context.v1",
+          "programCode": "toeic-listening",
+          "programVersion": 2,
+          "programHash": "a05f4049cdf816773342b65d3ddb1b6b107504cf685c8efc9c292bf8a9df684c",
+          "practiceMode": "guided-listening",
+          "layoutVersion": "three-activities.v1",
+          "focusSkill": "main-idea",
+          "targetProvenance": "USER_DECLARED_GOAL",
+          "currentProvenance": "UNKNOWN",
+          "currentValue": null,
+          "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+          "qualityPolicyVersion": "scenario-quality.v2-draft",
+          "skillTaxonomyVersion": "scenario-skills.v2",
+          "target": {
+            "scaleId": "toeic-listening-score",
+            "component": "LISTENING",
+            "value": "350"
+          },
+          "targetScale": {
+            "scaleId": "toeic-listening-score",
+            "component": "LISTENING",
+            "min": "5",
+            "max": "495",
+            "step": "5",
+            "labels": [],
+            "sourceUrl": "https://www.iibc-global.org/english/toeic/test/lr/guide05.html",
+            "reviewedOn": "2026-10-31"
+          },
+          "profile": {
+            "id": "standard",
+            "version": 2,
+            "minWordsPerActivity": 30,
+            "maxWordsPerActivity": 100,
+            "maxWordsPerSession": 300,
+            "maxActivities": 3,
+            "maxSpeakers": 2,
+            "maxSegmentsPerActivity": 6,
+            "maxQuestionsPerSession": 6,
+            "maxFactsPerActivity": 3,
+            "maxDistractors": 1,
+            "maxCorrections": 0,
+            "inferencePolicy": "SUPPORTED_INFERENCE",
+            "speechRateWpm": 125,
+            "pauseMillis": 500,
+            "vocabularyGuidance": "Workplace, public services, travel, announcements and professional exchanges. Use business vocabulary in context. Use varied paraphrases and topic vocabulary with clear context.",
+            "syntaxGuidance": "Varied compound and subordinate clauses, unambiguous references.",
+            "informationDensity": "Linked details and reasons; occasional contrast or correction.",
+            "skills": [
+              "detail",
+              "main-idea",
+              "reason",
+              "purpose",
+              "speaker-attitude",
+              "supported-inference"
+            ],
+            "allowedVoiceProfiles": [],
+            "targetRange": {
+              "scaleId": "toeic-listening-score",
+              "min": "255",
+              "max": "375"
+            }
+          },
+          "answerLanguages": [
+            "vi",
+            "en"
+          ]
+        }
+      },
+      "expectedOutput": {
+        "allowed": true,
+        "titleVi": "Trao đổi cách ôn từ vựng",
+        "settingVi": "Hai học viên cùng lớp trao đổi về việc ôn tập.",
+        "goalVi": "Người học nghe để nắm ý chính; hai bạn cùng lớp bàn cách ôn từ vựng cho buổi kiểm tra thứ Tư.",
+        "characters": [
+          {
+            "id": "linh",
+            "name": "Linh",
+            "roleVi": "Học viên hỏi cách ôn từ vựng"
+          },
+          {
+            "id": "robin",
+            "name": "Robin",
+            "roleVi": "Bạn cùng lớp"
+          }
+        ],
+        "assumptionsVi": [],
+        "topicIds": [
+          "workstudy"
+        ],
+        "learnerCharacterId": "linh",
+        "providedFacts": [
+          {
+            "quoteVi": "Tôi là học viên trao đổi với bạn cùng lớp về cách ôn phần từ vựng cho buổi kiểm tra vào thứ Tư."
+          }
+        ],
+        "inferredFacts": [],
+        "learnerMode": "participant",
+        "genre": "discussion"
+      },
+      "metadata": {
+        "focusVi": "Chương trình TOEIC không biến học viên/bạn cùng lớp thành nhân viên công ty.",
+        "labelSource": "agent-authored-reference-not-human-gold"
+      }
+    },
+    {
+      "id": "generate-plant-workshop",
+      "stage": "GENERATE",
+      "input": {
+        "inputVi": "Tôi muốn rủ bạn cùng tham gia một buổi hướng dẫn chăm cây và bàn các chi tiết để đi cùng nhau.",
+        "specification": {
+          "allowed": true,
+          "titleVi": "Rủ bạn dự buổi hướng dẫn chăm cây",
+          "settingVi": "Hai người bạn trò chuyện về hoạt động ở trung tâm cộng đồng.",
+          "goalVi": "Rủ bạn tham gia và bàn cách đi cùng nhau.",
+          "characters": [
+            {
+              "id": "linh",
+              "name": "Linh",
+              "roleVi": "Người rủ bạn"
+            },
+            {
+              "id": "robin",
+              "name": "Robin",
+              "roleVi": "Người bạn được rủ"
+            }
+          ],
+          "learnerRoleVi": "Người rủ bạn",
+          "assumptionsVi": [
+            "Giả định: Hai nhân vật là bạn bè; buổi hướng dẫn diễn ra tại trung tâm cộng đồng hư cấu."
+          ],
+          "constraintsVi": [
+            "Tôi muốn rủ bạn cùng tham gia một buổi hướng dẫn chăm cây và bàn các chi tiết để đi cùng nhau."
+          ],
+          "topicIds": [
+            "social"
+          ],
+          "learnerMode": "participant",
+          "genre": "discussion"
+        },
+        "profile": {
+          "id": "b1",
+          "minWordsPerActivity": 30,
+          "maxWordsPerActivity": 90,
+          "maxWordsPerSession": 270
+        },
+        "writingBudget": {
+          "targetWordsPerActivity": 60
+        },
+        "learningContext": {
+          "contractVersion": "scenario-learning-context.v1",
+          "programCode": "general-communication",
+          "programVersion": 3,
+          "programHash": "2476c2ed9f4faefe24bd312a020d9b19fdc8bdc83336392921a8cd66af91160c",
+          "practiceMode": "guided-listening",
+          "layoutVersion": "three-activities.v1",
+          "focusSkill": "main-idea",
+          "targetProvenance": "USER_DECLARED_GOAL",
+          "currentProvenance": "UNKNOWN",
+          "currentValue": null,
+          "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+          "qualityPolicyVersion": "scenario-quality.v2-draft",
+          "skillTaxonomyVersion": "scenario-skills.v2",
+          "target": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "value": "b1"
+          },
+          "targetScale": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "min": null,
+            "max": null,
+            "step": null,
+            "labels": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1",
+              "c2"
+            ],
+            "sourceUrl": "https://www.coe.int/en/web/common-european-framework-reference-languages/introduction-and-context",
+            "reviewedOn": "2026-11-02"
+          },
+          "profile": {
+            "id": "b1",
+            "version": 3,
+            "minWordsPerActivity": 30,
+            "maxWordsPerActivity": 90,
+            "maxWordsPerSession": 270,
+            "maxActivities": 3,
+            "maxSpeakers": 2,
+            "maxSegmentsPerActivity": 6,
+            "maxQuestionsPerSession": 6,
+            "maxFactsPerActivity": 3,
+            "maxDistractors": 1,
+            "maxCorrections": 0,
+            "inferencePolicy": "EXPLICIT_ONLY",
+            "speechRateWpm": 120,
+            "pauseMillis": 500,
+            "vocabularyGuidance": "CEFR B1 practice target. Familiar work, study, interests and experiences; explain uncommon topic words.",
+            "syntaxGuidance": "Connected clauses with explicit reasons, sequences and contrasts.",
+            "informationDensity": "Clear main ideas and linked details in familiar situations; state the required reasons explicitly.",
+            "skills": [
+              "detail",
+              "main-idea",
+              "reason",
+              "purpose"
+            ],
+            "allowedVoiceProfiles": []
+          },
+          "answerLanguages": [
+            "vi",
+            "en"
+          ]
+        }
+      },
+      "expectedOutput": {
+        "activities": [
+          {
+            "id": "a1",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "linh",
+                "textEn": "The community centre is holding a plant-care workshop this Saturday. I have been looking for a way to keep my balcony plants healthy. Would you be interested in coming with me?"
+              },
+              {
+                "id": "s2",
+                "speakerId": "robin",
+                "textEn": "I would. My herbs keep drying out, and I would like some practical advice. Do you know what time the workshop begins?"
+              }
+            ]
+          },
+          {
+            "id": "a2",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "linh",
+                "textEn": "It starts at ten in the morning and lasts ninety minutes. The organiser provides the pots, but everyone needs to bring a small plant from home. I could bring my basil."
+              },
+              {
+                "id": "s2",
+                "speakerId": "robin",
+                "textEn": "Ten works for me. I can bring my mint plant, so we will each have something to practise with. Shall we meet outside the centre fifteen minutes before it starts?"
+              }
+            ]
+          },
+          {
+            "id": "a3",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "linh",
+                "textEn": "Yes, let's meet at a quarter to ten outside the centre. Entry costs six pounds each, and the money goes towards new tools for the community garden."
+              },
+              {
+                "id": "s2",
+                "speakerId": "robin",
+                "textEn": "Yes, a quarter to ten outside the centre works for me. I will pay at the door and bring a notebook for the advice. I'm looking forward to learning something useful together."
+              }
+            ]
+          }
+        ]
+      },
+      "metadata": {
+        "focusVi": "Ba phần nối tự nhiên, đủ từ; mục tiêu là hoạt động thực, không bàn việc soạn bài nghe.",
+        "labelSource": "agent-authored-reference-not-human-gold",
+        "adaptedFrom": "generate-plant-workshop"
+      }
+    },
+    {
+      "id": "generate-camera-pending",
+      "stage": "GENERATE",
+      "input": {
+        "inputVi": "Tôi gửi sửa máy ảnh và muốn lấy trước chuyến đi vào chiều thứ Hai. Chưa rõ tiệm có sửa kịp hay không.",
+        "specification": {
+          "allowed": true,
+          "titleVi": "Hỏi khả năng nhận máy ảnh trước chuyến đi",
+          "settingVi": "Tại quầy nhận sửa máy ảnh.",
+          "goalVi": "Hỏi tiến độ và các lựa chọn trước chuyến đi chiều thứ Hai, giữ tình trạng chưa xác nhận.",
+          "characters": [
+            {
+              "id": "linh",
+              "name": "Linh",
+              "roleVi": "Khách gửi sửa máy ảnh"
+            },
+            {
+              "id": "robin",
+              "name": "Robin",
+              "roleVi": "Nhân viên nhận sửa"
+            }
+          ],
+          "learnerRoleVi": "Khách gửi sửa máy ảnh",
+          "assumptionsVi": [
+            "Giả định: Hai nhân vật gặp tại quầy nhận sửa máy ảnh hư cấu."
+          ],
+          "constraintsVi": [
+            "Tôi gửi sửa máy ảnh và muốn lấy trước chuyến đi vào chiều thứ Hai. Chưa rõ tiệm có sửa kịp hay không."
+          ],
+          "topicIds": [
+            "services"
+          ],
+          "learnerMode": "participant",
+          "genre": "transaction"
+        },
+        "profile": {
+          "id": "c2",
+          "minWordsPerActivity": 60,
+          "maxWordsPerActivity": 140,
+          "maxWordsPerSession": 420
+        },
+        "writingBudget": {
+          "targetWordsPerActivity": 100
+        },
+        "learningContext": {
+          "contractVersion": "scenario-learning-context.v1",
+          "programCode": "general-communication",
+          "programVersion": 3,
+          "programHash": "2476c2ed9f4faefe24bd312a020d9b19fdc8bdc83336392921a8cd66af91160c",
+          "practiceMode": "guided-listening",
+          "layoutVersion": "three-activities.v1",
+          "focusSkill": "main-idea",
+          "targetProvenance": "USER_DECLARED_GOAL",
+          "currentProvenance": "UNKNOWN",
+          "currentValue": null,
+          "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+          "qualityPolicyVersion": "scenario-quality.v2-draft",
+          "skillTaxonomyVersion": "scenario-skills.v2",
+          "target": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "value": "c2"
+          },
+          "targetScale": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "min": null,
+            "max": null,
+            "step": null,
+            "labels": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1",
+              "c2"
+            ],
+            "sourceUrl": "https://www.coe.int/en/web/common-european-framework-reference-languages/introduction-and-context",
+            "reviewedOn": "2026-11-02"
+          },
+          "profile": {
+            "id": "c2",
+            "version": 3,
+            "minWordsPerActivity": 60,
+            "maxWordsPerActivity": 140,
+            "maxWordsPerSession": 420,
+            "maxActivities": 3,
+            "maxSpeakers": 2,
+            "maxSegmentsPerActivity": 6,
+            "maxQuestionsPerSession": 6,
+            "maxFactsPerActivity": 3,
+            "maxDistractors": 1,
+            "maxCorrections": 1,
+            "inferencePolicy": "SUPPORTED_INFERENCE",
+            "speechRateWpm": 165,
+            "pauseMillis": 400,
+            "vocabularyGuidance": "CEFR C2 practice target. Precise nuanced vocabulary, natural idiomatic language and shifts in register.",
+            "syntaxGuidance": "Flexible sophisticated clauses and natural ellipsis with recoverable references.",
+            "informationDensity": "Fine distinctions, qualified positions and implicit meaning grounded in the spoken context; no trivia padding.",
+            "skills": [
+              "detail",
+              "main-idea",
+              "reason",
+              "purpose",
+              "speaker-attitude",
+              "supported-inference"
+            ],
+            "allowedVoiceProfiles": []
+          },
+          "answerLanguages": [
+            "vi",
+            "en"
+          ]
+        }
+      },
+      "expectedOutput": {
+        "activities": [
+          {
+            "id": "a1",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "linh",
+                "textEn": "I'm travelling on Monday afternoon, so I hope to collect my camera before then. Could you check whether the repair will be finished in time? I haven't received an update yet."
+              },
+              {
+                "id": "s2",
+                "speakerId": "robin",
+                "textEn": "The technician is still testing it. I can check the repair notes now, but I cannot promise a collection time until the final test is complete."
+              },
+              {
+                "id": "s3",
+                "speakerId": "linh",
+                "textEn": "Is the remaining test a routine check, or has it revealed another fault? I need to weigh the uncertainty before deciding whether to arrange different equipment."
+              },
+              {
+                "id": "s4",
+                "speakerId": "robin",
+                "textEn": "It is a routine reliability check. The notes do not yet contain a final result."
+              }
+            ]
+          },
+          {
+            "id": "a2",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "linh",
+                "textEn": "If the test takes longer, is there another way to take photographs during my trip? I would rather hear the options now than assume my own camera will be ready."
+              },
+              {
+                "id": "s2",
+                "speakerId": "robin",
+                "textEn": "We sometimes have loan cameras, although I need to check the equipment list before offering one. The list is kept at the service desk, and I can ask the supervisor about it."
+              },
+              {
+                "id": "s3",
+                "speakerId": "linh",
+                "textEn": "Would a loan depend on the equipment being available and on the length of my trip? I can explain my requirements before you check."
+              },
+              {
+                "id": "s4",
+                "speakerId": "robin",
+                "textEn": "Yes. Please tell me how long you would need it; availability still has to be verified."
+              }
+            ]
+          },
+          {
+            "id": "a3",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "linh",
+                "textEn": "I would need it for three days. Please check both the repair and the loan equipment. I will return after lunch to hear what you find; neither option is confirmed yet."
+              },
+              {
+                "id": "s2",
+                "speakerId": "robin",
+                "textEn": "Certainly. I will ask the technician for the test result and check the loan list with the supervisor. We can discuss the available options when you return, without making a reservation now."
+              },
+              {
+                "id": "s3",
+                "speakerId": "linh",
+                "textEn": "That seems sensible. An honest update will help me choose between waiting for my camera and making separate arrangements, even if the answer remains uncertain."
+              },
+              {
+                "id": "s4",
+                "speakerId": "robin",
+                "textEn": "I understand. I will distinguish the confirmed test result from any options that are still tentative."
+              }
+            ]
+          }
+        ]
+      },
+      "metadata": {
+        "focusVi": "Hạn chót không tạo ra cam kết giả; có bước tiếp rõ nhưng kết quả vẫn chờ xác minh.",
+        "labelSource": "agent-authored-reference-not-human-gold",
+        "adaptedFrom": "generate-camera-pending"
+      }
+    },
+    {
+      "id": "generate-a1-walking-break",
+      "stage": "GENERATE",
+      "input": {
+        "inputVi": "Tôi rủ bạn ra ngoài đi dạo một lát để nghỉ sau giờ học.",
+        "specification": {
+          "allowed": true,
+          "titleVi": "Đi dạo để nghỉ sau giờ học",
+          "settingVi": "Hai người bạn ở gần lớp học.",
+          "goalVi": "Rủ bạn đi dạo để nghỉ sau giờ học.",
+          "characters": [
+            {
+              "id": "linh",
+              "name": "Linh",
+              "roleVi": "Người rủ bạn"
+            },
+            {
+              "id": "robin",
+              "name": "Robin",
+              "roleVi": "Người bạn được rủ"
+            }
+          ],
+          "learnerRoleVi": "Người rủ bạn",
+          "assumptionsVi": [
+            "Giả định: Có một khu vườn nhỏ gần lớp học."
+          ],
+          "constraintsVi": [
+            "Tôi rủ bạn ra ngoài đi dạo một lát để nghỉ sau giờ học."
+          ],
+          "topicIds": [
+            "social"
+          ],
+          "learnerMode": "participant",
+          "genre": "discussion"
+        },
+        "profile": {
+          "id": "a1",
+          "minWordsPerActivity": 15,
+          "maxWordsPerActivity": 45,
+          "maxWordsPerSession": 135
+        },
+        "writingBudget": {
+          "targetWordsPerActivity": 30
+        },
+        "learningContext": {
+          "contractVersion": "scenario-learning-context.v1",
+          "programCode": "general-communication",
+          "programVersion": 3,
+          "programHash": "2476c2ed9f4faefe24bd312a020d9b19fdc8bdc83336392921a8cd66af91160c",
+          "practiceMode": "guided-listening",
+          "layoutVersion": "three-activities.v1",
+          "focusSkill": "main-idea",
+          "targetProvenance": "USER_DECLARED_GOAL",
+          "currentProvenance": "UNKNOWN",
+          "currentValue": null,
+          "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+          "qualityPolicyVersion": "scenario-quality.v2-draft",
+          "skillTaxonomyVersion": "scenario-skills.v2",
+          "target": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "value": "a1"
+          },
+          "targetScale": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "min": null,
+            "max": null,
+            "step": null,
+            "labels": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1",
+              "c2"
+            ],
+            "sourceUrl": "https://www.coe.int/en/web/common-european-framework-reference-languages/introduction-and-context",
+            "reviewedOn": "2026-11-02"
+          },
+          "profile": {
+            "id": "a1",
+            "version": 3,
+            "minWordsPerActivity": 15,
+            "maxWordsPerActivity": 45,
+            "maxWordsPerSession": 135,
+            "maxActivities": 3,
+            "maxSpeakers": 2,
+            "maxSegmentsPerActivity": 6,
+            "maxQuestionsPerSession": 6,
+            "maxFactsPerActivity": 2,
+            "maxDistractors": 0,
+            "maxCorrections": 0,
+            "inferencePolicy": "EXPLICIT_ONLY",
+            "speechRateWpm": 100,
+            "pauseMillis": 700,
+            "vocabularyGuidance": "CEFR A1 practice target. Familiar people, objects and basic everyday needs; very common concrete words.",
+            "syntaxGuidance": "Very short simple clauses, explicit names and subjects; no idioms.",
+            "informationDensity": "One concrete idea per turn; repeat or paraphrase key meaning naturally.",
+            "skills": [
+              "detail",
+              "main-idea",
+              "reason",
+              "purpose"
+            ],
+            "allowedVoiceProfiles": []
+          },
+          "answerLanguages": [
+            "vi",
+            "en"
+          ]
+        }
+      },
+      "expectedOutput": {
+        "activities": [
+          {
+            "id": "a1",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "linh",
+                "textEn": "Our class is over. Would you like to go for a short walk with me?"
+              },
+              {
+                "id": "s2",
+                "speakerId": "robin",
+                "textEn": "Yes, please. I feel tired after sitting here. Some fresh air sounds good."
+              }
+            ]
+          },
+          {
+            "id": "a2",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "linh",
+                "textEn": "There is a small garden near our classroom. We can walk there and look at the flowers."
+              },
+              {
+                "id": "s2",
+                "speakerId": "robin",
+                "textEn": "That sounds nice. I like quiet places with trees and flowers."
+              }
+            ]
+          },
+          {
+            "id": "a3",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "linh",
+                "textEn": "Let us leave our books here and take some water. It is a warm day."
+              },
+              {
+                "id": "s2",
+                "speakerId": "robin",
+                "textEn": "Good idea. I have my water bottle ready. Let us go outside."
+              }
+            ]
+          }
+        ]
+      },
+      "metadata": {
+        "focusVi": "A1: gần 30 từ mỗi phần, từ quen thuộc, một chuyến đi dạo tự nhiên không ép giao dịch.",
+        "labelSource": "agent-authored-reference-not-human-gold"
+      }
+    },
+    {
+      "id": "questions-art-supplies",
+      "stage": "QUESTIONS",
+      "input": {
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "I need a brush for painting small details on a wooden model. What would you recommend?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "Use a fine round brush. You can find them on the shelf beside the window."
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "How much does one cost, and can I clean it with water?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "One brush costs four pounds. Rinse it with water after using water-based paint."
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "I will take one. Do you have a paper bag for it?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "Yes, the paper bag is free. Please pay at the main counter near the entrance."
+                }
+              ]
+            }
+          ]
+        },
+        "learningContext": {
+          "contractVersion": "scenario-learning-context.v1",
+          "programCode": "general-communication",
+          "programVersion": 3,
+          "programHash": "2476c2ed9f4faefe24bd312a020d9b19fdc8bdc83336392921a8cd66af91160c",
+          "practiceMode": "guided-listening",
+          "layoutVersion": "three-activities.v1",
+          "focusSkill": "main-idea",
+          "targetProvenance": "USER_DECLARED_GOAL",
+          "currentProvenance": "UNKNOWN",
+          "currentValue": null,
+          "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+          "qualityPolicyVersion": "scenario-quality.v2-draft",
+          "skillTaxonomyVersion": "scenario-skills.v2",
+          "target": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "value": "a2"
+          },
+          "targetScale": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "min": null,
+            "max": null,
+            "step": null,
+            "labels": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1",
+              "c2"
+            ],
+            "sourceUrl": "https://www.coe.int/en/web/common-european-framework-reference-languages/introduction-and-context",
+            "reviewedOn": "2026-11-02"
+          },
+          "profile": {
+            "id": "a2",
+            "version": 3,
+            "minWordsPerActivity": 20,
+            "maxWordsPerActivity": 65,
+            "maxWordsPerSession": 195,
+            "maxActivities": 3,
+            "maxSpeakers": 2,
+            "maxSegmentsPerActivity": 6,
+            "maxQuestionsPerSession": 6,
+            "maxFactsPerActivity": 2,
+            "maxDistractors": 0,
+            "maxCorrections": 0,
+            "inferencePolicy": "EXPLICIT_ONLY",
+            "speechRateWpm": 110,
+            "pauseMillis": 700,
+            "vocabularyGuidance": "CEFR A2 practice target. Routine everyday needs, shopping, directions and personal plans; common phrases.",
+            "syntaxGuidance": "Simple coordinated clauses with explicit time and reference.",
+            "informationDensity": "Short routine exchanges with a few clearly stated connected details.",
+            "skills": [
+              "detail",
+              "main-idea",
+              "reason",
+              "purpose"
+            ],
+            "allowedVoiceProfiles": []
+          },
+          "answerLanguages": [
+            "vi",
+            "en"
+          ]
+        }
+      },
+      "expectedOutput": {
+        "activities": [
+          {
+            "id": "a1",
+            "questions": [
+              {
+                "id": "q1",
+                "factEn": "The speakers discuss choosing a suitable brush for painting model details.",
+                "speechAct": "statement",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "I need a brush for painting small details on a wooden model. What would you recommend?"
+                  },
+                  {
+                    "segmentId": "s2",
+                    "quoteEn": "Use a fine round brush."
+                  }
+                ],
+                "skill": "main-idea",
+                "promptVi": "Hai người chủ yếu trao đổi về việc gì trong phần này?",
+                "answerVi": "Chọn cọ phù hợp để vẽ chi tiết trên mô hình gỗ.",
+                "supportKind": "synthesis",
+                "inferenceReasonEn": ""
+              },
+              {
+                "id": "q2",
+                "factEn": "The brushes are on the shelf beside the window.",
+                "speechAct": "statement",
+                "evidence": [
+                  {
+                    "segmentId": "s2",
+                    "quoteEn": "on the shelf beside the window"
+                  }
+                ],
+                "skill": "detail",
+                "promptVi": "Các cây cọ được đặt ở đâu?",
+                "answerVi": "Trên kệ bên cạnh cửa sổ.",
+                "supportKind": "direct",
+                "inferenceReasonEn": ""
+              }
+            ]
+          },
+          {
+            "id": "a2",
+            "questions": [
+              {
+                "id": "q1",
+                "factEn": "One brush costs four pounds.",
+                "speechAct": "statement",
+                "evidence": [
+                  {
+                    "segmentId": "s2",
+                    "quoteEn": "One brush costs four pounds."
+                  }
+                ],
+                "skill": "detail",
+                "promptVi": "Một cây cọ giá bao nhiêu?",
+                "answerVi": "Bốn bảng.",
+                "supportKind": "direct",
+                "inferenceReasonEn": ""
+              },
+              {
+                "id": "q2",
+                "factEn": "The brush can be rinsed with water after using water-based paint.",
+                "speechAct": "statement",
+                "evidence": [
+                  {
+                    "segmentId": "s2",
+                    "quoteEn": "Rinse it with water after using water-based paint."
+                  }
+                ],
+                "skill": "detail",
+                "promptVi": "Sau khi dùng sơn gốc nước, nên rửa cọ bằng gì?",
+                "answerVi": "Bằng nước.",
+                "supportKind": "direct",
+                "inferenceReasonEn": ""
+              }
+            ]
+          },
+          {
+            "id": "a3",
+            "questions": [
+              {
+                "id": "q1",
+                "factEn": "The paper bag is free.",
+                "speechAct": "statement",
+                "evidence": [
+                  {
+                    "segmentId": "s2",
+                    "quoteEn": "the paper bag is free"
+                  }
+                ],
+                "skill": "detail",
+                "promptVi": "Túi giấy có tính thêm tiền không?",
+                "answerVi": "Không tính thêm tiền.",
+                "supportKind": "direct",
+                "inferenceReasonEn": ""
+              },
+              {
+                "id": "q2",
+                "factEn": "Payment is at the main counter near the entrance.",
+                "speechAct": "statement",
+                "evidence": [
+                  {
+                    "segmentId": "s2",
+                    "quoteEn": "at the main counter near the entrance"
+                  }
+                ],
+                "skill": "detail",
+                "promptVi": "Khách cần thanh toán ở đâu?",
+                "answerVi": "Tại quầy chính gần lối vào.",
+                "supportKind": "direct",
+                "inferenceReasonEn": ""
+              }
+            ]
+          }
+        ]
+      },
+      "metadata": {
+        "focusVi": "Sáu nghĩa riêng: ý chính chọn cọ, vị trí, giá, cách rửa, phí túi, nơi trả tiền.",
+        "labelSource": "agent-authored-reference-not-human-gold",
+        "adaptedFrom": "questions-art-supplies"
+      }
+    },
+    {
+      "id": "questions-workshop-agreement",
+      "stage": "QUESTIONS",
+      "input": {
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "The community centre is holding a plant-care workshop this Saturday. I have been looking for a way to keep my balcony plants healthy. Would you be interested in coming with me?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "I would. My herbs keep drying out, and I would like some practical advice. Do you know what time the workshop begins?"
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "It starts at ten in the morning and lasts ninety minutes. The organiser provides the pots, but everyone needs to bring a small plant from home. I could bring my basil."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "Ten works for me. I can bring my mint plant, so we will each have something to practise with. Shall we meet outside the centre fifteen minutes before it starts?"
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "Yes, let's meet at a quarter to ten outside the centre. Entry costs six pounds each, and the money goes towards new tools for the community garden."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "Yes, a quarter to ten outside the centre works for me. I will pay at the door and bring a notebook for the advice. I'm looking forward to learning something useful together."
+                }
+              ]
+            }
+          ]
+        },
+        "learningContext": {
+          "contractVersion": "scenario-learning-context.v1",
+          "programCode": "general-communication",
+          "programVersion": 3,
+          "programHash": "2476c2ed9f4faefe24bd312a020d9b19fdc8bdc83336392921a8cd66af91160c",
+          "practiceMode": "guided-listening",
+          "layoutVersion": "three-activities.v1",
+          "focusSkill": "main-idea",
+          "targetProvenance": "USER_DECLARED_GOAL",
+          "currentProvenance": "UNKNOWN",
+          "currentValue": null,
+          "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+          "qualityPolicyVersion": "scenario-quality.v2-draft",
+          "skillTaxonomyVersion": "scenario-skills.v2",
+          "target": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "value": "b1"
+          },
+          "targetScale": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "min": null,
+            "max": null,
+            "step": null,
+            "labels": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1",
+              "c2"
+            ],
+            "sourceUrl": "https://www.coe.int/en/web/common-european-framework-reference-languages/introduction-and-context",
+            "reviewedOn": "2026-11-02"
+          },
+          "profile": {
+            "id": "b1",
+            "version": 3,
+            "minWordsPerActivity": 30,
+            "maxWordsPerActivity": 90,
+            "maxWordsPerSession": 270,
+            "maxActivities": 3,
+            "maxSpeakers": 2,
+            "maxSegmentsPerActivity": 6,
+            "maxQuestionsPerSession": 6,
+            "maxFactsPerActivity": 3,
+            "maxDistractors": 1,
+            "maxCorrections": 0,
+            "inferencePolicy": "EXPLICIT_ONLY",
+            "speechRateWpm": 120,
+            "pauseMillis": 500,
+            "vocabularyGuidance": "CEFR B1 practice target. Familiar work, study, interests and experiences; explain uncommon topic words.",
+            "syntaxGuidance": "Connected clauses with explicit reasons, sequences and contrasts.",
+            "informationDensity": "Clear main ideas and linked details in familiar situations; state the required reasons explicitly.",
+            "skills": [
+              "detail",
+              "main-idea",
+              "reason",
+              "purpose"
+            ],
+            "allowedVoiceProfiles": []
+          },
+          "answerLanguages": [
+            "vi",
+            "en"
+          ]
+        }
+      },
+      "expectedOutput": {
+        "activities": [
+          {
+            "id": "a1",
+            "questions": [
+              {
+                "id": "q1",
+                "factEn": "The speakers discuss attending a plant-care workshop together.",
+                "speechAct": "statement",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "The community centre is holding a plant-care workshop this Saturday."
+                  },
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "Would you be interested in coming with me?"
+                  },
+                  {
+                    "segmentId": "s2",
+                    "quoteEn": "I would."
+                  }
+                ],
+                "skill": "main-idea",
+                "promptVi": "Hai người đang bàn chủ yếu về hoạt động nào?",
+                "answerVi": "Cùng tham gia buổi hướng dẫn chăm cây.",
+                "supportKind": "synthesis",
+                "inferenceReasonEn": ""
+              },
+              {
+                "id": "q2",
+                "factEn": "Robin's herbs keep drying out.",
+                "speechAct": "statement",
+                "evidence": [
+                  {
+                    "segmentId": "s2",
+                    "quoteEn": "My herbs keep drying out, and I would like some practical advice."
+                  }
+                ],
+                "skill": "reason",
+                "promptVi": "Vì sao Robin muốn được hướng dẫn chăm cây?",
+                "answerVi": "Vì các cây rau thơm của Robin liên tục bị khô.",
+                "supportKind": "direct",
+                "inferenceReasonEn": ""
+              }
+            ]
+          },
+          {
+            "id": "a2",
+            "questions": [
+              {
+                "id": "q1",
+                "factEn": "The workshop starts at ten in the morning.",
+                "speechAct": "statement",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "It starts at ten in the morning"
+                  }
+                ],
+                "skill": "detail",
+                "promptVi": "Buổi hướng dẫn bắt đầu lúc mấy giờ?",
+                "answerVi": "Mười giờ sáng.",
+                "supportKind": "direct",
+                "inferenceReasonEn": ""
+              },
+              {
+                "id": "q2",
+                "factEn": "Participants need to bring a small plant from home.",
+                "speechAct": "statement",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "everyone needs to bring a small plant from home"
+                  }
+                ],
+                "skill": "detail",
+                "promptVi": "Mỗi người tham gia cần mang theo gì từ nhà?",
+                "answerVi": "Một cây nhỏ.",
+                "supportKind": "direct",
+                "inferenceReasonEn": ""
+              }
+            ]
+          },
+          {
+            "id": "a3",
+            "questions": [
+              {
+                "id": "q1",
+                "factEn": "They agree to meet at a quarter to ten.",
+                "speechAct": "agreement",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "let's meet at a quarter to ten outside the centre"
+                  },
+                  {
+                    "segmentId": "s2",
+                    "quoteEn": "Yes, a quarter to ten outside the centre works for me."
+                  }
+                ],
+                "skill": "detail",
+                "promptVi": "Hai người thống nhất gặp nhau lúc mấy giờ?",
+                "answerVi": "Chín giờ bốn mươi lăm.",
+                "supportKind": "direct",
+                "inferenceReasonEn": ""
+              },
+              {
+                "id": "q2",
+                "factEn": "The entry fee supports new tools for the community garden.",
+                "speechAct": "statement",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "the money goes towards new tools for the community garden"
+                  }
+                ],
+                "skill": "purpose",
+                "promptVi": "Tiền vào cửa được dùng vào việc gì?",
+                "answerVi": "Mua dụng cụ mới cho khu vườn cộng đồng.",
+                "supportKind": "direct",
+                "inferenceReasonEn": ""
+              }
+            ]
+          }
+        ]
+      },
+      "metadata": {
+        "focusVi": "Đồng ý có đủ đề xuất và chấp nhận cùng chi tiết; bằng chứng theo thứ tự.",
+        "labelSource": "agent-authored-reference-not-human-gold",
+        "adaptedFrom": "questions-workshop-agreement"
+      }
+    },
+    {
+      "id": "review-questions-art-supplies",
+      "stage": "REVIEW_QUESTIONS",
+      "input": {
+        "content": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "I need a brush for painting small details on a wooden model. What would you recommend?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "Use a fine round brush. You can find them on the shelf beside the window."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "I need a brush for painting small details on a wooden model. What would you recommend?"
+                    },
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "Use a fine round brush."
+                    }
+                  ],
+                  "skill": "main-idea",
+                  "promptVi": "Hai người chủ yếu trao đổi về việc gì trong phần này?",
+                  "answerVi": "Chọn cọ phù hợp để vẽ chi tiết trên mô hình gỗ.",
+                  "supportKind": "synthesis",
+                  "inferenceReasonEn": "",
+                  "type": "MEANING_RECALL_VI"
+                },
+                {
+                  "id": "q2",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "on the shelf beside the window"
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Các cây cọ được đặt ở đâu?",
+                  "answerVi": "Trên kệ bên cạnh cửa sổ.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "type": "MEANING_RECALL_VI"
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "How much does one cost, and can I clean it with water?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "One brush costs four pounds. Rinse it with water after using water-based paint."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "One brush costs four pounds."
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Một cây cọ giá bao nhiêu?",
+                  "answerVi": "Bốn bảng.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "type": "MEANING_RECALL_VI"
+                },
+                {
+                  "id": "q2",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "Rinse it with water after using water-based paint."
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Sau khi dùng sơn gốc nước, nên rửa cọ bằng gì?",
+                  "answerVi": "Bằng nước.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "type": "MEANING_RECALL_VI"
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "I will take one. Do you have a paper bag for it?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "Yes, the paper bag is free. Please pay at the main counter near the entrance."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "the paper bag is free"
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Túi giấy có tính thêm tiền không?",
+                  "answerVi": "Không tính thêm tiền.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "type": "MEANING_RECALL_VI"
+                },
+                {
+                  "id": "q2",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "at the main counter near the entrance"
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Khách cần thanh toán ở đâu?",
+                  "answerVi": "Tại quầy chính gần lối vào.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "type": "MEANING_RECALL_VI"
+                }
+              ]
+            }
+          ]
+        },
+        "groundedQuestions": {
+          "activities": [
+            {
+              "id": "a1",
+              "questions": [
+                {
+                  "id": "q1",
+                  "factEn": "The speakers discuss choosing a suitable brush for painting model details.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "I need a brush for painting small details on a wooden model. What would you recommend?"
+                    },
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "Use a fine round brush."
+                    }
+                  ],
+                  "skill": "main-idea",
+                  "promptVi": "Hai người chủ yếu trao đổi về việc gì trong phần này?",
+                  "answerVi": "Chọn cọ phù hợp để vẽ chi tiết trên mô hình gỗ.",
+                  "supportKind": "synthesis",
+                  "inferenceReasonEn": ""
+                },
+                {
+                  "id": "q2",
+                  "factEn": "The brushes are on the shelf beside the window.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "on the shelf beside the window"
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Các cây cọ được đặt ở đâu?",
+                  "answerVi": "Trên kệ bên cạnh cửa sổ.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": ""
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "questions": [
+                {
+                  "id": "q1",
+                  "factEn": "One brush costs four pounds.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "One brush costs four pounds."
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Một cây cọ giá bao nhiêu?",
+                  "answerVi": "Bốn bảng.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": ""
+                },
+                {
+                  "id": "q2",
+                  "factEn": "The brush can be rinsed with water after using water-based paint.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "Rinse it with water after using water-based paint."
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Sau khi dùng sơn gốc nước, nên rửa cọ bằng gì?",
+                  "answerVi": "Bằng nước.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": ""
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "questions": [
+                {
+                  "id": "q1",
+                  "factEn": "The paper bag is free.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "the paper bag is free"
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Túi giấy có tính thêm tiền không?",
+                  "answerVi": "Không tính thêm tiền.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": ""
+                },
+                {
+                  "id": "q2",
+                  "factEn": "Payment is at the main counter near the entrance.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "at the main counter near the entrance"
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Khách cần thanh toán ở đâu?",
+                  "answerVi": "Tại quầy chính gần lối vào.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": ""
+                }
+              ]
+            }
+          ]
+        },
+        "learningContext": {
+          "contractVersion": "scenario-learning-context.v1",
+          "programCode": "general-communication",
+          "programVersion": 3,
+          "programHash": "2476c2ed9f4faefe24bd312a020d9b19fdc8bdc83336392921a8cd66af91160c",
+          "practiceMode": "guided-listening",
+          "layoutVersion": "three-activities.v1",
+          "focusSkill": "main-idea",
+          "targetProvenance": "USER_DECLARED_GOAL",
+          "currentProvenance": "UNKNOWN",
+          "currentValue": null,
+          "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+          "qualityPolicyVersion": "scenario-quality.v2-draft",
+          "skillTaxonomyVersion": "scenario-skills.v2",
+          "target": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "value": "a2"
+          },
+          "targetScale": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "min": null,
+            "max": null,
+            "step": null,
+            "labels": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1",
+              "c2"
+            ],
+            "sourceUrl": "https://www.coe.int/en/web/common-european-framework-reference-languages/introduction-and-context",
+            "reviewedOn": "2026-11-02"
+          },
+          "profile": {
+            "id": "a2",
+            "version": 3,
+            "minWordsPerActivity": 20,
+            "maxWordsPerActivity": 65,
+            "maxWordsPerSession": 195,
+            "maxActivities": 3,
+            "maxSpeakers": 2,
+            "maxSegmentsPerActivity": 6,
+            "maxQuestionsPerSession": 6,
+            "maxFactsPerActivity": 2,
+            "maxDistractors": 0,
+            "maxCorrections": 0,
+            "inferencePolicy": "EXPLICIT_ONLY",
+            "speechRateWpm": 110,
+            "pauseMillis": 700,
+            "vocabularyGuidance": "CEFR A2 practice target. Routine everyday needs, shopping, directions and personal plans; common phrases.",
+            "syntaxGuidance": "Simple coordinated clauses with explicit time and reference.",
+            "informationDensity": "Short routine exchanges with a few clearly stated connected details.",
+            "skills": [
+              "detail",
+              "main-idea",
+              "reason",
+              "purpose"
+            ],
+            "allowedVoiceProfiles": []
+          },
+          "answerLanguages": [
+            "vi",
+            "en"
+          ]
+        }
+      },
+      "expectedOutput": {
+        "questionChecks": [
+          {
+            "activityId": "a1",
+            "questionId": "q1",
+            "requestedMeaningEn": "main topic of choosing a brush for model details",
+            "answerUnitsVi": [
+              "Chọn cọ phù hợp để vẽ chi tiết trên mô hình gỗ."
+            ],
+            "reasonVi": "Câu hỏi kiểm tra ý chính của cả phần: nhu cầu chọn cọ và lời khuyên đáp lại, không hỏi riêng vị trí, giá hay một công dụng.",
+            "answerSupported": true,
+            "distinctMeaning": true,
+            "factSupported": true,
+            "questionMatchesFact": true,
+            "speechActSupported": true,
+            "atomicMeaning": true,
+            "noAnswerLeak": true,
+            "vietnameseNatural": true,
+            "skillAppropriate": true,
+            "groundingSupported": true
+          },
+          {
+            "activityId": "a1",
+            "questionId": "q2",
+            "requestedMeaningEn": "location of brushes in the shop",
+            "answerUnitsVi": [
+              "Trên kệ bên cạnh cửa sổ."
+            ],
+            "reasonVi": "Cụm 'on the shelf beside the window' chỉ nơi để cọ, khác nơi thanh toán.",
+            "answerSupported": true,
+            "distinctMeaning": true,
+            "factSupported": true,
+            "questionMatchesFact": true,
+            "speechActSupported": true,
+            "atomicMeaning": true,
+            "noAnswerLeak": true,
+            "vietnameseNatural": true,
+            "skillAppropriate": true,
+            "groundingSupported": true
+          },
+          {
+            "activityId": "a2",
+            "questionId": "q1",
+            "requestedMeaningEn": "price of a single brush",
+            "answerUnitsVi": [
+              "Bốn bảng."
+            ],
+            "reasonVi": "Câu 'One brush costs four pounds' cho giá một cây cọ, không phải tổng nhiều cây.",
+            "answerSupported": true,
+            "distinctMeaning": true,
+            "factSupported": true,
+            "questionMatchesFact": true,
+            "speechActSupported": true,
+            "atomicMeaning": true,
+            "noAnswerLeak": true,
+            "vietnameseNatural": true,
+            "skillAppropriate": true,
+            "groundingSupported": true
+          },
+          {
+            "activityId": "a2",
+            "questionId": "q2",
+            "requestedMeaningEn": "cleaning liquid after water-based paint",
+            "answerUnitsVi": [
+              "Bằng nước."
+            ],
+            "reasonVi": "Lời 'Rinse it with water' nêu chất dùng để rửa; điều kiện sơn gốc nước đã có trong câu hỏi.",
+            "answerSupported": true,
+            "distinctMeaning": true,
+            "factSupported": true,
+            "questionMatchesFact": true,
+            "speechActSupported": true,
+            "atomicMeaning": true,
+            "noAnswerLeak": true,
+            "vietnameseNatural": true,
+            "skillAppropriate": true,
+            "groundingSupported": true
+          },
+          {
+            "activityId": "a3",
+            "questionId": "q1",
+            "requestedMeaningEn": "whether a paper bag costs extra",
+            "answerUnitsVi": [
+              "Không tính thêm tiền."
+            ],
+            "reasonVi": "Cụm 'the paper bag is free' cho biết không có phụ phí cho túi giấy.",
+            "answerSupported": true,
+            "distinctMeaning": true,
+            "factSupported": true,
+            "questionMatchesFact": true,
+            "speechActSupported": true,
+            "atomicMeaning": true,
+            "noAnswerLeak": true,
+            "vietnameseNatural": true,
+            "skillAppropriate": true,
+            "groundingSupported": true
+          },
+          {
+            "activityId": "a3",
+            "questionId": "q2",
+            "requestedMeaningEn": "location where payment is made",
+            "answerUnitsVi": [
+              "Tại quầy chính gần lối vào."
+            ],
+            "reasonVi": "Lời 'pay at the main counter near the entrance' nêu nơi trả tiền, khác kệ trưng bày.",
+            "answerSupported": true,
+            "distinctMeaning": true,
+            "factSupported": true,
+            "questionMatchesFact": true,
+            "speechActSupported": true,
+            "atomicMeaning": true,
+            "noAnswerLeak": true,
+            "vietnameseNatural": true,
+            "skillAppropriate": true,
+            "groundingSupported": true
+          }
+        ],
+        "valid": true,
+        "issues": []
+      },
+      "metadata": {
+        "focusVi": "Tự tìm đáp án từ lời thoại; phân biệt hai câu hỏi vị trí có cùng loại đáp án.",
+        "labelSource": "agent-authored-reference-not-human-gold",
+        "adaptedFrom": "review-questions-art-supplies"
+      }
+    },
+    {
+      "id": "review-questions-separate-meanings-and-skills",
+      "stage": "REVIEW_QUESTIONS",
+      "input": {
+        "content": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "I need a brush for painting small details on a wooden model. What would you recommend?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "Use a fine round brush. You can find them on the shelf beside the window."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "I need a brush for painting small details on a wooden model."
+                    },
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "You can find them on the shelf beside the window."
+                    }
+                  ],
+                  "skill": "main-idea",
+                  "promptVi": "Linh muốn dùng cọ làm gì và cọ nằm ở đâu?",
+                  "answerVi": "Vẽ chi tiết nhỏ trên mô hình gỗ; cọ trên kệ cạnh cửa sổ.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "type": "MEANING_RECALL_VI"
+                },
+                {
+                  "id": "q2",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "on the shelf beside the window"
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Các cây cọ được đặt ở đâu?",
+                  "answerVi": "Trên kệ bên cạnh cửa sổ.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "type": "MEANING_RECALL_VI"
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "How much does one cost, and can I clean it with water?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "One brush costs four pounds. Rinse it with water after using water-based paint."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "One brush costs four pounds."
+                    }
+                  ],
+                  "skill": "reason",
+                  "promptVi": "Một cây cọ giá bao nhiêu?",
+                  "answerVi": "Bốn bảng.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "type": "MEANING_RECALL_VI"
+                },
+                {
+                  "id": "q2",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "Rinse it with water after using water-based paint."
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Sau khi dùng sơn gốc nước, nên rửa cọ bằng gì?",
+                  "answerVi": "Bằng nước.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "type": "MEANING_RECALL_VI"
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "I will take one. Do you have a paper bag for it?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "Yes, the paper bag is free. Please pay at the main counter near the entrance."
+                }
+              ],
+              "questions": [
+                {
+                  "id": "q1",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "the paper bag is free"
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Túi giấy có tính thêm tiền không?",
+                  "answerVi": "Không tính thêm tiền.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "type": "MEANING_RECALL_VI"
+                },
+                {
+                  "id": "q2",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "at the main counter near the entrance"
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Khách cần thanh toán ở đâu?",
+                  "answerVi": "Tại quầy chính gần lối vào.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "type": "MEANING_RECALL_VI"
+                }
+              ]
+            }
+          ]
+        },
+        "groundedQuestions": {
+          "activities": [
+            {
+              "id": "a1",
+              "questions": [
+                {
+                  "id": "q1",
+                  "factEn": "Linh needs the brush for model details and the brushes are beside the window.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "I need a brush for painting small details on a wooden model."
+                    },
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "You can find them on the shelf beside the window."
+                    }
+                  ],
+                  "skill": "main-idea",
+                  "promptVi": "Linh muốn dùng cọ làm gì và cọ nằm ở đâu?",
+                  "answerVi": "Vẽ chi tiết nhỏ trên mô hình gỗ; cọ trên kệ cạnh cửa sổ.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": ""
+                },
+                {
+                  "id": "q2",
+                  "factEn": "The brushes are on the shelf beside the window.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "on the shelf beside the window"
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Các cây cọ được đặt ở đâu?",
+                  "answerVi": "Trên kệ bên cạnh cửa sổ.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": ""
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "questions": [
+                {
+                  "id": "q1",
+                  "factEn": "One brush costs four pounds.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "One brush costs four pounds."
+                    }
+                  ],
+                  "skill": "reason",
+                  "promptVi": "Một cây cọ giá bao nhiêu?",
+                  "answerVi": "Bốn bảng.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": ""
+                },
+                {
+                  "id": "q2",
+                  "factEn": "The brush can be rinsed with water after using water-based paint.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "Rinse it with water after using water-based paint."
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Sau khi dùng sơn gốc nước, nên rửa cọ bằng gì?",
+                  "answerVi": "Bằng nước.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": ""
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "questions": [
+                {
+                  "id": "q1",
+                  "factEn": "The paper bag is free.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "the paper bag is free"
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Túi giấy có tính thêm tiền không?",
+                  "answerVi": "Không tính thêm tiền.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": ""
+                },
+                {
+                  "id": "q2",
+                  "factEn": "Payment is at the main counter near the entrance.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "at the main counter near the entrance"
+                    }
+                  ],
+                  "skill": "detail",
+                  "promptVi": "Khách cần thanh toán ở đâu?",
+                  "answerVi": "Tại quầy chính gần lối vào.",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": ""
+                }
+              ]
+            }
+          ]
+        },
+        "learningContext": {
+          "contractVersion": "scenario-learning-context.v1",
+          "programCode": "general-communication",
+          "programVersion": 3,
+          "programHash": "2476c2ed9f4faefe24bd312a020d9b19fdc8bdc83336392921a8cd66af91160c",
+          "practiceMode": "guided-listening",
+          "layoutVersion": "three-activities.v1",
+          "focusSkill": "main-idea",
+          "targetProvenance": "USER_DECLARED_GOAL",
+          "currentProvenance": "UNKNOWN",
+          "currentValue": null,
+          "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+          "qualityPolicyVersion": "scenario-quality.v2-draft",
+          "skillTaxonomyVersion": "scenario-skills.v2",
+          "target": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "value": "a2"
+          },
+          "targetScale": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "min": null,
+            "max": null,
+            "step": null,
+            "labels": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1",
+              "c2"
+            ],
+            "sourceUrl": "https://www.coe.int/en/web/common-european-framework-reference-languages/introduction-and-context",
+            "reviewedOn": "2026-11-02"
+          },
+          "profile": {
+            "id": "a2",
+            "version": 3,
+            "minWordsPerActivity": 20,
+            "maxWordsPerActivity": 65,
+            "maxWordsPerSession": 195,
+            "maxActivities": 3,
+            "maxSpeakers": 2,
+            "maxSegmentsPerActivity": 6,
+            "maxQuestionsPerSession": 6,
+            "maxFactsPerActivity": 2,
+            "maxDistractors": 0,
+            "maxCorrections": 0,
+            "inferencePolicy": "EXPLICIT_ONLY",
+            "speechRateWpm": 110,
+            "pauseMillis": 700,
+            "vocabularyGuidance": "CEFR A2 practice target. Routine everyday needs, shopping, directions and personal plans; common phrases.",
+            "syntaxGuidance": "Simple coordinated clauses with explicit time and reference.",
+            "informationDensity": "Short routine exchanges with a few clearly stated connected details.",
+            "skills": [
+              "detail",
+              "main-idea",
+              "reason",
+              "purpose"
+            ],
+            "allowedVoiceProfiles": []
+          },
+          "answerLanguages": [
+            "vi",
+            "en"
+          ]
+        }
+      },
+      "expectedOutput": {
+        "questionChecks": [
+          {
+            "activityId": "a1",
+            "questionId": "q1",
+            "requestedMeaningEn": "purpose of purchase and display location",
+            "answerUnitsVi": [
+              "Vẽ chi tiết nhỏ trên mô hình gỗ.",
+              "Trên kệ cạnh cửa sổ."
+            ],
+            "reasonVi": "Mục đích và vị trí có thể trả lời độc lập: phải là hai đơn vị, không gộp thành một chuỗi. Vị trí còn bị hỏi lại ở a1/q2.",
+            "answerSupported": true,
+            "distinctMeaning": false,
+            "factSupported": true,
+            "questionMatchesFact": true,
+            "speechActSupported": true,
+            "atomicMeaning": false,
+            "noAnswerLeak": true,
+            "vietnameseNatural": true,
+            "skillAppropriate": false,
+            "groundingSupported": true
+          },
+          {
+            "activityId": "a1",
+            "questionId": "q2",
+            "requestedMeaningEn": "location of brushes in the shop",
+            "answerUnitsVi": [
+              "Trên kệ bên cạnh cửa sổ."
+            ],
+            "reasonVi": "Vị trí trên kệ cạnh cửa sổ đã được hỏi trong a1/q1; trùng cùng nghĩa dù đổi cách diễn đạt.",
+            "answerSupported": true,
+            "distinctMeaning": false,
+            "factSupported": true,
+            "questionMatchesFact": true,
+            "speechActSupported": true,
+            "atomicMeaning": true,
+            "noAnswerLeak": true,
+            "vietnameseNatural": true,
+            "skillAppropriate": true,
+            "groundingSupported": true
+          },
+          {
+            "activityId": "a2",
+            "questionId": "q1",
+            "requestedMeaningEn": "price of a single brush",
+            "answerUnitsVi": [
+              "Bốn bảng."
+            ],
+            "reasonVi": "Câu hỏi giá bao nhiêu chỉ kiểm tra chi tiết bốn bảng, không kiểm tra nguyên nhân nên nhãn reason sai.",
+            "answerSupported": true,
+            "distinctMeaning": true,
+            "factSupported": true,
+            "questionMatchesFact": true,
+            "speechActSupported": true,
+            "atomicMeaning": true,
+            "noAnswerLeak": true,
+            "vietnameseNatural": true,
+            "skillAppropriate": false,
+            "groundingSupported": true
+          },
+          {
+            "activityId": "a2",
+            "questionId": "q2",
+            "requestedMeaningEn": "cleaning liquid after water-based paint",
+            "answerUnitsVi": [
+              "Bằng nước."
+            ],
+            "reasonVi": "Lời 'Rinse it with water' nêu chất dùng để rửa; điều kiện sơn gốc nước đã có trong câu hỏi.",
+            "answerSupported": true,
+            "distinctMeaning": true,
+            "factSupported": true,
+            "questionMatchesFact": true,
+            "speechActSupported": true,
+            "atomicMeaning": true,
+            "noAnswerLeak": true,
+            "vietnameseNatural": true,
+            "skillAppropriate": true,
+            "groundingSupported": true
+          },
+          {
+            "activityId": "a3",
+            "questionId": "q1",
+            "requestedMeaningEn": "whether a paper bag costs extra",
+            "answerUnitsVi": [
+              "Không tính thêm tiền."
+            ],
+            "reasonVi": "Cụm 'the paper bag is free' cho biết không có phụ phí cho túi giấy.",
+            "answerSupported": true,
+            "distinctMeaning": true,
+            "factSupported": true,
+            "questionMatchesFact": true,
+            "speechActSupported": true,
+            "atomicMeaning": true,
+            "noAnswerLeak": true,
+            "vietnameseNatural": true,
+            "skillAppropriate": true,
+            "groundingSupported": true
+          },
+          {
+            "activityId": "a3",
+            "questionId": "q2",
+            "requestedMeaningEn": "location where payment is made",
+            "answerUnitsVi": [
+              "Tại quầy chính gần lối vào."
+            ],
+            "reasonVi": "Lời 'pay at the main counter near the entrance' nêu nơi trả tiền, khác kệ trưng bày.",
+            "answerSupported": true,
+            "distinctMeaning": true,
+            "factSupported": true,
+            "questionMatchesFact": true,
+            "speechActSupported": true,
+            "atomicMeaning": true,
+            "noAnswerLeak": true,
+            "vietnameseNatural": true,
+            "skillAppropriate": true,
+            "groundingSupported": true
+          }
+        ],
+        "valid": false,
+        "issues": [
+          "a1/q1 hỏi cả mục đích và vị trí, đồng thời trùng vị trí với a1/q2.",
+          "a2/q1 hỏi giá nhưng gắn reason thay vì detail."
+        ]
+      },
+      "metadata": {
+        "focusVi": "Reviewer từ chối câu ghép và nhãn kỹ năng sai dù evidence là nguyên văn; không gom hai đáp án thành một chuỗi.",
+        "labelSource": "agent-authored-reference-not-human-gold"
+      }
+    },
+    {
+      "id": "translate-ferry-conditional",
+      "stage": "TRANSLATE",
+      "input": {
+        "activities": [
+          {
+            "id": "a1",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "linh",
+                "textEn": "Does the ferry still leave at half past eight if it rains?"
+              },
+              {
+                "id": "s2",
+                "speakerId": "robin",
+                "textEn": "It usually does, but strong winds may delay it. Please check the departure board."
+              }
+            ]
+          },
+          {
+            "id": "a2",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "linh",
+                "textEn": "If it is delayed, can I use this ticket on the next sailing?"
+              },
+              {
+                "id": "s2",
+                "speakerId": "robin",
+                "textEn": "Yes, this ticket is valid for any sailing today. You do not need to buy another one."
+              }
+            ]
+          },
+          {
+            "id": "a3",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "linh",
+                "textEn": "Where should I wait until the board shows a departure time?"
+              },
+              {
+                "id": "s2",
+                "speakerId": "robin",
+                "textEn": "Please use the covered waiting area beside gate two. Staff will announce any changes there."
+              }
+            ]
+          }
+        ],
+        "learningContext": {
+          "contractVersion": "scenario-learning-context.v1",
+          "programCode": "general-communication",
+          "programVersion": 3,
+          "programHash": "2476c2ed9f4faefe24bd312a020d9b19fdc8bdc83336392921a8cd66af91160c",
+          "practiceMode": "guided-listening",
+          "layoutVersion": "three-activities.v1",
+          "focusSkill": "main-idea",
+          "targetProvenance": "USER_DECLARED_GOAL",
+          "currentProvenance": "UNKNOWN",
+          "currentValue": null,
+          "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+          "qualityPolicyVersion": "scenario-quality.v2-draft",
+          "skillTaxonomyVersion": "scenario-skills.v2",
+          "target": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "value": "b1"
+          },
+          "targetScale": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "min": null,
+            "max": null,
+            "step": null,
+            "labels": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1",
+              "c2"
+            ],
+            "sourceUrl": "https://www.coe.int/en/web/common-european-framework-reference-languages/introduction-and-context",
+            "reviewedOn": "2026-11-02"
+          },
+          "profile": {
+            "id": "b1",
+            "version": 3,
+            "minWordsPerActivity": 30,
+            "maxWordsPerActivity": 90,
+            "maxWordsPerSession": 270,
+            "maxActivities": 3,
+            "maxSpeakers": 2,
+            "maxSegmentsPerActivity": 6,
+            "maxQuestionsPerSession": 6,
+            "maxFactsPerActivity": 3,
+            "maxDistractors": 1,
+            "maxCorrections": 0,
+            "inferencePolicy": "EXPLICIT_ONLY",
+            "speechRateWpm": 120,
+            "pauseMillis": 500,
+            "vocabularyGuidance": "CEFR B1 practice target. Familiar work, study, interests and experiences; explain uncommon topic words.",
+            "syntaxGuidance": "Connected clauses with explicit reasons, sequences and contrasts.",
+            "informationDensity": "Clear main ideas and linked details in familiar situations; state the required reasons explicitly.",
+            "skills": [
+              "detail",
+              "main-idea",
+              "reason",
+              "purpose"
+            ],
+            "allowedVoiceProfiles": []
+          },
+          "answerLanguages": [
+            "vi",
+            "en"
+          ]
+        }
+      },
+      "expectedOutput": {
+        "segments": [
+          {
+            "activityId": "a1",
+            "segmentId": "s1",
+            "textVi": "Nếu trời mưa, phà vẫn khởi hành lúc tám giờ rưỡi chứ?"
+          },
+          {
+            "activityId": "a1",
+            "segmentId": "s2",
+            "textVi": "Thường là vậy, nhưng gió mạnh có thể làm phà khởi hành trễ. Bạn vui lòng xem bảng thông tin khởi hành."
+          },
+          {
+            "activityId": "a2",
+            "segmentId": "s1",
+            "textVi": "Nếu phà khởi hành trễ, tôi có thể dùng vé này cho chuyến tiếp theo không?"
+          },
+          {
+            "activityId": "a2",
+            "segmentId": "s2",
+            "textVi": "Được, vé này có giá trị cho mọi chuyến trong hôm nay. Bạn không cần mua vé khác."
+          },
+          {
+            "activityId": "a3",
+            "segmentId": "s1",
+            "textVi": "Tôi nên chờ ở đâu cho đến khi bảng hiển thị giờ khởi hành?"
+          },
+          {
+            "activityId": "a3",
+            "segmentId": "s2",
+            "textVi": "Bạn vui lòng chờ ở khu có mái che bên cạnh cổng số hai. Nhân viên sẽ thông báo mọi thay đổi tại đó."
+          }
+        ]
+      },
+      "metadata": {
+        "focusVi": "Giữ điều kiện và khả năng hoãn; không tự thêm sáng/tối vào giờ chưa xác định.",
+        "labelSource": "agent-authored-reference-not-human-gold",
+        "adaptedFrom": "translate-ferry-conditional"
+      }
+    },
+    {
+      "id": "review-studio-consistent",
+      "stage": "REVIEW",
+      "input": {
+        "inputVi": "Tôi muốn thuê phòng tập đàn để luyện một mình vào tối thứ Sáu.",
+        "specification": {
+          "allowed": true,
+          "titleVi": "Thuê phòng tập đàn",
+          "settingVi": "Quầy đăng ký tại một phòng tập nhạc.",
+          "goalVi": "Hỏi và đặt một phòng tập đàn cho một người vào tối thứ Sáu.",
+          "characters": [
+            {
+              "id": "linh",
+              "name": "Linh",
+              "roleVi": "Khách thuê phòng tập đàn"
+            },
+            {
+              "id": "robin",
+              "name": "Robin",
+              "roleVi": "Nhân viên phòng tập nhạc"
+            }
+          ],
+          "learnerRoleVi": "Khách thuê phòng tập đàn",
+          "assumptionsVi": [
+            "Giả định: Tình huống diễn ra tại quầy đăng ký phòng tập nhạc hư cấu."
+          ],
+          "constraintsVi": [
+            "Tôi muốn thuê phòng tập đàn để luyện một mình vào tối thứ Sáu."
+          ],
+          "topicIds": [
+            "services"
+          ],
+          "learnerMode": "participant",
+          "genre": "transaction"
+        },
+        "profile": {
+          "id": "a2",
+          "minWordsPerActivity": 20,
+          "maxWordsPerActivity": 65,
+          "maxWordsPerSession": 195
+        },
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "I would like a practice room for one person on Friday evening. Do you have one available?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "Room three is available from seven to eight that evening. It has a digital piano."
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "That hour works for me. How much is the room, and is a music stand included?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "It costs twelve pounds for the hour, and a music stand is included in the room."
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "Please reserve room three for me for that hour on Friday evening."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "I have reserved it. Please collect the key at reception before your session begins."
+                }
+              ]
+            }
+          ]
+        },
+        "translations": {
+          "segments": [
+            {
+              "activityId": "a1",
+              "segmentId": "s1",
+              "textVi": "Tôi muốn thuê phòng tập cho một người vào tối thứ Sáu. Bên bạn còn phòng không?"
+            },
+            {
+              "activityId": "a1",
+              "segmentId": "s2",
+              "textVi": "Phòng số ba còn trống từ bảy đến tám giờ tối hôm đó. Phòng có đàn piano điện."
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s1",
+              "textVi": "Khung giờ đó phù hợp với tôi. Phòng giá bao nhiêu và có sẵn giá để bản nhạc không?"
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s2",
+              "textVi": "Giá là mười hai bảng cho một giờ và trong phòng có sẵn giá để bản nhạc."
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s1",
+              "textVi": "Bạn vui lòng đặt cho tôi phòng số ba trong khung giờ đó vào tối thứ Sáu."
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s2",
+              "textVi": "Tôi đã đặt phòng cho bạn. Bạn vui lòng nhận chìa khóa ở quầy lễ tân trước khi buổi tập bắt đầu."
+            }
+          ]
+        },
+        "learningContext": {
+          "contractVersion": "scenario-learning-context.v1",
+          "programCode": "general-communication",
+          "programVersion": 3,
+          "programHash": "2476c2ed9f4faefe24bd312a020d9b19fdc8bdc83336392921a8cd66af91160c",
+          "practiceMode": "guided-listening",
+          "layoutVersion": "three-activities.v1",
+          "focusSkill": "main-idea",
+          "targetProvenance": "USER_DECLARED_GOAL",
+          "currentProvenance": "UNKNOWN",
+          "currentValue": null,
+          "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+          "qualityPolicyVersion": "scenario-quality.v2-draft",
+          "skillTaxonomyVersion": "scenario-skills.v2",
+          "target": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "value": "a2"
+          },
+          "targetScale": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "min": null,
+            "max": null,
+            "step": null,
+            "labels": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1",
+              "c2"
+            ],
+            "sourceUrl": "https://www.coe.int/en/web/common-european-framework-reference-languages/introduction-and-context",
+            "reviewedOn": "2026-11-02"
+          },
+          "profile": {
+            "id": "a2",
+            "version": 3,
+            "minWordsPerActivity": 20,
+            "maxWordsPerActivity": 65,
+            "maxWordsPerSession": 195,
+            "maxActivities": 3,
+            "maxSpeakers": 2,
+            "maxSegmentsPerActivity": 6,
+            "maxQuestionsPerSession": 6,
+            "maxFactsPerActivity": 2,
+            "maxDistractors": 0,
+            "maxCorrections": 0,
+            "inferencePolicy": "EXPLICIT_ONLY",
+            "speechRateWpm": 110,
+            "pauseMillis": 700,
+            "vocabularyGuidance": "CEFR A2 practice target. Routine everyday needs, shopping, directions and personal plans; common phrases.",
+            "syntaxGuidance": "Simple coordinated clauses with explicit time and reference.",
+            "informationDensity": "Short routine exchanges with a few clearly stated connected details.",
+            "skills": [
+              "detail",
+              "main-idea",
+              "reason",
+              "purpose"
+            ],
+            "allowedVoiceProfiles": []
+          },
+          "answerLanguages": [
+            "vi",
+            "en"
+          ]
+        }
+      },
+      "expectedOutput": {
+        "valid": true,
+        "issues": [],
+        "rubricChecks": [
+          {
+            "category": "SOURCE_ROLES",
+            "passed": true,
+            "reasonVi": "Người học là khách thuê phòng như nguồn; Robin là nhân viên nhận đăng ký, không đảo vai."
+          },
+          {
+            "category": "DIALOGUE",
+            "passed": true,
+            "reasonVi": "Còn phòng được thông báo rồi khách yêu cầu đặt; nhân viên xác nhận đã đặt. Giờ, phòng và giá nhất quán."
+          },
+          {
+            "category": "TRANSLATIONS",
+            "passed": true,
+            "reasonVi": "Đủ sáu đoạn; giữ ý hỏi, đồng ý, yêu cầu và xác nhận, đúng giờ tối, số phòng, giá và thuật ngữ nhạc cụ."
+          },
+          {
+            "category": "PROFILE",
+            "passed": true,
+            "reasonVi": "Câu ngắn, từ vựng sinh hoạt và các thông tin trực tiếp phù hợp cấu hình A2."
+          },
+          {
+            "category": "LEARNING_GOAL",
+            "passed": true,
+            "reasonVi": "Ba phần làm rõ mục đích thuê phòng, điều kiện sử dụng và yêu cầu đặt; có nội dung cho ý chính."
+          }
+        ],
+        "translationChecks": [
+          {
+            "activityId": "a1",
+            "segmentId": "s1",
+            "reasonVi": "Giữ yêu cầu thuê một phòng cho một người vào tối thứ Sáu; không coi câu hỏi là đặt xong.",
+            "meaningPreserved": true,
+            "terminologyCorrect": true,
+            "vietnameseOnly": true,
+            "vietnameseNatural": true
+          },
+          {
+            "activityId": "a1",
+            "segmentId": "s2",
+            "reasonVi": "Giữ phòng số ba, khung bảy đến tám giờ tối và đàn piano điện; không lẫn số phòng với giờ.",
+            "meaningPreserved": true,
+            "terminologyCorrect": true,
+            "vietnameseOnly": true,
+            "vietnameseNatural": true
+          },
+          {
+            "activityId": "a2",
+            "segmentId": "s1",
+            "reasonVi": "Giữ việc chấp nhận khung giờ và câu hỏi về giá, giá để bản nhạc.",
+            "meaningPreserved": true,
+            "terminologyCorrect": true,
+            "vietnameseOnly": true,
+            "vietnameseNatural": true
+          },
+          {
+            "activityId": "a2",
+            "segmentId": "s2",
+            "reasonVi": "Giữ mười hai bảng cho một giờ và việc có sẵn giá để bản nhạc.",
+            "meaningPreserved": true,
+            "terminologyCorrect": true,
+            "vietnameseOnly": true,
+            "vietnameseNatural": true
+          },
+          {
+            "activityId": "a3",
+            "segmentId": "s1",
+            "reasonVi": "Giữ lời yêu cầu đặt phòng số ba đúng khung giờ và tối thứ Sáu, chưa tự thêm thanh toán.",
+            "meaningPreserved": true,
+            "terminologyCorrect": true,
+            "vietnameseOnly": true,
+            "vietnameseNatural": true
+          },
+          {
+            "activityId": "a3",
+            "segmentId": "s2",
+            "reasonVi": "Giữ lời xác nhận đã đặt phòng và yêu cầu nhận chìa khóa trước buổi tập.",
+            "meaningPreserved": true,
+            "terminologyCorrect": true,
+            "vietnameseOnly": true,
+            "vietnameseNatural": true
+          }
+        ]
+      },
+      "metadata": {
+        "focusVi": "Duyệt mẫu sạch khi các vai đúng và lời đặt phòng thực sự được xác nhận.",
+        "labelSource": "agent-authored-reference-not-human-gold",
+        "adaptedFrom": "review-studio-consistent"
+      }
+    },
+    {
+      "id": "review-studio-role-mismatch",
+      "stage": "REVIEW",
+      "input": {
+        "inputVi": "Tôi muốn thuê phòng tập đàn để luyện một mình vào tối thứ Sáu.",
+        "specification": {
+          "allowed": true,
+          "titleVi": "Thuê phòng tập đàn",
+          "settingVi": "Quầy đăng ký tại một phòng tập nhạc.",
+          "goalVi": "Hỏi và đặt một phòng tập đàn cho một người vào tối thứ Sáu.",
+          "characters": [
+            {
+              "id": "linh",
+              "name": "Linh",
+              "roleVi": "Nhân viên phòng tập nhạc"
+            },
+            {
+              "id": "robin",
+              "name": "Robin",
+              "roleVi": "Nhân viên phòng tập nhạc"
+            }
+          ],
+          "learnerRoleVi": "Nhân viên phòng tập nhạc",
+          "assumptionsVi": [
+            "Giả định: Tình huống diễn ra tại quầy đăng ký phòng tập nhạc hư cấu."
+          ],
+          "constraintsVi": [
+            "Tôi muốn thuê phòng tập đàn để luyện một mình vào tối thứ Sáu."
+          ],
+          "topicIds": [
+            "services"
+          ],
+          "learnerMode": "participant",
+          "genre": "transaction"
+        },
+        "profile": {
+          "id": "a2",
+          "minWordsPerActivity": 20,
+          "maxWordsPerActivity": 65,
+          "maxWordsPerSession": 195
+        },
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "I would like a practice room for one person on Friday evening. Do you have one available?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "Room three is available from seven to eight that evening. It has a digital piano."
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "That hour works for me. How much is the room, and is a music stand included?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "It costs twelve pounds for the hour, and a music stand is included in the room."
+                }
+              ]
+            },
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "Please reserve room three for me for that hour on Friday evening."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "robin",
+                  "textEn": "I have reserved it. Please collect the key at reception before your session begins."
+                }
+              ]
+            }
+          ]
+        },
+        "translations": {
+          "segments": [
+            {
+              "activityId": "a1",
+              "segmentId": "s1",
+              "textVi": "Tôi muốn thuê phòng tập cho một người vào tối thứ Sáu. Bên bạn còn phòng không?"
+            },
+            {
+              "activityId": "a1",
+              "segmentId": "s2",
+              "textVi": "Phòng số ba còn trống từ bảy đến tám giờ tối hôm đó. Phòng có đàn piano điện."
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s1",
+              "textVi": "Khung giờ đó phù hợp với tôi. Phòng giá bao nhiêu và có sẵn giá để bản nhạc không?"
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s2",
+              "textVi": "Giá là mười hai bảng cho một giờ và trong phòng có sẵn giá để bản nhạc."
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s1",
+              "textVi": "Bạn vui lòng đặt cho tôi phòng số ba trong khung giờ đó vào tối thứ Sáu."
+            },
+            {
+              "activityId": "a3",
+              "segmentId": "s2",
+              "textVi": "Tôi sẽ đặt phòng cho bạn. Bạn vui lòng nhận chìa khóa ở quầy lễ tân trước khi buổi tập bắt đầu."
+            }
+          ]
+        },
+        "learningContext": {
+          "contractVersion": "scenario-learning-context.v1",
+          "programCode": "general-communication",
+          "programVersion": 3,
+          "programHash": "2476c2ed9f4faefe24bd312a020d9b19fdc8bdc83336392921a8cd66af91160c",
+          "practiceMode": "guided-listening",
+          "layoutVersion": "three-activities.v1",
+          "focusSkill": "main-idea",
+          "targetProvenance": "USER_DECLARED_GOAL",
+          "currentProvenance": "UNKNOWN",
+          "currentValue": null,
+          "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+          "qualityPolicyVersion": "scenario-quality.v2-draft",
+          "skillTaxonomyVersion": "scenario-skills.v2",
+          "target": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "value": "a2"
+          },
+          "targetScale": {
+            "scaleId": "cefr-listening",
+            "component": "LISTENING",
+            "min": null,
+            "max": null,
+            "step": null,
+            "labels": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1",
+              "c2"
+            ],
+            "sourceUrl": "https://www.coe.int/en/web/common-european-framework-reference-languages/introduction-and-context",
+            "reviewedOn": "2026-11-02"
+          },
+          "profile": {
+            "id": "a2",
+            "version": 3,
+            "minWordsPerActivity": 20,
+            "maxWordsPerActivity": 65,
+            "maxWordsPerSession": 195,
+            "maxActivities": 3,
+            "maxSpeakers": 2,
+            "maxSegmentsPerActivity": 6,
+            "maxQuestionsPerSession": 6,
+            "maxFactsPerActivity": 2,
+            "maxDistractors": 0,
+            "maxCorrections": 0,
+            "inferencePolicy": "EXPLICIT_ONLY",
+            "speechRateWpm": 110,
+            "pauseMillis": 700,
+            "vocabularyGuidance": "CEFR A2 practice target. Routine everyday needs, shopping, directions and personal plans; common phrases.",
+            "syntaxGuidance": "Simple coordinated clauses with explicit time and reference.",
+            "informationDensity": "Short routine exchanges with a few clearly stated connected details.",
+            "skills": [
+              "detail",
+              "main-idea",
+              "reason",
+              "purpose"
+            ],
+            "allowedVoiceProfiles": []
+          },
+          "answerLanguages": [
+            "vi",
+            "en"
+          ]
+        }
+      },
+      "expectedOutput": {
+        "valid": false,
+        "issues": [
+          "Vai người học trong specification là nhân viên, trái với người muốn thuê phòng trong inputVi.",
+          "Bản dịch cuối đổi việc đã đặt phòng thành sẽ đặt phòng."
+        ],
+        "rubricChecks": [
+          {
+            "category": "SOURCE_ROLES",
+            "passed": false,
+            "reasonVi": "Nguồn nói tôi muốn thuê phòng nên người học là khách; specification lại gán Linh là nhân viên. Thoại trôi chảy không sửa được sai vai này."
+          },
+          {
+            "category": "DIALOGUE",
+            "passed": true,
+            "reasonVi": "Còn phòng được thông báo rồi khách yêu cầu đặt; nhân viên xác nhận đã đặt. Giờ, phòng và giá nhất quán."
+          },
+          {
+            "category": "TRANSLATIONS",
+            "passed": false,
+            "reasonVi": "Đoạn cuối dịch I have reserved it thành tôi sẽ đặt, làm sai trạng thái hoàn thành."
+          },
+          {
+            "category": "PROFILE",
+            "passed": true,
+            "reasonVi": "Câu ngắn, từ vựng sinh hoạt và các thông tin trực tiếp phù hợp cấu hình A2."
+          },
+          {
+            "category": "LEARNING_GOAL",
+            "passed": true,
+            "reasonVi": "Ba phần làm rõ mục đích thuê phòng, điều kiện sử dụng và yêu cầu đặt; có nội dung cho ý chính."
+          }
+        ],
+        "translationChecks": [
+          {
+            "activityId": "a1",
+            "segmentId": "s1",
+            "reasonVi": "Giữ yêu cầu thuê một phòng cho một người vào tối thứ Sáu; không coi câu hỏi là đặt xong.",
+            "meaningPreserved": true,
+            "terminologyCorrect": true,
+            "vietnameseOnly": true,
+            "vietnameseNatural": true
+          },
+          {
+            "activityId": "a1",
+            "segmentId": "s2",
+            "reasonVi": "Giữ phòng số ba, khung bảy đến tám giờ tối và đàn piano điện; không lẫn số phòng với giờ.",
+            "meaningPreserved": true,
+            "terminologyCorrect": true,
+            "vietnameseOnly": true,
+            "vietnameseNatural": true
+          },
+          {
+            "activityId": "a2",
+            "segmentId": "s1",
+            "reasonVi": "Giữ việc chấp nhận khung giờ và câu hỏi về giá, giá để bản nhạc.",
+            "meaningPreserved": true,
+            "terminologyCorrect": true,
+            "vietnameseOnly": true,
+            "vietnameseNatural": true
+          },
+          {
+            "activityId": "a2",
+            "segmentId": "s2",
+            "reasonVi": "Giữ mười hai bảng cho một giờ và việc có sẵn giá để bản nhạc.",
+            "meaningPreserved": true,
+            "terminologyCorrect": true,
+            "vietnameseOnly": true,
+            "vietnameseNatural": true
+          },
+          {
+            "activityId": "a3",
+            "segmentId": "s1",
+            "reasonVi": "Giữ lời yêu cầu đặt phòng số ba đúng khung giờ và tối thứ Sáu, chưa tự thêm thanh toán.",
+            "meaningPreserved": true,
+            "terminologyCorrect": true,
+            "vietnameseOnly": true,
+            "vietnameseNatural": true
+          },
+          {
+            "activityId": "a3",
+            "segmentId": "s2",
+            "reasonVi": "I have reserved it xác nhận đã đặt; bản dịch tôi sẽ đặt chỉ là ý định tương lai.",
+            "meaningPreserved": false,
+            "terminologyCorrect": true,
+            "vietnameseOnly": true,
+            "vietnameseNatural": true
+          }
+        ]
+      },
+      "metadata": {
+        "focusVi": "Reviewer phải chặn sai vai dù hội thoại và bản dịch vẫn tự nhiên; không phải kiểm thử bảo mật.",
+        "labelSource": "agent-authored-reference-not-human-gold",
+        "adaptedFrom": "review-studio-role-mismatch"
+      }
+    }
+  ]
+}

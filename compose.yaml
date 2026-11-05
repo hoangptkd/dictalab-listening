@@ -105,6 +105,17 @@ services:
     container_name: dictalab-ai-generation
     restart: unless-stopped
     environment: &ai-environment
+      LANGFUSE_TRACING_ENABLED: ${LANGFUSE_TRACING_ENABLED:-false}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://jp.cloud.langfuse.com}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_TRACING_ENVIRONMENT: ${LANGFUSE_TRACING_ENVIRONMENT:-development}
+      LANGFUSE_RELEASE: ${LANGFUSE_RELEASE:-unknown}
+      DICTALAB_AI_TRACE_CONTENT: ${DICTALAB_AI_TRACE_CONTENT:-false}
+      DICTALAB_AI_TRACE_MODEL_REVISION: ${DICTALAB_AI_TRACE_MODEL_REVISION:-}
+      DICTALAB_AI_TRACE_ADAPTER_HASH: ${DICTALAB_AI_TRACE_ADAPTER_HASH:-}
+      DICTALAB_AI_TRACE_TRAINING_RUN: ${DICTALAB_AI_TRACE_TRAINING_RUN:-}
+      DICTALAB_AI_TRACE_VARIANT: ${DICTALAB_AI_TRACE_VARIANT:-}
       DICTALAB_OPERATIONAL_LIMITS_ENABLED: ${DICTALAB_OPERATIONAL_LIMITS_ENABLED:-false}
       DICTALAB_AI_OLLAMA_URL: ${DICTALAB_AI_OLLAMA_URL:-http://host.docker.internal:11434}
       DICTALAB_AI_OLLAMA_SERVICE_TOKEN: ${DICTALAB_AI_OLLAMA_SERVICE_TOKEN:-}
@@ -125,6 +136,7 @@ services:
       GEMINI_GLOBAL_RPD_LIMIT: ${GEMINI_GLOBAL_RPD_LIMIT:-0}
       GEMINI_QUOTA_REDIS_URL: ${GEMINI_QUOTA_REDIS_URL:-redis://redis:6379/0}
       DICTALAB_AI_JOBS_ENABLED: ${DICTALAB_AI_JOBS_ENABLED:-false}
+      DICTALAB_AI_SCENARIO_ENABLED: ${DICTALAB_AI_SCENARIO_ENABLED:-false}
       DICTALAB_AI_JOBS_DATABASE: /app/data/ai-jobs.sqlite3
       DICTALAB_AI_RABBITMQ_URL: ${DICTALAB_AI_RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
       DICTALAB_AI_JOB_RETENTION_SECONDS: ${DICTALAB_AI_JOB_RETENTION_SECONDS:-900}
@@ -168,7 +180,7 @@ services:
     build: *ai-build
     restart: unless-stopped
     init: true
-    stop_grace_period: 100s
+    stop_grace_period: 250s
     command: ["python", "-m", "app.worker"]
     environment:
       <<: *ai-environment

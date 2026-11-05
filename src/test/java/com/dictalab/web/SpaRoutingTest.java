@@ -31,6 +31,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class SpaRoutingTest {
 
+    @Test void scenarioDeepLinksResolveToSpaWithoutOpeningTheAuthenticatedApi() throws Exception {
+        mockMvc.perform(get("/scenario")).andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/conversation"));
+        String id=UUID.randomUUID().toString();
+        mockMvc.perform(get("/scenario/"+id)).andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/conversation/"+id));
+        mockMvc.perform(get("/api/v2/scenarios/sessions")).andExpect(status().isUnauthorized());
+    }
+
     @Test
     void colabIngestionNeedsCsrfScopedKeyAndHttpsWhileAdminRemainsProtected() throws Exception {
         String registration = "{\"name\":\"Security fixture\",\"notebookUrl\":\"https://colab.research.google.com/drive/abcdefghijklm\"}";

@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, AliasChoices, model_validator
 from pydantic.alias_generators import to_camel
 import re
 from urllib.parse import urlsplit
+from .tts import ScenarioTtsRecipe
 
 CLOUD_PROVIDERS = ("gemini", "deepseek", "openai_compatible")
 
@@ -103,8 +104,10 @@ class Settings(BaseSettings):
     cartesia_model: str = "sonic-3.6"
     cartesia_voice: str = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
     cartesia_version: str = "2026-08-14"
+    scenario_tts_recipes: list[ScenarioTtsRecipe] = Field(default_factory=list)
     http_max_connections: int = 10
     model_demo_enabled: bool = False
+    scenario_enabled: bool = False
     text_gateway_enabled: bool = False
     model_serving_url: str = "http://127.0.0.1:8093"
     model_serving_token: str = Field(default="", repr=False)
@@ -122,6 +125,8 @@ class Settings(BaseSettings):
 
     def __init__(self, **values):
         super().__init__(**values)
+        if len({r.id for r in self.scenario_tts_recipes}) != len(self.scenario_tts_recipes):
+            raise ValueError("duplicate scenario TTS recipe ID")
         if self.ai_provider_config_source not in ("env", "database"):
             raise ValueError("invalid provider configuration source")
         if self.registry_ownership not in ("legacy", "private") or (

@@ -1,0 +1,271 @@
+openapi: 3.1.0
+info:
+  title: DictaLab Scenario learning engine
+  version: scenario-public.v1
+  description: >-
+    Additive authenticated API alongside Conversation v1 and scenario-foundation-openapi.yaml.
+    Every response is no-store. JSON bodies are limited to 32768 UTF-8 bytes and reject
+    unknown/duplicate/missing/null fields, coercion and trailing tokens. All POSTs require
+    the existing CSRF protocol and a UUID Idempotency-Key. Reuse the same key and exact
+    body after a transport failure; a changed body returns 409. Core admission and the
+    bounded AI call reservation commit together. No provider I/O occurs in that transaction.
+    Generation remains unavailable for DRAFT programs, even when feature flags are enabled.
+security:
+  - cookieAuth: []
+paths:
+  /api/v2/scenarios/suggestions:
+    get:
+      summary: Six topic groups with editable starter prompts; no AI call
+      responses:
+        '200': {description: 'Object containing suggestions [{id,titleVi,inputVi}]'}
+  /api/v2/scenarios/recommendations:
+    get:
+      summary: Evidence rules from at most 20 recent first graded activity attempts
+      description: >-
+        Excludes transcript/hint-assisted attempts and UNCERTAIN facts. Fewer than six
+        usable facts returns COLD_START. Otherwise returns practiceSignals per skill and
+        focusSkill/reasonVi on suggestions. No proficiency, mastery or exam-score claim.
+      responses:
+        '200': {description: 'basis, observedFacts, isAssessedScore=false, messageVi, suggestions and optional practiceSignals'}
+  /api/v2/scenarios/drafts:
+    post:
+      summary: Extract fictional context, characters, goal and explicit assumptions from Vietnamese input
+      parameters: [{$ref: '#/components/parameters/Idempotency'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [inputVi, programCode, programVersion, profileId]
+              properties:
+                inputVi: {type: string, minLength: 1, maxLength: 2000}
+                programCode: {const: general-communication}
+                programVersion: {type: integer, minimum: 1}
+                profileId: {enum: [supported, standard, challenge]}
+      responses:
+        '200': {$ref: '#/components/responses/Operation'}
+        '503': {$ref: '#/components/responses/Error'}
+  /api/v2/scenarios/drafts/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      summary: Owner-only draft preview and stored declared goals
+      responses:
+        '200': {description: 'draftId,status,version,programCode,programVersion,profile,declaredGoals,expiresAt,specification when extracted. Expires in 24 hours.'}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/v2/scenarios/sessions:
+    get:
+      summary: Owner history ordered by createdAt DESC and sessionId DESC
+      parameters:
+        - {in: query, name: limit, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
+        - {in: query, name: status, schema: {enum: [PREPARING, ACTIVE, COMPLETED, ABANDONED, PREPARATION_FAILED]}}
+        - {in: query, name: before, schema: {type: string, format: date-time}}
+        - {in: query, name: beforeId, schema: {type: string, format: uuid}, description: Required together with before}
+      responses:
+        '200': {description: 'sessions [{sessionId,titleVi,status,version,createdAt}], optional nextCursor {before,beforeId}'}
+    post:
+      summary: Confirm a READY unexpired draft and register generation plus translation plus independent review
+      description: One session per draft. Shares the rolling 20 sessions/24 hours quota with Conversation v1.
+      parameters: [{$ref: '#/components/parameters/Idempotency'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [draftId, draftVersion]
+              properties:
+                draftId: {type: string, format: uuid}
+                draftVersion: {type: integer, minimum: 0}
+      responses:
+        '200': {$ref: '#/components/responses/Operation'}
+        '409': {$ref: '#/components/responses/Error'}
+        '429': {$ref: '#/components/responses/Error'}
+  /api/v2/scenarios/sessions/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      summary: Owner-only session, version and all public activity snapshots
+      description: >-
+        Each activity contains activityId,ordinal,status,plays,transcriptOpened,hintOpened,
+        segments [{segmentId,speakerId}], questions [{questionId,type,skill,promptVi}], attempts.
+        Opening TRANSCRIPT reveals textEn and translations. Only COMPLETED activities reveal
+        answerVi and exact transcript evidence. Attempts expose only that owner's submitted
+        answers, support snapshot, status and validated grade facts. No raw provider payload.
+      responses:
+        '200': {description: 'sessionId,titleVi,status,version,createdAt,familyId,programCode,programVersion,profile,specification,declaredGoals,activities'}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/v2/scenarios/operations/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      summary: Owner-only durable operation; GET never dispatches or bills
+      responses:
+        '200': {$ref: '#/components/responses/Operation'}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/v2/scenarios/operations/{id}/cancel:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      summary: Cancel only before first dispatch; reservations remain conservative
+      parameters: [{$ref: '#/components/parameters/Idempotency'}]
+      requestBody: {$ref: '#/components/requestBodies/Version'}
+      responses:
+        '200': {$ref: '#/components/responses/Operation'}
+        '409': {$ref: '#/components/responses/Error'}
+  /api/v2/scenarios/sessions/{session}/activities/{activity}/answers:
+    parameters: [{$ref: '#/components/parameters/Session'}, {$ref: '#/components/parameters/Activity'}]
+    post:
+      summary: Store immutable Vietnamese answers and support snapshot before grading
+      description: >-
+        Exactly two known unique question IDs; at most three attempts/activity and only one
+        pending grade. Empty answers are allowed. One AI grading call; exact learner evidence
+        required for CAPTURED/PARTIAL/INCORRECT. UNCERTAIN is retained, never guessed correct.
+      parameters: [{$ref: '#/components/parameters/Idempotency'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedVersion, answers]
+              properties:
+                expectedVersion: {type: integer, minimum: 0}
+                answers:
+                  type: array
+                  minItems: 2
+                  maxItems: 2
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [questionId, textVi]
+                    properties:
+                      questionId: {type: string}
+                      textVi: {type: string, maxLength: 1500}
+      responses:
+        '200': {$ref: '#/components/responses/Operation'}
+        '409': {$ref: '#/components/responses/Error'}
+  /api/v2/scenarios/sessions/{session}/activities/{activity}/help:
+    parameters: [{$ref: '#/components/parameters/Session'}, {$ref: '#/components/parameters/Activity'}]
+    post:
+      summary: Persist support usage before revealing transcript/translation or a general listening hint
+      parameters: [{$ref: '#/components/parameters/Idempotency'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedVersion, kind]
+              properties:
+                expectedVersion: {type: integer, minimum: 0}
+                kind: {enum: [TRANSCRIPT, HINT]}
+      responses:
+        '200': {description: 'version, hintVi or segments and translations. No answer keys.'}
+  /api/v2/scenarios/sessions/{session}/activities/{activity}/play:
+    parameters: [{$ref: '#/components/parameters/Session'}, {$ref: '#/components/parameters/Activity'}]
+    post:
+      summary: Request one server-owned segment; reuse private cached WAV without another AI reservation
+      description: >-
+        A new TTS job reserves one call; FAILED audio can be manually requested again up to
+        three paid attempts. UNKNOWN audio never automatically replays. Increments requested
+        plays, which does not prove that the learner listened. Uses fixed server voice recipe.
+      parameters: [{$ref: '#/components/parameters/Idempotency'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedVersion, segmentId]
+              properties:
+                expectedVersion: {type: integer, minimum: 0}
+                segmentId: {type: string}
+      responses:
+        '200': {description: 'Operation with sessionVersion, or cached {mediaId,status:READY,audioUrl,sessionVersion}'}
+  /api/v2/scenarios/media/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      summary: Owner-checked private audio, including when new generation is disabled
+      responses:
+        '200':
+          description: Validated 24000 Hz mono signed 16-bit PCM WAV, max 3000000 bytes; no-store
+          content:
+            audio/wav:
+              schema: {type: string, format: binary}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/v2/scenarios/sessions/{session}/activities/{activity}/complete:
+    parameters: [{$ref: '#/components/parameters/Session'}, {$ref: '#/components/parameters/Activity'}]
+    post:
+      summary: Complete current activity after a graded attempt and reveal its answer keys
+      description: Activities must complete in order. Finishing the last completes the session. No exam score.
+      parameters: [{$ref: '#/components/parameters/Idempotency'}]
+      requestBody: {$ref: '#/components/requestBodies/Version'}
+      responses:
+        '200': {description: Updated public session snapshot}
+  /api/v2/scenarios/sessions/{session}/remixes:
+    parameters: [{$ref: '#/components/parameters/Session'}]
+    post:
+      summary: New extraction draft from a completed owned session and free Vietnamese change request
+      description: Preserves parent and family lineage; never mutates the original session or its attempts.
+      parameters: [{$ref: '#/components/parameters/Idempotency'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedVersion, inputVi, profileId]
+              properties:
+                expectedVersion: {type: integer, minimum: 0}
+                inputVi: {type: string, minLength: 1, maxLength: 1200}
+                profileId: {enum: [supported, standard, challenge]}
+      responses:
+        '200': {$ref: '#/components/responses/Operation'}
+components:
+  securitySchemes:
+    cookieAuth: {type: apiKey, in: cookie, name: DICTALAB_ACCESS}
+  parameters:
+    Id: {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+    Session: {in: path, name: session, required: true, schema: {type: string, format: uuid}}
+    Activity: {in: path, name: activity, required: true, schema: {type: string, format: uuid}}
+    Idempotency: {in: header, name: Idempotency-Key, required: true, schema: {type: string, format: uuid}}
+  requestBodies:
+    Version:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [expectedVersion]
+            properties:
+              expectedVersion: {type: integer, minimum: 0}
+  responses:
+    Operation:
+      description: Durable private operation; polling is read-only
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [contractVersion, operationId, status, stage, version, pollAfterMs]
+            properties:
+              contractVersion: {const: scenario-public.v1}
+              operationId: {type: string, format: uuid}
+              status: {enum: [PENDING, RUNNING, SUCCEEDED, FAILED, UNKNOWN, CANCELLED, EXPIRED]}
+              stage: {enum: [EXTRACT, GENERATE, GRADE, TTS]}
+              version: {type: integer}
+              pollAfterMs: {type: integer}
+              draftId: {type: string, format: uuid}
+              sessionId: {type: string, format: uuid}
+              attemptId: {type: string, format: uuid}
+              mediaId: {type: string, format: uuid}
+              errorCode: {type: string}
+    Error:
+      description: >-
+        Sanitized {code,messageVi,requestId,retryable}; typical status 400 invalid request,
+        401 authentication, 403 CSRF/access, 404 non-owned resource, 409 stale version or
+        idempotency conflict, 413 size, 429 budget/quota, 503 release gate/provider unavailable.

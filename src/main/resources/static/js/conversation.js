@@ -56,6 +56,7 @@
     function stopAudio() { playbackRevision++; bridge().stopRecordedAudio(); }
 
     function leave() {
+        window.DictaLabScenario?.leave();
         window.DictaLabModelDemo?.leave();
         if (session) saveDraft(root()?.querySelector("textarea")?.value ?? draft);
         revision++; busy = false;
@@ -70,6 +71,7 @@
         const token = revision;
         root().innerHTML = '<p role="status">Đang tải phiên nghe…</p>';
         try {
+            if (!id && window.DictaLabScenario && await window.DictaLabScenario.show() !== false) return;
             const data = await request(id ? `${apiRoot}/sessions/${encodeURIComponent(id)}` : apiRoot);
             if (token !== revision) return;
             if (id) {
@@ -81,6 +83,7 @@
             window.DictaLabModelDemo?.mount(document.querySelector("#model-demo-panel"), id || null, () => show(id));
         } catch (error) {
             if (token !== revision) return;
+            if (id && error.status === 404 && window.DictaLabScenario) { await window.DictaLabScenario.show(id); return; }
             root().innerHTML = `<p role="alert">${escape(error.message)}</p><button type="button" class="secondary-button">Thử tải lại</button>`;
             root().querySelector("button").addEventListener("click", () => show(id));
         }
@@ -211,11 +214,11 @@
                         <button type="button" class="primary-button" data-action="next" aria-describedby="conversation-status">${message ? "Thử lại" : "Tạo câu nghe đầu tiên"}</button>`}
                 </section>
                 <section class="conversation-card conversation-reply" aria-labelledby="conversation-reply-heading">
-                    <h2 id="conversation-reply-heading">Trả lời bằng tiếng Việt</h2>
+                    <h2 id="conversation-reply-heading">Trả lời bằng tiếng Anh hoặc tiếng Việt</h2>
                     ${turn && !turn.done ? `<p class="conversation-feedback-count">Đã nắm ${turn.capturedFacts || 0}/${turn.totalFacts || 2} ý · Còn ${3 - attempts.length} lượt bổ sung</p>` : ""}
                     <div class="conversation-chat">${attempts.map((a, i) => `${i < attempts.length - 1 ? `<details class="ui-disclosure"><summary>Lượt trả lời ${i + 1}</summary>` : ""}<div class="conversation-bubble learner"><span>Bạn</span><p>${escape(a.answerVi)}</p></div>
                         ${a.evaluation ? `<div class="conversation-bubble coach"><span>AI Coach</span><p>${escape(a.evaluation.feedbackVi)}</p>${!turn.done && a.evaluation.clarificationVi ? `<p><strong>${escape(a.evaluation.clarificationVi)}</strong></p>` : ""}</div>` : ""}${i < attempts.length - 1 ? "</details>" : ""}`).join("")}</div>
-                    ${turn && !turn.done ? `<form id="conversation-answer-form"><label for="conversation-answer">Trả lời bằng tiếng Việt</label>
+                    ${turn && !turn.done ? `<form id="conversation-answer-form"><label for="conversation-answer">Trả lời bằng tiếng Anh hoặc tiếng Việt</label>
                         <textarea id="conversation-answer" name="answerVi" rows="4" maxlength="1500" required aria-describedby="conversation-status" ${pending ? "readonly" : ""}>${escape(draft)}</textarea>
                         <div class="conversation-answer-actions"><button class="primary-button">${pending ? "Thử chấm lại câu đã lưu" : attempts.length ? "Gửi ý bổ sung →" : "Gửi câu trả lời →"}</button></div></form>`
                         : turn ? `${reviewCard(turn, session.turnNumber, true)}<button type="button" class="primary-button" data-action="next">${session.turnNumber === 3 ? "Thử câu mới để kiểm tra lại →" : "Bước tiếp theo →"}</button>${session.turnNumber === 3 ? '<p>Không tạo được câu mới hoặc muốn dừng tại đây?</p><button type="button" class="text-button" data-action="finish">Kết thúc với ba câu · Chưa kiểm tra vận dụng</button>' : ""}`

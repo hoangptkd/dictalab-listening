@@ -164,6 +164,7 @@ public class SecurityConfig {
                                 "/catalog",
                                 "/listening", "/listening/*",
                                 "/conversation", "/conversation/*",
+                                "/scenario", "/scenario/*",
                                 "/vocabulary", "/vocabulary/*",
                                 "/practice/*",
                                 "/history", "/history/*",

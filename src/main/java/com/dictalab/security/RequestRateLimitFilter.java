@@ -95,7 +95,7 @@ public class RequestRateLimitFilter extends OncePerRequestFilter {
                     || request.getMethod().equals("POST") && path.endsWith("/answers"))?"ai"
                 :path.startsWith("/api/admin/") && request.getContentType()!=null && request.getContentType().startsWith("multipart/")?"upload":"";
         if(path.startsWith("/api/billing/orders") || path.startsWith("/api/admin/payments/")) group="billing";
-        if(path.startsWith("/api/training/telemetry/")) group="ai";
+        if(path.startsWith("/api/training/telemetry/") || path.startsWith("/api/v2/scenarios/")) group="ai";
         if(group.isEmpty() && (path.startsWith("/api/v1/practice-sessions")
                 || path.startsWith("/api/v1/catalog/") || path.startsWith("/api/v1/listening-learning/")
                 || path.startsWith("/api/v1/listening/") || path.startsWith("/api/v1/vocabulary/")

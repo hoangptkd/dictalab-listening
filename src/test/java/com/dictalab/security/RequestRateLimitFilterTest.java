@@ -8,6 +8,19 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.BDDMockito.*;
 
 class RequestRateLimitFilterTest {
+    @Test void scenarioWritesShareConversationRateBucketAndDoNotBlockCatalogReads() throws Exception {
+        var metrics = new SimpleMeterRegistry();
+        var filter = new RequestRateLimitFilter(true, 1, metrics, 1, 1, 10);
+        filter.doFilter(new MockHttpServletRequest("POST", "/api/v1/conversation/sessions"),
+                new MockHttpServletResponse(), (r, s) -> {});
+        var response = new MockHttpServletResponse();
+        filter.doFilter(new MockHttpServletRequest("PUT", "/api/v2/scenarios/learning-goal"), response,
+                (r, s) -> { throw new AssertionError("Scenario write bypassed shared rate limit"); });
+        assertThat(response.getStatus()).isEqualTo(429);
+        response = new MockHttpServletResponse();
+        filter.doFilter(new MockHttpServletRequest("GET", "/api/v2/scenarios/catalog"), response, (r, s) -> {});
+        assertThat(response.getStatus()).isEqualTo(200);
+    }
     @Test void batchWorkConsumesOneTokenPerDeclaredAndVerifiedEvent() {
         long now = System.nanoTime();
         var bucket = new RequestRateLimitFilter.Bucket(600, now);

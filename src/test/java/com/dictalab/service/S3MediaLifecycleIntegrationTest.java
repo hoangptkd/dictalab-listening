@@ -36,6 +36,7 @@ class S3MediaLifecycleIntegrationTest {
     @Autowired PlatformTransactionManager manager;
     @Autowired com.dictalab.config.MediaStorageProperties storageProperties;
     @Autowired org.springframework.beans.factory.ObjectProvider<MediaStorageService> mediaProvider;
+    @Autowired com.dictalab.repository.AppUserRepository users;
     @MockitoBean S3Client s3;
     @MockitoBean S3Presigner signer;
     private final List<String> urls=new ArrayList<>();
@@ -182,5 +183,32 @@ class S3MediaLifecycleIntegrationTest {
                 .satisfies(error->assertThat(((org.springframework.web.server.ResponseStatusException)error).getStatusCode().value()).isEqualTo(409));
         assertThat(db.queryForObject("SELECT audio_url FROM lesson_sentences WHERE id=?",String.class,lesson.sentences().get(0).id())).isEqualTo(previous);
         assertThat(status(urls.get(0))).isEqualTo("STAGED");
+    }
+
+    @Test void scenarioReferencesProtectPrivateAudioUntilOwnerDeletion() throws Exception {
+        var owner=users.saveAndFlush(new com.dictalab.domain.AppUser(UUID.randomUUID()+"@scenario-media.test","Media","unused",java.time.Instant.now()));
+        String url="/conversation-media/s3/"+UUID.randomUUID()+".wav"; urls.add(url); lifecycle.stage(url);
+        var program=new com.dictalab.scenario.ScenarioProgramRegistry().require("general-communication",1);
+        var json=new tools.jackson.databind.ObjectMapper();
+        db.update("INSERT INTO scenario_program_versions(program_code,program_version,definition_json,definition_hash,status) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING",
+                program.code(),program.version(),com.dictalab.scenario.ScenarioJson.canonical(json.valueToTree(program)),program.definitionHash(),program.status().name());
+        String draft=UUID.randomUUID().toString(),session=UUID.randomUUID().toString(),activity=UUID.randomUUID().toString();
+        try {
+            new TransactionTemplate(manager).executeWithoutResult(tx -> {
+                db.update("""
+                        INSERT INTO scenario_drafts(id,user_id,input_vi,program_code,program_version,program_hash,profile_json,target_json,status,family_id,expires_at)
+                        VALUES (?,?,'fixture','general-communication',1,?,'{}','[]','READY',?,CURRENT_TIMESTAMP + INTERVAL '1' DAY)
+                        """,draft,owner.getId(),program.definitionHash(),session);
+                db.update("INSERT INTO scenario_sessions(id,user_id,draft_id,title_vi,status,family_id) VALUES (?,?,?,'fixture','ACTIVE',?)",session,owner.getId(),draft,session);
+                db.update("INSERT INTO scenario_activities(id,session_id,ordinal,private_json,content_hash) VALUES (?,?,1,'{}',?)",activity,session,"a".repeat(64));
+                lifecycle.retain(url);
+                db.update("INSERT INTO scenario_media(id,activity_id,segment_id,fingerprint,status,s3_audio_url) VALUES (?,?,'s1',?,'READY',?)",UUID.randomUUID().toString(),activity,"a".repeat(64),url);
+            });
+            due(url); lifecycle.cleanup(); assertThat(status(url)).isEqualTo("LIVE");
+            then(s3).should(never()).deleteObject(any(DeleteObjectRequest.class));
+            db.update("DELETE FROM app_users WHERE id=?",owner.getId());
+            lifecycle.cleanup(); due(url); lifecycle.cleanup(); assertThat(status(url)).isEqualTo("DELETED");
+            then(s3).should(times(1)).deleteObject(any(DeleteObjectRequest.class));
+        } finally { db.update("DELETE FROM app_users WHERE id=?",owner.getId()); }
     }
 }

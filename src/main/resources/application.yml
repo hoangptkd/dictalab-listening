@@ -186,6 +186,16 @@ dictalab:
     enabled: ${DICTALAB_VOCABULARY_ENABLED:false}
     new-cards-per-day: ${DICTALAB_VOCABULARY_NEW_CARDS_PER_DAY:10}
     session-size: ${DICTALAB_VOCABULARY_SESSION_SIZE:20}
+  scenario:
+    enabled: ${DICTALAB_SCENARIO_ENABLED:false}
+    engine:
+      enabled: ${DICTALAB_SCENARIO_ENGINE_ENABLED:false}
+      program-version: ${DICTALAB_SCENARIO_ENGINE_PROGRAM_VERSION:1}
+      approved-program-hash: ${DICTALAB_SCENARIO_ENGINE_APPROVED_PROGRAM_HASH:}
+      approved-prompt-hash: ${DICTALAB_SCENARIO_ENGINE_APPROVED_PROMPT_HASH:}
+      local-preview-enabled: ${DICTALAB_SCENARIO_ENGINE_LOCAL_PREVIEW_ENABLED:false}
+      local-preview-users: ${DICTALAB_SCENARIO_ENGINE_LOCAL_PREVIEW_USERS:}
+      tts-recipe-json: ${DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON:}
   learning:
     enabled: ${DICTALAB_LEARNING_ENABLED:false}
     queue-enabled: ${DICTALAB_LEARNING_QUEUE_ENABLED:false}

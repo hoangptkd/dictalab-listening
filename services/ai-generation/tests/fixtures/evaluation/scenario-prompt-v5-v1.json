@@ -1,0 +1,419 @@
+{
+  "cases": [
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "main-idea",
+      "id": "main-idea-01",
+      "inputVi": "Tôi muốn cải thiện khả năng nghe hiểu nội dung chính trong một cuộc hội thoại ngắn. Hãy tự chọn tình huống phù hợp.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "main-idea",
+      "id": "main-idea-02",
+      "inputVi": "Tôi muốn nghe và nắm được chủ đề chính khi hai người trò chuyện. Hãy tự đề xuất tình huống phù hợp.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "main-idea",
+      "id": "main-idea-03",
+      "inputVi": "Tôi muốn luyện xác định người nói đang nói về việc gì mà không cần hiểu từng từ. Hãy chọn tình huống phù hợp.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "main-idea",
+      "id": "main-idea-04",
+      "inputVi": "Tôi muốn luyện nghe ý chính của một cuộc trao đổi thường ngày ở tốc độ vừa phải. Hãy tự chọn tình huống.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "main-idea",
+      "id": "main-idea-05",
+      "inputVi": "Tôi muốn hiểu nội dung tổng quát của hội thoại tiếng Anh quen thuộc. Hãy đề xuất một tình huống thích hợp.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "holdout"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "inference",
+      "id": "inference-01",
+      "inputVi": "Tôi muốn luyện nghe và suy luận ý định người nói từ thông tin ngầm. Hãy tự chọn tình huống phù hợp.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "inference",
+      "id": "inference-02",
+      "inputVi": "Tôi muốn hiểu mục đích của người nói khi họ diễn đạt gián tiếp. Hãy tự đề xuất tình huống.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "inference",
+      "id": "inference-03",
+      "inputVi": "Tôi muốn tập suy ra điều người nói cần dựa trên ngữ cảnh hội thoại. Hãy chọn tình huống phù hợp.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "inference",
+      "id": "inference-04",
+      "inputVi": "Tôi muốn nghe hiểu ẩn ý và phân biệt gợi ý với quyết định đã thống nhất. Hãy tự chọn tình huống.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "inference",
+      "id": "inference-05",
+      "inputVi": "Tôi muốn luyện suy luận lý do hoặc mong muốn chưa nói thẳng trong một cuộc trao đổi. Hãy đề xuất tình huống.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "holdout"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "natural-communication",
+      "id": "natural-communication-01",
+      "inputVi": "Tôi muốn cải thiện nghe và phản hồi tự nhiên trong giao tiếp thực tế. Hãy tự chọn tình huống phù hợp.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "natural-communication",
+      "id": "natural-communication-02",
+      "inputVi": "Tôi muốn luyện nhận biết lời đề nghị và cách đáp lại lịch sự trong giao tiếp. Hãy đề xuất tình huống.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "natural-communication",
+      "id": "natural-communication-03",
+      "inputVi": "Tôi muốn nghe hiểu và tiếp tục một cuộc trò chuyện thân thiện bằng tiếng Anh. Hãy tự chọn tình huống.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "natural-communication",
+      "id": "natural-communication-04",
+      "inputVi": "Tôi muốn luyện hiểu câu hỏi và phản hồi phù hợp trong một cuộc trao đổi hằng ngày. Hãy chọn tình huống.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "natural-communication",
+      "id": "natural-communication-05",
+      "inputVi": "Tôi muốn nhận biết cách bắt đầu và kết thúc một cuộc trò chuyện tự nhiên. Hãy tự đề xuất tình huống.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "holdout"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "toeic",
+      "id": "toeic-01",
+      "inputVi": "Tôi muốn luyện nghe theo dạng hội thoại TOEIC, tập trung xác định mục đích cuộc trao đổi. Hãy tự chọn tình huống.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "toeic",
+      "id": "toeic-02",
+      "inputVi": "Tôi muốn luyện nghe kiểu TOEIC để tìm thông tin cụ thể trong hội thoại. Hãy đề xuất tình huống phù hợp.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "toeic",
+      "id": "toeic-03",
+      "inputVi": "Tôi muốn nghe hội thoại kiểu TOEIC và suy ra người nói sẽ làm gì tiếp theo. Hãy tự chọn tình huống.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "toeic",
+      "id": "toeic-04",
+      "inputVi": "Tôi muốn luyện nghe tiếng Anh trong bối cảnh công việc theo phong cách TOEIC. Hãy tự chọn tình huống.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Chấp nhận mục tiêu học hợp lệ và tự đề xuất tình huống",
+        "Giữ mục tiêu học là dữ kiện người dùng, bối cảnh tự chọn là giả định"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "goal-only-input",
+      "group": "toeic",
+      "id": "toeic-05",
+      "inputVi": "Tôi muốn luyện nghe dạng hội thoại TOEIC và nhận biết quan hệ giữa người nói. Hãy tự đề xuất tình huống.",
+      "labelSource": "agent-authored-provisional-not-human-gold",
+      "profileId": "standard",
+      "source": "prior-live-goal-input-20261101",
+      "split": "holdout"
+    },
+    {
+      "expectationsVi": [
+        "Khách gọi món, nhân viên nhận món",
+        "Giữ ràng buộc không có đậu phộng",
+        "Hỏi thành phần, đổi món và hỏi giá; không đưa lời khuyên điều trị"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "role-fact-preservation",
+      "group": "explicit-scenario",
+      "id": "food-allergy",
+      "inputVi": "Tôi gọi món mì ở quán ăn nhưng không ăn được đậu phộng. Tôi muốn hỏi món có đậu phộng không, đổi sang món không có đậu phộng và hỏi giá trước khi gọi.",
+      "labelSource": "existing-agent-authored-criteria-not-human-gold",
+      "profileId": "supported",
+      "source": "existing-scenario-quality-v1",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Giữ chuyến đã lỡ lúc 17:10 và hạn đến trước 20:00",
+        "Nhân viên trả lời về chuyến tiếp theo, sân ga và hiệu lực vé cũ",
+        "Giờ khởi hành và giờ đến hợp lý, không nhầm AM/PM"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "role-fact-preservation",
+      "group": "explicit-scenario",
+      "id": "transport-last-train",
+      "inputVi": "Tôi lỡ chuyến tàu lúc 17 giờ 10 và cần đến thành phố bên cạnh trước 20 giờ. Tôi hỏi nhân viên chuyến kế tiếp, sân ga và liệu vé cũ có dùng tiếp được không.",
+      "labelSource": "existing-agent-authored-criteria-not-human-gold",
+      "profileId": "standard",
+      "source": "existing-scenario-quality-v1",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Cỡ đã đặt M khác cỡ nhận S, mua hôm qua và còn hóa đơn",
+        "Mục tiêu đổi hàng chứ không tự chuyển sang hoàn tiền",
+        "Nếu hết M, trao đổi ngày có hàng và cách giữ chỗ; kết luận không mâu thuẫn"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "role-fact-preservation",
+      "group": "explicit-scenario",
+      "id": "shopping-wrong-size",
+      "inputVi": "Tôi mua áo khoác cỡ M hôm qua nhưng nhận cỡ S. Tôi còn hóa đơn và muốn đổi đúng cỡ M, không muốn hoàn tiền. Nếu hết hàng, tôi muốn hỏi khi nào có hàng lại và cách giữ chỗ.",
+      "labelSource": "existing-agent-authored-criteria-not-human-gold",
+      "profileId": "challenge",
+      "source": "existing-scenario-quality-v1",
+      "split": "holdout"
+    },
+    {
+      "expectationsVi": [
+        "Giữ lịch cũ 9 giờ sáng thứ Hai và lịch mới 15 giờ thứ Ba",
+        "Phỏng vấn trực tuyến, không tự đổi thành đến văn phòng",
+        "Thống nhất người gửi đường dẫn và tài liệu cần chuẩn bị; không tạo URL thật"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "role-fact-preservation",
+      "group": "explicit-scenario",
+      "id": "work-interview-reschedule",
+      "inputVi": "Tôi cần đổi lịch phỏng vấn trực tuyến từ 9 giờ sáng thứ Hai sang 3 giờ chiều thứ Ba. Tôi hỏi người tuyển dụng có đồng ý không, ai sẽ gửi đường dẫn họp và cần chuẩn bị tài liệu gì.",
+      "labelSource": "existing-agent-authored-criteria-not-human-gold",
+      "profileId": "standard",
+      "source": "existing-scenario-quality-v1",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Khách đã trả phòng, gửi đúng một vali đến 17 giờ",
+        "Lễ tân giải thích nơi gửi, phí và giấy hoặc thẻ nhận lại",
+        "Không chuyển mục tiêu thành thuê phòng hay mua hành lý"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "role-fact-preservation",
+      "group": "explicit-scenario",
+      "id": "services-checkout",
+      "inputVi": "Tôi trả phòng khách sạn và muốn gửi một chiếc vali đến 5 giờ chiều để đi dạo. Tôi hỏi lễ tân gửi ở đâu, có mất phí không và cần đưa gì khi lấy lại vali.",
+      "labelSource": "existing-agent-authored-criteria-not-human-gold",
+      "profileId": "supported",
+      "source": "existing-scenario-quality-v1",
+      "split": "development"
+    },
+    {
+      "expectationsVi": [
+        "Giữ Chủ nhật và phân biệt lịch 7 giờ ban đầu với giờ chốt",
+        "Ngân sách 200 nghìn là cho cả hai, không phải mỗi người",
+        "Phương án trong nhà nhất quán, xác định người đặt sân và giờ/nơi gặp"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "role-fact-preservation",
+      "group": "explicit-scenario",
+      "id": "social-rain-plan",
+      "inputVi": "Tôi và bạn hẹn tập cầu lông ở công viên vào 7 giờ sáng Chủ nhật nhưng dự báo trời mưa. Tôi muốn đề xuất sân trong nhà, chỉ có 200 nghìn đồng cho cả hai và cần chốt ai đặt sân, giờ gặp và địa điểm gặp.",
+      "labelSource": "existing-agent-authored-criteria-not-human-gold",
+      "profileId": "challenge",
+      "source": "existing-scenario-quality-v1",
+      "split": "holdout"
+    },
+    {
+      "expectationsVi": [
+        "Làm rõ bối cảnh và mục tiêu qua assumptionsVi",
+        "Không trình bày chi tiết do AI đặt ra như dữ kiện người dùng đã cung cấp",
+        "Hội thoại tự nhiên, sáu ý hỏi riêng không lặp"
+      ],
+      "expectedAllowed": true,
+      "failureMode": "role-fact-preservation",
+      "group": "explicit-scenario",
+      "id": "sparse-neighbour",
+      "inputVi": "Tôi muốn nói chuyện với hàng xóm mới.",
+      "labelSource": "existing-agent-authored-criteria-not-human-gold",
+      "profileId": "standard",
+      "source": "existing-scenario-quality-v1",
+      "split": "development"
+    }
+  ],
+  "labelNotice": "Reuses previously run synthetic inputs; no independently reviewed human gold. Holdout is locked before V5.",
+  "syntheticOnly": true,
+  "version": "scenario-prompt-v5-benchmark.v1"
+}

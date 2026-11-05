@@ -23,6 +23,7 @@ from .providers.gemini import GeminiProvider
 from .providers.openai_compatible import OpenAiCompatibleProvider
 from .providers.base import ProviderHttpError
 from .gemini_pool import QuotaUnavailable, quota_store, estimate_tokens, retry_seconds
+from .observability import trace_generation
 
 logger = logging.getLogger("dictalab.ai_generation.model_gateway")
 
@@ -53,6 +54,7 @@ class ModelGateway:
             max_tokens=settings.num_predict,
         )
 
+    @trace_generation
     async def complete(
         self,
         messages: list[dict[str, str]],

@@ -38,6 +38,7 @@
             if (s0 === "catalog") return { route: "catalog", params: {level: q.get("level") || "A1", page, sort: q.get("sort") || "", lesson: q.get("lesson") || "", start: q.get("start") || ""}, query: q };
             if (s0 === "listening")            return { route: "listening", params: { sessionId: s1 || null, page, level: q.get("level") || "", view: q.get("view") || "", edit: q.get("edit") || "" }, query: q };
             if (s0 === "conversation")         return { route: "conversation", params: { sessionId: s1 || null }, query: q };
+            if (s0 === "scenario")             return { route: "conversation", params: { sessionId: s1 || null }, query: q };
             if (s0 === "vocabulary")           return { route: "vocabulary", params: { sessionId: s1 || null }, query: q };
             if (s0 === "dashboard")            return { route: "dashboard", params: {}, query: q };
             if (s0 === "practice" && s1)       return { route: "practice", params: { sessionId: s1 }, query: q };
@@ -67,6 +68,7 @@
                 case "admin-support": return "/admin/support";
                 case "catalog": return `/catalog?level=${encodeURIComponent(params.level || "A1")}&page=${encodeURIComponent(params.page || 1)}${params.sort ? `&sort=${encodeURIComponent(params.sort)}` : ""}${params.lesson ? `&lesson=${encodeURIComponent(params.lesson)}` : ""}${params.start === "1" ? "&start=1" : ""}`;
                 case "conversation": return params.sessionId ? `/conversation/${encodeURIComponent(params.sessionId)}` : "/conversation";
+                case "scenario": return params.sessionId ? `/conversation/${encodeURIComponent(params.sessionId)}` : "/conversation";
                 case "listening": {
                     if (params.sessionId) {
                         const query = params.view ? `?view=${encodeURIComponent(params.view)}` : "";
@@ -1167,6 +1169,7 @@
         window.DictaLabListening?.leave();
         window.DictaLabConversation?.leave();
         window.DictaLabConversation?.clearDrafts();
+        window.DictaLabScenario?.leave();
         window.DictaLabVocabulary?.leave();
         stopRecordedAudio();
         document.body.dataset.route = "login";
@@ -1194,7 +1197,7 @@
                 const destination = target?.origin === location.origin ? router.parse(target.pathname, target.search).route : null;
                 const label = destination?.startsWith("admin") ? "trang quản trị" : ({
                     catalog: "thư viện bài luyện", practice: "bài chép chính tả", listening: "nghe hiểu",
-                    conversation: "hội thoại", history: "lịch sử luyện", result: "kết quả buổi luyện",
+                    conversation: "hội thoại", scenario: "tình huống AI", history: "lịch sử luyện", result: "kết quả buổi luyện",
                     dashboard: "tiến bộ", room: "phòng luyện cùng bạn", "room-id": "phòng luyện cùng bạn",
                     "room-join": "lời mời luyện cùng bạn", account: "tài khoản", support: "hỗ trợ"
                 })[destination];
@@ -4221,7 +4224,7 @@
         const contentType = response.headers.get("content-type") || "";
         const payload = contentType.includes("application/json") ? await response.json() : null;
         if (!response.ok) {
-            const error = new Error(payload?.message || `Yêu cầu thất bại (${response.status}).`);
+            const error = new Error(payload?.messageVi || payload?.message || `Yêu cầu thất bại (${response.status}).`);
             error.status = response.status;
             const retryAfter = response.headers.get("Retry-After");
             if (retryAfter) error.retryAfterMs = /^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000

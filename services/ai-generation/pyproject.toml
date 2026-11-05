@@ -18,7 +18,8 @@ dependencies = [
   "tzdata>=2025.1",
   "psycopg[binary]>=3.3,<4",
   "cryptography>=50,<51",
-  "jsonschema>=4.26,<5"
+  "jsonschema>=4.26,<5",
+  "langfuse==5.1.0"
 ]
 
 [project.optional-dependencies]
@@ -30,4 +31,4 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.setuptools.package-data]
-app = ["*.lua", "sql/*.sql"]
+app = ["*.lua", "sql/*.sql", "scenario_personalized_fewshot_examples_v1.json", "scenario_personalized_fewshot_examples_v2.json"]

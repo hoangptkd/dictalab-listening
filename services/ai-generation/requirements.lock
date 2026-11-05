@@ -10,3 +10,4 @@ psycopg[binary]==3.3.6
 boto3==1.43.120
 cryptography==50.0.2
 jsonschema==4.26.0
+langfuse==5.1.0

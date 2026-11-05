@@ -1,0 +1,678 @@
+import asyncio
+import copy
+import json
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest.mock import patch
+from uuid import uuid4
+
+import httpx
+import pytest
+
+from app import scenario_workflow as workflow
+from app.config import Settings
+from app.jobs import JobRequest, JobEvent, JobStore
+from app.worker import process
+
+ROOT = Path(__file__).resolve().parents[3]
+EXAMPLE = json.loads((ROOT / "src/test/resources/scenario/workflow-example.json").read_text(encoding="utf-8"))
+
+
+def payload(phase="GENERATE", **changes):
+    value = dict(kind="scenario", phase=phase, contractVersion="scenario-job.v1", promptHash=workflow.prompt_hash(),
+                 programHash="a" * 64, profile=EXAMPLE["profile"])
+    if phase == "GENERATE":
+        value["specification"] = EXAMPLE["specification"]
+    elif phase == "EXTRACT":
+        value["inputVi"] = "Tôi muốn đặt bánh để nhận ngày mai"
+    else:
+        value.update(activity=EXAMPLE["content"]["activities"][0], answers=EXAMPLE["answers"])
+    return workflow.ScenarioInput.model_validate({**value, **changes})
+
+
+def request(value):
+    identifier = uuid4()
+    return JobRequest(jobId=identifier, requestId=identifier, userScope="b" * 64, idempotencyKey=str(identifier),
+                      deadline=datetime.now(timezone.utc) + timedelta(seconds=220), payload=value)
+
+
+def execute(value, responses):
+    calls = []
+    settings = Settings(scenario_enabled=True)
+
+    class Gateway:
+        def __init__(self, settings, client):
+            self.last_model = workflow.metadata(settings)["model"]
+
+        async def complete(self, messages, schema, deadline, purpose, **kwargs):
+            if purpose == "scenario_generate":
+                assert schema["$defs"]["Segment"]["properties"]["speakerId"]["enum"] == [c.id for c in value.specification.characters]
+            calls.append((purpose, messages))
+            response = responses[len(calls) - 1]
+            if isinstance(response, Exception):
+                raise response
+            return response, settings.selected_provider
+
+    with patch.object(workflow, "ModelGateway", Gateway):
+        result = asyncio.run(workflow.execute(request(value), settings))
+    return result, calls
+
+
+def test_failed_call_logs_phase_without_exception_content(caplog):
+    from app.providers.base import ProviderHttpError
+    error = ProviderHttpError(429)
+    error.args = ("private-error-canary",)
+    with pytest.raises(ProviderHttpError):
+        execute(payload(), [error])
+    assert "phase=GENERATE" in caplog.text
+    assert "http_status=429" in caplog.text
+    assert "error_type=ProviderHttpError" in caplog.text
+    assert "Tôi muốn" not in caplog.text
+    assert "private-error-canary" not in caplog.text
+
+
+def extraction_response():
+    return {**{k: copy.deepcopy(v) for k, v in EXAMPLE["specification"].items() if k not in {"constraintsVi", "learnerRoleVi"}}, "learnerCharacterId": "customer",
+            "providedFacts": [{"quoteVi": "nhận ngày mai"}],
+            "inferredFacts": []}
+
+
+def generation_responses():
+    activities = EXAMPLE["content"]["activities"]
+    return copy.deepcopy([
+        {"activities": [{"id": a["id"], "segments": a["segments"]} for a in activities]},
+        {"activities": [{"id": a["id"], "questions": [{**{k: q[k] for k in ("id", "skill", "promptVi", "answerVi", "evidence")},
+            "factEn": " / ".join(e["quoteEn"] for e in q["evidence"]), "speechAct": "statement"}
+            for q in a["questions"]]} for a in activities]},
+        {"questionChecks": [{"activityId": a["id"], "questionId": q["id"], "reasonVi": "Đáp án có bằng chứng riêng",
+            "requestedMeaningEn": q["promptVi"], "answerUnitsVi": [q["answerVi"]],
+            "answerSupported": True, "distinctMeaning": True, "factSupported": True, "questionMatchesFact": True,
+            "speechActSupported": True, "atomicMeaning": True, "noAnswerLeak": True, "vietnameseNatural": True}
+            for a in activities for q in a["questions"]], "valid": True, "issues": []},
+        {"segments": EXAMPLE["content"]["translations"]},
+        {"translationChecks": [{"activityId": a["id"], "segmentId": s["id"], "reasonVi": "Bản dịch giữ đúng ý",
+             "meaningPreserved": True, "terminologyCorrect": True, "vietnameseOnly": True, "vietnameseNatural": True}
+             for a in activities for s in a["segments"]],
+         "rubricChecks": [{"category": name, "passed": True, "reasonVi": "Đã đối chiếu nội dung"}
+             for name in ("SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS")], "valid": True, "issues": []}])
+
+
+def learning_context(code="ielts-listening", profile_id="standard", focus="detail", program_version=2):
+    programs = json.loads((ROOT / "src/main/resources/scenario/programs-personalized-v1.json").read_text(encoding="utf-8"))
+    program = next(p for p in programs if p["code"] == code and p["version"] == program_version)
+    profile = next(p for p in program["difficultyProfiles"] if p["id"] == profile_id)
+    target = profile.get("targetRange", {}).get("max", profile_id)
+    return dict(contractVersion="scenario-learning-context.v1", programCode=code, programVersion=program_version,
+                programHash=program["definitionHash"], practiceMode="guided-listening", layoutVersion="three-activities.v1",
+                focusSkill=focus, targetProvenance="USER_DECLARED_GOAL", currentProvenance="UNKNOWN", currentValue=None,
+                calibrationStatus="INTERNAL_PRACTICE_UNCALIBRATED", qualityPolicyVersion=program["qualityPolicyVersion"],
+                skillTaxonomyVersion=program["skillTaxonomyVersion"], profile=profile, answerLanguages=["vi", "en"],
+                targetScale=program["targetScales"][0],
+                target=dict(scaleId=program["targetScales"][0]["scaleId"], component="LISTENING", value=target))
+
+
+def personal_payload(phase="GENERATE", context=None, **changes):
+    context = copy.deepcopy(context or learning_context())
+    values = dict(contractVersion="scenario-job.v2", promptHash=workflow.personalized_prompt_hash(),
+                  programHash=context["programHash"], learningContext=context,
+                  profile={k: context["profile"][k] for k in ("id", "minWordsPerActivity", "maxWordsPerActivity", "maxWordsPerSession")})
+    if phase == "GENERATE":
+        values["specification"] = {**EXAMPLE["specification"], "learnerRoleVi": "Người nghe", "learnerMode": "listener", "genre": "information-exchange"}
+    elif phase == "GRADE":
+        values["activity"] = copy.deepcopy(EXAMPLE["content"]["activities"][0])
+        for q in values["activity"]["questions"]:
+            q.update(supportKind="direct", inferenceReasonEn="")
+    return payload(phase, **{**values, **changes})
+
+
+def personal_responses(release=None):
+    responses = generation_responses()
+    for activity in responses[1]["activities"]:
+        for q in activity["questions"]:
+            q.update(supportKind="direct", inferenceReasonEn="")
+    for q in responses[2]["questionChecks"]:
+        q.update(skillAppropriate=True, groundingSupported=True)
+        if getattr(release or workflow.personalized_fewshot, "QUESTION_REVIEW_VERSION", 1) == 2:
+            q.pop("atomicMeaning")
+    responses[4]["rubricChecks"] += [dict(category=k, passed=True, reasonVi="Đã đối chiếu với cấu hình bài luyện") for k in ("PROFILE", "LEARNING_GOAL")]
+    return responses
+
+
+@pytest.mark.parametrize("code", ["general-communication", "toeic-listening", "ielts-listening"])
+def test_personalized_context_reaches_every_stage_and_uses_current_grade(code):
+    context = learning_context(code)
+    result, calls = execute(personal_payload(context=context), personal_responses())
+    assert result["promptVersion"] == workflow.harness_v9.PROMPT_VERSION
+    assert result["promptHash"] == workflow.personalized_prompt_hash()
+    for _, messages in calls:
+        assert json.loads(messages[1]["content"])["learningContext"] == personal_payload(context=context).learningContext.model_dump(exclude_none=True)
+    _, grade_calls = execute(personal_payload("GRADE", context=context), [EXAMPLE["grade"]])
+    assert grade_calls[0][1][0]["content"] == workflow.personalized_fewshot.GRADE
+
+
+def test_personalized_prompt_pin_and_legacy_payload_fingerprint_are_stable():
+    assert workflow.personalized_prompt_hash() == (ROOT / "src/main/resources/scenario/workflow-v2.sha256").read_text().strip()
+    assert workflow.prompt_hash() == "d43a3e228449dc64d7b6c103c2013558ac6e9415feabad8ff50e083900b0ae21"
+    assert "learningContext" not in payload().model_dump()
+
+
+@pytest.mark.parametrize("level", ["a1", "a2", "b1", "b2", "c1", "c2"])
+def test_cefr_target_and_operational_profile_reach_model_together(level):
+    context = learning_context("general-communication",level,"main-idea",3)
+    extracted = {**extraction_response(), "learnerMode":"listener", "learnerCharacterId":None, "genre":"information-exchange"}
+    result,calls = execute(personal_payload("EXTRACT",context=context),[extracted])
+    supplied = json.loads(calls[0][1][1]["content"])["learningContext"]
+    assert supplied["target"] == {"scaleId":"cefr-listening","component":"LISTENING","value":level}
+    assert supplied["profile"]["id"] == level
+    assert "CEFR "+level.upper() in supplied["profile"]["vocabularyGuidance"]
+    assert result["task"]["learnerMode"] == "listener"
+    with pytest.raises(ValueError):
+        payload("EXTRACT",profile={k: context["profile"][k] for k in ("id","minWordsPerActivity","maxWordsPerActivity","maxWordsPerSession")})
+
+
+def test_listener_extraction_has_no_fictional_user_role():
+    extracted = {**extraction_response(), "learnerMode": "listener", "learnerCharacterId": None, "genre": "explanation"}
+    result, calls = execute(personal_payload("EXTRACT"), [extracted])
+    assert result["task"]["learnerRoleVi"] == "Người nghe"
+    assert result["task"]["learnerMode"] == "listener"
+    assert "learningContext" in json.loads(calls[0][1][1]["content"])
+    extracted["learnerCharacterId"] = "customer"
+    with pytest.raises(workflow.QualityRejected, match="provenance"):
+        execute(personal_payload("EXTRACT"), [extracted])
+
+
+@pytest.mark.parametrize("fault", ["missing_context", "wrong_hash", "wrong_profile", "overall", "wrong_range", "unknown_skill", "legacy_spec"])
+def test_personalization_rejects_inconsistent_jobs_before_model_calls(fault):
+    value = personal_payload().model_dump()
+    if fault == "missing_context":
+        value.pop("learningContext")
+    elif fault == "wrong_hash":
+        value["programHash"] = "0" * 64
+    elif fault == "wrong_profile":
+        value["profile"]["maxWordsPerActivity"] = 110
+    elif fault == "overall":
+        value["learningContext"]["target"]["component"] = "OVERALL"
+    elif fault == "wrong_range":
+        value["learningContext"]["target"]["value"] = "8.5"
+    elif fault == "unknown_skill":
+        value["learningContext"]["focusSkill"] = "speaking"
+    else:
+        value["specification"] = EXAMPLE["specification"]
+    with pytest.raises(ValueError):
+        workflow.ScenarioInput.model_validate(value)
+
+
+@pytest.mark.parametrize("fault", ["focus", "profile", "grounding", "inference", "skill"])
+def test_personalized_quality_gates_fail_closed(fault):
+    responses = personal_responses(workflow.previous_personalized_fewshot_v3)
+    context = learning_context()
+    if fault == "focus":
+        context["focusSkill"] = "reason"
+    elif fault == "profile":
+        responses[4]["rubricChecks"][-2]["passed"] = False
+    elif fault == "grounding":
+        responses[2]["questionChecks"][0]["groundingSupported"] = False
+    elif fault == "inference":
+        responses[1]["activities"][0]["questions"][0].update(supportKind="inference", skill="supported-inference", inferenceReasonEn="")
+    else:
+        responses[2]["questionChecks"][0]["skillAppropriate"] = False
+    with pytest.raises(workflow.QualityRejected):
+        execute(personal_payload(context=context, promptHash=workflow.personalized_prompt_hash(workflow.previous_personalized_fewshot_v3)), responses)
+
+
+@pytest.mark.parametrize("index", [2, 4])
+def test_current_reviewer_verdict_is_advisory(index):
+    responses = personal_responses()
+    responses[index]["valid"] = False
+    responses[index]["issues"] = ["Review finding"]
+    result, calls = execute(personal_payload(), responses)
+    assert len(calls) == 5
+    assert result["task"]["qualityPassed"] is False
+    key = "questions" if index == 2 else "review"
+    assert result["reviewAdvisory"][key]["issues"] == ["Review finding"]
+
+
+def test_v7_invalid_reviewer_response_is_advisory_without_retry():
+    responses = personal_responses()
+    responses[2] = {}
+    result, calls = execute(personal_payload(promptHash=workflow.personalized_prompt_hash(workflow.personalized_fewshot)), responses)
+    assert len(calls) == 5 and result["task"]["qualityPassed"] is False
+    assert result["reviewAdvisory"]["questions"] is None
+
+
+def test_inference_contract_accepts_premise_explanation_after_mocked_review():
+    responses = personal_responses()
+    question = responses[1]["activities"][0]["questions"][0]
+    question.update(skill="supported-inference", supportKind="inference", inferenceReasonEn="The opening time stated by the clerk excludes earlier collection.")
+    result, _ = execute(personal_payload(context=learning_context(focus="supported-inference")), responses)
+    assert result["task"]["activities"][0]["questions"][0]["supportKind"] == "inference"
+
+
+def test_cross_language_prompt_pin_and_content_fixture():
+    from app.scenario_prompts_v5 import INSTRUCTIONS
+    assert workflow.PROMPT_VERSION == 'SCENARIO_LISTENING_V5_GRADE_V4_1'
+    assert workflow.INSTRUCTIONS['GRADE'] == workflow.V4_INSTRUCTIONS['GRADE']
+    assert all(workflow.INSTRUCTIONS[k] == v for k, v in INSTRUCTIONS.items() if k != 'GRADE')
+    assert workflow.INSTRUCTIONS['GRADE'] != INSTRUCTIONS['GRADE']
+    assert workflow.prompt_hash() == (ROOT / "src/main/resources/scenario/workflow-v1.sha256").read_text().strip()
+    value = payload()
+    workflow.validate_content(workflow.Content(activities=EXAMPLE["content"]["activities"]), value.specification,
+                              value.profile, workflow.Translations(segments=EXAMPLE["content"]["translations"]))
+
+
+def test_dialogue_is_complete_and_unchanged_before_fact_and_question_extraction():
+    brief = "Đổi lịch nhận xe từ sáng thứ Ba sang chiều thứ Tư"
+    result, calls = execute(payload(inputVi=brief), generation_responses())
+    assert json.loads(calls[0][1][1]["content"])["inputVi"] == brief
+    assert json.loads(calls[4][1][1]["content"])["inputVi"] == brief
+    assert [c[0] for c in calls] == ["scenario_generate", "scenario_questions", "scenario_review_questions", "scenario_translate", "scenario_review"]
+    dialogue = generation_responses()[0]
+    assert json.loads(calls[1][1][1]["content"]) == {"dialogue": dialogue}
+    assert json.loads(calls[3][1][1]["content"]) == dialogue
+    assert "translations" not in json.loads(calls[2][1][1]["content"])
+    assert "groundedQuestions" not in json.loads(calls[4][1][1]["content"])
+    assert json.loads(calls[0][1][1]["content"])["writingBudget"]["targetWordsPerActivity"] == 37
+    assert "learningPointsVi" not in calls[0][1][0]["content"]
+    assert "questions" not in json.dumps(workflow.Dialogue.model_json_schema())
+    assert "segments" not in json.dumps(workflow.Questions.model_json_schema())
+    assert result["task"] == EXAMPLE["content"]
+    assert result["generationId"] == result["requestId"]
+    assert result["programHash"] == "a" * 64
+    assert [c["purpose"] for c in result["calls"]] == ["GENERATE", "QUESTIONS", "REVIEW_QUESTIONS", "TRANSLATE", "REVIEW"]
+
+
+@pytest.mark.parametrize("change", ["evidence", "word_limit", "translation", "review", "extra", "speaker"])
+def test_unsound_results_are_rejected_without_repair(change):
+    responses = copy.deepcopy(generation_responses())
+    generated = responses[0]
+    if change == "evidence":
+        responses[1]["activities"][0]["questions"][0]["evidence"][0]["quoteEn"] = "invented"
+    elif change == "word_limit":
+        generated["activities"][0]["segments"][0]["textEn"] = "word " * 65
+    elif change == "translation":
+        responses[3]["segments"][-1] = responses[3]["segments"][0]
+    elif change == "review":
+        responses[2] = {"valid": False, "issues": ["ambiguous question"]}
+    elif change == "speaker":
+        generated["activities"][0]["segments"][0]["speakerId"] = "unknown"
+    else:
+        generated["activities"][0]["questions"] = []
+    with pytest.raises(workflow.QualityRejected):
+        execute(payload(), responses)
+
+
+def test_grade_requires_exact_learner_evidence_and_all_ids():
+    result, calls = execute(payload("GRADE"), [EXAMPLE["grade"]])
+    assert calls[0][1][0] == {"role": "system", "content": workflow.V4_INSTRUCTIONS['GRADE']}
+    assert result["task"] == EXAMPLE["grade"]
+    assert len(calls) == 1
+    invented = copy.deepcopy(EXAMPLE["grade"])
+    invented["facts"][0]["evidenceVi"] = "This was never submitted"
+    with pytest.raises(workflow.QualityRejected):
+        execute(payload("GRADE"), [invented])
+
+
+@pytest.mark.parametrize("fault", ["omitted", "duplicate", "unsupported", "repeated_meaning", "invented_fact", "wrong_fact"])
+def test_review_requires_every_question_audited_even_when_overall_verdict_is_true(fault):
+    responses = copy.deepcopy(generation_responses())
+    checks = responses[2]["questionChecks"]
+    if fault == "omitted": checks.pop()
+    elif fault == "duplicate": checks[-1] = checks[0]
+    elif fault == "unsupported": checks[-1]["answerSupported"] = False
+    elif fault == "invented_fact": checks[-1]["factSupported"] = False
+    elif fault == "wrong_fact": checks[-1]["questionMatchesFact"] = False
+    else: checks[-1]["distinctMeaning"] = False
+    with pytest.raises(workflow.QualityRejected):
+        execute(payload(), responses)
+
+
+@pytest.mark.parametrize("fault", ["short", "long", "unicode_words", "too_few_segments", "too_many_segments",
+                                   "one_speaker", "activity_order", "segment_id", "session_length", "learning_points"])
+def test_invalid_dialogue_stops_before_extracting_facts(fault):
+    replies = generation_responses()
+    dialogue = replies[0]
+    activity = dialogue["activities"][0]
+    profile = copy.deepcopy(EXAMPLE["profile"])
+    if fault == "short":
+        for segment in activity["segments"]: segment["textEn"] = "one"
+    elif fault == "long": activity["segments"][0]["textEn"] = "word " * 65
+    elif fault == "unicode_words": activity["segments"][0]["textEn"] = "word\u00a0" * 65
+    elif fault == "too_few_segments": activity["segments"] = activity["segments"][:1]
+    elif fault == "too_many_segments": activity["segments"] *= 4
+    elif fault == "one_speaker": activity["segments"][1]["speakerId"] = activity["segments"][0]["speakerId"]
+    elif fault == "activity_order": dialogue["activities"].reverse()
+    elif fault == "segment_id": activity["segments"][1]["id"] = activity["segments"][0]["id"]
+    elif fault == "session_length": profile["maxWordsPerSession"] = 60
+    else: dialogue["learningPointsVi"] = ["invented"] * 6
+    with pytest.raises(workflow.QualityRejected):
+        execute(payload(profile=profile), [dialogue])  # A downstream call would exhaust this list and fail the test.
+
+
+@pytest.mark.parametrize("fault", ["missing", "empty", "duplicate_id", "duplicate_meaning", "wrong_activity", "outside_quote", "wrong_segment"])
+def test_invalid_grounded_questions_stop_before_translation_without_rewriting_dialogue(fault):
+    replies = generation_responses()
+    facts = replies[1]["activities"][0]["questions"]
+    if fault == "missing": facts.pop()
+    elif fault == "empty": facts[0]["factEn"] = " "
+    elif fault == "duplicate_id": facts[1]["id"] = facts[0]["id"]
+    elif fault == "duplicate_meaning": facts[1]["factEn"] = "  " + facts[0]["factEn"].upper() + "  "
+    elif fault == "wrong_activity": replies[1]["activities"].reverse()
+    elif fault == "outside_quote": facts[0]["evidence"][0]["quoteEn"] = "a sentence absent from the dialogue"
+    else: facts[0]["evidence"][0]["segmentId"] = "missing"
+    with pytest.raises(workflow.QualityRejected, match="invalid scenario content"):
+        execute(payload(), replies[:2])
+
+
+@pytest.mark.parametrize("fault", ["wrong_id", "wrong_activity", "rewrite_dialogue", "rewrite_evidence"])
+def test_questions_cannot_remap_facts_or_replace_the_original_speech(fault):
+    replies = generation_responses()
+    drafted = replies[1]["activities"][0]
+    if fault == "wrong_id": drafted["questions"][1]["id"] = "q1"
+    elif fault == "wrong_activity": replies[1]["activities"].reverse()
+    elif fault == "rewrite_dialogue": drafted["segments"] = replies[0]["activities"][0]["segments"]
+    else: drafted["questions"][0]["evidence"] = [{"segmentId": "s1", "quoteEn": "rewritten"}]
+    with pytest.raises(workflow.QualityRejected):
+        execute(payload(), replies[:2])
+
+
+@pytest.mark.parametrize("check", ["SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS"])
+def test_scenario_drift_contradiction_or_unresolved_goal_fails_even_with_valid_true(check):
+    replies = generation_responses()
+    next(r for r in replies[-1]["rubricChecks"] if r["category"] == check)["passed"] = False
+    with pytest.raises(workflow.QualityRejected, match="semantic quality rejected"):
+        execute(payload(), replies)
+
+
+def test_social_dialogue_can_fulfill_its_goal_without_an_agreement_or_next_action():
+    value = payload(inputVi="Tôi làm quen hàng xóm mới, trao đổi sở thích, không hẹn lịch hay nhờ làm việc gì.")
+    value.specification = workflow.Specification(allowed=True, titleVi="Làm quen hàng xóm", settingVi="Hai hàng xóm gặp nhau.",
+        learnerRoleVi="Cư dân", goalVi="Làm quen và trao đổi sở thích.", constraintsVi=["Không hẹn lịch"], assumptionsVi=[], topicIds=["social"],
+        characters=[workflow.Character(id="customer", name="Alex", roleVi="Cư dân"), workflow.Character(id="baker", name="Sam", roleVi="Hàng xóm mới")])
+    rows = [
+        [("customer", "Hello, I'm Alex. I live on the second floor. It is nice to meet another neighbour.", "Xin chào, tôi là Alex, sống ở tầng hai. Rất vui được gặp hàng xóm.", "Alex sống ở tầng nào?", "Tầng hai", "I live on the second floor"),
+         ("baker", "Nice to meet you, Alex. I'm Sam, and I moved here from Bristol. The building seems friendly.", "Rất vui được gặp Alex. Tôi là Sam, mới chuyển từ Bristol đến. Tòa nhà có vẻ thân thiện.", "Sam chuyển đến từ đâu?", "Bristol", "I moved here from Bristol")],
+        [("customer", "I enjoy painting in my free time. Watercolours are my favourite because the colours look soft and gentle.", "Lúc rảnh tôi thích vẽ. Tôi thích nhất màu nước vì màu sắc trông dịu nhẹ.", "Alex thích dùng loại màu nào nhất?", "Màu nước", "Watercolours are my favourite"),
+         ("baker", "That sounds lovely. I prefer taking photographs, especially pictures of birds. Their different shapes and colours always interest me.", "Nghe hay quá. Tôi thích chụp ảnh, nhất là ảnh chim. Hình dáng và màu sắc của chúng luôn khiến tôi thích thú.", "Sam đặc biệt thích chụp ảnh gì?", "Chim", "especially pictures of birds")],
+        [("customer", "We both seem to enjoy noticing little details. My favourite season is autumn, when the leaves turn gold.", "Có vẻ cả hai đều thích để ý chi tiết nhỏ. Tôi thích nhất mùa thu khi lá chuyển vàng.", "Alex thích mùa nào nhất?", "Mùa thu", "My favourite season is autumn"),
+         ("baker", "Spring is my favourite season because everything feels fresh. It has been lovely talking with you, Alex. I'm glad we met today.", "Tôi thích nhất mùa xuân vì mọi thứ đều tươi mới. Rất vui được trò chuyện với Alex. Tôi mừng vì hôm nay chúng ta đã gặp nhau.", "Sam thích mùa nào nhất?", "Mùa xuân", "Spring is my favourite season")]]
+    replies = generation_responses()
+    replies[3]["segments"] = []
+    for index, turns in enumerate(rows):
+        activity_id = "a" + str(index + 1)
+        replies[0]["activities"][index]["segments"] = []
+        for turn, (speaker, english, vietnamese, question, answer, quote) in enumerate(turns):
+            sid, qid = "s" + str(turn + 1), "q" + str(turn + 1)
+            replies[0]["activities"][index]["segments"].append({"id": sid, "speakerId": speaker, "textEn": english})
+            replies[1]["activities"][index]["questions"][turn] = {"id": qid, "factEn": quote, "speechAct": "statement", "evidence": [{"segmentId": sid, "quoteEn": quote}],
+                "skill": "detail", "promptVi": question, "answerVi": answer}
+            replies[3]["segments"].append({"activityId": activity_id, "segmentId": sid, "textVi": vietnamese})
+    result, calls = execute(value, replies)
+    assert len(calls) == 5 and result["task"]["qualityPassed"]
+    assert [{"id": a["id"], "segments": a["segments"]} for a in result["task"]["activities"]] == replies[0]["activities"]
+
+
+def test_infeasible_word_limits_fail_before_any_provider_call():
+    with pytest.raises(ValueError, match="infeasible word limits"):
+        payload(profile={"id": "supported", "minWordsPerActivity": 50, "maxWordsPerActivity": 40, "maxWordsPerSession": 180})
+    with pytest.raises(ValueError, match="infeasible word limits"):
+        payload(profile={"id": "supported", "minWordsPerActivity": 50, "maxWordsPerActivity": 60, "maxWordsPerSession": 149})
+
+
+def test_extraction_redacts_and_rejects_wrong_prompt_before_call():
+    value = payload("EXTRACT", inputVi="Tôi muốn đặt bánh để nhận ngày mai user@example.com")
+    assert "user@example.com" not in value.inputVi
+    result, calls = execute(value, [extraction_response()])
+    assert result["task"]["constraintsVi"] == ["nhận ngày mai"]
+    assert result["task"]["assumptionsVi"] == ["Giả định: Cửa hàng nhận đặt trước"]
+    assert len(calls) == 1
+    with pytest.raises(ValueError):
+        payload(promptHash="b" * 64)
+
+
+def test_extraction_preserves_three_origins_and_binds_learner_to_the_existing_resident():
+    brief = "Tôi muốn nói chuyện với hàng xóm mới."
+    raw = extraction_response()
+    raw.update(learnerCharacterId="customer",
+        characters=[{"id": "customer", "name": "An", "roleVi": "Người muốn làm quen"},
+                    {"id": "baker", "name": "Bình", "roleVi": "Hàng xóm mới"}],
+        providedFacts=[{"quoteVi": "Tôi muốn nói chuyện với hàng xóm mới."}],
+        inferredFacts=[{"textVi": "Hai người có thể chưa quen nhau", "quoteVi": "hàng xóm mới"}],
+        assumptionsVi=["Gặp nhau ở hành lang"])
+    result, calls = execute(payload("EXTRACT", inputVi=brief), [raw])
+    assert len(calls) == 1
+    assert result["task"]["learnerRoleVi"] == "Người muốn làm quen"
+    assert result["task"]["assumptionsVi"] == ["Suy luận: Hai người có thể chưa quen nhau", "Giả định: Gặp nhau ở hành lang"]
+    assert "providedFacts" not in result["task"]  # Private raw provenance does not change the public draft schema.
+
+
+@pytest.mark.parametrize("fault", ["missing", "invented_quote", "blank_quote", "unknown_learner", "blank_role", "overlap", "too_many_assumptions"])
+def test_extraction_rejects_invalid_provenance_before_publishing_draft(fault):
+    raw = extraction_response()
+    if fault == "missing": raw["providedFacts"] = []
+    elif fault == "invented_quote": raw["providedFacts"][0]["quoteVi"] = "tôi mới chuyển đến hôm qua"
+    elif fault == "blank_quote": raw["providedFacts"][0]["quoteVi"] = " "
+    elif fault == "unknown_learner": raw["learnerCharacterId"] = "missing"
+    elif fault == "blank_role": raw["characters"][0]["roleVi"] = " "
+    elif fault == "overlap": raw["inferredFacts"] = [{"textVi": "nhận ngày mai", "quoteVi": "nhận ngày mai"}]
+    else:
+        raw["assumptionsVi"] = ["Một giả định"] * 4
+        raw["inferredFacts"] = [{"textVi": "Người mua cần đặt trước", "quoteVi": "ngày mai"}]
+    with pytest.raises(workflow.QualityRejected, match="invalid extraction provenance"):
+        execute(payload("EXTRACT"), [raw])
+
+
+def test_extraction_derives_learner_role_by_id_even_when_both_speakers_share_a_role():
+    raw = extraction_response()
+    for character in raw["characters"]:
+        character["roleVi"] = "Bạn cùng lớp"
+    result, _ = execute(payload("EXTRACT"), [raw])
+    assert result["task"]["learnerRoleVi"] == "Bạn cùng lớp"
+    assert "learnerRoleVi" not in workflow.Extraction.model_fields
+
+
+def test_refusal_does_not_need_source_claims():
+    raw = extraction_response()
+    raw.update(allowed=False, providedFacts=[], inferredFacts=[], assumptionsVi=[])
+    result, calls = execute(payload("EXTRACT"), [raw])
+    assert result["task"]["allowed"] is False and len(calls) == 1
+
+
+def test_extraction_copies_budget_and_pending_requests_without_paraphrasing():
+    brief = "Tôi muốn đề xuất sân trong nhà, chỉ có 200 nghìn đồng cho cả hai và cần chốt ai đặt sân, giờ gặp và địa điểm gặp."
+    raw = extraction_response()
+    raw["providedFacts"] = [{"quoteVi": brief}]
+    result, _ = execute(payload("EXTRACT", inputVi=brief), [raw])
+    assert result["task"]["constraintsVi"] == [brief]
+    # An invented paraphrase cannot replace the source clause in a published constraint.
+    raw["providedFacts"][0]["textVi"] = "Giá sân đã thống nhất là 200 nghìn đồng."
+    with pytest.raises(workflow.QualityRejected, match="invalid scenario response"):
+        execute(payload("EXTRACT", inputVi=brief), [raw])
+
+
+@pytest.mark.parametrize("fault", ["no_answer", "two_answers", "blank_answer", "duplicate_meaning", "blank_meaning"])
+def test_review_rejects_unanswerable_bundled_or_duplicate_questions_despite_all_true_flags(fault):
+    replies = generation_responses()
+    checked = replies[2]["questionChecks"]
+    if fault == "no_answer": checked[0]["answerUnitsVi"] = []
+    elif fault == "two_answers": checked[0]["answerUnitsVi"] = ["Số biên lai", "Số điện thoại"]
+    elif fault == "blank_answer": checked[0]["answerUnitsVi"] = [" "]
+    elif fault == "blank_meaning": checked[0]["requestedMeaningEn"] = " "
+    else: checked[1]["requestedMeaningEn"] = "  " + checked[0]["requestedMeaningEn"].upper() + "  "
+    with pytest.raises(workflow.QualityRejected, match="question quality rejected"):
+        execute(payload(), replies)
+
+
+def test_review_provider_schema_keeps_required_fields_and_local_array_bounds():
+    for model in (workflow.QuestionReview, workflow.Review):
+        schema = workflow.response_schema(model)
+        assert set(schema["required"]) == set(model.model_fields)
+        for name, prop in model.model_json_schema()["properties"].items():
+            if prop.get("type") == "array":
+                assert "maxItems" not in schema["properties"][name]
+                assert "maxItems" in prop
+    invalid = generation_responses()[2]
+    invalid["questionChecks"].pop()
+    with pytest.raises(ValueError):
+        workflow.QuestionReview.model_validate(invalid)
+
+
+def test_archived_proposal_cannot_be_claimed_as_agreement_without_local_acceptance():
+    # Exact problematic quote from social-rain-plan in the 2026-11-01 private capture.
+    quote = "I think we should move our practice to an indoor court so we do not have to cancel our game."
+    replies = generation_responses()
+    replies[0]["activities"][0]["segments"][0]["textEn"] = quote
+    question = replies[1]["activities"][0]["questions"][0]
+    question.update(factEn="The participants decide to move their badminton practice to an indoor court.",
+                    speechAct="agreement", evidence=[{"segmentId": "s1", "quoteEn": quote}])
+    # Other fixture evidence must remain anchored, so validate the one activity directly.
+    dialogue = workflow.Dialogue.model_validate(replies[0])
+    questions = workflow.Questions.model_validate(replies[1])
+    with pytest.raises(ValueError, match="agreement requires"):
+        workflow.validate_questions(questions, dialogue)
+    question.update(factEn="A speaker proposes moving practice indoors.", speechAct="proposal")
+    for q in replies[1]["activities"][0]["questions"]:
+        if q["id"] == "q2":
+            q.update(factEn="The other speaker gives the opening time.", evidence=[{"segmentId": "s2", "quoteEn": "we open at nine"}])
+    workflow.validate_questions(workflow.Questions.model_validate(replies[1]), dialogue)
+
+
+def test_agreement_evidence_must_follow_the_local_speaker_sequence():
+    replies = generation_responses()
+    question = replies[1]["activities"][0]["questions"][1]
+    question["speechAct"] = "agreement"
+    dialogue = workflow.Dialogue.model_validate(replies[0])
+    workflow.validate_questions(workflow.Questions.model_validate(replies[1]), dialogue)
+    question["evidence"].reverse()
+    with pytest.raises(ValueError, match="agreement requires"):
+        workflow.validate_questions(workflow.Questions.model_validate(replies[1]), dialogue)
+
+
+@pytest.mark.parametrize("prompt,rejected", [
+    ("Họ thống nhất gặp nhau tại quầy lễ tân vào thời gian nào?", True),
+    ("Cả hai đã đồng ý gặp ở đâu?", True),
+    ("Hai bên quyết định gặp lúc mấy giờ?", True),
+    ("Người nói đề xuất gặp nhau lúc mấy giờ?", False),
+    ("Họ chưa thống nhất giờ gặp; người nói đề xuất thời gian nào?", False),
+    ("Đề xuất nào chưa được thống nhất?", False),
+])
+def test_proposal_cannot_presuppose_agreement_but_can_remain_explicitly_unconfirmed(prompt, rejected):
+    replies = generation_responses()
+    item = replies[1]["activities"][0]["questions"][0]
+    item.update(speechAct="proposal", promptVi=prompt)
+    questions = workflow.Questions.model_validate(replies[1])
+    dialogue = workflow.Dialogue.model_validate(replies[0])
+    if rejected:
+        with pytest.raises(ValueError, match="proposal question asserts agreement"):
+            workflow.validate_questions(questions, dialogue)
+    else:
+        workflow.validate_questions(questions, dialogue)
+
+
+def test_question_audit_rejection_stops_before_translation_and_final_review():
+    replies = generation_responses()[:3]
+    replies[2]["questionChecks"][0]["answerSupported"] = False
+    with pytest.raises(workflow.QualityRejected, match="question quality rejected"):
+        execute(payload(), replies)
+
+
+@pytest.mark.parametrize("fault", ["missing", "duplicate", "unknown", "blank", "copied_english"])
+def test_bad_translation_stops_before_review(fault):
+    replies = generation_responses()
+    segments = replies[3]["segments"]
+    if fault == "missing": segments.pop()
+    elif fault == "duplicate": segments[-1] = copy.deepcopy(segments[0])
+    elif fault == "unknown": segments[0]["segmentId"] = "missing"
+    elif fault == "blank": segments[0]["textVi"] = " "
+    else: segments[0]["textVi"] = replies[0]["activities"][0]["segments"][0]["textEn"]
+    with pytest.raises(workflow.QualityRejected):
+        execute(payload(), replies[:4])
+
+
+@pytest.mark.parametrize("field", ["speechActSupported", "atomicMeaning", "noAnswerLeak", "vietnameseNatural"])
+def test_review_cannot_override_individual_question_defects(field):
+    replies = generation_responses()
+    replies[2]["questionChecks"][0][field] = False
+    with pytest.raises(workflow.QualityRejected, match="question quality rejected"):
+        execute(payload(), replies)
+
+
+@pytest.mark.parametrize("fault", ["meaningPreserved", "terminologyCorrect", "vietnameseOnly", "vietnameseNatural", "missing", "duplicate", "wrong_segment", "rubric_missing", "rubric_duplicate", "blank_reason"])
+def test_review_requires_complete_translation_and_rubric_audits(fault):
+    replies = generation_responses()
+    review = replies[-1]
+    if fault == "missing": review["translationChecks"].pop()
+    elif fault == "duplicate": review["translationChecks"][-1] = copy.deepcopy(review["translationChecks"][0])
+    elif fault == "wrong_segment": review["translationChecks"][0]["segmentId"] = "unknown"
+    elif fault == "rubric_missing": review["rubricChecks"].pop()
+    elif fault == "rubric_duplicate": review["rubricChecks"][-1] = copy.deepcopy(review["rubricChecks"][0])
+    elif fault == "blank_reason": review["rubricChecks"][0]["reasonVi"] = " "
+    else: review["translationChecks"][0][fault] = False
+    with pytest.raises(workflow.QualityRejected):
+        execute(payload(), replies)
+
+
+def test_later_transport_failure_is_unknown_and_never_replayed(tmp_path):
+    settings = Settings(scenario_enabled=True, jobs_database=str(tmp_path / "scenario.sqlite"))
+    store = JobStore(settings.jobs_database)
+    req = request(payload())
+    store.register(req, settings)
+    body = store.pending()[0]
+    calls = []
+
+    def partial(event):
+        calls.append(event)
+        raise httpx.ConnectError("translation connection failed after generation already succeeded")
+
+    assert process(body, settings, store, partial) == "DEAD"
+    assert store.get(str(req.jobId), req.userScope)["status"] == "UNKNOWN"
+    process(body, settings, JobStore(settings.jobs_database), partial)
+    assert len(calls) == 1
+
+
+def test_worker_checks_disabled_flag_before_provider():
+    with patch.object(workflow, "ModelGateway") as gateway:
+        with pytest.raises(workflow.QualityRejected):
+            asyncio.run(workflow.execute(request(payload()), Settings(scenario_enabled=False)))
+        gateway.assert_not_called()
+
+
+def test_internal_api_requires_token_scope_provider_and_explicit_rollout(tmp_path, monkeypatch):
+    from app import main
+    from fastapi.testclient import TestClient
+    settings = Settings(jobs_enabled=True, scenario_enabled=False, service_token="test-only", jobs_database=str(tmp_path / "api.sqlite"))
+    monkeypatch.setattr(main, "settings", settings)
+    req = request(payload("EXTRACT"))
+    headers = {"X-Service-Token": "test-only", "X-User-Scope": req.userScope, "X-AI-Provider": "ollama",
+               "X-Request-Id": str(req.requestId), "Idempotency-Key": req.idempotencyKey}
+    client = TestClient(main.app)
+    body = req.model_dump(mode="json")
+    assert client.post("/v1/scenario/jobs", json=body).status_code == 401
+    assert client.post("/v1/scenario/jobs", headers=headers, content=b" " * 64001).status_code == 413
+    assert client.post("/v1/scenario/jobs", headers=headers, json=body).status_code == 503
+    monkeypatch.setattr(main, "settings", settings.model_copy(update={"scenario_enabled": True}))
+    assert client.post("/v1/scenario/jobs", headers={**headers, "X-AI-Provider": "gemini"}, json=body).status_code == 409
+    first = client.post("/v1/scenario/jobs", headers=headers, json=body)
+    assert first.status_code == 202
+    assert client.post("/v1/scenario/jobs", headers=headers, json=body).json()["jobId"] == first.json()["jobId"]
+    assert client.get("/v1/jobs/" + str(req.jobId), headers={**headers, "X-User-Scope": "c" * 64}).status_code == 404
+
+
+@pytest.mark.parametrize("answer,evidence,status", [
+    ("The shop opens at nine.", "at nine", "CAPTURED"),
+    ("Cửa hàng mở lúc chín giờ.", "chín giờ", "CAPTURED"),
+    ("Cửa hàng opens at nine.", "at nine", "CAPTURED"),
+    ("The shop opens at midnight.", "at midnight", "INCORRECT"),
+])
+def test_grade_accepts_both_languages_and_preserves_original_evidence(answer, evidence, status):
+    value = payload("GRADE", answers=[{"questionId": "q1", "textVi": answer}, {"questionId": "q2", "textVi": ""}])
+    grade = {"facts": [{"questionId": "q1", "status": status, "evidenceVi": evidence},
+                       {"questionId": "q2", "status": "MISSED", "evidenceVi": ""}]}
+    result, calls = execute(value, [grade])
+    assert result["task"] == grade
+    instruction = calls[0][1][0]["content"]
+    assert "English or Vietnamese" in instruction
+    assert "ORIGINAL" in instruction
+    assert json.loads(calls[0][1][1]["content"])["answers"][0]["textVi"] == answer
+    grade["facts"][0]["evidenceVi"] = "translated evidence absent from the answer"
+    with pytest.raises(workflow.QualityRejected, match="invalid grade evidence"):
+        execute(value, [grade])

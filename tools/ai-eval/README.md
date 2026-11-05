@@ -1,5 +1,129 @@
 # AI evaluation gate
 
+## Scenario EXTRACT / GENERATE: capture once, inspect offline
+
+`scenario_quality.py` runs the current `app.scenario_workflow.execute` directly with the
+configured gateway. It is an evaluation observer, not a Core API/database/TTS end-to-end
+test. Production does not import it. The default corpus contains eight synthetic cases
+across six groups and three practice profiles, including one unsafe request.
+
+From the repository root, load the existing protected AI settings into the process
+environment using the normal local launcher. Do not pass keys on the command line or
+copy an environment file into the evidence directory. Scenario execution must be explicitly
+enabled in that protected configuration. Then run **capture only when fresh calls are intended**:
+
+```powershell
+python tools/ai-eval/scenario_quality.py capture --output data/scenario-evaluation/run-001 --max-calls 48 --max-seconds 1200
+```
+
+Each case runs EXTRACT once and the GENERATE operation once only when EXTRACT allows it.
+The operation has five calls: GENERATE (dialogue only), QUESTIONS (six anchored facts
+and their questions in one response), REVIEW_QUESTIONS, TRANSLATE and REVIEW. GENERATE cannot return questions,
+answers, evidence or learning points. Dialogue structure, speaker IDs and actual word counts
+are validated before QUESTIONS runs. Questions cannot rewrite the dialogue; each evidence quote must
+match its original segment. An agreement requires ordered evidence from both speakers in the same activity.
+The question audit checks only questions and independently derives their requested answers;
+it stops an invalid lesson before translation. The final audit checks source/roles, dialogue
+and every translation. Keeping these separate caught a saved defect the combined audit missed.
+The default eight-case corpus needs up to 43 calls, within the 48-call capture limit.
+All five stages use the real validation gates; failed samples are not repaired,
+retried or replaced. The configured shared quota still applies. The budget counts gateway
+calls, not billed tokens; wire usage is retained when supplied by the provider. Cloud output
+has no guaranteed deterministic seed, even with temperature zero.
+
+EXTRACT keeps quoted provided facts separate from inferences and fictional assumptions.
+The server copies public constraints verbatim from the provided quotes (no model paraphrase) and the learner role from
+`learnerCharacterId`, avoiding duplicate model-authored role descriptions. Anchored quotes
+and a valid character ID do not prove semantic correctness; confirmation and source review remain necessary.
+The two review calls cover source/roles, dialogue, questions and every translated segment.
+Each question audit must list its requested meaning and independent answer units: zero/multiple
+units, a repeated normalized meaning, a false flag or missing coverage rejects the lesson.
+A narrow local check rejects positive agreement wording such as 'Họ thống nhất' when the
+question's speechAct is proposal; it is not a general Vietnamese semantic parser.
+Only the reviews' provider-facing root array size constraints are omitted for Gemini compatibility
+(the bounded audit schema returned HTTP 400). All required fields and local cardinality,
+identity, boolean and nonblank-reason checks remain enforced; missing audits fail closed.
+The prompt pin includes validation and both provider review schemas.
+
+See `docs/scenario-quality-evaluation-20261031.md` for V4 live evidence and known misses.
+Targeted EXTRACT runs and REVIEW of saved outputs are not full end-to-end captures or proof
+of release quality. Do not regenerate completed dialogue merely to rerun a reviewer.
+
+The output directory must be new and under ignored `data/`. Reusing it fails before any
+provider calls. Artifacts include:
+
+- `manifest.json`: corpus, program, prompt, source and harness hashes; model/provider/config
+  identifiers, git revision and budget. Current captures also record library versions.
+- `cases.json`, `program.json`, `instructions.json`, `workflow.source.py`, `harness.source.py`:
+  the exact synthetic inputs and code used at capture time.
+- `<case>/EXTRACT|GENERATE/input.json`, `started.json`, `outcome.json`: correlation/job ID,
+  input, elapsed time, status and safe error classification.
+- `*-request.json`: messages, schema, options and output budget for each actual call.
+- `*-response.json`: parsed model reply **before domain validation**, with provider, model,
+  source ID and timing. Rejected content remains available here.
+- `*-wire.json`: HTTP status, response hash, model text and usage when present; retains
+  malformed successful output too. It excludes headers, URLs and arbitrary provider error
+  bodies. Credentials and full settings are not logged.
+- `finished.json`, `integrity.json`: completion and SHA-256 inventory of original evidence.
+  `derived/` holds versioned analysis separately and is excluded from the original seal.
+
+Inspect/replay **the existing directory**, rather than rerunning capture:
+
+```powershell
+python tools/ai-eval/scenario_quality.py report --capture data/scenario-evaluation/run-001 --output data/scenario-evaluation/run-001/derived/report-v1.json
+python tools/ai-eval/scenario_quality.py replay --capture data/scenario-evaluation/run-001 --output data/scenario-evaluation/run-001/derived/replay-v1.json
+python -m pytest -q tools/ai-eval/test_scenario_quality.py services/ai-generation/tests/test_scenario_workflow.py
+```
+
+Both commands make **zero provider calls**. Reports include all recorded replies and failures.
+Replay runs those replies through the workflow and compares results/errors. It rejects a
+changed prompt pin or request/schema/options and never falls back to a live provider.
+A provider failure with no parsed reply is `UNREPLAYABLE`, not a reason to resend it.
+Changed validators may be evaluated offline, but preserve the original replay and label the
+new analysis with its code revision. Comparing changed prompts requires a separately
+authorized new capture with baseline lineage; never overwrite or replace a failed sample.
+
+After interruption, leave raw files intact. `report --allow-incomplete` can inspect them using
+a new output filename; it explicitly marks `UNSEALED_INCOMPLETE` and missing outcomes as
+`UNKNOWN_INTERRUPTED`. `UNKNOWN` means an uncertain failed call, `NOT_STARTED` means no
+call in that phase, and `BUDGET_STOPPED` means some replies exist but the phase could not
+finish. None count as success. There is no automatic resume/resubmit command.
+
+Keep private captures out of Git. Create a second restricted copy/archive outside a disposable
+worktree, verify its SHA-256, ZIP CRC and raw integrity inventory, and retain it deliberately
+until the quality investigation is closed. The tool does not auto-delete evidence. This logging
+is for explicit synthetic evaluation; it does not enable logging real learner content in production.
+
+The current workflow uses six measured V5 prompts and the exact archived V4 GRADE prompt,
+version `SCENARIO_LISTENING_V5_GRADE_V4_1`, hash
+`d43a3e228449dc64d7b6c103c2013558ac6e9415feabad8ff50e083900b0ae21`.
+Frozen V5 (`SCENARIO_LISTENING_V5_CANDIDATE_1`) remains unchanged for historical benchmarks;
+its measured completion/grading results do not certify this mixed release's quality.
+V4 remains explicitly selectable as an archived benchmark baseline; V3 identifies the preceding five-call
+split and V2 the reverted experiment. The public lesson/session JSON is unchanged. Core reserves five
+generation calls. Previously submitted V1/V3/V4/V5 results can settle only under their exact historical pins
+and original call sequences. No database migration
+or program-definition change is required. Core/Python must run the matching workflow pin; existing
+release/local-preview approvals do not automatically approve the new pin.
+Semantic review explicitly checks scenario preservation, coherent progression, goal resolution,
+fact support and question/fact agreement. These remain model judgments, not a proof of content
+quality. Generation and review choose progression/closure from the communicative goal: social exchanges
+need no transaction or next action, while service requests and deadlines still require clear responses.
+EXTRACT privately returns quoted provided/inferred claims and an explicit learner-character binding.
+The server validates quotes and roles, publishes provided claims as constraints, and labels inferred
+claims and assumptions separately in the existing confirmation list. Exact quote matching cannot prove
+that the model paraphrased it correctly; SOURCE_ROLES review still audits the original input.
+QUESTIONS includes speech-act labels (statement/proposal/agreement/confirmation). REVIEW requires four
+rubrics, six question audits and one translation audit per source segment, with concrete reasons.
+Missing/false checks reject even with valid=true. The server checks translation coverage, blanks and
+whole copied English segments; subtler mixed language, terminology and meaning rely on semantic review.
+These reference-language requirements do not restrict learner answers in English, Vietnamese or both.
+The 2026-11-01 real-model results and remaining content defects are recorded in the report below.
+No automatic repair or extra generation retries were added.
+
+The first real run and its manual findings are documented in
+`docs/scenario-quality-evaluation-20261031.md`.
+
 ## Bounded Gemini JSONL batch
 
 `gemini_batch.py` is a separate opt-in cloud generator, not the local benchmark runner below.

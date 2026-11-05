@@ -96,6 +96,7 @@ public class S3MediaLifecycle {
                 UPDATE s3_media_lifecycle SET cleanup_after=CURRENT_TIMESTAMP + INTERVAL '1' DAY * CAST(? AS INTEGER)
                 WHERE audio_url LIKE '/conversation-media/s3/%' AND status='LIVE' AND cleanup_after IS NULL
                 AND NOT EXISTS (SELECT 1 FROM ai_conversation_audio a WHERE a.s3_audio_url=s3_media_lifecycle.audio_url)
+                AND NOT EXISTS (SELECT 1 FROM scenario_media a WHERE a.s3_audio_url=s3_media_lifecycle.audio_url)
                 """, retentionDays);
         for (String url : db.queryForList("SELECT audio_url FROM s3_media_lifecycle WHERE cleanup_after<=" + databaseNow
                 + " AND storage_identity=? AND status<>'DELETED'"
@@ -106,8 +107,8 @@ public class S3MediaLifecycle {
                 var rows = db.queryForList("SELECT status,cleanup_after<=" + databaseNow + " AS due FROM s3_media_lifecycle WHERE audio_url=? FOR UPDATE", url);
                 if (rows.isEmpty() || !Boolean.TRUE.equals(rows.get(0).get("due")) || "DELETED".equals(rows.get(0).get("status"))) return false;
                 // All new references hold this catalog row until commit; no S3 call spans this lock.
-                if (db.queryForObject("SELECT (SELECT COUNT(*) FROM lesson_sentences WHERE audio_url=?) + (SELECT COUNT(*) FROM listening_units WHERE audio_url=?) + (SELECT COUNT(*) FROM ai_conversation_audio WHERE s3_audio_url=?)",
-                        Integer.class, url, url, url) > 0) {
+                if (db.queryForObject("SELECT (SELECT COUNT(*) FROM lesson_sentences WHERE audio_url=?) + (SELECT COUNT(*) FROM listening_units WHERE audio_url=?) + (SELECT COUNT(*) FROM ai_conversation_audio WHERE s3_audio_url=?) + (SELECT COUNT(*) FROM scenario_media WHERE s3_audio_url=?)",
+                        Integer.class, url, url, url, url) > 0) {
                     db.update("UPDATE s3_media_lifecycle SET status='LIVE',cleanup_after=NULL WHERE audio_url=?", url);
                     return false;
                 }

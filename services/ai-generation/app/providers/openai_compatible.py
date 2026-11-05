@@ -119,6 +119,14 @@ class OpenAiCompatibleProvider(ModelProvider):
             response.raise_for_status()
             data = response.json()
             choice = (data.get("choices") or [{}])[0]
+            from ..observability import record_response
+            usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+            details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
+            record_response((choice.get("message") or {}).get("content"), model=data.get("model") or self._model,
+                input_tokens=usage.get("prompt_tokens"), output_tokens=usage.get("completion_tokens"),
+                cached_tokens=details.get("cached_tokens", usage.get("prompt_cache_hit_tokens")),
+                finish_reason=choice.get("finish_reason"),
+                reasoning=(choice.get("message") or {}).get("reasoning_content"))
             if choice.get("finish_reason") == "length":
                 raise ProviderError(f"{self._provider_name}:{purpose}:output_truncated")
             raw = (choice.get("message") or {}).get("content", "")
