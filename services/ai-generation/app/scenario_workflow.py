@@ -806,8 +806,9 @@ async def execute(event, settings):
                      {"role": "user", "content": json.dumps(data, ensure_ascii=False)}],
                     schema, deadline, "scenario_" + purpose.lower(), temperature=0), max(0.01, deadline - time.monotonic()))
             except Exception as error:
-                logger.warning("scenario_call_failed job_id=%s phase=%s error_type=%s http_status=%s",
-                               event.jobId, purpose, type(error).__name__, getattr(error, "status", None))
+                logger.warning("scenario_call_failed job_id=%s phase=%s error_type=%s http_status=%s provider=%s model=%s source_id=%s completed_calls=%s",
+                               event.jobId, purpose, type(error).__name__, getattr(error, "status", None),
+                               settings.selected_provider, gateway.last_model, getattr(gateway, "last_source_id", None), len(calls))
                 raise
             calls.append({"purpose": purpose, "provider": provider, "model": gateway.last_model})
             try:

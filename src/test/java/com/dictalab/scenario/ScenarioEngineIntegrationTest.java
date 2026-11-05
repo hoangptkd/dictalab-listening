@@ -304,6 +304,20 @@ class ScenarioEngineIntegrationTest {
         verify(ai,never()).submitScenario(anyLong(),anyString(),any(),any());
     }
 
+    @Test void providerOverloadKeepsUnknownOutcomeAndDistinctCodeWithoutResubmitting() {
+        doAnswer(call -> object().put("schemaVersion","1").put("jobId",(String)call.getArgument(1))
+                .put("status","UNKNOWN").put("error","PROVIDER_UNAVAILABLE"))
+                .when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        var op=engine.createDraft(user,id(),input()); String operationId=op.path("operationId").asText();
+        operations.dispatch(operationId);
+        var result=operations.get(user,operationId);
+        assertThat(result.path("status").asText()).isEqualTo("UNKNOWN");
+        assertThat(result.path("errorCode").asText()).isEqualTo("AI_PROVIDER_UNAVAILABLE");
+        operations.dispatch(operationId);
+        verify(ai,times(1)).submitScenario(anyLong(),eq(operationId),any(),any());
+        assertThat(engine.draft(user,op.path("draftId").asText()).path("status").asText()).isEqualTo("FAILED");
+    }
+
     @Test void endpointsAreCsrfProtectedStrictAndOwnerScopedIncludingPrivateAudio() throws Exception {
         mvc.perform(post("/api/v2/scenarios/drafts").with(user(DictaLabPrincipal.from(owner))).contentType("application/json").content(json(input()))).andExpect(status().isForbidden());
         mvc.perform(post("/api/v2/scenarios/drafts").with(user(DictaLabPrincipal.from(owner))).with(csrf()).header("Idempotency-Key",id())

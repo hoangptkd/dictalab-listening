@@ -13,6 +13,7 @@ from app import scenario_workflow as workflow
 from app.config import Settings
 from app.jobs import JobRequest, JobEvent, JobStore
 from app.worker import process
+from app.providers.base import ProviderHttpError
 
 ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE = json.loads((ROOT / "src/test/resources/scenario/workflow-example.json").read_text(encoding="utf-8"))
@@ -81,6 +82,8 @@ def test_failed_call_logs_phase_without_exception_content(caplog):
     assert "phase=GENERATE" in caplog.text
     assert "http_status=429" in caplog.text
     assert "error_type=ProviderHttpError" in caplog.text
+    assert "provider=ollama" in caplog.text
+    assert "completed_calls=0" in caplog.text
     assert "Tôi muốn" not in caplog.text
     assert "private-error-canary" not in caplog.text
 
@@ -625,7 +628,11 @@ def test_review_requires_complete_translation_and_rubric_audits(fault):
         execute(payload(), replies)
 
 
-def test_later_transport_failure_is_unknown_and_never_replayed(tmp_path):
+@pytest.mark.parametrize("failure,expected_error", [
+    (httpx.ConnectError("translation connection failed after generation already succeeded"), "PROVIDER_OUTCOME_UNKNOWN"),
+    (ProviderHttpError(503), "PROVIDER_UNAVAILABLE"),
+])
+def test_later_transport_failure_is_unknown_and_never_replayed(tmp_path, failure, expected_error):
     settings = Settings(scenario_enabled=True, jobs_database=str(tmp_path / "scenario.sqlite"))
     store = JobStore(settings.jobs_database)
     req = request(payload())
@@ -635,10 +642,11 @@ def test_later_transport_failure_is_unknown_and_never_replayed(tmp_path):
 
     def partial(event):
         calls.append(event)
-        raise httpx.ConnectError("translation connection failed after generation already succeeded")
+        raise failure
 
     assert process(body, settings, store, partial) == "DEAD"
     assert store.get(str(req.jobId), req.userScope)["status"] == "UNKNOWN"
+    assert store.get(str(req.jobId), req.userScope)["error"] == expected_error
     process(body, settings, JobStore(settings.jobs_database), partial)
     assert len(calls) == 1
 

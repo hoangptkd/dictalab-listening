@@ -88,7 +88,11 @@ public class ScenarioOperations {
                 engine.getObject().accept(user,id,lease,row,result);
             } else if (Set.of("FAILED","UNKNOWN","EXPIRED").contains(status)) {
                 terminal(user,id,lease,status.equals("EXPIRED") ? "FAILED" : status,
-                        state.path("error").asText().equals("QUALITY_REJECTED") ? "GENERATION_REJECTED" : "AI_JOB_"+status);
+                        switch (state.path("error").asText()) {
+                            case "QUALITY_REJECTED" -> "GENERATION_REJECTED";
+                            case "PROVIDER_UNAVAILABLE" -> "AI_PROVIDER_UNAVAILABLE";
+                            default -> "AI_JOB_"+status;
+                        });
             } else data.db.update("""
                     UPDATE scenario_operations SET submitted=TRUE,lease_id=NULL,lease_until=NULL,poll_at=?,version=version+1
                     WHERE id=? AND lease_id=? AND status='RUNNING'

@@ -81,8 +81,12 @@ def process(body, settings, store, runner=None):
     except Exception as error:
         if event.payload.kind == "scenario":
             from .scenario_workflow import QualityRejected
+            from .providers.base import ProviderHttpError
             # A later call can fail after an earlier paid call succeeded. Never replay the whole workflow.
-            state = store.finish(event, error="QUALITY_REJECTED" if isinstance(error, QualityRejected) else "PROVIDER_OUTCOME_UNKNOWN",
+            code = ("QUALITY_REJECTED" if isinstance(error, QualityRejected) else
+                    "PROVIDER_UNAVAILABLE" if isinstance(error, ProviderHttpError) and error.status == 503 else
+                    "PROVIDER_OUTCOME_UNKNOWN")
+            state = store.finish(event, error=code,
                                  uncertain=not isinstance(error, QualityRejected))
         else:
             state = store.finish(event, error="TRANSPORT" if retry_safe(error) else "GENERATION_FAILED", retry=retry_safe(error))

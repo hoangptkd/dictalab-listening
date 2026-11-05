@@ -188,6 +188,15 @@ test('unknown paid outcome does not submit another job or invent a completed ses
     assert.match(h.root.innerHTML, /không tự gọi lại/); assert.match(h.root.innerHTML, /Chưa xác định được kết quả/);
     assert.equal(h.calls.length, 1); assert.equal(h.calls[0].options.method, undefined);
 });
+test('provider overload is explained without replaying an unknown job', async () => {
+    const storage = new Map([['dictalab:scenario:10:operation', JSON.stringify({operationId: 'op', action: 'EXTRACT'})]]);
+    const h = harness(async () => ({status: 'UNKNOWN', errorCode: 'AI_PROVIDER_UNAVAILABLE'}), storage);
+    await h.module.show();
+    assert.match(h.root.innerHTML, /Nhà cung cấp AI tạm quá tải/);
+    assert.match(h.root.innerHTML, /HTTP 503/);
+    assert.match(h.root.innerHTML, /không tự gửi lại/);
+    assert.equal(h.calls.length, 1); assert.equal(h.calls[0].options.method, undefined);
+});
 
 test('draft confirmation separates provided facts from labeled inferences and assumptions', async () => {
     const storage = new Map([['dictalab:scenario:10:operation', JSON.stringify({operationId: 'op', action: 'EXTRACT'})]]);

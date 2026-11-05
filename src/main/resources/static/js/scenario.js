@@ -17,6 +17,10 @@
     const current = token => token === revision && owner === bridge().currentUser()?.id;
     const request = (path, options = {}) => bridge().api(base + path, {...options, signal: abort?.signal, cache: "no-store"});
     function status(message) { const node = root()?.querySelector("#scenario-status"); if (node) node.textContent = message; }
+    function operationFailure(op) {
+        if (op.errorCode === 'AI_PROVIDER_UNAVAILABLE') return 'Nhà cung cấp AI tạm quá tải (HTTP 503). Chưa nhận được kết quả hợp lệ. Hệ thống giữ dữ liệu đã lưu và không tự gửi lại yêu cầu để tránh gọi trùng. Hãy chờ rồi chủ động thử lại sau.';
+        return op.status === 'UNKNOWN' ? 'Chưa xác định được kết quả từ nhà cung cấp. Hệ thống không tự gọi lại để tránh phí trùng.' : 'Tác vụ không hoàn tất. Mô tả và bài đã lưu vẫn được giữ. Bạn có thể sửa mô tả rồi chủ động tạo bài mới.';
+    }
     function frame(html) { stopAudio(); root().innerHTML = `<div class="scenario-browser">${html}<p id="scenario-status" class="scenario-status" role="status" aria-live="polite"></p></div>`; }
     function focusStep(selector = '#scenario-step-heading') { const heading = root()?.querySelector(selector); heading?.focus(); heading?.scrollIntoView?.({block: 'nearest'}); }
     function busyControls(locked) {
@@ -239,10 +243,10 @@
                 save("operation", null);
                 if (pending.sessionId && ["GRADE", "TTS"].includes(pending.action)) {
                     await openSession(pending.sessionId, token);
-                    if (current(token)) status(`Tác vụ ${op.status}: ${op.errorCode || op.status}. Mã tác vụ: ${pending.operationId}. ${op.status === "UNKNOWN" ? "Chưa xác định kết quả; hệ thống không tự gọi lại để tránh phí trùng." : "Bài và câu trả lời đã lưu vẫn được giữ."}`);
+                    if (current(token)) status(`${operationFailure(op)} Mã tác vụ: ${pending.operationId} · ${op.errorCode || op.status}`);
                     return;
                 }
-                frame(`<h2 id="scenario-step-heading" tabindex="-1">${escape(statusLabels[op.status] || op.status)}</h2><p>${op.status === "UNKNOWN" ? "Chưa xác định được kết quả từ nhà cung cấp. Hệ thống không tự gọi lại để tránh phí trùng." : "Tác vụ không hoàn tất. Mô tả và bài đã lưu vẫn được giữ. Bạn có thể sửa mô tả rồi chủ động tạo bài mới."}</p><p>Mã tác vụ: ${escape(pending.operationId)} · ${escape(op.errorCode || op.status)}</p><a href="/conversation" data-session="" data-discard-draft>Về mô tả đã lưu</a>${pending.sessionId ? `<p><a href="/conversation/${encodeURIComponent(pending.sessionId)}" data-session="${escape(pending.sessionId)}">Quay lại bài học</a></p>` : ''}`);
+                frame(`<h2 id="scenario-step-heading" tabindex="-1">${escape(op.errorCode === 'AI_PROVIDER_UNAVAILABLE' ? 'Nhà cung cấp AI tạm quá tải' : statusLabels[op.status] || op.status)}</h2><p>${escape(operationFailure(op))}</p><p>Mã tác vụ: ${escape(pending.operationId)} · ${escape(op.errorCode || op.status)}</p><a href="/conversation" data-session="" data-discard-draft>Về mô tả đã lưu</a>${pending.sessionId ? `<p><a href="/conversation/${encodeURIComponent(pending.sessionId)}" data-session="${escape(pending.sessionId)}">Quay lại bài học</a></p>` : ''}`);
                 bindSessionLinks(); focusStep();
             } else if (Date.now() - started < 300000) timer = setTimeout(() => { check().catch(error => { if (current(token)) status(error.message); }); }, Math.max(1500, Math.min(10000, op.pollAfterMs || 2000)));
             else status("Tác vụ còn đang chạy. Bấm kiểm tra trạng thái để tiếp tục, không cần gửi yêu cầu mới.");
@@ -327,7 +331,7 @@
             <p>${t.support?.transcriptOpened && t.support?.hintOpened ? "Dùng cả gợi ý và bản chép khi nộp." : t.support?.transcriptOpened ? "Có mở bản chép khi nộp." : t.support?.hintOpened ? "Chỉ dùng gợi ý chiến lược khi nộp." : "Không dùng gợi ý/bản chép khi nộp."}</p>
             ${t.answers.map(answer => `<p>Câu ${escape(answer.questionId.replace(/^q/, ""))}: ${escape(answer.textVi)}</p>`).join("")}
             ${t.result ? t.result.facts.map(f => `<p>Câu ${escape(f.questionId.replace(/^q/, ""))}: ${escape(labels[f.status])}${f.evidenceVi ? ` — Bạn viết: "${escape(f.evidenceVi)}"` : ""}${["PARTIAL","INCORRECT","MISSED"].includes(f.status) ? ` <em>${escape(f.feedbackVi || 'Hãy nghe lại, đối chiếu đủ các ý câu hỏi yêu cầu trước khi trả lời lại.')}</em>` : f.status === 'UNCERTAIN' ? ' Chưa đủ căn cứ để kết luận. Bạn có thể làm rõ câu trả lời theo điều nghe được.' : ''}</p>`).join("") : ""}
-            ${["FAILED", "UNKNOWN"].includes(t.status) ? `<p>${t.status === "UNKNOWN" ? "Chưa xác định kết quả; không tự gọi AI lại để tránh phí trùng." : "Chưa chấm được; đây không phải câu trả lời sai."} ${escape(t.gradeRetry?.errorCode)} · Mã tác vụ: ${escape(t.gradeRetry?.operationId)}</p>` : ""}
+            ${["FAILED", "UNKNOWN"].includes(t.status) ? `<p>${t.gradeRetry?.errorCode === 'AI_PROVIDER_UNAVAILABLE' ? escape(operationFailure({status: t.status, errorCode: t.gradeRetry.errorCode})) : t.status === "UNKNOWN" ? "Chưa xác định kết quả; không tự gọi AI lại để tránh phí trùng." : "Chưa chấm được; đây không phải câu trả lời sai."} ${escape(t.gradeRetry?.errorCode)} · Mã tác vụ: ${escape(t.gradeRetry?.operationId)}</p>` : ""}
             ${a.status !== "COMPLETED" && t.gradeRetry?.allowed ? `<button type="button" data-retry-grade="${escape(t.attemptId)}">Thử chấm lại câu trả lời đã lưu (còn ${t.gradeRetry.remaining} lần)</button>` : ""}
             ${t.status === "FAILED" && t.gradeRetry?.remaining === 0 ? "<p>Đã hết lượt thử chấm lại. Giữ mã tác vụ để được hỗ trợ; không cần gửi lặp.</p>" : ""}</section>`).join("");
     }

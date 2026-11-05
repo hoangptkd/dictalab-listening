@@ -28,7 +28,7 @@ def config():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("http_status, expected", [(429, 4), (500, 1), (401, 1)])
+@pytest.mark.parametrize("http_status, expected", [(429, 4), (500, 1), (503, 1), (401, 1)])
 async def test_only_429_visits_each_source_once_and_keeps_model(http_status, expected):
     cfg, calls = config(), []
     def handler(request):
