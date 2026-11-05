@@ -1010,6 +1010,9 @@
     gap: 10px;
     margin-bottom: 12px;
 }
+#scenario-audio { width: 100%; max-inline-size: 100%; }
+.scenario-review-question, .scenario-listening-hint { padding: 16px; margin-block: 16px; border: 1px solid var(--line); }
+.scenario-browser button:disabled { cursor: not-allowed; opacity: .6; }
 
 .scenario-personalization > summary { cursor: pointer; font-weight: 600; color: var(--ink); }
 .scenario-personalization[open] > summary { margin-bottom: 16px; }

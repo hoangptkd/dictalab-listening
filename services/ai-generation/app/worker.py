@@ -84,7 +84,7 @@ def process(body, settings, store, runner=None):
                                  uncertain=not isinstance(error, QualityRejected))
         else:
             state = store.finish(event, error="TRANSPORT" if retry_safe(error) else "GENERATION_FAILED", retry=retry_safe(error))
-        logger.warning("ai_job_failed", extra={"job_id": str(event.jobId), "kind": event.payload.kind, "status": state})
+        logger.warning("ai_job_failed job_id=%s kind=%s status=%s error_type=%s", event.jobId, event.payload.kind, state, type(error).__name__)
     return "ACK" if state in ("DONE", "PENDING") else "DEAD"
 
 

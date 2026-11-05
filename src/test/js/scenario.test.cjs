@@ -7,15 +7,15 @@ const source = fs.readFileSync(require('node:path').resolve(__dirname, '../../ma
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 function harness(api, storage = new Map()) {
-    const nodes = new Map(), calls = [], timers = [];
+    const nodes = new Map(), calls = [], timers = []; let focused = null;
     function node(key) {
-        if (!nodes.has(key)) nodes.set(key, {listeners: {}, events: {}, value: '', textContent: '',
+        if (!nodes.has(key)) nodes.set(key, {id: key.startsWith('#') ? key.slice(1) : '', listeners: {}, events: {}, value: '', textContent: '',
             addEventListener(name, fn, options = {}) {
                 (this.events[name] ||= []).push({fn, once: options.once});
                 this.listeners[name] = event => { for (const entry of [...this.events[name]]) { if (entry.once) this.removeEventListener(name, entry.fn); entry.fn(event || {type: name}); } };
             },
             removeEventListener(name, fn) {this.events[name] = (this.events[name] || []).filter(e => e.fn !== fn);},
-            hasAttribute() {return false;}, setAttribute() {}, focus() {}, async play() {this.paused = false;},
+            dataset: {}, hasAttribute() {return false;}, setAttribute() {}, focus() {focused = key;}, async play() {this.paused = false;},
             pause() {this.paused = true; this.listeners.pause?.({type:'pause'});}, load() {}, removeAttribute(name) {delete this[name];}});
         return nodes.get(key);
     }
@@ -26,6 +26,10 @@ function harness(api, storage = new Map()) {
             return null;
         },
         querySelectorAll(selector) {
+            if (selector === 'button') return [...this.innerHTML.matchAll(/<button\b([^>]*)>/g)].map(m => {
+                const id = m[1].match(/id="([^"]+)"/); const el = node(id ? '#'+id[1] : 'button:'+m.index);
+                if (!el.dataset.busyDisabled) el.disabled = /\bdisabled\b/.test(m[1]); return el;
+            });
             const attr = selector.slice(1, -1);
             return [...this.innerHTML.matchAll(new RegExp(`${attr}="([^"]*)"`, 'g'))].map((match, index) => {
                 const item = node(`${attr}:${index}`);
@@ -40,7 +44,7 @@ function harness(api, storage = new Map()) {
         setTimeout: fn => {timers.push(fn); return timers.length;}, clearTimeout() {},
         sessionStorage: {getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)},
         FormData: class extends Map {constructor(form) {super(form.values || []);}}});
-    return {module: window.DictaLabScenario, root, nodes, calls, storage, timers, setUser: id => {user = {id};}, node};
+    return {module: window.DictaLabScenario, root, nodes, calls, storage, timers, focused: () => focused, setUser: id => {user = {id};}, node};
 }
 function session() {
     return {sessionId: 'session-1', version: 1, status: 'ACTIVE', titleVi: '<script>unsafe</script>', specification: {settingVi: 'Cửa hàng', goalVi: 'Đặt bánh', characters: []},
@@ -404,8 +408,11 @@ test('play-all continues through queued and cached segments, refreshing versions
     const plays = h.calls.filter(c => c.url.endsWith('/play'));
     assert.deepEqual(plays.map(c => c.options.body.segmentId), ['s1','s2','s3']);
     assert.deepEqual(plays.map(c => c.options.body.expectedVersion), [1,2,3]);
-    assert.match(h.node('#scenario-status').textContent, /Đã nghe xong/);
-    assert.equal(h.node('#scenario-audio').events.pause.length, 0);
+    assert.match(h.node('#scenario-status').textContent, /Đã nghe xong hoạt động/);
+    // Browser event dispatch may resume the sequence before its other ended listener runs.
+    h.node('#scenario-audio').listeners.ended();
+    assert.match(h.node('#scenario-status').textContent, /Đã nghe xong hoạt động/);
+    assert.equal(h.node('#scenario-audio').events.pause.length, 1); // Media status listener remains, sequence listener is gone.
     assert.equal(h.storage.has('dictalab:scenario:10:operation'), false);
 });
 
@@ -418,7 +425,7 @@ for (const interruption of ['pause','error','stop','leave']) test(`play-all canc
     else h.node('#scenario-audio').listeners[interruption]();
     await tick();
     assert.equal(h.calls.filter(c=>c.url.endsWith('/play')).length,1);
-    assert.equal(h.node('#scenario-audio').events.ended.length,0);
+    assert.equal(h.node('#scenario-audio').events.ended.length,['stop','leave'].includes(interruption) ? 0 : 1); // Native resume retains status; explicit teardown removes it.
     if(interruption==='error') assert.match(h.node('#scenario-status').textContent,/Không tải hoặc giải mã/);
 });
 
@@ -487,4 +494,70 @@ test('recommendations incompatible with the saved target profile are not offered
     const api=personalizedApi([pref],'general-communication',3);
     const h=harness(async (url,options)=>url.endsWith('/recommendations') ? {basis:'RECENT_UNAIDED_FIRST_ATTEMPTS',suggestions:[{id:'inference',focusSkill:'supported-inference',inputVi:'Suy luận'}]} : api(url,options));
     await h.module.show(); assert.doesNotMatch(h.root.innerHTML,/data-recommendation/);
+});
+
+test('recommendation focus survives reload along with its brief', async () => {
+    const pref={programCode:'ielts-listening',programVersion:2,target:{value:'6.5'},version:1};
+    const original=personalizedApi([pref]); const storage=new Map();
+    const api=(url,options)=>url.endsWith('/recommendations') ? {suggestions:[{titleVi:'Họp',inputVi:'Hiểu lý do trong cuộc họp',focusSkill:'reason'}]} : original(url,options);
+    const first=harness(api,storage); await first.module.show(); first.node('data-recommendation:0').listeners.click();
+    const second=harness(api,storage); await second.module.show();
+    const form=second.node('#scenario-create'); form.values=[['inputVi',second.node('#scenario-input').value]];
+    form.listeners.submit({preventDefault(){},currentTarget:form}); await tick();
+    assert.equal(second.calls.find(c=>c.options?.method==='POST').options.body.focusSkill,'reason');
+});
+
+test('raw remix survives refresh, review and failed extract', async () => {
+    const s=session(); s.status='COMPLETED'; s.activities[0].status='COMPLETED';
+    const storage=new Map(); const api=async(url,options={})=>options.method==='POST' ? {operationId:'bad',stage:'EXTRACT'} : url.includes('/operations/') ? {status:'FAILED'} : s;
+    const first=harness(api,storage); await first.module.show(s.sessionId);
+    first.node('#scenario-remix-input').value='Đổi thành đi xe buýt'; first.node('#scenario-remix-input').listeners.input();
+    const next=harness(api,storage); await next.module.show(s.sessionId);
+    assert.equal(next.node('#scenario-remix-input').value,'Đổi thành đi xe buýt');
+    const form=next.node('#scenario-remix'); form.values=[['inputVi','Đổi thành đi xe buýt']];
+    form.listeners.submit({preventDefault(){},currentTarget:form}); await tick(); await tick();
+    assert.equal(JSON.parse(storage.get('dictalab:scenario:10:remix:session-1')),'Đổi thành đi xe buýt');
+});
+
+test('optional recommendation outage retains catalog and session load failure has GET-only retry', async () => {
+    const original=personalizedApi(); const h=harness((url,opts)=>url.endsWith('/recommendations') ? Promise.reject(new Error('offline')) : original(url,opts));
+    await h.module.show(); assert.match(h.root.innerHTML,/scenario-create/);
+    let failed=true; const s=session(); const lesson=harness(async()=>{if(failed)throw new Error('offline');return s;});
+    await lesson.module.show(s.sessionId); assert.match(lesson.root.innerHTML,/Thử tải lại/); assert.doesNotMatch(lesson.root.innerHTML,/Đang tải bài học/);
+    failed=false; lesson.node('#scenario-load-retry').listeners.click(); await tick();
+    assert.match(lesson.root.innerHTML,/scenario-answer/); assert.equal(lesson.calls.filter(c=>c.options?.method==='POST').length,0);
+});
+
+test('native single playback shows real ordinal, pause and ended without replacing answers', async () => {
+    const s=session();s.activities[0].segments.push({segmentId:'s2',speakerId:'a'});
+    const h=harness(async url=>url.endsWith('/play') ? {status:'READY',mediaId:'second'} : s);
+    await h.module.show(s.sessionId); h.node('data-play:1').listeners.click(); await tick();
+    assert.match(h.node('#scenario-status').textContent,/đoạn 2\/2/);
+    h.node('#scenario-audio').listeners.pause(); assert.match(h.node('#scenario-status').textContent,/tạm dừng/);
+    h.node('#scenario-audio').ended=true;h.node('#scenario-audio').listeners.ended(); assert.match(h.node('#scenario-status').textContent,/Đã nghe xong đoạn 2\/2/);
+    assert.match(h.root.innerHTML,/scenario-answer/);
+});
+
+test('play-all visibly locks mutation buttons and leaves stop usable until pause', async () => {
+    const s=session(); const h=harness(async url=>url.endsWith('/play') ? {status:'READY',mediaId:'one'} : s);
+    await h.module.show(s.sessionId);h.node('#scenario-play-all').listeners.click(); await tick();
+    assert.equal(h.node('#scenario-refresh').disabled,true); assert.notEqual(h.node('#scenario-stop-audio').disabled,true);
+    h.node('#scenario-audio').listeners.pause(); await tick(); assert.equal(h.node('#scenario-refresh').disabled,false);
+});
+
+test('review brings focus to its heading and places answer, correction and source in a question card', async () => {
+    const s=session();s.status='COMPLETED'; const a=s.activities[0];a.status='COMPLETED';a.attempts=[graded('INCORRECT')];
+    a.questions[0].answerVi='Chín giờ';a.questions[0].evidence=[{segmentId:'s1',quoteEn:'At nine.'}];
+    const h=harness(async()=>s); await h.module.show(s.sessionId);h.node('data-review:0').listeners.click(); await tick();
+    assert.equal(h.focused(),'#scenario-step-heading');
+    assert.match(h.root.innerHTML, /scenario-review-question[\s\S]*Bạn trả lời:[\s\S]*Chưa đúng[\s\S]*Đáp án: Chín giờ[\s\S]*Nghe bằng chứng/);
+    assert.match(h.root.innerHTML,/Lịch sử trả lời và hỗ trợ/);
+});
+
+test('opened hint stays separate from playback messages on reload', async () => {
+    const s=session();s.activities[0].hintOpened=true;s.activities[0].hintVi='Chú ý lý do.';
+    const h=harness(async url=>url.endsWith('/play') ? {status:'READY',mediaId:'one'} : s);
+    await h.module.show(s.sessionId);h.node('data-play:0').listeners.click();await tick();
+    assert.match(h.root.innerHTML,/scenario-listening-hint[\s\S]*Chú ý lý do/);
+    assert.match(h.node('#scenario-status').textContent,/Đang nghe/);
 });

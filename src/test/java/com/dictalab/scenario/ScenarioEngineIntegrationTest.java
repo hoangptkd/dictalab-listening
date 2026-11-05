@@ -639,6 +639,40 @@ class ScenarioEngineIntegrationTest {
         assertThat(dispatch(engine.play(user,sid,aid,id(),new ScenarioEngine.PlayRequest(session.path("version").asLong(),"s1"))).path("status").asText()).isEqualTo("FAILED");
     }
 
+    @Test void openedHintSurvivesSessionReloadWithoutLeakingAnswers() {
+        var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        var help=engine.help(user,sid,aid,id(),new ScenarioEngine.HelpRequest(session.path("version").asLong(),"HINT"));
+        var activity=engine.session(user,sid).path("activities").get(0);
+        assertThat(activity.path("hintVi")).isEqualTo(help.path("hintVi"));
+        assertThat(activity.path("questions").get(0).has("answerVi")).isFalse();
+        assertThat(activity.path("segments").get(0).has("textEn")).isFalse();
+    }
+
+    @Test void restrictedHistoricalProgramOnlyOffersAudioFromItsExactReadyCache() {
+        var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        dispatch(engine.play(user,sid,aid,id(),new ScenarioEngine.PlayRequest(session.path("version").asLong(),"s1")));
+        doThrow(new ScenarioFailure(503,"UNSUPPORTED_PROGRAM_MODE","Chương trình chưa mở.")).when(release).require(user);
+        var saved=engine.session(user,sid);
+        assertThat(saved.path("playbackRestrictionVi").asText()).contains("chưa mở");
+        assertThat(saved.path("activities").get(0).path("segments").get(0).path("canPlay").asBoolean()).isTrue();
+        assertThat(saved.path("activities").get(0).path("segments").get(1).path("canPlay").asBoolean()).isFalse();
+        assertThat(engine.play(user,sid,aid,id(),new ScenarioEngine.PlayRequest(saved.path("version").asLong(),"s1")).path("status").asText()).isEqualTo("READY");
+        var version=engine.session(user,sid).path("version").asLong();
+        assertThatThrownBy(()->engine.play(user,sid,aid,id(),new ScenarioEngine.PlayRequest(version,"s2"))).isInstanceOf(ScenarioFailure.class);
+    }
+
+    @Test void invalidHistoricalVoiceSnapshotDoesNotBlockReadingRestrictedLesson() {
+        doReturn(recipe()).when(engineConfig).ttsRecipe();
+        var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        var content=(ObjectNode)tree(db.queryForObject("SELECT private_json FROM scenario_activities WHERE id=?",String.class,aid));
+        ((ObjectNode)content.path("activity").path("segments").get(0)).put("textEn","[REDACTED]");
+        db.update("UPDATE scenario_activities SET private_json=? WHERE id=?",content.toString(),aid);
+        doThrow(new ScenarioFailure(503,"UNSUPPORTED_PROGRAM_MODE","Chương trình chưa mở.")).when(release).require(user);
+        var saved=engine.session(user,sid);
+        assertThat(saved.path("activities").get(0).path("segments").get(0).path("canPlay").asBoolean()).isFalse();
+        assertThat(saved.path("activities").get(0).path("questions")).hasSize(2);
+    }
+
     @Test void manualAudioRetriesAreBoundedAndUnknownNeverCreatesAnotherPaidJob() {
         var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
         doAnswer(call -> object().put("schemaVersion","1").put("jobId",(String)call.getArgument(1)).put("status","FAILED")).when(ai).submitScenario(anyLong(),anyString(),any(),any());

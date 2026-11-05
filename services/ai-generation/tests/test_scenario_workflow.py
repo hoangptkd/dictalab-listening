@@ -58,6 +58,19 @@ def execute(value, responses):
     return result, calls
 
 
+def test_failed_call_logs_phase_without_exception_content(caplog):
+    from app.providers.base import ProviderHttpError
+    error = ProviderHttpError(429)
+    error.args = ("private-error-canary",)
+    with pytest.raises(ProviderHttpError):
+        execute(payload(), [error])
+    assert "phase=GENERATE" in caplog.text
+    assert "http_status=429" in caplog.text
+    assert "error_type=ProviderHttpError" in caplog.text
+    assert "Tôi muốn" not in caplog.text
+    assert "private-error-canary" not in caplog.text
+
+
 def extraction_response():
     return {**{k: copy.deepcopy(v) for k, v in EXAMPLE["specification"].items() if k not in {"constraintsVi", "learnerRoleVi"}}, "learnerCharacterId": "customer",
             "providedFacts": [{"quoteVi": "nhận ngày mai"}],

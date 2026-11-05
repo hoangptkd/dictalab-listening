@@ -6,6 +6,7 @@ Separately pinned harness releases permit bounded, scoped quality repair.
 import asyncio
 import hashlib
 import json
+import logging
 import re
 import time
 from typing import Annotated, Literal
@@ -29,6 +30,8 @@ from . import scenario_prompts_personalized_fewshot_v6 as previous_personalized_
 from . import scenario_prompts_personalized_fewshot_v7 as personalized_fewshot
 from . import scenario_prompts_personalized_fewshot_v8 as harness_release
 from . import scenario_prompts_personalized_fewshot_v9 as harness_v9
+
+logger = logging.getLogger("dictalab.ai.scenario")
 
 V4_PROMPT_VERSION = "SCENARIO_LISTENING_V4"
 OUTPUT_TOKENS = {"EXTRACT": 2600, "GENERATE": 3200, "QUESTIONS": 4000,
@@ -797,10 +800,15 @@ async def execute(event, settings):
             schema = response_schema(model)
             if purpose == "GENERATE":
                 schema["$defs"]["Segment"]["properties"]["speakerId"]["enum"] = [c.id for c in payload.specification.characters]
-            raw, provider = await asyncio.wait_for(gateway.complete(
-                [{"role": "system", "content": instructions[purpose]},
-                 {"role": "user", "content": json.dumps(data, ensure_ascii=False)}],
-                schema, deadline, "scenario_" + purpose.lower(), temperature=0), max(0.01, deadline - time.monotonic()))
+            try:
+                raw, provider = await asyncio.wait_for(gateway.complete(
+                    [{"role": "system", "content": instructions[purpose]},
+                     {"role": "user", "content": json.dumps(data, ensure_ascii=False)}],
+                    schema, deadline, "scenario_" + purpose.lower(), temperature=0), max(0.01, deadline - time.monotonic()))
+            except Exception as error:
+                logger.warning("scenario_call_failed job_id=%s phase=%s error_type=%s http_status=%s",
+                               event.jobId, purpose, type(error).__name__, getattr(error, "status", None))
+                raise
             calls.append({"purpose": purpose, "provider": provider, "model": gateway.last_model})
             try:
                 return model.model_validate(raw)

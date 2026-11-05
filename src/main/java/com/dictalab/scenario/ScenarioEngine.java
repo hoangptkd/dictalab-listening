@@ -165,20 +165,30 @@ public class ScenarioEngine {
             result.set("specification",tree((String)draft.get("specification_json")));
             result.set("declaredGoals",tree((String)draft.get("target_json")));
             if (draft.get("learning_context_json")!=null) result.set("learningContext",tree((String)draft.get("learning_context_json")));
+            boolean audioAllowed=true;
+            try { requireProgram(user,draft); }
+            catch (ScenarioFailure unavailable) { audioAllowed=false; result.put("playbackRestrictionVi",unavailable.getMessage()); }
             var activities=result.putArray("activities");
-            for (var a : data.db.queryForList("SELECT * FROM scenario_activities WHERE session_id=? ORDER BY ordinal",id)) activities.add(publicActivity(a));
+            for (var a : data.db.queryForList("SELECT * FROM scenario_activities WHERE session_id=? ORDER BY ordinal",id)) activities.add(publicActivity(a,row,audioAllowed));
             return result;
         });
     }
 
-    private JsonNode publicActivity(Map<String,Object> a) {
+    private JsonNode publicActivity(Map<String,Object> a,Map<String,Object> session,boolean audioAllowed) {
         String aid=(String)a.get("id"); JsonNode content=tree((String)a.get("private_json"));
         boolean completed="COMPLETED".equals(a.get("status")), transcript=Boolean.TRUE.equals(a.get("transcript_opened"));
         var result=object().put("activityId",aid).put("ordinal",number(a,"ordinal")).put("status",(String)a.get("status"))
                 .put("transcriptOpened",transcript).put("hintOpened",Boolean.TRUE.equals(a.get("hint_opened"))).put("plays",number(a,"plays"));
+        if (Boolean.TRUE.equals(a.get("hint_opened"))) result.put("hintVi",hint(content));
         var segments=result.putArray("segments");
         for (var s : content.path("activity").path("segments")) {
             var segment=segments.addObject().put("segmentId",s.path("id").asText()).put("speakerId",s.path("speakerId").asText());
+            if (!audioAllowed) {
+                boolean cached=false;
+                try { cached=data.db.queryForObject("SELECT COUNT(*) FROM scenario_media WHERE activity_id=? AND segment_id=? AND fingerprint=? AND status='READY'",Integer.class,aid,s.path("id").asText(),ttsFingerprint(a,s,ttsPayload(session,s)))>0; }
+                catch (ScenarioFailure unavailable) { /* Invalid historical audio must not prevent reading the lesson. */ }
+                segment.put("canPlay",cached);
+            }
             if (completed || transcript) segment.put("textEn",s.path("textEn").asText());
         }
         var questions=result.putArray("questions");
@@ -307,12 +317,15 @@ public class ScenarioEngine {
             if (request.kind().equals("TRANSCRIPT")) {
                 var content=tree((String)a.get("private_json")); result.set("segments",content.path("activity").path("segments")); result.set("translations",content.path("translations"));
             } else {
-                var strategies=new LinkedHashSet<String>();
-                for (var q : tree((String)a.get("private_json")).path("activity").path("questions")) strategies.add(listeningStrategy(q.path("skill").asText()));
-                result.put("hintVi",String.join(" ",strategies)+" Trả lời bằng tiếng Anh hoặc tiếng Việt theo điều bạn nghe được.");
+                result.put("hintVi",hint(tree((String)a.get("private_json"))));
             }
             return result;
         }));
+    }
+    private String hint(JsonNode content) {
+        var strategies=new LinkedHashSet<String>();
+        for (var q : content.path("activity").path("questions")) strategies.add(listeningStrategy(q.path("skill").asText()));
+        return String.join(" ",strategies)+" Trả lời bằng tiếng Anh hoặc tiếng Việt theo điều bạn nghe được.";
     }
 
     public JsonNode completeActivity(long user,String session,String activity,String key,VersionRequest request) {
@@ -354,9 +367,7 @@ public class ScenarioEngine {
             require(segment!=null);
             var tts=ttsPayload(s,segment);
             // Keep the historical cache namespace for sessions created before voice snapshots.
-            String fingerprint=ScenarioJson.hash(tts.path("kind").asText().equals("tts")
-                    ? "scenario-tts-v1/"+a.get("content_hash")+"/"+segment.toString()
-                    : "scenario-tts-v2/"+a.get("content_hash")+"/"+request.segmentId()+"/"+ScenarioJson.canonical(tts));
+            String fingerprint=ttsFingerprint(a,segment,tts);
             var rows=data.db.queryForList("SELECT id,status FROM scenario_media WHERE activity_id=? AND segment_id=? AND fingerprint=?",activity,request.segmentId(),fingerprint);
             String mediaId;
             JsonNode result;
@@ -380,6 +391,11 @@ public class ScenarioEngine {
             data.db.update("UPDATE scenario_activities SET plays=plays+1 WHERE id=?",activity); bump(session);
             ((ObjectNode)result).put("sessionVersion",request.expectedVersion()+1); return result;
         }));
+    }
+    private String ttsFingerprint(Map<String,Object> activity,JsonNode segment,JsonNode tts) {
+        return ScenarioJson.hash(tts.path("kind").asText().equals("tts")
+                ? "scenario-tts-v1/"+activity.get("content_hash")+"/"+segment.toString()
+                : "scenario-tts-v2/"+activity.get("content_hash")+"/"+segment.path("id").asText()+"/"+ScenarioJson.canonical(tts));
     }
 
     private ObjectNode ttsPayload(Map<String,Object> session,JsonNode segment) {
