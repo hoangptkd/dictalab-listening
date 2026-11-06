@@ -46,6 +46,7 @@ public class ScenarioEngine {
     public record SessionRequest(String draftId, long draftVersion) {}
     public record Answer(String questionId, String textVi) {}
     public record AnswersRequest(long expectedVersion, List<Answer> answers) {}
+    public record AssessmentRequest(long expectedVersion,String mode,String recapText,List<Answer> answers) {}
     public record VersionRequest(long expectedVersion) {}
     public record HelpRequest(long expectedVersion, String kind) {}
     public record PlayRequest(long expectedVersion, String segmentId) {}
@@ -88,11 +89,14 @@ public class ScenarioEngine {
                 .put("maxWordsPerActivity",profile.maxWordsPerActivity()).put("maxWordsPerSession",profile.maxWordsPerSession());
         String draft=id();
         data.db.update("""
-                INSERT INTO scenario_drafts(id,user_id,input_vi,program_code,program_version,program_hash,profile_json,target_json,status,parent_session_id,family_id,expires_at,learning_context_json)
-                VALUES (?,?,?,?,?,?,?,?,'PENDING',?,?,?,?)
+                INSERT INTO scenario_drafts(id,user_id,input_vi,program_code,program_version,program_hash,profile_json,target_json,status,parent_session_id,family_id,expires_at,learning_context_json,workflow_snapshot_json)
+                VALUES (?,?,?,?,?,?,?,?,'PENDING',?,?,?,?,?)
                 """,draft,user,input,program.code(),program.version(),program.definitionHash(),profileJson.toString(),
                 json(data.db.queryForList("SELECT program_code,program_version,component,scale_id,target_value,provenance FROM scenario_learning_goals WHERE user_id=? AND program_code=?",user,program.code())),
-                parent,family,Timestamp.from(Instant.now().plusSeconds(86400)),context==null ? null : context.toString());
+                parent,family,Timestamp.from(Instant.now().plusSeconds(86400)),context==null ? null : context.toString(),
+                object().put("contractVersion",program.meaningAssessment() ? "scenario-job.v3" : context!=null ? "scenario-job.v2" : "scenario-job.v1")
+                        .put("promptHash",program.meaningAssessment() ? release.assessmentPromptHash() : context!=null ? release.personalizedPromptHash() : release.promptHash())
+                        .put("assessmentPolicyVersion",program.meaningAssessment() ? ScenarioAssessment.POLICY : "").toString());
         return operations.create(user,scope,key,intent,"EXTRACT",draft,payload(data.owned("scenario_drafts",user,draft),"EXTRACT").put("inputVi",input));
     }
 
@@ -143,14 +147,30 @@ public class ScenarioEngine {
 
     private ObjectNode payload(Map<String,Object> draft,String phase) {
         boolean personalized=draft.get("learning_context_json")!=null;
-        var result=object().put("kind","scenario").put("contractVersion",personalized ? "scenario-job.v2" : "scenario-job.v1").put("phase",phase)
-                .put("promptHash",personalized ? release.personalizedPromptHash() : release.promptHash()).put("programHash",(String)draft.get("program_hash"));
+        JsonNode snapshot;
+        if (draft.get("workflow_snapshot_json")!=null) snapshot=tree((String)draft.get("workflow_snapshot_json"));
+        else {
+            var original=data.db.queryForList("""
+                    SELECT payload_json FROM scenario_operations WHERE user_id=? AND status='SUCCEEDED'
+                    AND ((kind='EXTRACT' AND resource_id=?) OR (kind='GENERATE' AND resource_id IN (SELECT id FROM scenario_sessions WHERE draft_id=?)))
+                    ORDER BY CASE WHEN kind=? THEN 0 ELSE 1 END,created_at,id LIMIT 1
+                    """,draft.get("user_id"),draft.get("id"),draft.get("id"),phase.equals("GRADE") ? "GENERATE" : "EXTRACT");
+            if (original.isEmpty()) throw new ScenarioFailure(409,"WORKFLOW_PROVENANCE_MISSING","Cannot recover the original lesson workflow.");
+            snapshot=tree((String)original.get(0).get("payload_json"));
+        }
+        require(Set.of("scenario-job.v1","scenario-job.v2","scenario-job.v3").contains(snapshot.path("contractVersion").asText()) && snapshot.path("promptHash").asText().matches("[a-f0-9]{64}"));
+        var result=object().put("kind","scenario").put("contractVersion",snapshot.path("contractVersion").asText()).put("phase",phase)
+                .put("promptHash",snapshot.path("promptHash").asText()).put("programHash",(String)draft.get("program_hash"));
         if (personalized) result.set("learningContext",tree((String)draft.get("learning_context_json")));
         result.set("profile",tree((String)draft.get("profile_json"))); return result;
     }
     private ScenarioProgram requireProgram(long user,Map<String,Object> draft) {
         if (draft.get("learning_context_json")!=null) return release.require(user,(String)draft.get("program_code"),(int)number(draft,"program_version"));
         release.require(user); return release.program();
+    }
+    private void requireGrade(long user,String session) {
+        var s=data.owned("scenario_sessions",user,session); var draft=data.owned("scenario_drafts",user,(String)s.get("draft_id"));
+        release.requireGrade(user,(String)draft.get("program_code"),(int)number(draft,"program_version"),(String)draft.get("program_hash"));
     }
 
     public JsonNode session(long user,String id) {
@@ -181,9 +201,20 @@ public class ScenarioEngine {
 
     private JsonNode publicActivity(Map<String,Object> a,Map<String,Object> session,boolean audioAllowed) {
         String aid=(String)a.get("id"); JsonNode content=tree((String)a.get("private_json"));
+        boolean meaning=ScenarioAssessment.enabled(content.path("activity"));
+        var assessmentState=ScenarioAssessment.state(a);
+        var savedAttempts=data.db.queryForList("SELECT * FROM scenario_attempts WHERE activity_id=? ORDER BY ordinal",aid);
+        var evidence=ScenarioAssessment.project(savedAttempts);
         boolean completed="COMPLETED".equals(a.get("status")), transcript=Boolean.TRUE.equals(a.get("transcript_opened"));
         var result=object().put("activityId",aid).put("ordinal",number(a,"ordinal")).put("status",(String)a.get("status"))
                 .put("transcriptOpened",transcript).put("hintOpened",Boolean.TRUE.equals(a.get("hint_opened"))).put("plays",number(a,"plays"));
+        boolean done=completed || meaning && ScenarioAssessment.done(assessmentState,evidence);
+        if (meaning) {
+            boolean recap=!assessmentState.path("recapSkipped").asBoolean() && !evidence.recap() && !evidence.checks();
+            var assessment=result.putObject("assessment").put("policyVersion",ScenarioAssessment.POLICY).put("stage",done ? "DONE" : recap ? "RECAP" : "CHECKS")
+                    .put("round",assessmentState.path("checksRound").asInt()).put("canComplete",!completed && ScenarioAssessment.canComplete(assessmentState,evidence)).put("recapAllowed",recap && !evidence.pending());
+            assessment.set("coverage",ScenarioAssessment.coverage(content.path("activity"),evidence,done));
+        }
         if (Boolean.TRUE.equals(a.get("hint_opened"))) result.put("hintVi",hint(content));
         var segments=result.putArray("segments");
         for (var s : content.path("activity").path("segments")) {
@@ -198,18 +229,19 @@ public class ScenarioEngine {
         }
         var questions=result.putArray("questions");
         for (var q : content.path("activity").path("questions")) {
+            if (meaning && !completed && java.util.stream.StreamSupport.stream(assessmentState.path("pendingQuestionIds").spliterator(),false).noneMatch(id -> id.equals(q.path("id")))) continue;
             var question=questions.addObject().put("questionId",q.path("id").asText()).put("type",q.path("type").asText())
                     .put("skill",q.path("skill").asText()).put("promptVi",q.path("promptVi").asText());
             if (completed) { question.put("answerVi",q.path("answerVi").asText()); question.set("evidence",q.path("evidence")); }
         }
         if (completed || transcript) result.set("translations",content.path("translations"));
         var attempts=result.putArray("attempts");
-        var savedAttempts=data.db.queryForList("SELECT * FROM scenario_attempts WHERE activity_id=? ORDER BY ordinal",aid);
         var grades=data.db.queryForList("SELECT id,resource_id,error_code FROM scenario_operations WHERE kind='GRADE' AND resource_id IN (SELECT id FROM scenario_attempts WHERE activity_id=?) ORDER BY created_at,id",aid);
         for (var attempt : savedAttempts) {
             var item=attempts.addObject().put("attemptId",(String)attempt.get("id")).put("ordinal",number(attempt,"ordinal")).put("status",(String)attempt.get("status"));
             item.set("answers",tree((String)attempt.get("answers_json"))); item.set("support",tree((String)attempt.get("support_json")));
-            if (attempt.get("result_json")!=null) {
+            if (meaning) item.put("recapText",tree((String)attempt.get("support_json")).path("recapText").asText());
+            if (attempt.get("result_json")!=null && (!meaning || done)) {
                 var grade=tree((String)attempt.get("result_json"));
                 for (var fact : grade.path("facts")) if (Set.of("PARTIAL","INCORRECT","MISSED").contains(fact.path("status").asText())) {
                     for (var q : content.path("activity").path("questions")) if (q.path("id").equals(fact.path("questionId"))) {
@@ -267,10 +299,10 @@ public class ScenarioEngine {
         return data.tx.execute(tx -> {
             data.lockUser(user); data.activity(user,session,activity);
             var prior=operations.prior(user,scope,key,request); if (prior!=null) return prior;
-            var ownedSession=data.owned("scenario_sessions",user,session);
-            requireProgram(user,data.owned("scenario_drafts",user,(String)ownedSession.get("draft_id")));
+            requireGrade(user,session);
             var a=editable(user,session,activity,request.expectedVersion());
             var saved=tree((String)a.get("private_json")); var expected=new HashSet<String>();
+            require(!ScenarioAssessment.enabled(saved.path("activity")));
             saved.path("activity").path("questions").forEach(q -> expected.add(q.path("id").asText()));
             require(request.answers()!=null && request.answers().size()==2);
             var answers=ScenarioJson.MAPPER.createArrayNode(); var seen=new HashSet<String>();
@@ -290,14 +322,54 @@ public class ScenarioEngine {
         });
     }
 
+    public JsonNode assessment(long user,String session,String activity,String key,AssessmentRequest request) {
+        return data.tx.execute(tx -> data.receipt(user,"assessment/"+activity,key,request,() -> {
+            require(request!=null && request.mode()!=null && Set.of("RECAP","SKIP_RECAP","CHECKS").contains(request.mode()) && request.recapText()!=null && request.answers()!=null);
+            var a=editable(user,session,activity,request.expectedVersion()); var content=tree((String)a.get("private_json")).path("activity");
+            require(ScenarioAssessment.enabled(content));
+            var attempts=data.db.queryForList("SELECT * FROM scenario_attempts WHERE activity_id=? ORDER BY ordinal",activity);
+            var evidence=ScenarioAssessment.project(attempts); var state=ScenarioAssessment.state(a);
+            require(!evidence.pending() && !ScenarioAssessment.done(state,evidence));
+            // A failed/unknown provider result must be recovered on its original attempt.
+            require(attempts.isEmpty() || "GRADED".equals(attempts.get(attempts.size()-1).get("status")));
+            boolean recap=request.mode().equals("RECAP"),skip=request.mode().equals("SKIP_RECAP");
+            require(recap || request.recapText().isEmpty()); require(recap || skip || !state.path("pendingQuestionIds").isEmpty());
+            if (recap || skip) require(!state.path("recapSkipped").asBoolean() && !evidence.recap() && !evidence.checks() && request.answers().isEmpty());
+            if (skip) {
+                state.put("recapSkipped",true); ScenarioAssessment.advance(state,content,attempts); saveAssessmentState(activity,state); bump(session); return session(user,session);
+            }
+            var s=data.owned("scenario_sessions",user,session); var draft=data.owned("scenario_drafts",user,(String)s.get("draft_id"));
+            requireGrade(user,session);
+            require(attempts.size()<3);
+            var selected=new LinkedHashSet<String>(); if (!recap) state.path("pendingQuestionIds").forEach(q -> selected.add(q.asText()));
+            var answers=ScenarioJson.MAPPER.createArrayNode(); var seen=new HashSet<String>();
+            for (var answer : request.answers()) {
+                require(answer!=null && selected.contains(answer.questionId()) && seen.add(answer.questionId()) && answer.textVi()!=null && answer.textVi().length()<=1500);
+                answers.addObject().put("questionId",answer.questionId()).put("textVi",answer.textVi().isBlank() ? "" : safeInput(answer.textVi(),1500));
+            }
+            require(seen.equals(selected));
+            var submission=object().put("mode",request.mode()).put("recapText",recap ? safeInput(request.recapText(),1500) : ""); submission.set("answers",answers);
+            var meanings=new LinkedHashSet<String>();
+            if (recap) content.path("assessment").path("meanings").forEach(m -> meanings.add(m.path("id").asText()));
+            else for (var q : content.path("questions")) if (selected.contains(q.path("id").asText())) q.path("meaningIds").forEach(m -> meanings.add(m.asText()));
+            submission.set("meaningIds",ScenarioJson.MAPPER.valueToTree(meanings));
+            var support=object().put("transcriptOpened",Boolean.TRUE.equals(a.get("transcript_opened"))).put("hintOpened",Boolean.TRUE.equals(a.get("hint_opened")))
+                    .put("plays",number(a,"plays")).put("feedbackExposed",false).put("mode",request.mode()).put("recapText",submission.path("recapText").asText());
+            support.set("selectedQuestionIds",ScenarioJson.MAPPER.valueToTree(selected));
+            String attempt=id(); data.db.update("INSERT INTO scenario_attempts(id,activity_id,ordinal,answers_json,support_json,status) VALUES (?,?,?,?,?,'PENDING')",attempt,activity,attempts.size()+1,answers.toString(),support.toString());
+            var payload=payload(draft,"GRADE"); payload.set("activity",content); payload.set("assessmentSubmission",submission);
+            bump(session); return operations.create(user,"assessment-grade/"+activity,key,request,"GRADE",attempt,payload);
+        }));
+    }
+    private void saveAssessmentState(String activity,ObjectNode state) { data.db.update("UPDATE scenario_activities SET assessment_state_json=? WHERE id=?",state.toString(),activity); }
+
     public JsonNode retryGrade(long user,String session,String activity,String attempt,String key,VersionRequest request) {
         return data.tx.execute(tx -> {
             data.lockUser(user); data.activity(user,session,activity);
             String scope="retry-grade/"+attempt;
             var prior=operations.prior(user,scope,key,request); if (prior!=null) return prior;
             editable(user,session,activity,request.expectedVersion());
-            var s=data.owned("scenario_sessions",user,session);
-            requireProgram(user,data.owned("scenario_drafts",user,(String)s.get("draft_id")));
+            requireGrade(user,session);
             var attempts=data.db.queryForList("SELECT id,status FROM scenario_attempts WHERE activity_id=? ORDER BY ordinal",activity);
             require(!attempts.isEmpty() && attempts.get(attempts.size()-1).get("id").equals(attempt)
                     && "FAILED".equals(attempts.get(attempts.size()-1).get("status"))
@@ -335,8 +407,11 @@ public class ScenarioEngine {
 
     public JsonNode completeActivity(long user,String session,String activity,String key,VersionRequest request) {
         return data.tx.execute(tx -> data.receipt(user,"complete/"+activity,key,request,() -> {
-            editable(user,session,activity,request.expectedVersion());
-            require(data.db.queryForObject("SELECT COUNT(*) FROM scenario_attempts WHERE activity_id=? AND status='GRADED'",Integer.class,activity)>0);
+            var a=editable(user,session,activity,request.expectedVersion());
+            if (ScenarioAssessment.enabled(tree((String)a.get("private_json")).path("activity"))) {
+                var evidence=ScenarioAssessment.project(data.db.queryForList("SELECT * FROM scenario_attempts WHERE activity_id=? ORDER BY ordinal",activity));
+                var state=ScenarioAssessment.state(a); require(ScenarioAssessment.canComplete(state,evidence)); state.putArray("pendingQuestionIds"); state.put("checksRound",2); saveAssessmentState(activity,state);
+            } else require(data.db.queryForObject("SELECT COUNT(*) FROM scenario_attempts WHERE activity_id=? AND status='GRADED'",Integer.class,activity)>0);
             require(data.db.queryForObject("SELECT COUNT(*) FROM scenario_attempts WHERE activity_id=? AND status='PENDING'",Integer.class,activity)==0);
             data.db.update("UPDATE scenario_activities SET status='COMPLETED' WHERE id=?",activity); bump(session);
             if (data.db.queryForObject("SELECT COUNT(*) FROM scenario_activities WHERE session_id=? AND status<>'COMPLETED'",Integer.class,session)==0)
@@ -454,6 +529,7 @@ public class ScenarioEngine {
     /** Called after remote I/O, committing only while the original lease and owner still exist. */
     void accept(long user,String id,String lease,Map<String,Object> op,JsonNode result) {
         String kind=(String)op.get("kind"), resource=(String)op.get("resource_id"); JsonNode input=tree((String)op.get("payload_json"));
+        boolean meaning="scenario-job.v3".equals(input.path("contractVersion").asText());
         ScenarioContent.check("1".equals(result.path("schemaVersion").asText()) && id.equals(result.path("requestId").asText()));
         if (!kind.equals("TTS")) ScenarioContent.check(id.equals(result.path("generationId").asText()));
         else ScenarioContent.check(result.path("generationId").asText().matches("[a-f0-9-]{36}"));
@@ -461,7 +537,22 @@ public class ScenarioEngine {
         ScenarioContent.check(kind.equals("TTS") ? provider.equals("cartesia") : ai.scenarioProvider().equals(provider));
         for (String f : List.of("model","modelDigest","promptVersion","promptHash")) ScenarioContent.text(result,f,128);
         ScenarioContent.check(result.path("promptHash").asText().matches("[a-f0-9]{64}"));
-        if (!kind.equals("TTS")) {
+        if (meaning) {
+            ScenarioContent.check(ScenarioAssessment.releaseMatches(input.path("promptHash").asText(),result.path("promptVersion").asText())
+                    && input.path("promptHash").asText().equals(result.path("promptHash").asText())
+                    && input.path("programHash").asText().equals(result.path("programHash").asText())
+                    && result.path("assessmentPolicyVersion").asText().equals(ScenarioAssessment.POLICY));
+            var allowedModels=new HashSet<String>(); allowedModels.add(result.path("model").asText());
+            if (result.has("modelRouting")) {
+                var routing=result.path("modelRouting"); ScenarioContent.fields(routing,"primaryModel","fallbackModels");
+                ScenarioContent.check(provider.equals("gemini") && routing.path("primaryModel").asText().equals(result.path("model").asText()));
+                ScenarioContent.list(routing.path("fallbackModels"),0,3);
+                for (var model : routing.path("fallbackModels")) ScenarioContent.check(model.isTextual() && model.asText().matches("gemini-[a-zA-Z0-9_.-]{1,93}") && allowedModels.add(model.asText()));
+            }
+            ScenarioContent.list(result.path("calls"),kind.equals("GENERATE") ? 5 : 1,kind.equals("GENERATE") ? 9 : 1);
+            for (var call : result.path("calls")) { ScenarioContent.fields(call,"purpose","provider","model"); ScenarioContent.check(provider.equals(call.path("provider").asText()) && allowedModels.contains(call.path("model").asText()) && (kind.equals("GENERATE") || kind.equals(call.path("purpose").asText()))); }
+            if (kind.equals("GENERATE")) validateHarnessCalls(result);
+        } else if (!kind.equals("TTS")) {
             boolean personalized="scenario-job.v2".equals(input.path("contractVersion").asText());
             // Previously submitted jobs may settle only with their exact historical fingerprint.
             boolean legacy=Set.of("f3a1a93382df50b9e798d9ae9d11e502d3e8eb0c347751195c6d00b7ba88b8a1",
@@ -510,14 +601,14 @@ public class ScenarioEngine {
             if (harnessGeneration) validateHarnessCalls(result);
         }
         JsonNode task=result.path("task"); byte[] wav=null; String url=null;
-        if (kind.equals("EXTRACT")) ScenarioContent.specification(task,"scenario-job.v2".equals(input.path("contractVersion").asText()));
+        if (kind.equals("EXTRACT")) ScenarioContent.specification(task,meaning || "scenario-job.v2".equals(input.path("contractVersion").asText()));
         else if (kind.equals("GENERATE")) {
             String pin=input.path("promptHash").asText();
             boolean advisory="scenario-job.v2".equals(input.path("contractVersion").asText()) && Set.of("aa79b767fee0970408e4fe420d1d97615595fdd195e16d8e919f28881f265485", "358201f08eb87c7d4d2306220c3828a92cda57ac93d57faed80a508d892fa1c1", "c1dcc2e3cc29847ba09b6d53a447a45e8bfe48ae13e9dfb4e2e131173f1e6a18", "defd36c45a53aa6ac5002d0acb50996a5790fd87554646e36f9830dd3a225504", "a98960f21fabe1f652f68fac72794c41e5c18870a400059cef4b03f50a9a838b", "df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303").contains(pin);
             boolean flexible=advisory || "scenario-job.v2".equals(input.path("contractVersion").asText()) && "f5f347bcac1dd0767f3af409704778357cd0ce39dd2a2d7f325671bc22abee1f".equals(pin);
-            ScenarioContent.content(task,input.path("specification"),input.path("profile"),input.has("learningContext") ? input.path("learningContext") : null,flexible,advisory);
+            ScenarioContent.content(task,input.path("specification"),input.path("profile"),input.has("learningContext") ? input.path("learningContext") : null,meaning || flexible,meaning || advisory);
         }
-        else if (kind.equals("GRADE")) ScenarioContent.grade(task,input.path("answers"));
+        else if (kind.equals("GRADE")) { if (meaning) ScenarioAssessment.grade(task,input.path("assessmentSubmission"),input.path("activity")); else ScenarioContent.grade(task,input.path("answers")); }
         else {
             boolean multiVoice=input.path("kind").asText().equals("scenario_tts");
             ScenarioContent.check((multiVoice ? "TTS_WAV_V2" : "TTS_WAV_V1").equals(result.path("promptVersion").asText()));
@@ -540,7 +631,7 @@ public class ScenarioEngine {
                     for (var activity : task.path("activities")) {
                         var privateData=object(); privateData.set("activity",activity); var ts=privateData.putArray("translations");
                         for (var t : translations) if (t.path("activityId").equals(activity.path("id"))) ts.add(t);
-                        data.db.update("INSERT INTO scenario_activities(id,session_id,ordinal,private_json,content_hash) VALUES (?,?,?,?,?)",id(),resource,++ordinal,privateData.toString(),ScenarioJson.hash(ScenarioJson.canonical(privateData)));
+                        data.db.update("INSERT INTO scenario_activities(id,session_id,ordinal,private_json,content_hash,assessment_state_json) VALUES (?,?,?,?,?,?)",id(),resource,++ordinal,privateData.toString(),ScenarioJson.hash(ScenarioJson.canonical(privateData)),meaning ? ScenarioAssessment.initial().toString() : null);
                     }
                     var provenance=result.deepCopy(); ((ObjectNode)provenance).remove("task");
                     var pendingSession=data.owned("scenario_sessions",user,resource);
@@ -552,6 +643,14 @@ public class ScenarioEngine {
                 }
                 case "GRADE" -> {
                     data.db.update("UPDATE scenario_attempts SET status='GRADED',result_json=? WHERE id=? AND status='PENDING'",task.toString(),resource);
+                    if (meaning) {
+                        var a=data.db.queryForMap("SELECT a.* FROM scenario_activities a JOIN scenario_attempts t ON t.activity_id=a.id WHERE t.id=?",resource);
+                        var state=ScenarioAssessment.state(a);
+                        // Only acceptance advances a persisted batch; reads never reselect questions.
+                        state.putArray("pendingQuestionIds");
+                        ScenarioAssessment.advance(state,tree((String)a.get("private_json")).path("activity"),data.db.queryForList("SELECT * FROM scenario_attempts WHERE activity_id=? ORDER BY ordinal",a.get("id")));
+                        saveAssessmentState((String)a.get("id"),state);
+                    }
                     data.db.update("UPDATE scenario_sessions SET version=version+1 WHERE id IN (SELECT a.session_id FROM scenario_activities a JOIN scenario_attempts t ON t.activity_id=a.id WHERE t.id=?)",resource);
                 }
                 case "TTS" -> {
@@ -593,10 +692,11 @@ public class ScenarioEngine {
         }
         var report=result.path("qualityHarness");
         boolean v9="df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303".equals(result.path("promptHash").asText());
+        boolean meaning=ScenarioAssessment.releaseMatches(result.path("promptHash").asText(),result.path("promptVersion").asText());
         ScenarioContent.check(cursor==purposes.size() && extra<=4
                 && report.path("extraCalls").isIntegralNumber() && report.path("extraCalls").asInt()==extra
-                && report.path("policyVersion").asText().equals(v9 ? "scenario-quality-harness.v2" : "scenario-quality-harness.v1")
-                && report.path("policyHash").asText().equals(v9 ? "e15c2b30a59f2b505b047b1920ebdff9c4cb7ccb2ae87cf9cf24803e2e8c2a66" : "ac1a80c90c9f24149f14a9221c0c7382e653d94fccbd823b3862c55fa043bc6b"));
+                && report.path("policyVersion").asText().equals(meaning ? "scenario-meaning-harness.v1" : v9 ? "scenario-quality-harness.v2" : "scenario-quality-harness.v1")
+                && report.path("policyHash").asText().equals(meaning ? "56d0d6d5e826e1b46f20b5ab4a3868dada9537cca996cb35999d3886ee3d6fe2" : v9 ? "e15c2b30a59f2b505b047b1920ebdff9c4cb7ccb2ae87cf9cf24803e2e8c2a66" : "ac1a80c90c9f24149f14a9221c0c7382e653d94fccbd823b3862c55fa043bc6b"));
     }
 
     void failed(Map<String,Object> op,String status) {
@@ -624,7 +724,7 @@ public class ScenarioEngine {
         var rows=data.db.queryForList("""
                 SELECT t.result_json,t.support_json,a.private_json FROM scenario_attempts t
                 JOIN scenario_activities a ON a.id=t.activity_id JOIN scenario_sessions s ON s.id=a.session_id
-                WHERE s.user_id=? AND t.ordinal=1 AND t.status='GRADED' ORDER BY t.created_at DESC,t.id DESC LIMIT 20
+                WHERE s.user_id=? AND a.assessment_state_json IS NULL AND t.ordinal=1 AND t.status='GRADED' ORDER BY t.created_at DESC,t.id DESC LIMIT 20
                 """,user);
         var counts=new TreeMap<String,Integer>(); int facts=0;
         for (var r : rows) {
@@ -637,8 +737,17 @@ public class ScenarioEngine {
                 if (!fact.path("status").asText().equals("CAPTURED")) for (var q : questions) if (q.path("id").equals(fact.path("questionId"))) counts.merge(q.path("skill").asText(),1,Integer::sum);
             }
         }
+        for (var activity : data.db.queryForList("SELECT a.* FROM scenario_activities a JOIN scenario_sessions s ON s.id=a.session_id WHERE s.user_id=? AND a.assessment_state_json IS NOT NULL ORDER BY s.created_at DESC,a.ordinal LIMIT 20",user)) {
+            var content=tree((String)activity.get("private_json")).path("activity");
+            var evidence=ScenarioAssessment.project(data.db.queryForList("SELECT * FROM scenario_attempts WHERE activity_id=? ORDER BY ordinal",activity.get("id")));
+            for (var meaning : content.path("assessment").path("meanings")) {
+                String status=evidence.independent().get(meaning.path("id").asText());
+                if (status==null || Set.of("UNASSESSED","UNCERTAIN").contains(status)) continue;
+                facts++; if (!status.equals("CAPTURED")) counts.merge(meaning.path("skill").asText(),1,Integer::sum);
+            }
+        }
         var result=object().put("basis",facts<6 ? "COLD_START" : "RECENT_UNAIDED_FIRST_ATTEMPTS").put("observedFacts",facts)
-                .put("isAssessedScore",false).put("messageVi",facts<6 ? "Chưa đủ dữ liệu. Hãy chọn tình huống gần nhu cầu của bạn." : "Gợi ý dựa trên tối đa 20 lần trả lời đầu, không mở gợi ý hoặc bản chép.");
+                .put("isAssessedScore",false).put("messageVi",facts<6 ? "Chưa đủ dữ liệu. Hãy chọn tình huống gần nhu cầu của bạn." : "Gợi ý dựa trên bằng chứng độc lập gần đây, không mở gợi ý hoặc bản chép.");
         if (facts>=6) result.set("practiceSignals",ScenarioJson.MAPPER.valueToTree(counts));
         var suggested=suggestions().path("suggestions").deepCopy();
         if (facts>=6 && !counts.isEmpty()) {

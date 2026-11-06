@@ -35,7 +35,7 @@ class ScenarioProgramTest {
 
     @Test void registryDefinitionsAreDeeplyImmutableAndNotApprovedForGeneration() throws Exception {
         var registry = new ScenarioProgramRegistry();
-        assertThat(registry.definitions()).hasSize(7).allMatch(p -> p.status() == ScenarioProgram.Status.DRAFT);
+        assertThat(registry.definitions()).hasSize(10).allMatch(p -> p.status() == ScenarioProgram.Status.DRAFT);
         var general = registry.require("general-communication", 1);
         assertThat(general.difficultyProfiles()).hasSize(3);
         assertThatThrownBy(() -> general.targetScales().get(0).labels().add("A1")).isInstanceOf(UnsupportedOperationException.class);

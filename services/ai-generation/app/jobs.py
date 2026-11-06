@@ -12,12 +12,14 @@ from uuid import UUID
 from pydantic import Field, model_validator
 
 from . import coach, review, tts, conversation_demo, scenario_workflow
+from . import scenario_assessment
 from .coach import StrictModel
 from .config import CLOUD_PROVIDERS
 
 QUEUE = "dictalab.ai.platform.v1"
 DLQ = QUEUE + ".dead"
-Payload = Annotated[coach.CoachInput | review.ReviewInput | tts.TtsInput | tts.ScenarioTtsInput | conversation_demo.ConversationDemoInput | scenario_workflow.ScenarioInput, Field(discriminator="kind")]
+ScenarioPayload = Annotated[scenario_workflow.ScenarioInput | scenario_assessment.ScenarioAssessmentInput, Field(discriminator="contractVersion")]
+Payload = Annotated[coach.CoachInput | review.ReviewInput | tts.TtsInput | tts.ScenarioTtsInput | conversation_demo.ConversationDemoInput | ScenarioPayload, Field(discriminator="kind")]
 
 
 def canonical(value):
@@ -62,6 +64,8 @@ def capability_metadata(payload, settings):
                 "promptHash": digest({"instruction": "Cartesia PCM 24000 mono 16-bit WAV", "input": tts.ScenarioTtsInput.model_json_schema()}),
                 "recipeHash": digest(payload.recipe.model_dump()), "speakerId": payload.speakerId, "voiceId": payload.voiceId}
     if payload.kind == "scenario":
+        if payload.contractVersion == "scenario-job.v3":
+            return scenario_assessment.metadata(settings, payload.promptHash)
         return scenario_workflow.metadata(settings, payload.contractVersion == "scenario-job.v2", payload.promptHash)
     if payload.kind == "conversation_demo":
         return conversation_demo.metadata(settings)

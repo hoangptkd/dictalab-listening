@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.*;
 class ScenarioMigrationIntegrationTest {
     @Test void upgradesPreserveLegacySessionAndHistoricalDraftAndFreshInstallHasEmptyScenarioTables() throws Exception {
         var postgres = ReliabilityContainers.disposablePostgres();
-        for (int previous : new int[]{47,49,0}) {
+        for (int previous : new int[]{47,49,50,0}) {
             String schema = "scenario_migration_" + UUID.randomUUID().toString().replace("-", "");
             var data = new DriverManagerDataSource(postgres.getJdbcUrl()
                     + (postgres.getJdbcUrl().contains("?") ? "&" : "?") + "currentSchema=" + schema,
@@ -43,16 +43,18 @@ class ScenarioMigrationIntegrationTest {
                         .locations("classpath:db/migration", "classpath:db/vendor/postgresql").load();
                 flyway.migrate(); flyway.validate();
                 assertThat(db.queryForObject("SELECT current_schema()", String.class)).isEqualTo(schema);
-                assertThat(flyway.info().current().getVersion().toString()).isEqualTo("50");
+                assertThat(flyway.info().current().getVersion().toString()).isEqualTo("51");
+                assertThat(db.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=? AND ((table_name='scenario_drafts' AND column_name='workflow_snapshot_json') OR (table_name='scenario_activities' AND column_name='assessment_state_json')) AND is_nullable='YES'",Integer.class,schema)).isEqualTo(2);
                 for (String table : new String[]{"scenario_program_versions", "scenario_learning_goals", "scenario_goal_requests", "scenario_drafts", "scenario_sessions", "scenario_activities", "scenario_attempts", "scenario_operations", "scenario_operation_budget", "scenario_media", "scenario_receipts", "scenario_learning_preferences"})
                     assertThat(db.queryForObject("SELECT COUNT(*) FROM " + table, Integer.class)).isEqualTo(previous==49 && java.util.Set.of("scenario_program_versions","scenario_drafts").contains(table) ? 1 : 0);
                 if (previous>0) assertThat(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id='legacy-scenario-fixture'", String.class))
                         .isEqualTo("{\"fixture\":\"unchanged\"}");
                 if (previous==49) {
-                    var draft=db.queryForMap("SELECT input_vi,profile_json,learning_context_json FROM scenario_drafts WHERE id='old-draft'");
+                    var draft=db.queryForMap("SELECT input_vi,profile_json,learning_context_json,workflow_snapshot_json FROM scenario_drafts WHERE id='old-draft'");
                     assertThat(draft.get("input_vi")).isEqualTo("Original brief");
                     assertThat(draft.get("profile_json")).isEqualTo("{\"id\":\"supported\"}");
                     assertThat(draft.get("learning_context_json")).isNull();
+                    assertThat(draft.get("workflow_snapshot_json")).isNull();
                 }
             } finally {
                 // Generated schema belongs only to this test's disposable container.

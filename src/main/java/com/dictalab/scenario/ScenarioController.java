@@ -34,13 +34,14 @@ public class ScenarioController {
     @GetMapping("/catalog")
     public ResponseEntity<Catalog> catalog(@AuthenticationPrincipal DictaLabPrincipal owner) {
         boolean available=release.available(owner.id());
-        var personalized=registry.definitions().stream().filter(p -> p.version()>=2 && p.status()!=ScenarioProgram.Status.RETIRED
-                && registry.definitions().stream().noneMatch(other -> other.code().equals(p.code()) && other.version()>p.version() && other.status()!=ScenarioProgram.Status.RETIRED)).toList();
         var generation=release.generationPrograms(owner.id());
+        var personalized=registry.definitions().stream().filter(p -> p.version()>=2 && p.status()!=ScenarioProgram.Status.RETIRED
+                && registry.definitions().stream().noneMatch(other -> other.code().equals(p.code()) && other.version()>p.version() && other.status()!=ScenarioProgram.Status.RETIRED
+                        && (generation.contains(other) || !generation.stream().anyMatch(g -> g.code().equals(p.code()))))
+                && (!generation.stream().anyMatch(g -> g.code().equals(p.code())) || generation.contains(p))).toList();
         boolean anyAvailable=available || !generation.isEmpty();
         return noStore(new Catalog("scenario-public.v1", properties.enabled(), anyAvailable, anyAvailable ? List.of("guided-listening") : List.of(),
-                properties.enabled() ? registry.definitions().stream().filter(p -> p.status() != ScenarioProgram.Status.RETIRED
-                        && registry.definitions().stream().noneMatch(other -> other.code().equals(p.code()) && other.version()>p.version() && other.status()!=ScenarioProgram.Status.RETIRED))
+                properties.enabled() ? personalized.stream()
                         .map(p -> new GoalProgram(p.code(), p.version(), p.status().name(), p.displayNameVi(), p.targetScales())).toList() : List.of(),
                 generation.stream().map(p -> new GoalProgram(p.code(),p.version(),p.status().name(),p.displayNameVi(),p.targetScales())).toList(),
                 available ? release.program().difficultyProfiles().stream().map(ScenarioProgram.DifficultyProfile::id).toList() : List.of(),

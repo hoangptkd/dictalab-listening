@@ -94,7 +94,7 @@ public record ScenarioProgram(String schemaVersion, String code, int version, St
                     && p.maxWordsPerActivity() <= p.maxWordsPerSession() && p.maxWordsPerSession() <= 480
                     && p.maxActivities() >= 1 && p.maxActivities() <= 4 && p.maxSpeakers() >= 1 && p.maxSpeakers() <= 3
                     && p.maxSegmentsPerActivity() >= p.maxSpeakers() && p.maxSegmentsPerActivity() <= 6
-                    && p.maxQuestionsPerSession() >= 1 && p.maxQuestionsPerSession() <= 12
+                    && p.maxQuestionsPerSession() >= 1 && p.maxQuestionsPerSession() <= (meaningAssessment(code,version) ? 18 : 12)
                     && p.maxFactsPerActivity() >= 1 && p.maxFactsPerActivity() <= 4
                     && p.maxDistractors() >= 0 && p.maxDistractors() <= 3 && p.maxCorrections() >= 0 && p.maxCorrections() <= 2
                     && Set.of("EXPLICIT_ONLY", "SUPPORTED_INFERENCE").contains(p.inferencePolicy())
@@ -125,6 +125,10 @@ public record ScenarioProgram(String schemaVersion, String code, int version, St
         require(target != null, "Missing target");
         targetScales.stream().filter(s -> s.scaleId().equals(target.scaleId()) && s.component().equals(target.component()))
                 .findFirst().orElseThrow(() -> new IllegalArgumentException("Scale/component mismatch")).validateValue(target.value());
+    }
+    public boolean meaningAssessment() { return meaningAssessment(code,version); }
+    private static boolean meaningAssessment(String code,int version) {
+        return code.equals("general-communication") ? version>=4 : Set.of("toeic-listening","ielts-listening").contains(code) && version>=3;
     }
 
     static void require(boolean ok, String message) { if (!ok) throw new IllegalArgumentException(message); }

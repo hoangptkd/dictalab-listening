@@ -781,6 +781,9 @@ class QualityRejected(ValueError):
 
 @trace_job
 async def execute(event, settings):
+    if event.payload.contractVersion == "scenario-job.v3":
+        from .scenario_assessment import execute as execute_assessment
+        return await execute_assessment(event, settings)
     if not settings.scenario_enabled:
         raise QualityRejected("scenario execution disabled")
     remaining = min(240, event.deadline.timestamp() - time.time())

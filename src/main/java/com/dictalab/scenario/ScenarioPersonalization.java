@@ -70,7 +70,7 @@ public class ScenarioPersonalization {
                     : p.targetRange().scaleId().equals(target.scaleId()) && new BigDecimal(level).compareTo(new BigDecimal(p.targetRange().min()))>=0
                     && new BigDecimal(level).compareTo(new BigDecimal(p.targetRange().max()))<=0).findFirst().orElseThrow(ScenarioData::invalid);
             require(profile.skills().contains(focus));
-            var context=object().put("contractVersion","scenario-learning-context.v1").put("programCode",program.code()).put("programVersion",program.version())
+            var context=object().put("contractVersion",program.meaningAssessment() ? "scenario-learning-context.v2" : "scenario-learning-context.v1").put("programCode",program.code()).put("programVersion",program.version())
                     .put("programHash",program.definitionHash()).put("practiceMode","guided-listening").put("layoutVersion","three-activities.v1")
                     .put("focusSkill",focus).put("targetProvenance","USER_DECLARED_GOAL").put("currentProvenance",currentValue==null ? "UNKNOWN" : "USER_DECLARED")
                     .put("calibrationStatus","INTERNAL_PRACTICE_UNCALIBRATED").put("qualityPolicyVersion",program.qualityPolicyVersion())

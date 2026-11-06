@@ -3,7 +3,8 @@
     const base = "/api/v2/scenarios", bridge = () => window.DictaLabListeningBridge;
     const root = () => document.querySelector("#conversation-content");
     const escape = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
-    const labels = {CAPTURED: "Hiểu đúng", PARTIAL: "Hiểu một phần", MISSED: "Bỏ lỡ", INCORRECT: "Chưa đúng", UNCERTAIN: "Chưa đủ căn cứ"};
+    const labels = {CAPTURED: "Hiểu đúng", PARTIAL: "Hiểu một phần", MISSED: "Bỏ lỡ", INCORRECT: "Chưa đúng", UNCERTAIN: "Chưa đủ căn cứ", UNASSESSED: "Chưa được kiểm tra"};
+    const meaningLabels = {...labels, MISSED: 'Chưa trả lời'};
     const stageLabels = {EXTRACT: "Phân tích tình huống", GENERATE: "Tạo bài luyện", GRADE: "Chấm câu trả lời", TTS: "Tạo âm thanh"};
     const statusLabels = {COMPLETED: "Hoàn thành", ACTIVE: "Đang diễn ra", GRADED: "Đã chấm", PREPARING: "Đang chuẩn bị", PREPARATION_FAILED: "Lỗi chuẩn bị bài", GENERATION_FAILED: "Lỗi tạo bài", FAILED: "Tác vụ không hoàn tất", UNKNOWN: "Chưa xác định được kết quả", CANCELLED: "Đã huỷ", EXPIRED: "Đã hết hạn"};
     const profiles = {supported: "Có hỗ trợ", standard: "Tiêu chuẩn", challenge: "Thử thách", a1: "A1", a2: "A2", b1: "B1", b2: "B2", c1: "C1", c2: "C2"};
@@ -323,7 +324,10 @@
             status(result?.error || (result?.ready ? 'Âm thanh đầu đã sẵn sàng. Bấm Nghe toàn bộ hoạt động để bắt đầu.' : 'Bạn có thể bấm nghe khi sẵn sàng.'));
         } else renderSession();
     }
-    function answerKey(activity) { return `answers:${session.sessionId}:${activity.activityId}`; }
+    function answerKey(activity) {
+        const stage = activity.assessment;
+        return `answers:${session.sessionId}:${activity.activityId}${stage ? `:${stage.stage}:${stage.round}` : ''}`;
+    }
     function renderSession() {
         const selected = read(`review:${session.sessionId}`, null);
         const review = session.activities.find(a => a.activityId === selected && a.status === "COMPLETED");
@@ -342,7 +346,7 @@
             save(`review:${session.sessionId}`, button.dataset.review); renderSession();
         })));
         if (activity) bindAudio(activity);
-        focusStep();
+        focusStep(activity?.assessment && !review ? '#scenario-assessment-heading' : '#scenario-step-heading');
         if (review) root().querySelector("#scenario-next").addEventListener("click", () => run(() => { save(`review:${session.sessionId}`, null); renderSession(); }));
         else if (activity) bindActivity(activity);
         else {
@@ -356,7 +360,9 @@
             bridge().navigate('conversation', {});
         });
         root().querySelector('#scenario-review-needed')?.addEventListener('click', () => run(() => {
-            const needed = session.activities.find(a => a.attempts.filter(t => t.status === 'GRADED').at(-1)?.result?.facts.some(f => ['PARTIAL','INCORRECT','MISSED'].includes(f.status)));
+            const needed = session.activities.find(a => a.assessment
+                ? a.assessment.coverage?.meanings?.some(m => ['PARTIAL','INCORRECT','MISSED'].includes(m.status))
+                : a.attempts.filter(t => t.status === 'GRADED').at(-1)?.result?.facts.some(f => ['PARTIAL','INCORRECT','MISSED'].includes(f.status)));
             if (needed) { save(`review:${session.sessionId}`, needed.activityId); renderSession(); }
         }));
         root().querySelector("#scenario-remix")?.addEventListener("submit", event => {
@@ -381,6 +387,7 @@
             <p><span id="scenario-play-count">Lượt phát đoạn: ${a.plays}.</span> ${a.transcriptOpened && a.hintOpened ? "Ghi nhận: đã dùng cả gợi ý và bản chép." : a.transcriptOpened ? "Ghi nhận: đã mở bản chép." : a.hintOpened ? "Ghi nhận: đã dùng gợi ý chiến lược, chưa mở bản chép." : "Chưa dùng gợi ý/bản chép trước khi hoàn thành."}</p></section>`;
     }
     function attemptsHtml(a) {
+        if (a.assessment) return assessmentAttemptsHtml(a);
         return a.attempts.map(t => `<section><h4>Lần ${t.ordinal} · ${escape(labels[t.status] || statusLabels[t.status] || t.status)}</h4>
             <p>${t.support?.transcriptOpened && t.support?.hintOpened ? "Dùng cả gợi ý và bản chép khi nộp." : t.support?.transcriptOpened ? "Có mở bản chép khi nộp." : t.support?.hintOpened ? "Chỉ dùng gợi ý chiến lược khi nộp." : "Không dùng gợi ý/bản chép khi nộp."}</p>
             ${t.answers.map(answer => `<p>Câu ${escape(answer.questionId.replace(/^q/, ""))}: ${escape(answer.textVi)}</p>`).join("")}
@@ -390,6 +397,7 @@
             ${t.status === "FAILED" && t.gradeRetry?.remaining === 0 ? "<p>Đã hết lượt thử chấm lại. Giữ mã tác vụ để được hỗ trợ; không cần gửi lặp.</p>" : ""}</section>`).join("");
     }
     function reviewHtml(a) {
+        if (a.assessment) return assessmentReviewHtml(a);
         const latest = a.attempts.filter(t => t.status === 'GRADED').at(-1);
         return `<h3 id="scenario-step-heading" tabindex="-1">Chữa hoạt động ${a.ordinal}</h3>${audioHtml(a)}
             ${a.questions.map(q => { const fact = latest?.result?.facts.find(f => f.questionId === q.questionId); return `<section class="scenario-review-question"><h4>${escape(q.promptVi)}</h4><p><strong>Bạn trả lời:</strong> ${escape(latest?.answers.find(answer => answer.questionId === q.questionId)?.textVi || 'Chưa có câu trả lời')}</p>
@@ -399,6 +407,7 @@
             <button type="button" id="scenario-next">${session.status === "COMPLETED" ? "Xem tổng kết" : "Sang hoạt động tiếp theo"}</button>`;
     }
     function activityHtml(a) {
+        if (a.assessment) return assessmentHtml(a);
         const drafts = read(answerKey(a), {}), latest = a.attempts.at(-1);
         return `${audioHtml(a)}<section>
             <button type="button" data-help="HINT">Gợi ý cách nghe</button><button type="button" data-help="TRANSCRIPT">Mở bản chép và dịch (có hỗ trợ)</button>
@@ -411,8 +420,68 @@
             ${attemptsHtml(a)}
             ${a.attempts.some(t => t.status === "GRADED") && latest?.status !== "PENDING" ? '<button type="button" id="scenario-complete">Hoàn thành hoạt động và xem đáp án</button>' : ""}`;
     }
+    function coverageHtml(a) {
+        const coverage = a.assessment.coverage || {}, done = a.assessment.stage === 'DONE' || a.status === 'COMPLETED';
+        if (!done) return `<p class="scenario-assessment-progress">Đã thu thập câu trả lời cho ${Number(coverage.assessed) || 0}/${Number(coverage.total) || 0} ý. Kết quả chi tiết được giữ đến khi kết thúc phần kiểm tra.</p>`;
+        const counts = value => `${Number(value?.understood) || 0} hiểu đúng; ${Number(value?.partial) || 0} hiểu một phần; ${Number(value?.misunderstood) || 0} chưa hiểu đúng; ${Number(value?.missed) || 0} chưa trả lời; ${Number(value?.uncertain) || 0} chưa đủ căn cứ; ${Number(value?.unassessed) || 0} chưa được kiểm tra`;
+        return `<section class="scenario-assessment-coverage" aria-label="Kết quả theo ý hiểu · Hoạt động ${Number(a.ordinal)}"><h4>Những ý đã thể hiện qua câu trả lời</h4><p>${counts(coverage)}.</p>
+            <p><strong>Tự nghe:</strong> ${counts(coverage.independent)}.</p><p><strong>Có hỗ trợ:</strong> ${counts(coverage.assisted)}.</p>
+            <p>Ý chưa nhắc tới trong phần kể lại là chưa được kiểm tra. Kết quả này không đo phần trăm hiểu toàn bộ hội thoại hoặc điểm chứng chỉ.</p>
+            ${(coverage.meanings || []).length ? `<ul class="scenario-meaning-list">${coverage.meanings.map(m => `<li><span lang="en">${escape(m.labelEn)}</span><strong>${escape(meaningLabels[m.status] || 'Chưa được kiểm tra')}</strong><small>Tự nghe: ${escape(meaningLabels[m.independentStatus] || 'Chưa có bằng chứng')} · Có hỗ trợ: ${escape(meaningLabels[m.assistedStatus] || 'Chưa có bằng chứng')}</small></li>`).join('')}</ul>` : ''}</section>`;
+    }
+    function assessmentAttemptsHtml(a) {
+        const done = a.assessment.stage === 'DONE' || a.status === 'COMPLETED';
+        return a.attempts.map(t => `<section class="scenario-assessment-attempt"><h4>${t.support?.mode === 'RECAP' ? 'Kể lại điều đã nghe' : `Lượt câu hỏi ${t.support?.mode === 'CHECKS' ? a.attempts.filter(p => p.ordinal <= t.ordinal && p.support?.mode === 'CHECKS').length : t.ordinal}`} · ${escape(statusLabels[t.status] || t.status)}</h4>
+            <p>${t.support?.transcriptOpened || t.support?.hintOpened || t.support?.feedbackExposed ? 'Có dùng hỗ trợ trước khi nộp.' : 'Chưa mở hỗ trợ trước khi nộp.'}</p>
+            ${t.recapText ? `<p><strong>Bạn kể lại:</strong> ${escape(t.recapText)}</p>` : ''}${(t.answers || []).map(answer => `<p>Câu ${escape(answer.questionId.replace(/^q/, ''))}: ${escape(answer.textVi || 'Chưa trả lời')}</p>`).join('')}
+            ${done ? (t.result?.meanings || []).map(m => `<p>${escape(m.meaningId)}: ${escape(meaningLabels[m.status] || m.status)}${(m.evidence || []).map(e => ` · Bạn viết: “${escape(e.quote)}”`).join('')}</p>`).join('') : ''}
+            ${['FAILED','UNKNOWN'].includes(t.status) ? `<p>${escape(operationFailure({status: t.status, stage: 'GRADE', errorCode: t.gradeRetry?.errorCode}))} Mã tác vụ: ${escape(t.gradeRetry?.operationId)}</p>` : ''}
+            ${a.status !== 'COMPLETED' && t.gradeRetry?.allowed ? `<button type="button" data-retry-grade="${escape(t.attemptId)}">Thử chấm lại câu trả lời đã lưu (còn ${Number(t.gradeRetry.remaining) || 0} lần)</button>` : ''}</section>`).join('');
+    }
+    function assessmentHtml(a) {
+        const assessment = a.assessment, drafts = read(answerKey(a), {}), latest = a.attempts.at(-1);
+        const blocked = latest && ['PENDING','FAILED','UNKNOWN'].includes(latest.status);
+        const recap = assessment.stage === 'RECAP', checks = assessment.stage === 'CHECKS';
+        return `${audioHtml(a)}<section class="scenario-assessment">
+            <div class="scenario-support-actions"><button type="button" data-help="HINT">Gợi ý cách nghe</button><button type="button" data-help="TRANSCRIPT">Mở bản chép và dịch (có hỗ trợ)</button></div>
+            ${a.hintVi ? `<aside class="scenario-listening-hint"><h4>Gợi ý cách nghe</h4><p>${escape(a.hintVi)}</p></aside>` : ''}
+            <h3 id="scenario-assessment-heading" tabindex="-1">${recap ? 'Kể lại điều bạn đã nghe' : checks ? assessment.round > 1 ? 'Kiểm tra thêm những ý còn lại' : 'Kiểm tra điều bạn hiểu' : 'Đã kết thúc phần kiểm tra'}</h3>
+            ${coverageHtml(a)}
+            ${recap ? `<p>Kể lại vài ý bạn nhớ, bằng tiếng Anh hoặc tiếng Việt. Không cần viết đầy đủ hoặc đúng ngữ pháp. Phần này là tùy chọn; bạn có thể bỏ qua để trả lời các câu hỏi gợi mở.</p>` : checks ? `<p>${assessment.round > 1 ? 'Đây là lượt kiểm tra thêm cuối cùng. Bạn có thể trả lời hoặc kết thúc để xem lại bài.' : 'Chỉ trả lời theo điều bạn nghe được. Bạn có thể để trống câu chưa hiểu.'} Đây là luyện có hướng dẫn, không mô phỏng đề thi chứng chỉ.</p>` : '<p>Có thể hoàn thành hoạt động dù vẫn còn ý chưa rõ hoặc chưa được kiểm tra.</p>'}
+            ${(recap && assessment.recapAllowed || checks) && !blocked ? `<form id="scenario-answer"><p id="scenario-answer-help">Trả lời bằng tiếng Anh hoặc tiếng Việt. Chấm theo ý hiểu, không chấm ngữ pháp.</p>
+                ${recap ? `<label for="scenario-recap">Những ý bạn nhớ (tùy chọn)</label><textarea id="scenario-recap" name="recapText" class="scenario-answer-field" rows="4" maxlength="1500" required aria-describedby="scenario-answer-help">${escape(drafts.recapText || '')}</textarea>` : a.questions.map(q => `<div class="scenario-input-card"><label for="answer-${escape(q.questionId)}">${escape(q.promptVi)}</label><textarea id="answer-${escape(q.questionId)}" name="${escape(q.questionId)}" class="scenario-answer-field" rows="3" maxlength="1500" aria-describedby="scenario-answer-help">${escape(drafts[q.questionId] || '')}</textarea></div>`).join('')}
+                <div class="scenario-result-actions"><button class="primary-button" type="submit">${recap ? 'Lưu phần kể lại và tiếp tục' : 'Lưu và chấm lượt câu hỏi này'}</button>${recap ? '<button type="button" id="scenario-skip-recap">Bỏ qua kể lại, mở câu hỏi</button>' : ''}</div></form>` : ''}
+            ${blocked ? `<p role="status">${latest.status === 'PENDING' ? 'Đang chấm câu trả lời đã lưu. Bạn không cần nộp lại.' : 'Câu trả lời đã được lưu. Hãy xem trạng thái chấm bên dưới; không cần nộp lượt mới.'}</p>` : ''}
+            ${assessment.canComplete && !blocked ? `<button type="button" id="scenario-complete">${checks ? 'Kết thúc kiểm tra và xem lại bài' : 'Hoàn thành hoạt động và xem lại bài'}</button>` : ''}
+            <details><summary>Câu trả lời và hỗ trợ đã lưu</summary>${assessmentAttemptsHtml(a)}</details></section>`;
+    }
+    function assessmentReviewHtml(a) {
+        return `<h3 id="scenario-step-heading" tabindex="-1">Chữa hoạt động ${a.ordinal}</h3>${audioHtml(a)}${coverageHtml(a)}
+            ${a.questions.map(q => `<section class="scenario-review-question"><h4>${escape(q.promptVi)}</h4><p>Đáp án tham khảo: ${escape(q.answerVi)}</p>
+                ${(q.evidence || []).map(e => { const index = a.segments.findIndex(s => s.segmentId === e.segmentId); return `<p>Bằng chứng ở đoạn ${index + 1}: <span lang="en">“${escape(e.quoteEn)}”</span></p>${index >= 0 ? `<button type="button" data-play="${escape(e.segmentId)}" data-ordinal="${index + 1}" ${a.segments[index].canPlay === false ? 'disabled' : ''}>Nghe bằng chứng · Đoạn ${index + 1}</button>` : ''}`; }).join('')}</section>`).join('')}
+            <details><summary>Lịch sử trả lời và hỗ trợ</summary>${assessmentAttemptsHtml(a)}</details><button type="button" id="scenario-next">${session.status === 'COMPLETED' ? 'Xem tổng kết' : 'Sang hoạt động tiếp theo'}</button>`;
+    }
+    function bindAssessment(a) {
+        const form = root().querySelector('#scenario-answer');
+        form?.addEventListener('input', () => save(answerKey(a), Object.fromEntries(new FormData(form))));
+        const submit = (mode, values = {}) => run(async token => {
+            const body = {expectedVersion: session.version, mode, recapText: mode === 'RECAP' ? values.recapText || '' : '',
+                answers: mode === 'CHECKS' ? a.questions.map(q => ({questionId: q.questionId, textVi: values[q.questionId] || ''})) : []};
+            const result = await mutation(`/sessions/${session.sessionId}/activities/${a.activityId}/assessment`, body);
+            if (!current(token)) return;
+            if (mode === 'SKIP_RECAP') { session = result; renderSession(); }
+            else await track({...result, action: 'GRADE', sessionId: session.sessionId}, token);
+        });
+        form?.addEventListener('submit', event => {
+            event.preventDefault(); const values = Object.fromEntries(new FormData(form)); save(answerKey(a), values);
+            submit(a.assessment.stage === 'RECAP' ? 'RECAP' : 'CHECKS', values);
+        });
+        root().querySelector('#scenario-skip-recap')?.addEventListener('click', () => submit('SKIP_RECAP'));
+    }
     function bindActivity(a) {
         const form = root().querySelector("#scenario-answer");
+        if (a.assessment) bindAssessment(a);
+        else {
         form.addEventListener("input", () => save(answerKey(a), Object.fromEntries(new FormData(form))));
         form.addEventListener("submit", event => {
             event.preventDefault(); const values = Object.fromEntries(new FormData(form)); save(answerKey(a), values);
@@ -421,6 +490,7 @@
                 if (current(token)) await track({...op, action: "GRADE", sessionId: session.sessionId}, token);
             });
         });
+        }
         root().querySelectorAll("[data-help]").forEach(button => button.addEventListener("click", () => run(async token => {
             if (button.dataset.help === 'HINT' ? a.hintOpened : a.transcriptOpened) { status('Nội dung hỗ trợ đã mở trong bài.'); return; }
             const result = await mutation(`/sessions/${session.sessionId}/activities/${a.activityId}/help`, {expectedVersion: session.version, kind: button.dataset.help});
@@ -619,6 +689,7 @@
                 ? `<p>Bài gặp lỗi: ${escape(statusLabels[session.status] || session.status)}.</p>${session.preparationError ? `<p>${escape(operationFailure(session.preparationError))}</p><p>Mã tác vụ: ${escape(session.preparationError.operationId)} · ${escape(session.preparationError.errorCode || session.preparationError.status)}</p>` : '<p>Không còn chi tiết tác vụ. Bạn có thể liên hệ hỗ trợ.</p>'}<p><a href="/conversation" data-session="" ${session.inputVi ? 'data-edit-failed' : ''}>${session.inputVi ? 'Sửa mô tả đã lưu' : 'Tạo bài mới'}</a></p>`
                 : "<p>Bài đang chuẩn bị. Hãy tải lại để xem trạng thái đã lưu.</p>";
         }
+        if (session.activities.some(a => a.assessment)) return assessmentCompletedHtml();
         const summary = latest => {
             const attempts = session.activities.map(a => latest ? a.attempts.filter(t => t.status === "GRADED").at(-1) : a.attempts[0]);
             const facts = attempts.flatMap(t => t?.status === "GRADED" ? t.result?.facts || [] : []);
@@ -637,8 +708,23 @@
             <form id="scenario-remix"><label for="scenario-remix-input">Bạn muốn biến thể như thế nào?</label><textarea id="scenario-remix-input" name="inputVi" class="scenario-answer-field" maxlength="1200" required rows="3"></textarea>
             ${session.learningContext ? `<p>Biến thể giữ mục tiêu và mức luyện của bài này: ${escape(profiles[session.learningContext.profile.id])}.</p>` : `<label for="scenario-remix-profile">Mức luyện</label><select id="scenario-remix-profile" name="profileId">${Object.keys(profiles).map(p => `<option value="${p}">${profiles[p]}</option>`).join("")}</select>`}<button class="primary-button">Xem trước biến thể mới</button></form>`;
     }
+    function assessmentCompletedHtml() {
+        const activities = session.activities.filter(a => a.assessment);
+        const needsReview = activities.some(a => a.assessment.coverage?.meanings?.some(m => ['PARTIAL','INCORRECT','MISSED'].includes(m.status)));
+        return `<h3 id="scenario-step-heading" tabindex="-1">Đã hoàn thành bài luyện</h3><p>Kết quả dựa trên những ý đã được thể hiện qua phần kể lại và câu hỏi. Các ý chưa được kiểm tra vẫn được ghi nhận riêng; không suy ra phần trăm hiểu hội thoại.</p>
+            ${activities.map(a => `<section class="scenario-assessment"><h3>Hoạt động ${a.ordinal}</h3>${coverageHtml(a)}</section>`).join('')}
+            <div class="scenario-result-actions">${needsReview ? '<button type="button" id="scenario-review-needed">Xem ý cần luyện</button>' : ''}<button type="button" id="scenario-practice-similar">Luyện tương tự</button></div>
+            <p>Luyện tương tự mở mô tả để bạn chỉnh và xem trước. Đây là luyện có hướng dẫn, không phải điểm chứng chỉ hoặc đánh giá trình độ.</p>
+            <form id="scenario-remix"><label for="scenario-remix-input">Bạn muốn biến thể như thế nào?</label><textarea id="scenario-remix-input" name="inputVi" class="scenario-answer-field" maxlength="1200" required rows="3"></textarea>
+            ${session.learningContext ? `<p>Biến thể giữ mục tiêu và mức luyện của bài này: ${escape(profiles[session.learningContext.profile.id])}.</p>` : `<label for="scenario-remix-profile">Mức luyện</label><select id="scenario-remix-profile" name="profileId">${Object.keys(profiles).map(p => `<option value="${p}">${profiles[p]}</option>`).join('')}</select>`}<button class="primary-button">Xem trước biến thể mới</button></form>`;
+    }
     function followupSkill() {
         for (const a of session.activities) {
+            if (a.assessment) {
+                const skill = a.assessment.coverage?.meanings?.find(m => ['PARTIAL','INCORRECT','MISSED'].includes(m.independentStatus))?.skill;
+                if (skill && session.learningContext?.profile.skills?.includes(skill)) return skill;
+                continue;
+            }
             const latest = a.attempts.filter(t => t.status === 'GRADED').at(-1);
             const fact = latest?.result?.facts.find(f => ['PARTIAL','INCORRECT','MISSED'].includes(f.status));
             const skill = a.questions.find(q => q.questionId === fact?.questionId)?.skill;

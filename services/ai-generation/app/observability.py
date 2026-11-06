@@ -94,6 +94,9 @@ def observation(name, *, as_type="span", input=None, metadata=None, version=None
         yield span
     except BaseException as error:
         _safe(span, "update", level="ERROR", status_message=type(error).__name__)
+        status = getattr(error, "status", None)
+        if type(status) is int and 100 <= status <= 599:
+            _safe(span, "update", metadata={"providerHttpStatus": status})
         raise
     finally:
         if generation_token is not None:
@@ -184,8 +187,13 @@ def trace_job(function):
                     "programHash": getattr(event.payload, "programHash", None)}
         context = getattr(event.payload, "learningContext", None)
         if context is not None:
-            from .scenario_workflow import example_metadata
-            metadata.update(example_metadata(event.payload.promptHash, event.payload.phase))
+            if event.payload.contractVersion == "scenario-job.v3":
+                from .scenario_assessment import release
+                metadata.update(assessmentPolicyVersion=release.POLICY_VERSION,
+                                harnessPolicyVersion=release.HARNESS_POLICY["version"])
+            else:
+                from .scenario_workflow import example_metadata
+                metadata.update(example_metadata(event.payload.promptHash, event.payload.phase))
             snapshot = context.model_dump(mode="json", exclude_none=True)
             metadata.update(programCode=context.programCode, programVersion=context.programVersion,
                             focusSkill=context.focusSkill, profileId=context.profile.id,

@@ -128,9 +128,12 @@ class OpenAiCompatibleProvider(ModelProvider):
                 raise ProviderHttpError(response.status_code, response.headers.get("Retry-After"), self._provider_name,
                                         server_failure=server_failure)
             if response.status_code in (400, 401, 403, 422):
-                raise ProviderError(
+                error = ProviderError(
                     f"{self._provider_name}:{purpose}:client_error:{response.status_code}"
                 )
+                # Preserve only the numeric status; response bodies can contain private request data.
+                error.status = response.status_code
+                raise error
             response.raise_for_status()
             data = response.json()
             usage = data.get("usage") or {}

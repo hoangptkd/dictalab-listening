@@ -60,6 +60,150 @@ function graded(status = 'CAPTURED', support = {}) {
         result: {facts: [{questionId: 'q1', status, evidenceVi: 'At nine'}, {questionId: 'q2', status, evidenceVi: 'Bánh'}]}};
 }
 
+function meaningSession(stage = 'RECAP', round = 0) {
+    const s = session();
+    s.activities[0].questions = stage === 'RECAP' ? [] : [{questionId: 'q3', promptVi: 'Vì sao khách đổi giờ?'}];
+    s.activities[0].assessment = {policyVersion: 'scenario-meaning-assessment.v1', stage, round,
+        canComplete: stage === 'DONE' || round === 2, recapAllowed: stage === 'RECAP', coverage: {total: 4, assessed: round ? 2 : 0}};
+    return s;
+}
+
+test('meaning assessment starts with an optional bilingual recap and hides private prompts and results', async () => {
+    const s = meaningSession(), a = s.activities[0];
+    a.questions = [{questionId:'q1',promptVi:'PRIVATE PROMPT',answerVi:'PRIVATE ANSWER',evidence:[{quoteEn:'PRIVATE QUOTE'}]}];
+    a.assessment.coverage.meanings = [{meaningId:'m1',labelEn:'PRIVATE MEANING',status:'INCORRECT'}];
+    a.attempts = [{...graded(), result:{meanings:[{meaningId:'m1',status:'INCORRECT',evidence:[{quote:'PRIVATE CORRECTION'}]}]}}];
+    const h = harness(async () => s); await h.module.show(s.sessionId);
+    assert.match(h.root.innerHTML,/Kể lại điều bạn đã nghe/);
+    assert.match(h.root.innerHTML,/tùy chọn/);
+    assert.match(h.root.innerHTML,/tiếng Anh hoặc tiếng Việt/);
+    assert.match(h.root.innerHTML,/label for="scenario-recap"/);
+    assert.match(h.root.innerHTML,/aria-describedby="scenario-answer-help"/);
+    assert.match(h.root.innerHTML,/id="scenario-skip-recap"/);
+    assert.doesNotMatch(h.root.innerHTML,/PRIVATE|INCORRECT|Chưa đúng|Đáp án/);
+});
+
+test('recap skip persists a no-answer transition then renders only the server-admitted checks', async () => {
+    let s = meaningSession();
+    const h = harness(async (url, options = {}) => {
+        if (url.endsWith('/assessment')) { s = meaningSession('CHECKS',1); s.version = 2; return s; }
+        return s;
+    });
+    await h.module.show(s.sessionId);
+    h.node('#scenario-skip-recap').listeners.click(); await tick(); await tick();
+    const posts = h.calls.filter(c => c.options.method === 'POST');
+    assert.equal(posts.length,1);
+    assert.deepEqual(JSON.parse(JSON.stringify(posts[0].options.body)),{expectedVersion:1,mode:'SKIP_RECAP',recapText:'',answers:[]});
+    assert.match(posts[0].url,/activities\/activity-1\/assessment$/);
+    assert.match(h.root.innerHTML,/Vì sao khách đổi giờ/);
+    assert.doesNotMatch(h.root.innerHTML,/id="scenario-recap"|Đáp án/);
+    assert.equal(h.focused(),'#scenario-assessment-heading');
+});
+
+test('recap transport retry preserves its idempotency key and Vietnamese draft across reload', async () => {
+    const storage = new Map(); let fail = true;
+    const api = async (url, options = {}) => {
+        if (options.method === 'POST') { if (fail) throw new Error('Connection lost'); return {operationId:'recap-op',stage:'GRADE',status:'PENDING'}; }
+        if (url.includes('/operations/')) return {status:'RUNNING'};
+        return meaningSession();
+    };
+    const first = harness(api,storage); await first.module.show('session-1');
+    const form = first.node('#scenario-answer'); form.values = [['recapText','Khách xin đổi giờ vì bận.']];
+    form.listeners.submit({preventDefault(){}}); await tick(); await tick();
+    const original = first.calls.find(c => c.options.method === 'POST');
+    assert.equal(original.options.body.mode,'RECAP');
+    assert.equal(original.options.body.recapText,'Khách xin đổi giờ vì bận.');
+    assert.deepEqual(JSON.parse(JSON.stringify(original.options.body.answers)),[]);
+    fail = false;
+    const next = harness(api,storage); await next.module.show('session-1');
+    assert.match(next.root.innerHTML,/Khách xin đổi giờ vì bận/);
+    const restored = next.node('#scenario-answer'); restored.values = form.values; restored.listeners.submit({preventDefault(){}});
+    await tick(); await tick();
+    const retried = next.calls.find(c => c.options.method === 'POST');
+    assert.equal(retried.options.headers['Idempotency-Key'],original.options.headers['Idempotency-Key']);
+    assert.ok(storage.has('dictalab:scenario:10:answers:session-1:activity-1:RECAP:0'));
+});
+
+for (const count of [1,4]) test(`meaning checks submit the admitted ${count}-question set and ignore foreign fields`, async () => {
+    const s = meaningSession('CHECKS',1);
+    s.activities[0].questions = Array.from({length:count},(_,i) => ({questionId:`q${i+2}`,promptVi:`Câu kiểm tra ${i+1}`}));
+    const h = harness(async (url, options = {}) => {
+        if (options.method === 'POST') return {operationId:'checks-op',stage:'GRADE',status:'PENDING'};
+        if (url.includes('/operations/')) return {status:'RUNNING'};
+        return s;
+    });
+    await h.module.show(s.sessionId);
+    assert.equal((h.root.innerHTML.match(/name="q\d+"/g) || []).length,count);
+    const form = h.node('#scenario-answer'); form.values = s.activities[0].questions.map((q,i) => [q.questionId,i ? '' : 'Because he was busy.']);
+    form.values.push(['foreign','DO NOT SEND']); form.listeners.submit({preventDefault(){}}); await tick(); await tick();
+    const post = h.calls.find(c => c.options.method === 'POST');
+    assert.equal(post.options.body.mode,'CHECKS'); assert.equal(post.options.body.recapText,'');
+    assert.equal(post.options.body.answers.length,count);
+    assert.deepEqual(Array.from(post.options.body.answers,a => a.questionId),s.activities[0].questions.map(q => q.questionId));
+    assert.doesNotMatch(JSON.stringify(post.options.body),/foreign|DO NOT SEND/);
+});
+
+test('follow-up reload preserves its round draft and allows early completion without corrective leakage', async () => {
+    let s = meaningSession('CHECKS',2), completed = false;
+    const a = s.activities[0];
+    a.attempts = [{...graded(),support:{mode:'CHECKS'},result:{meanings:[{meaningId:'m1',status:'INCORRECT',evidence:[{quote:'HIDDEN RESULT'}]}]}}];
+    a.questions[0].answerVi = 'HIDDEN ANSWER';
+    const storage = new Map([
+        ['dictalab:scenario:10:answers:session-1:activity-1:CHECKS:1',JSON.stringify({q3:'OLD ROUND'})],
+        ['dictalab:scenario:10:answers:session-1:activity-1:CHECKS:2',JSON.stringify({q3:'Tôi nghe là khách bận.'})]
+    ]);
+    const h = harness(async (url, options = {}) => {
+        if (url.endsWith('/complete')) { completed = true; s.status = 'COMPLETED'; a.status = 'COMPLETED'; a.assessment.stage = 'DONE'; return s; }
+        return s;
+    },storage);
+    await h.module.show(s.sessionId);
+    assert.match(h.root.innerHTML,/lượt kiểm tra thêm cuối cùng/);
+    assert.match(h.root.innerHTML,/Tôi nghe là khách bận/);
+    assert.match(h.root.innerHTML,/Kết thúc kiểm tra và xem lại bài/);
+    assert.doesNotMatch(h.root.innerHTML,/OLD ROUND|HIDDEN|Đáp án/);
+    h.node('#scenario-complete').listeners.click(); await tick(); await tick();
+    assert.equal(completed,true); assert.match(h.root.innerHTML,/Chữa hoạt động 1/);
+    assert.match(h.root.innerHTML,/HIDDEN ANSWER/);
+});
+
+test('failed and unknown meaning grades preserve saved responses and never offer another submission', async () => {
+    for (const status of ['FAILED','UNKNOWN']) {
+        const s = meaningSession(), a = s.activities[0];
+        a.attempts = [{attemptId:'recap-failed',ordinal:1,status,recapText:'They changed the time.',answers:[],support:{mode:'RECAP'},
+            gradeRetry:{allowed:status === 'FAILED',remaining:2,operationId:'failed-op'}}];
+        const h = harness(async () => s); await h.module.show(s.sessionId);
+        assert.match(h.root.innerHTML,/They changed the time/);
+        assert.doesNotMatch(h.root.innerHTML,/id="scenario-answer"|id="scenario-skip-recap"/);
+        assert.equal(h.root.innerHTML.includes('data-retry-grade="recap-failed"'),status === 'FAILED');
+        assert.equal(h.calls.filter(c => c.options.method === 'POST').length,0);
+    }
+});
+
+test('meaning completion reports independent and assisted coverage without inventing a question score', async () => {
+    const s = meaningSession('DONE',2), a = s.activities[0]; s.status = 'COMPLETED'; a.status = 'COMPLETED';
+    a.assessment.coverage = {total:4,assessed:3,understood:1,partial:1,misunderstood:0,uncertain:1,unassessed:1,
+        independent:{understood:0,partial:1,misunderstood:0,uncertain:1,unassessed:2},
+        assisted:{understood:1,partial:0,misunderstood:0,uncertain:0,unassessed:3},
+        meanings:[{meaningId:'m1',labelEn:'The customer proposes <six>.',status:'CAPTURED',independentStatus:'PARTIAL',assistedStatus:'CAPTURED',skill:'detail'}]};
+    const h = harness(async () => s); await h.module.show(s.sessionId);
+    assert.match(h.root.innerHTML,/0 hiểu đúng; 1 hiểu một phần/);
+    assert.match(h.root.innerHTML,/1 hiểu đúng; 0 hiểu một phần/);
+    assert.match(h.root.innerHTML,/1 chưa được kiểm tra/);
+    assert.match(h.root.innerHTML,/The customer proposes &lt;six&gt;/);
+    assert.doesNotMatch(h.root.innerHTML,/\d+%|câu đã chấm được hiểu đúng|<six>/);
+});
+
+test('a missed check is shown as unanswered, separately from demonstrated misunderstanding', async () => {
+    const s = meaningSession('DONE',2), a = s.activities[0];
+    a.assessment.coverage = {total:3,assessed:1,understood:0,partial:0,misunderstood:0,missed:1,uncertain:0,unassessed:2,
+        independent:{misunderstood:0,missed:1,unassessed:2},assisted:{misunderstood:0,missed:0,unassessed:3},
+        meanings:[{meaningId:'m1',labelEn:'The shop closes at six.',status:'MISSED',independentStatus:'MISSED'}]};
+    const h = harness(async () => s); await h.module.show(s.sessionId);
+    assert.match(h.root.innerHTML,/0 chưa hiểu đúng; 1 chưa trả lời/);
+    assert.match(h.root.innerHTML,/<strong>Chưa trả lời<\/strong>/);
+    assert.doesNotMatch(h.root.innerHTML,/Bỏ lỡ|1 chưa hiểu đúng/);
+});
+
 test('completion opens a persisted answer review before the next activity and supports replay', async () => {
     const s = session(); s.activities[0].attempts = [graded()];
     s.activities.push({...structuredClone(s.activities[0]), activityId: 'activity-2', ordinal: 2, attempts: []});

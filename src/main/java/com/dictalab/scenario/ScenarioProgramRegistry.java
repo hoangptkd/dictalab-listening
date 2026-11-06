@@ -13,7 +13,7 @@ public class ScenarioProgramRegistry {
 
     public ScenarioProgramRegistry() throws IOException {
         var definitions = new java.util.ArrayList<ScenarioProgram>();
-        for (String resource : List.of("scenario/programs-v1.json", "scenario/programs-personalized-v1.json")) {
+        for (String resource : List.of("scenario/programs-v1.json", "scenario/programs-personalized-v1.json", "scenario/programs-meaning-v1.json")) {
           try (var input = new ClassPathResource(resource).getInputStream()) {
             var bytes = input.readNBytes(262145);
             if (bytes.length > 262144) throw new IllegalStateException("Program catalog too large");

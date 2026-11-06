@@ -248,11 +248,64 @@ paths:
     parameters: [{$ref: '#/components/parameters/Session'}, {$ref: '#/components/parameters/Activity'}]
     post:
       summary: Complete current activity after a graded attempt and reveal its answer keys
-      description: Activities must complete in order. Finishing the last completes the session. No exam score.
+      description: >-
+        Activities complete in order. Legacy lessons require a graded attempt. Meaning-assessment
+        lessons may complete after one graded CHECKS batch, or a full recap with no useful checks.
+        Unresolved meanings are retained; no pass threshold. Completing reveals reference answers.
+        Finishing the last activity completes the session. No exam score.
       parameters: [{$ref: '#/components/parameters/Idempotency'}]
       requestBody: {$ref: '#/components/requestBodies/Version'}
       responses:
         '200': {description: Updated public session snapshot}
+  /api/v2/scenarios/sessions/{session}/activities/{activity}/assessment:
+    parameters: [{$ref: '#/components/parameters/Session'}, {$ref: '#/components/parameters/Activity'}]
+    post:
+      summary: Optional recap or exact server-admitted meaning checks for scenario-job.v3
+      description: >-
+        Ownership, CSRF, idempotency and session version are required. RECAP requires nonblank
+        recapText (Vietnamese or English) and empty answers. SKIP_RECAP requires empty recapText
+        and answers, durably advances without provider usage, and returns a session snapshot.
+        CHECKS requires empty recapText and exactly the currently exposed question IDs, with no
+        duplicates. Empty individual answers are legal. RECAP/CHECKS return an operation.
+        Three learner submissions maximum; FAILED retry uses the original attempt/payload,
+        UNKNOWN is never automatically replayed. No new question generation occurs.
+        Public assessment has policyVersion, stage RECAP/CHECKS/DONE, round 0/1/2,
+        canComplete, recapAllowed, coverage. While independent checks remain, coverage contains
+        total/assessed counts only and attempts omit results. Only pending questions are exposed.
+        DONE coverage adds understood, partial, misunderstood (INCORRECT), missed, uncertain,
+        unassessed, independent/assisted count objects and meanings with meaningId,labelEn,skill,
+        status,independentStatus,assistedStatus. UNASSESSED does not occupy first independent
+        evidence. Completion exposes the full reference bank. This is guided practice, not an
+        official exam simulation, percentage comprehension, mastery claim or calibrated score.
+      parameters: [{$ref: '#/components/parameters/Idempotency'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedVersion, mode, recapText, answers]
+              properties:
+                expectedVersion: {type: integer, minimum: 0}
+                mode: {enum: [RECAP, SKIP_RECAP, CHECKS]}
+                recapText: {type: string, maxLength: 1500}
+                answers:
+                  type: array
+                  maxItems: 4
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [questionId, textVi]
+                    properties:
+                      questionId: {type: string, pattern: '^q[1-6]$'}
+                      textVi: {type: string, maxLength: 1500}
+      responses:
+        '200': {description: Durable grade operation, or full session snapshot for SKIP_RECAP}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
   /api/v2/scenarios/sessions/{session}/remixes:
     parameters: [{$ref: '#/components/parameters/Session'}]
     post:

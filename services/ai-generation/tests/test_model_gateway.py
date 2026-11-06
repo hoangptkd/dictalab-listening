@@ -198,8 +198,10 @@ class TestOpenAiCompatibleProvider:
             api_key="key", model="gemini-3.5-flash-lite",
             temperature=0.3, client=client,
         )
-        with pytest.raises(ProviderError, match="client_error:400"):
+        with pytest.raises(ProviderError, match="client_error:400") as rejected:
             await provider.complete(MESSAGES, SCHEMA, FAR_DEADLINE, "test")
+        assert rejected.value.status == 400
+        assert not hasattr(rejected.value, "server_failure")
 
     @pytest.mark.asyncio
     async def test_deadline_before_call_raises_timeout(self):

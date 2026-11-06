@@ -57,7 +57,7 @@ class ScenarioIntegrationTest {
                 .andExpect(jsonPath("$.supportedPracticeModes").isEmpty()).andExpect(jsonPath("$.goalPrograms.length()").value(3))
                 .andExpect(jsonPath("$.goalPrograms[0].status").value("DRAFT"))
                 .andExpect(jsonPath("$.practicePrograms.length()").value(3))
-                .andExpect(jsonPath("$.practicePrograms[?(@.code == 'general-communication')].version").value(org.hamcrest.Matchers.contains(3)))
+                .andExpect(jsonPath("$.practicePrograms[?(@.code == 'general-communication')].version").value(org.hamcrest.Matchers.contains(4)))
                 .andExpect(jsonPath("$.goalPrograms[0].promptArtifactRefs").doesNotExist());
         verifyNoInteractions(ai, gemini, tts, budget);
     }
@@ -147,7 +147,7 @@ class ScenarioIntegrationTest {
 
     @Test void importerIsRepeatableAndDetectsStoredDefinitionDrift() {
         programs.run(null);
-        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_program_versions", Integer.class)).isEqualTo(7);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_program_versions", Integer.class)).isEqualTo(10);
         var saved = db.queryForObject("SELECT definition_json FROM scenario_program_versions WHERE program_code='general-communication' AND program_version=1", String.class);
         try {
             db.update("UPDATE scenario_program_versions SET definition_json='{}' WHERE program_code='general-communication' AND program_version=1");

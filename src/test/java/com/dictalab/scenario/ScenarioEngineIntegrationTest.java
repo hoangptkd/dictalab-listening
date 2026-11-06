@@ -52,6 +52,7 @@ class ScenarioEngineIntegrationTest {
     AppUser owner;
     long user;
     JsonNode fixture;
+    String meaningGradeStatus="UNASSESSED";
 
     @BeforeEach void setup() throws Exception {
         store.run(null);
@@ -62,6 +63,7 @@ class ScenarioEngineIntegrationTest {
         when(release.available()).thenReturn(true);
         when(release.available(anyLong())).thenReturn(true);
         when(release.personalizedPromptHash()).thenReturn(new String(getClass().getResourceAsStream("/scenario/workflow-v2.sha256").readAllBytes()).trim());
+        when(release.assessmentPromptHash()).thenReturn(new String(getClass().getResourceAsStream("/scenario/workflow-v3.sha256").readAllBytes()).trim());
         when(release.require(anyLong(),anyString(),anyInt())).thenAnswer(call -> registry.require(call.getArgument(1),call.getArgument(2)));
         when(ai.local()).thenReturn(true); when(ai.scenarioProvider()).thenReturn("ollama");
         when(ai.audio(any())).thenCallRealMethod();
@@ -73,7 +75,8 @@ class ScenarioEngineIntegrationTest {
     ScenarioEngine.DraftRequest input() { return new ScenarioEngine.DraftRequest("Tôi muốn đặt bánh để nhận ngày mai","general-communication",1,"supported"); }
     JsonNode done(String id,JsonNode input) {
         String phase=input.path("phase").asText(); boolean multiVoice=input.path("kind").asText().equals("scenario_tts"),tts=multiVoice || input.path("kind").asText().equals("tts");
-        boolean personalized=input.path("contractVersion").asText().equals("scenario-job.v2");
+        boolean meaning=input.path("contractVersion").asText().equals("scenario-job.v3");
+        boolean personalized=meaning || input.path("contractVersion").asText().equals("scenario-job.v2");
         boolean previousPersonalized=input.path("promptHash").asText().equals("bd0e89b4391becdf84e4389595ff6fa9a4368f4323ac50eebaaf4dffb5b4c2aa");
         boolean previousFewshot=input.path("promptHash").asText().equals("54f9fdeda01717f5c8853239357dad6dff2e0fa94df929f6c82e6d2497af52a1");
         boolean previousFewshotV2=input.path("promptHash").asText().equals("6a857865dddd79783a50c6dbf45bfdd281feeb56b681bdff34abd24c4df5b2e3");
@@ -105,6 +108,26 @@ class ScenarioEngineIntegrationTest {
             if (harness && phase.equals("GENERATE")) result.putObject("qualityHarness").put("extraCalls",0)
                     .put("policyVersion",harnessV9 ? "scenario-quality-harness.v2" : "scenario-quality-harness.v1")
                     .put("policyHash",harnessV9 ? "e15c2b30a59f2b505b047b1920ebdff9c4cb7ccb2ae87cf9cf24803e2e8c2a66" : "ac1a80c90c9f24149f14a9221c0c7382e653d94fccbd823b3862c55fa043bc6b");
+            if (meaning) {
+                result.put("promptVersion",ScenarioAssessment.LEGACY_PROMPT_HASH.equals(input.path("promptHash").asText()) ? "SCENARIO_MEANING_ASSESSMENT_V1"
+                        : ScenarioAssessment.WIRE_V2_PROMPT_HASH.equals(input.path("promptHash").asText()) ? "SCENARIO_MEANING_ASSESSMENT_V2" : "SCENARIO_MEANING_ASSESSMENT_V3").put("assessmentPolicyVersion",ScenarioAssessment.POLICY);
+                if (phase.equals("GENERATE")) {
+                    result.set("task",ScenarioAssessmentTest.fixture().path("content"));
+                    result.putObject("qualityHarness").put("extraCalls",0).put("policyVersion","scenario-meaning-harness.v1").put("policyHash","56d0d6d5e826e1b46f20b5ab4a3868dada9537cca996cb35999d3886ee3d6fe2");
+                } else if (phase.equals("GRADE")) {
+                    var task=object(); var meanings=task.putArray("meanings"); var submission=input.path("assessmentSubmission");
+                    for (var mid : submission.path("meaningIds")) {
+                        var item=meanings.addObject().put("meaningId",mid.asText()).put("status",meaningGradeStatus); var evidence=item.putArray("evidence");
+                        if (meaningGradeStatus.equals("CAPTURED")) {
+                            String response="recap",quote=submission.path("recapText").asText();
+                            if (submission.path("mode").asText().equals("CHECKS")) for (var q : input.path("activity").path("questions")) if (java.util.stream.StreamSupport.stream(q.path("meaningIds").spliterator(),false).anyMatch(mid::equals))
+                                for (var answer : submission.path("answers")) if (answer.path("questionId").equals(q.path("id"))) { response=answer.path("questionId").asText(); quote=answer.path("textVi").asText(); }
+                            evidence.addObject().put("responseId",response).put("quote",quote);
+                        }
+                    }
+                    result.set("task",task);
+                }
+            }
         }
         var state=object().put("jobId",id).put("schemaVersion","1").put("status","DONE"); state.set("result",result); return state;
     }
@@ -120,6 +143,67 @@ class ScenarioEngineIntegrationTest {
         var generation=dispatch(engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong())));
         assertThat(generation.path("status").asText()).isEqualTo("SUCCEEDED");
         return engine.session(user,generation.path("sessionId").asText());
+    }
+    JsonNode activeMeaning() {
+        long version=db.queryForObject("SELECT COALESCE(MAX(version),0) FROM scenario_learning_preferences WHERE user_id=? AND program_code='general-communication'",Long.class,user);
+        personalization.save(user,id(),new ScenarioPersonalization.Preference("general-communication",4,new ScenarioGoalRequest.Target("cefr-listening","LISTENING","a1"),null,"detail",version));
+        var op=dispatch(engine.createDraft(user,id(),new ScenarioEngine.DraftRequest("A short listening lesson","general-communication",4,"a1","detail")));
+        assertThat(op.path("status").asText()).isEqualTo("SUCCEEDED");
+        var draft=engine.draft(user,op.path("draftId").asText());
+        var generation=dispatch(engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong())));
+        assertThat(generation.path("status").asText()).isEqualTo("SUCCEEDED");
+        return engine.session(user,generation.path("sessionId").asText());
+    }
+    @Test void meaningRecapSkipIsDurableFreeAndChecksAreServerSelectedAndSecretUntilDone() {
+        var session=activeMeaning(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        assertThat(session.path("activities").get(0).path("questions")).isEmpty();
+        int jobs=db.queryForObject("SELECT COUNT(*) FROM scenario_operations WHERE user_id=?",Integer.class,user);
+        String key=id(); var skip=new ScenarioEngine.AssessmentRequest(session.path("version").asLong(),"SKIP_RECAP","",List.of());
+        session=engine.assessment(user,sid,aid,key,skip); assertThat(engine.assessment(user,sid,aid,key,skip).toString()).isEqualTo(session.toString());
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_operations WHERE user_id=?",Integer.class,user)).isEqualTo(jobs);
+        assertThat(session.path("activities").get(0).path("questions")).hasSize(3);
+        var answers=new ArrayList<ScenarioEngine.Answer>(); for (var q : session.path("activities").get(0).path("questions")) answers.add(new ScenarioEngine.Answer(q.path("questionId").asText(),"I heard nine"));
+        final long version=session.path("version").asLong();
+        assertThatThrownBy(() -> engine.assessment(user,sid,aid,id(),new ScenarioEngine.AssessmentRequest(version,"CHECKS","",List.of(new ScenarioEngine.Answer("q6","forged"))))).isInstanceOf(ScenarioFailure.class);
+        meaningGradeStatus="UNCERTAIN"; dispatch(engine.assessment(user,sid,aid,id(),new ScenarioEngine.AssessmentRequest(version,"CHECKS","",answers)));
+        session=engine.session(user,sid); var activity=session.path("activities").get(0);
+        assertThat(activity.path("assessment").path("stage").asText()).isEqualTo("DONE"); assertThat(activity.path("assessment").path("coverage").path("uncertain").asInt()).isEqualTo(3);
+        assertThat(activity.path("questions").toString()).doesNotContain("answerVi","quoteEn");
+        session=engine.completeActivity(user,sid,aid,id(),new ScenarioEngine.VersionRequest(session.path("version").asLong()));
+        assertThat(session.path("activities").get(0).path("questions")).hasSize(3); assertThat(session.path("activities").get(0).path("questions").get(0).has("answerVi")).isTrue();
+    }
+    @Test void fullIndependentRecapCompletesWithoutArtificialChecksAndPartialRecapDoesNotLeakResults() {
+        var session=activeMeaning(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        dispatch(engine.assessment(user,sid,aid,id(),new ScenarioEngine.AssessmentRequest(session.path("version").asLong(),"RECAP","I heard nine, six pounds and tomorrow",List.of())));
+        session=engine.session(user,sid); assertThat(session.path("activities").get(0).path("attempts").get(0).has("result")).isFalse();
+        assertThat(session.path("activities").get(0).path("assessment").path("coverage").has("meanings")).isFalse();
+        // A different activity with a full recap has no forced check batch.
+        var another=activeMeaning(); String other=another.path("sessionId").asText(),a=another.path("activities").get(0).path("activityId").asText();
+        meaningGradeStatus="CAPTURED"; dispatch(engine.assessment(user,other,a,id(),new ScenarioEngine.AssessmentRequest(another.path("version").asLong(),"RECAP","nine, six pounds, tomorrow",List.of())));
+        another=engine.session(user,other); assertThat(another.path("activities").get(0).path("assessment").path("canComplete").asBoolean()).isTrue(); assertThat(another.path("activities").get(0).path("questions")).isEmpty();
+    }
+    @Test void historicalGradeRecoversGenerationPinAndRejectsMissingProvenanceAndEmergencyStop() {
+        var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        String draft=db.queryForObject("SELECT draft_id FROM scenario_sessions WHERE id=?",String.class,sid),pin=release.promptHash();
+        db.update("UPDATE scenario_drafts SET workflow_snapshot_json=NULL WHERE id=?",draft);
+        var extraction=db.queryForMap("SELECT id,payload_json FROM scenario_operations WHERE kind='EXTRACT' AND resource_id=?",draft);
+        var input=(ObjectNode)tree((String)extraction.get("payload_json")); input.put("promptHash","0d40fae31e57eef602c6f1e8402ea6116f8beeee56ac011c7c3d018f7f0152c2"); db.update("UPDATE scenario_operations SET payload_json=? WHERE id=?",input.toString(),extraction.get("id"));
+        when(release.promptHash()).thenReturn("0".repeat(64));
+        var grade=engine.answer(user,sid,aid,id(),answers(session));
+        assertThat(tree(db.queryForObject("SELECT payload_json FROM scenario_operations WHERE id=?",String.class,grade.path("operationId").asText())).path("promptHash").asText()).isEqualTo(pin);
+        when(release.promptHash()).thenReturn(pin);
+        var other=active(); String otherSid=other.path("sessionId").asText(),otherAid=other.path("activities").get(0).path("activityId").asText();
+        String otherDraft=db.queryForObject("SELECT draft_id FROM scenario_sessions WHERE id=?",String.class,otherSid);
+        db.update("UPDATE scenario_drafts SET workflow_snapshot_json=NULL WHERE id=?",otherDraft);
+        db.update("DELETE FROM scenario_operations WHERE user_id=? AND resource_id IN (?,?)",user,otherDraft,otherSid);
+        assertThatThrownBy(() -> engine.answer(user,otherSid,otherAid,id(),answers(other))).isInstanceOfSatisfying(ScenarioFailure.class,f -> assertThat(f.code).isEqualTo("WORKFLOW_PROVENANCE_MISSING"));
+        var stopped=active(); String stoppedSid=stopped.path("sessionId").asText(),stoppedAid=stopped.path("activities").get(0).path("activityId").asText();
+        db.update("UPDATE ai_budget_control SET enabled=FALSE WHERE id=1");
+        try { assertThatThrownBy(() -> engine.answer(user,stoppedSid,stoppedAid,id(),answers(stopped))).isInstanceOf(AiUsageBudget.Rejected.class); }
+        finally { db.update("UPDATE ai_budget_control SET enabled=TRUE WHERE id=1"); }
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_attempts WHERE activity_id=?",Integer.class,stoppedAid)).isZero();
+        doThrow(new ScenarioFailure(503,"UNSUPPORTED_PROGRAM_MODE","Disabled")).when(release).requireGrade(anyLong(),anyString(),anyInt(),anyString());
+        assertThatThrownBy(() -> engine.answer(user,stoppedSid,stoppedAid,id(),answers(stopped))).isInstanceOf(ScenarioFailure.class);
     }
     ScenarioEngine.AnswersRequest answers(JsonNode session) {
         return new ScenarioEngine.AnswersRequest(session.path("version").asLong(),List.of(
@@ -149,7 +233,7 @@ class ScenarioEngineIntegrationTest {
         var generation=engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong()));
         String nextId=generation.path("operationId").asText();
         assertThat(tree(db.queryForObject("SELECT payload_json FROM scenario_operations WHERE id=?",String.class,nextId))
-                .path("promptHash").asText()).isEqualTo(current);
+                .path("promptHash").asText()).isEqualTo(baseline);
         assertThat(dispatch(generation).path("status").asText()).isEqualTo("SUCCEEDED");
     }
 

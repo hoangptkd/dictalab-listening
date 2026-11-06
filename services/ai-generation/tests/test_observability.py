@@ -248,6 +248,31 @@ def test_personalized_trace_records_context_and_fingerprint_without_network(trac
     assert scores[-1]["value"] == 1
 
 
+def test_meaning_assessment_trace_uses_v3_metadata_without_historical_example_lookup(tracing):
+    from test_scenario_assessment import payload, execute, recap_grade
+    exporter, scores = tracing
+    result, calls = execute(payload("GRADE"), [recap_grade()])
+    span = next(s for s in exporter.get_finished_spans() if s.name == "ai.scenario.grade")
+    prefix = "langfuse.trace.metadata."
+    metadata = {key.removeprefix(prefix): json.loads(value) for key, value in span.attributes.items() if key.startswith(prefix)}
+    assert metadata["assessmentPolicyVersion"] == "scenario-meaning-assessment.v1"
+    assert metadata["harnessPolicyVersion"] == "scenario-meaning-harness.v1"
+    assert metadata["promptHash"] == result["promptHash"]
+    assert len(calls) == 1
+    assert any(s["name"] == "gate.validate_grade" and s["value"] == 1 for s in scores)
+
+
+def test_provider_status_trace_captures_only_numeric_status_not_private_error_details(tracing):
+    exporter, _ = tracing
+    error = ProviderError("private-response-body-canary")
+    error.status = 400
+    with pytest.raises(ProviderError), obs.observation("provider.failure"):
+        raise error
+    span = exporter.get_finished_spans()[-1]
+    assert json.loads(span.attributes["langfuse.observation.metadata.providerHttpStatus"]) == 400
+    assert "private-response-body-canary" not in str(span.attributes)
+
+
 def test_repeated_gate_upserts_one_final_score(tracing):
     _, scores = tracing
     @obs.trace_gate

@@ -1052,3 +1052,32 @@
 .scenario-unavailable-notice {
     margin-top: 12px;
 }
+
+.scenario-assessment {
+    max-width: 760px;
+    padding: 20px;
+    margin-block: 20px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--paper);
+    line-height: 1.6;
+}
+
+.scenario-assessment h3 { margin-top: 16px; }
+.scenario-assessment form > label { display: block; margin-bottom: 8px; font-weight: 600; }
+.scenario-assessment .scenario-input-card { padding-inline: 0; }
+.scenario-assessment .scenario-result-actions { margin-block: 16px; }
+.scenario-assessment :is(button, summary) { min-height: 44px; }
+.scenario-assessment :is(button, summary):focus-visible { outline: 3px solid var(--coral-deep); outline-offset: 3px; }
+.scenario-assessment > details { margin-top: 20px; }
+.scenario-assessment-progress { color: var(--ink-soft); }
+.scenario-assessment-coverage { margin-block: 20px; overflow-wrap: anywhere; }
+.scenario-assessment-attempt { padding-block: 12px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.scenario-meaning-list { display: grid; gap: 12px; padding-inline-start: 20px; }
+.scenario-meaning-list li > :is(strong, small) { display: block; }
+.scenario-meaning-list small { color: var(--ink-soft); }
+
+@media (max-width: 600px) {
+    .scenario-assessment { padding: 16px; }
+    .scenario-assessment .scenario-result-actions > button { width: 100%; white-space: normal; }
+}
