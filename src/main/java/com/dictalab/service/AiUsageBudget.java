@@ -21,11 +21,14 @@ public class AiUsageBudget {
     private final int globalCalls, userCalls;
     private final boolean enabled;
     private PremiumAccessService premium;
+    private LocalQaAccount localQa;
     @Value("${dictalab.ai.platform.text-provider:gemini}")
     private String textProvider = "gemini";
 
     @org.springframework.beans.factory.annotation.Autowired
-    void configurePremium(PremiumAccessService premium) { this.premium=premium; }
+    void configurePremium(PremiumAccessService premium, LocalQaAccount localQa) {
+        this.premium=premium; this.localQa=localQa;
+    }
 
     public boolean aiAllowed(long userId) { return premium == null || premium.aiAllowed(userId); }
 
@@ -73,7 +76,7 @@ public class AiUsageBudget {
         if (premium != null) premium.takeAi(userId, tts);
         Boolean accepting = db.queryForObject("SELECT enabled FROM ai_budget_control WHERE id=1 FOR UPDATE", Boolean.class);
         if (!Boolean.TRUE.equals(accepting)) throw new Rejected("AI đang tạm dừng. Bài làm của bạn vẫn được lưu.");
-        if (enabled) {
+        if (enabled && !unlimited(userId)) {
             Date day = Date.valueOf(LocalDate.now(ZoneOffset.UTC));
             long amount = local && !tts ? 0 : Math.multiplyExact(tts ? ttsReservation : llmReservation, calls);
             String prefix = local && !tts ? "LOCAL_" : "";
@@ -88,7 +91,7 @@ public class AiUsageBudget {
             if (premium != null && userId != null) premium.takeAi(userId,tts);
             Boolean accepting=db.queryForObject("SELECT enabled FROM ai_budget_control WHERE id=1 FOR UPDATE",Boolean.class);
             if (!Boolean.TRUE.equals(accepting)) throw new Rejected("AI đang tạm dừng. Bài làm của bạn vẫn được lưu.");
-            if (!enabled) return;
+            if (!enabled || unlimited(userId)) return;
             Date day=Date.valueOf(LocalDate.now(ZoneOffset.UTC));
             long amount=local ? 0 : tts?ttsReservation:llmReservation;
             add(day,local ? "LOCAL_GLOBAL" : "GLOBAL",amount,globalLimit,globalCalls);
@@ -98,6 +101,8 @@ public class AiUsageBudget {
     private void add(Date day,String scope,long amount,long limit,int calls) {
         add(day,scope,amount,limit,calls,1);
     }
+
+    private boolean unlimited(Long userId) { return localQa != null && localQa.unlimited(userId); }
 
     private void add(Date day,String scope,long amount,long limit,int calls,int count) {
         if (amount>limit) throw rejected("Đã đạt giới hạn AI trong ngày. Bạn vẫn có thể luyện dictation.");

@@ -48,6 +48,60 @@ class AiUsageBudgetIntegrationTest {
         assertThat(db.queryForObject("SELECT reserved_microusd FROM ai_daily_budget WHERE scope='GLOBAL'",Long.class)).isEqualTo(10);
     }
 
+    @Test void localQaSkipsDailyTextAndAudioBudgetsButKeepsOtherUsersAndEmergencyStop() {
+        var budget=budget(20,20,1);
+        var environment=new org.springframework.mock.env.MockEnvironment().withProperty("spring.profiles.active","local");
+        budget.configurePremium(org.mockito.Mockito.mock(PremiumAccessService.class),new LocalQaAccount(environment,actor));
+        for(int i=0;i<3;i++){budget.reserve(actor,false);budget.reserve(actor,true);budget.reserveLocal(actor);}
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM ai_daily_budget",Integer.class)).isZero();
+        budget.reserve(actor+1,false);
+        assertThatThrownBy(()->budget.reserve(actor+1,false)).isInstanceOf(AiUsageBudget.Rejected.class);
+        budget.setEnabled(actor,false);
+        assertThatThrownBy(()->budget.reserve(actor,true)).isInstanceOf(AiUsageBudget.Rejected.class);
+    }
+
+    @Test void localQaScenarioAdmissionKeepsTheDurableEnvelopeDespiteExhaustedDailyBudget() {
+        var budget=budget(20,20,1);
+        budget.reserve(actor,false); // Exhaust the call allowance before enabling the QA exception.
+        budget.configurePremium(org.mockito.Mockito.mock(PremiumAccessService.class),
+                new LocalQaAccount(new org.springframework.mock.env.MockEnvironment().withProperty("spring.profiles.active","local"),actor));
+        String operation=UUID.randomUUID().toString();
+        new TransactionTemplate(manager).executeWithoutResult(status -> {
+            db.update("""
+                    INSERT INTO scenario_operations(id,user_id,request_key,scope,input_hash,kind,resource_id,payload_json,deadline)
+                    VALUES (?,?,?,?,?,'GENERATE',?,'{}',CURRENT_TIMESTAMP)
+                    """,operation,actor,UUID.randomUUID().toString(),"qa-budget-test","0".repeat(64),UUID.randomUUID().toString());
+            budget.reserveScenario(actor,operation,5,false,false);
+            budget.reserveScenario(actor,operation,5,false,false);
+        });
+        assertThat(db.queryForObject("SELECT calls_reserved FROM scenario_operation_budget WHERE operation_id=?",Integer.class,operation)).isEqualTo(5);
+        assertThat(db.queryForObject("SELECT calls FROM ai_daily_budget WHERE scope='GLOBAL'",Integer.class)).isEqualTo(1);
+        assertThatThrownBy(()->budget.reserve(actor+1,false)).isInstanceOf(AiUsageBudget.Rejected.class);
+        assertThatThrownBy(()->budget.reserveScenario(actor,UUID.randomUUID().toString(),8,false,false)).isInstanceOf(IllegalArgumentException.class);
+        budget.setEnabled(actor,false);
+        assertThatThrownBy(()->new TransactionTemplate(manager).executeWithoutResult(status ->
+                budget.reserveScenario(actor,UUID.randomUUID().toString(),5,false,false))).isInstanceOf(AiUsageBudget.Rejected.class);
+    }
+
+    @Test void localQaHasPaidPracticeAndAiAccessWithoutBecomingAdministrator() {
+        var config=new com.dictalab.config.BillingProperties(true,49000,30,1,1,"https://billing.test","test","test","test");
+        var premium=new PremiumAccessService(db,config,java.time.Clock.systemUTC());
+        premium.configureLocalQa(new LocalQaAccount(new org.springframework.mock.env.MockEnvironment().withProperty("spring.profiles.active","local"),actor));
+        for(int i=0;i<3;i++) {
+            premium.takePractice(actor);
+            premium.takeAi(actor,false);
+            premium.takeAi(actor,true);
+        }
+        assertThat(premium.status(actor)).containsEntry("premium",true).containsEntry("administrator",false);
+        assertThat(premium.aiAllowed(actor)).isTrue();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM premium_daily_usage WHERE user_id=?",Integer.class,actor)).isZero();
+        long other=users.saveAndFlush(new AppUser("non-qa-"+UUID.randomUUID()+"@test.local","Regular","unused",Instant.now())).getId();
+        assertThat(premium.aiAllowed(other)).isFalse();
+        assertThatThrownBy(()->premium.takeAi(other,false)).isInstanceOf(AiUsageBudget.Rejected.class);
+        premium.takePractice(other);
+        assertThatThrownBy(()->premium.takePractice(other)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+    }
+
     @Test void concurrentAdmissionsNeverExceedGlobalBudget() throws Exception {
         var budget=budget(50,100,100);
         var start=new CountDownLatch(1);

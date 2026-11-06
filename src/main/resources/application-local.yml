@@ -1,5 +1,6 @@
 # Text AI stays on this machine, including legacy grading/review callers.
 dictalab:
+  local-qa-user-id: ${DICTALAB_LOCAL_QA_USER_ID:0}
   vocabulary:
     enabled: ${DICTALAB_VOCABULARY_ENABLED:true}
   ai:
