@@ -345,7 +345,11 @@ class ScenarioEngineIntegrationTest {
         }).when(ai).submitScenario(anyLong(),anyString(),any(),any());
         var generation=dispatch(engine.createSession(user,id(),new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong())));
         assertThat(generation.path("status").asText()).isEqualTo("FAILED");
-        assertThat(engine.session(user,generation.path("sessionId").asText()).path("status").asText()).isEqualTo("PREPARATION_FAILED");
+        var failedSession=engine.session(user,generation.path("sessionId").asText());
+        assertThat(failedSession.path("status").asText()).isEqualTo("PREPARATION_FAILED");
+        assertThat(failedSession.path("inputVi").asText()).isEqualTo(input().inputVi());
+        assertThat(failedSession.path("preparationError").path("operationId").asText()).isEqualTo(generation.path("operationId").asText());
+        assertThat(draft.path("inputVi").asText()).isEqualTo(input().inputVi());
         doAnswer(call -> done(call.getArgument(1),call.getArgument(3))).when(ai).submitScenario(anyLong(),anyString(),any(),any());
         var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
         doAnswer(call -> object().put("schemaVersion","1").put("jobId",(String)call.getArgument(1)).put("status","UNKNOWN")).when(ai).submitScenario(anyLong(),anyString(),any(),any());

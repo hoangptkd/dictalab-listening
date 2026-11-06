@@ -100,7 +100,7 @@ public class ScenarioEngine {
         var row=data.owned("scenario_drafts",user,id);
         var result=object().put("draftId",id).put("status",(String)row.get("status")).put("version",number(row,"version"))
                 .put("programCode",(String)row.get("program_code")).put("programVersion",number(row,"program_version"))
-                .put("expiresAt",instant(row.get("expires_at")).toString());
+                .put("expiresAt",instant(row.get("expires_at")).toString()).put("inputVi",(String)row.get("input_vi"));
         result.set("profile",tree((String)row.get("profile_json"))); result.set("declaredGoals",tree((String)row.get("target_json")));
         if (row.get("learning_context_json")!=null) result.set("learningContext",tree((String)row.get("learning_context_json")));
         if (row.get("specification_json") != null) result.set("specification",tree((String)row.get("specification_json")));
@@ -165,6 +165,11 @@ public class ScenarioEngine {
             result.set("specification",tree((String)draft.get("specification_json")));
             result.set("declaredGoals",tree((String)draft.get("target_json")));
             if (draft.get("learning_context_json")!=null) result.set("learningContext",tree((String)draft.get("learning_context_json")));
+            if ("PREPARATION_FAILED".equals(row.get("status"))) {
+                result.put("inputVi",(String)draft.get("input_vi"));
+                var failed=data.db.queryForList("SELECT id FROM scenario_operations WHERE user_id=? AND kind='GENERATE' AND resource_id=? ORDER BY created_at DESC,id DESC LIMIT 1",String.class,user,id);
+                if (!failed.isEmpty()) result.set("preparationError",operations.get(user,failed.get(0)));
+            }
             boolean audioAllowed=true;
             try { requireProgram(user,draft); }
             catch (ScenarioFailure unavailable) { audioAllowed=false; result.put("playbackRestrictionVi",unavailable.getMessage()); }

@@ -9,19 +9,22 @@
     const profiles = {supported: "Có hỗ trợ", standard: "Tiêu chuẩn", challenge: "Thử thách", a1: "A1", a2: "A2", b1: "B1", b2: "B2", c1: "C1", c2: "C2"};
     const skills = {detail: "Nghe chi tiết", "main-idea": "Hiểu ý chính", reason: "Hiểu lý do", purpose: "Hiểu mục đích", "speaker-attitude": "Hiểu quan điểm", "supported-inference": "Nghe và suy luận"};
     const programNames = {"general-communication": "Giao tiếp", "toeic-listening": "TOEIC Listening", "ielts-listening": "IELTS Listening"};
-    let revision = 0, owner = null, abort = null, timer = null, session = null, busy = false, playback = 0, cancelSequence = null, cleanupMedia = null;
-    const memory = new Map();
+    let revision = 0, owner = null, abort = null, timer = null, session = null, busy = false, playback = 0, cancelSequence = null, cleanupMedia = null, activeSegmentId = null;
+    const memory = new Map(), mediaUrls = new Map();
     const storageKey = (suffix, user = owner) => `dictalab:scenario:${user}:${suffix}`;
-    function read(suffix, fallback, user = owner) { const key = storageKey(suffix,user); try { return JSON.parse(sessionStorage.getItem(key)) ?? memory.get(key) ?? fallback; } catch (_) { return memory.get(key) ?? fallback; } }
+    function read(suffix, fallback, user = owner) { const key = storageKey(suffix,user); if (memory.has(key)) return memory.get(key) ?? fallback; try { return JSON.parse(sessionStorage.getItem(key)) ?? fallback; } catch (_) { return fallback; } }
     function save(suffix, value, user = owner) { const key = storageKey(suffix,user); memory.set(key,value); try { if (value === null) sessionStorage.removeItem(key); else sessionStorage.setItem(key, JSON.stringify(value)); } catch (_) { /* In-memory retry protection remains when storage is unavailable. */ } }
     const current = token => token === revision && owner === bridge().currentUser()?.id;
     const request = (path, options = {}) => bridge().api(base + path, {...options, signal: abort?.signal, cache: "no-store"});
     function status(message) { const node = root()?.querySelector("#scenario-status"); if (node) node.textContent = message; }
     function operationFailure(op) {
+        if (op.status === 'UNKNOWN') return `${op.errorCode === 'AI_PROVIDER_UNAVAILABLE' ? 'Nhà cung cấp AI tạm quá tải hoặc gặp lỗi máy chủ. ' : ''}Chưa xác định được kết quả từ nhà cung cấp. Hệ thống không tự gửi lại tác vụ và không tự gọi lại để tránh phí trùng.`;
+        if (op.stage === 'GRADE') return 'Chưa chấm được câu trả lời đã lưu; đây không phải câu trả lời sai. Nếu nút thử chấm lại xuất hiện, bạn có thể chủ động dùng nút đó. Nếu không, hãy giữ mã tác vụ để được hỗ trợ.';
+        if (op.stage === 'TTS') return 'Chưa tạo được âm thanh cho đoạn này. Bài học và câu trả lời vẫn được giữ; hãy thử nghe lại đoạn sau hoặc giữ mã tác vụ để được hỗ trợ.';
         if (op.errorCode === 'AI_PROVIDER_UNAVAILABLE') return 'Nhà cung cấp AI tạm quá tải hoặc gặp lỗi máy chủ. Chưa nhận được kết quả hợp lệ từ các model được cấu hình. Hệ thống giữ dữ liệu đã lưu và không tự gửi lại toàn bộ tác vụ để tránh gọi trùng. Hãy chờ rồi chủ động thử lại sau.';
-        return op.status === 'UNKNOWN' ? 'Chưa xác định được kết quả từ nhà cung cấp. Hệ thống không tự gọi lại để tránh phí trùng.' : 'Tác vụ không hoàn tất. Mô tả và bài đã lưu vẫn được giữ. Bạn có thể sửa mô tả rồi chủ động tạo bài mới.';
+        return 'Tác vụ tạo bài không hoàn tất. Mô tả đã lưu vẫn được giữ; bạn có thể sửa mô tả rồi chủ động tạo bài mới.';
     }
-    function frame(html) { stopAudio(); root().innerHTML = `<div class="scenario-browser">${html}<p id="scenario-status" class="scenario-status" role="status" aria-live="polite"></p></div>`; }
+    function frame(html) { stopAudio(); clearMediaUrls(); root().innerHTML = `<div class="scenario-browser"><p id="scenario-status" class="scenario-status" role="status" aria-live="polite"></p>${html}</div>`; }
     function focusStep(selector = '#scenario-step-heading') { const heading = root()?.querySelector(selector); heading?.focus(); heading?.scrollIntoView?.({block: 'nearest'}); }
     function busyControls(locked) {
         root()?.querySelectorAll('button').forEach(button => {
@@ -34,8 +37,17 @@
         frame(`<h2 id="scenario-step-heading" tabindex="-1">Chưa tải được bài học</h2><p>${escape(error.message)}</p><button id="scenario-load-retry" type="button">Thử tải lại</button><a href="/conversation" data-session="">Về chọn bài</a>`);
         root().querySelector('#scenario-load-retry').addEventListener('click', () => show(id)); bindSessionLinks(); focusStep();
     }
-    function stopAudio() { cancelSequence?.(); cancelSequence = null; playback++; cleanupMedia?.(); cleanupMedia = null; const audio = root()?.querySelector("audio"); if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); } }
-    function leave() { revision++; clearTimeout(timer); timer = null; abort?.abort(); abort = null; stopAudio(); busy = false; }
+    function stopAudio() { cancelSequence?.(); cancelSequence = null; playback++; cleanupMedia?.(); cleanupMedia = null; activeSegmentId = null; updateEvidenceControl(); const audio = root()?.querySelector("audio"); if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); } }
+    function clearMediaUrls() { if (typeof URL !== 'undefined' && URL.revokeObjectURL) for (const url of mediaUrls.values()) URL.revokeObjectURL(url); mediaUrls.clear(); }
+    function updateEvidenceControl() {
+        root()?.querySelectorAll('[data-play]').forEach(button => {
+            if (!button.closest?.('.scenario-review-question')) return;
+            const same = button.dataset.play === activeSegmentId;
+            if (same) { button.disabled = false; delete button.dataset.busyDisabled; }
+            button.textContent = same ? (root()?.querySelector('audio')?.paused ? 'Tiếp tục bằng chứng' : 'Tạm dừng bằng chứng') : `Nghe bằng chứng · Đoạn ${button.dataset.ordinal}`;
+        });
+    }
+    function leave() { revision++; clearTimeout(timer); timer = null; abort?.abort(); abort = null; stopAudio(); clearMediaUrls(); busy = false; }
     async function mutation(path, body) {
         // Keep the same key after transport failure and across reload, until Core acknowledges registration.
         const actor = owner, activeSession = session, identity = path + "/" + JSON.stringify(body), pending = read("mutations", {}, actor);
@@ -96,9 +108,10 @@
         const available = program ? program.generationAvailable && Boolean(preference) : catalog.generationAvailable;
         const groups = [...new Map(suggestions.suggestions.map(s => [s.groupId || s.id, {id: s.groupId || s.id, title: s.groupTitleVi || s.titleVi}])).values()];
         const historyRows = rows => rows.map(s => `<p><a href="/conversation/${encodeURIComponent(s.sessionId)}" data-session="${escape(s.sessionId)}">${escape(s.titleVi)}</a> · ${escape(statusLabels[s.status] || s.status)}</p>`).join("");
+        const continueSession = history.sessions.find(s => s.status === 'ACTIVE');
         const legacyRows = rows => rows.map(s => `<p><a href="/conversation/${encodeURIComponent(s.id)}" data-session="${escape(s.id)}">Bài trước đây · ${escape(s.scenario)} · ${escape(s.difficulty)}</a></p>`).join("");
         frame(`${catalog.generationMode === "LOCAL_PREVIEW" ? '<p role="status">Thử nghiệm local · Program DRAFT, chưa được chuyên gia duyệt. Kết quả không phải đánh giá chứng chỉ.</p>' : ''}
-            ${program ? personalizationHtml(programs, program, preference) : ''}<div class="scenario-hero"><form id="scenario-create" class="scenario-input-card">
+            ${program ? personalizationHtml(programs, program, preference) : ''}${continueSession ? `<p class="scenario-continue"><strong>Tiếp tục bài đang học:</strong> <a href="/conversation/${encodeURIComponent(continueSession.sessionId)}" data-session="${escape(continueSession.sessionId)}">${escape(continueSession.titleVi)}</a></p>` : ''}<div class="scenario-hero"><form id="scenario-create" class="scenario-input-card">
             <label class="scenario-brief-label" for="scenario-input">Bạn muốn cải thiện điều gì?</label>
             <textarea id="scenario-input" class="scenario-brief" name="inputVi" rows="5" maxlength="2000" ${program ? '' : 'required'} aria-describedby="scenario-input-help"></textarea>
             <p id="scenario-input-help">Mô tả chủ đề hoặc nhu cầu bằng tiếng Việt. ${program ? 'Có thể để trống để AI đề xuất tình huống theo mục tiêu đã lưu.' : ''} Tránh nhập thông tin cá nhân hoặc khóa truy cập.</p>
@@ -133,6 +146,7 @@
             recommendedFocus = null;
             rememberFocus();
             input.value = suggestions.suggestions[Number(button.dataset.suggestion)].inputVi; save("brief", input.value); input.focus();
+            status('Gợi ý đã điền. Bạn có thể sửa mô tả trước khi tạo bài.');
         }));
         root().querySelectorAll("[data-recommendation]").forEach(button => button.addEventListener("click", () => {
             const suggestion = recommended[Number(button.dataset.recommendation)];
@@ -220,6 +234,9 @@
             link.addEventListener("click", event => {
             if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button) return;
             event.preventDefault(); if (link.hasAttribute('data-discard-draft')) save('draft', null);
+            if (link.hasAttribute('data-edit-failed') && session?.inputVi) {
+                save('brief', session.inputVi); save('program', session.programCode); save('briefFocus', null);
+            }
             bridge().navigate("conversation", {sessionId: link.dataset.session});
         }); });
     }
@@ -237,16 +254,16 @@
                 else if (pending.action === "GENERATE") { save('draft', null); bridge().navigate("conversation", {sessionId: op.sessionId}); }
                 else {
                     await openSession(pending.sessionId, token);
-                    if (pending.action === "TTS" && current(token)) await playMedia(op.mediaId);
+                    if (pending.action === "TTS" && current(token)) status('Âm thanh đã sẵn sàng. Bấm nghe đoạn hoặc nghe toàn bộ để phát.');
                 }
             } else if (["FAILED", "UNKNOWN", "CANCELLED", "EXPIRED"].includes(op.status)) {
                 save("operation", null);
                 if (pending.sessionId && ["GRADE", "TTS"].includes(pending.action)) {
                     await openSession(pending.sessionId, token);
-                    if (current(token)) status(`${operationFailure(op)} Mã tác vụ: ${pending.operationId} · ${op.errorCode || op.status}`);
+                    if (current(token)) status(`${operationFailure({...op, stage: pending.action})} Mã tác vụ: ${pending.operationId} · ${op.errorCode || op.status}`);
                     return;
                 }
-                frame(`<h2 id="scenario-step-heading" tabindex="-1">${escape(op.errorCode === 'AI_PROVIDER_UNAVAILABLE' ? 'Nhà cung cấp AI tạm quá tải' : statusLabels[op.status] || op.status)}</h2><p>${escape(operationFailure(op))}</p><p>Mã tác vụ: ${escape(pending.operationId)} · ${escape(op.errorCode || op.status)}</p><a href="/conversation" data-session="" data-discard-draft>Về mô tả đã lưu</a>${pending.sessionId ? `<p><a href="/conversation/${encodeURIComponent(pending.sessionId)}" data-session="${escape(pending.sessionId)}">Quay lại bài học</a></p>` : ''}`);
+                frame(`<h2 id="scenario-step-heading" tabindex="-1">${escape(op.errorCode === 'AI_PROVIDER_UNAVAILABLE' ? 'Nhà cung cấp AI tạm quá tải' : statusLabels[op.status] || op.status)}</h2><p>${escape(operationFailure({...op, stage: pending.action}))}</p><p>Mã tác vụ: ${escape(pending.operationId)} · ${escape(op.errorCode || op.status)}</p><a href="/conversation" data-session="" data-discard-draft>Về mô tả đã lưu</a>${pending.sessionId ? `<p><a href="/conversation/${encodeURIComponent(pending.sessionId)}" data-session="${escape(pending.sessionId)}">Quay lại bài học</a></p>` : ''}`);
                 bindSessionLinks(); focusStep();
             } else if (Date.now() - started < 300000) timer = setTimeout(() => { check().catch(error => { if (current(token)) status(error.message); }); }, Math.max(1500, Math.min(10000, op.pollAfterMs || 2000)));
             else status("Tác vụ còn đang chạy. Bấm kiểm tra trạng thái để tiếp tục, không cần gửi yêu cầu mới.");
@@ -262,7 +279,12 @@
             <h3>Dữ kiện bạn cung cấp</h3><ul>${s.constraintsVi.map(a => `<li>${escape(a)}</li>`).join("")}</ul>
             <h3>Suy luận và giả định cần xác nhận</h3><ul>${s.assumptionsVi.map(a => `<li>${escape(a)}</li>`).join("")}</ul>
             <p>${s.characters.map(c => `${escape(c.name)}: ${escape(c.roleVi)}`).join(" · ")}</p>
-            <div class="scenario-result-actions"><button class="primary-button" id="scenario-confirm">Xác nhận và tạo bài</button><a href="/conversation" data-session="" data-discard-draft>Viết tình huống khác</a></div>`);
+            <div class="scenario-result-actions"><button class="primary-button" id="scenario-confirm">Xác nhận và tạo bài</button><a href="/conversation" data-session="" data-discard-draft data-edit-preview>Sửa mô tả</a></div><p>Sửa vai trò hoặc giả định trong mô tả sẽ cần phân tích lại trước khi tạo bài.</p>`);
+        root().querySelector('[data-edit-preview]')?.addEventListener('click', () => {
+            if (draft.inputVi) save('brief', draft.inputVi);
+            if (draft.programCode) save('program', draft.programCode);
+            save('briefFocus', null);
+        });
         bindSessionLinks(); focusStep();
         root().querySelector("#scenario-confirm").addEventListener("click", () => run(async token => {
             const op = await mutation("/sessions", {draftId: draft.draftId, draftVersion: draft.version});
@@ -320,7 +342,7 @@
         const transcript = a.segments.map((s, i) => s.textEn ? `<p lang="en"><strong>Đoạn ${i + 1} · ${escape(names.get(s.speakerId) || s.speakerId)}:</strong> ${escape(s.textEn)}</p>` : '').join('') + (a.translations || []).map((t, i) => `<p><strong>Đoạn ${i + 1}:</strong> ${escape(t.textVi)}</p>`).join('');
         return `<section class="scenario-audio-panel"><h3 ${a.status !== 'COMPLETED' ? 'id="scenario-step-heading" tabindex="-1"' : ''}>Hoạt động ${a.ordinal} / ${session.activities.length}</h3>
             <div class="scenario-context-card">${session.specification.characters.map(c => `<span>${escape(c.name)}${a.status === 'COMPLETED' ? ` · ${escape(c.roleVi)}` : ''}</span>`).join(" / ")}</div>
-            <div class="scenario-audio-controls"><button type="button" class="primary-button" id="scenario-play-all" ${a.segments.some(s => s.canPlay === false) ? 'disabled' : ''}>▶ Nghe toàn bộ hoạt động</button><button type="button" id="scenario-stop-audio">Dừng nghe</button></div>
+            <div class="scenario-audio-controls"><button type="button" class="primary-button" id="scenario-play-all" ${a.segments.some(s => s.canPlay === false) ? 'disabled' : ''}>▶ Nghe toàn bộ hoạt động</button><button type="button" id="scenario-stop-audio">Dừng nghe</button></div><p>Nghe toàn bộ chuẩn bị âm thanh cho từng đoạn trước khi phát; mỗi đoạn tính một lượt yêu cầu phát.</p>
             ${session.playbackRestrictionVi ? `<p>${escape(session.playbackRestrictionVi)} Audio đã lưu vẫn có thể nghe nếu nút đoạn được bật.</p>` : ''}
             <div class="scenario-segment-list">${a.segments.map((s, si) => `<button type="button" class="scenario-support-btn" data-play="${escape(s.segmentId)}" ${s.canPlay === false ? 'disabled' : ''}>Đoạn ${si + 1} · ${escape(names.get(s.speakerId) || s.speakerId)}</button>`).join("")}</div><audio id="scenario-audio" controls preload="none" aria-label="Audio đoạn hội thoại"></audio>
             ${transcript ? a.status === 'COMPLETED' ? `<details><summary>Xem bản chép và dịch</summary>${transcript}</details>` : transcript : ''}
@@ -339,8 +361,8 @@
         const latest = a.attempts.filter(t => t.status === 'GRADED').at(-1);
         return `<h3 id="scenario-step-heading" tabindex="-1">Chữa hoạt động ${a.ordinal}</h3>${audioHtml(a)}
             ${a.questions.map(q => { const fact = latest?.result?.facts.find(f => f.questionId === q.questionId); return `<section class="scenario-review-question"><h4>${escape(q.promptVi)}</h4><p><strong>Bạn trả lời:</strong> ${escape(latest?.answers.find(answer => answer.questionId === q.questionId)?.textVi || 'Chưa có câu trả lời')}</p>
-                <p><strong>${escape(labels[fact?.status] || 'Chưa có kết quả')}</strong> ${escape(fact?.feedbackVi || (fact?.status === 'UNCERTAIN' ? 'Chưa đủ căn cứ để kết luận từ câu trả lời này.' : ''))}</p><p>Đáp án: ${escape(q.answerVi)}</p>
-                ${(q.evidence || []).map(e => { const index = a.segments.findIndex(s => s.segmentId === e.segmentId); return `<p>Bằng chứng ở đoạn ${index + 1}: <span lang="en">“${escape(e.quoteEn)}”</span></p>${index >= 0 ? `<button type="button" data-play="${escape(e.segmentId)}" ${a.segments[index].canPlay === false ? 'disabled' : ''}>Nghe bằng chứng · Đoạn ${index + 1}</button>` : ''}`; }).join("")}</section>`; }).join("")}
+                <p><strong>${escape(labels[fact?.status] || 'Chưa có kết quả')}</strong>${latest?.support?.transcriptOpened ? ' · Có mở bản chép' : latest?.support?.hintOpened ? ' · Có dùng gợi ý' : ' · Tự nghe'}.</p>${fact?.feedbackVi ? `<p>${escape(fact.feedbackVi)}</p>` : fact?.status === 'UNCERTAIN' ? '<p>Chưa đủ căn cứ để kết luận từ câu trả lời này.</p>' : ''}<p>Đáp án: ${escape(q.answerVi)}</p>
+                ${(q.evidence || []).map(e => { const index = a.segments.findIndex(s => s.segmentId === e.segmentId); return `<p>Bằng chứng ở đoạn ${index + 1}: <span lang="en">“${escape(e.quoteEn)}”</span></p>${index >= 0 ? `<button type="button" data-play="${escape(e.segmentId)}" data-ordinal="${index + 1}" ${a.segments[index].canPlay === false ? 'disabled' : ''}>Nghe bằng chứng · Đoạn ${index + 1}</button>` : ''}`; }).join("")}</section>`; }).join("")}
             <details><summary>Lịch sử trả lời và hỗ trợ</summary>${attemptsHtml(a)}</details>
             <button type="button" id="scenario-next">${session.status === "COMPLETED" ? "Xem tổng kết" : "Sang hoạt động tiếp theo"}</button>`;
     }
@@ -382,67 +404,121 @@
     }
     function bindAudio(a) {
         root().querySelector('#scenario-stop-audio').addEventListener('click', () => { stopAudio(); status('Đã dừng nghe. Bạn có thể phát lại từng đoạn.'); });
-        root().querySelectorAll("[data-play]").forEach(button => button.addEventListener("click", () => play(a.segments.filter(s => s.segmentId === button.dataset.play), false)));
+        root().querySelectorAll("[data-play]").forEach(button => button.addEventListener("click", () => {
+            const audio = root()?.querySelector('#scenario-audio');
+            if (button.dataset.play === activeSegmentId && audio && !audio.ended) {
+                if (audio.paused) audio.play().catch(() => status('Không phát tiếp được audio. Bấm Dừng nghe rồi thử lại đoạn này.'));
+                else audio.pause();
+                return;
+            }
+            play(a.segments.filter(s => s.segmentId === button.dataset.play), false);
+        }));
         root().querySelector("#scenario-play-all")?.addEventListener("click", () => play(a.segments));
         const play = (segments, continuous = true) => run(async token => {
             stopAudio();
-            let cancelled = false, settle = null;
-            const cancel = () => { cancelled = true; settle?.(); };
+            let cancelled = false;
+            const waiters = new Set(), mediaAbort = new AbortController();
+            const cancel = () => { cancelled = true; mediaAbort.abort(); for (const wake of [...waiters]) wake(); };
             cancelSequence = cancel;
             const active = () => !cancelled && current(token);
             try {
-                for (const [index, seg] of segments.entries()) {
-                    if (!active()) return;
-                    status(`Đang chuẩn bị đoạn ${index + 1}/${segments.length}…`);
-                    let op = await mutation(`/sessions/${session.sessionId}/activities/${a.activityId}/play`, {expectedVersion: session.version, segmentId: seg.segmentId});
-                    if (!active()) return;
-                    if (op.status !== 'READY') {
-                        const pending = {...op, action: 'TTS', sessionId: session.sessionId}; save('operation', pending);
-                        const started = Date.now();
-                        do {
-                            op = await request(`/operations/${encodeURIComponent(pending.operationId)}`);
+                const register = async (seg, index) => {
+                    status(`Đang chuẩn bị âm thanh ${index + 1}/${segments.length}…`);
+                    return mutation(`/sessions/${session.sessionId}/activities/${a.activityId}/play`, {expectedVersion: session.version, segmentId: seg.segmentId});
+                };
+                const ready = async (initial, index) => {
+                    if (!active()) return null;
+                    let op = initial;
+                    if (op.status === 'READY') return op;
+                    const pending = {...op, action: 'TTS', sessionId: session.sessionId}; save('operation', pending);
+                    const started = Date.now();
+                    do {
+                        op = await request(`/operations/${encodeURIComponent(pending.operationId)}`);
+                        if (!active()) return null;
+                        if (['FAILED','UNKNOWN','CANCELLED','EXPIRED'].includes(op.status)) {
+                            if (read('operation', null)?.operationId === pending.operationId) save('operation', null);
+                            status(`Không phát được đoạn ${index + 1}. Mã tác vụ: ${pending.operationId} · ${op.errorCode || op.status}. Không tự gửi lại yêu cầu.`);
+                            cancel(); return null;
+                        }
+                        if (op.status === 'SUCCEEDED') {
+                            if (read('operation', null)?.operationId === pending.operationId) save('operation', null);
+                            return op;
+                        }
+                        if (Date.now() - started >= 300000) { status('Âm thanh còn đang chuẩn bị. Tải lại bài để kiểm tra tác vụ đã lưu; không cần tạo yêu cầu mới.'); cancel(); return null; }
+                        await new Promise(resolve => {
+                            const delay = setTimeout(wake, Math.max(1500, Math.min(10000, op.pollAfterMs || 2000)));
+                            function wake() { clearTimeout(delay); waiters.delete(wake); resolve(); }
+                            waiters.add(wake);
+                        });
+                    } while (active());
+                    return null;
+                };
+                const prepared = [];
+                if (continuous) {
+                    // Keep one of the three active-job slots free for other user actions.
+                    for (let start = 0; start < segments.length; start += 2) {
+                        const registered = [];
+                        for (let i = start; i < Math.min(start + 2, segments.length); i++) {
                             if (!active()) return;
-                            if (['FAILED','UNKNOWN','CANCELLED','EXPIRED'].includes(op.status)) {
-                                save('operation', null);
-                                session = await request(`/sessions/${encodeURIComponent(session.sessionId)}`);
-                                if (active()) status(`Không phát được đoạn ${index + 1}. Mã tác vụ: ${pending.operationId} · ${op.errorCode || op.status}. Không tự gửi lại yêu cầu.`);
-                                return;
-                            }
-                            if (op.status === 'SUCCEEDED') { save('operation', null); break; }
-                            if (Date.now() - started >= 300000) { status('Âm thanh còn đang chuẩn bị. Tải lại bài để kiểm tra tác vụ đã lưu; không cần tạo yêu cầu mới.'); return; }
-                            await new Promise(resolve => {
-                                const delay = setTimeout(() => { settle = null; resolve(); }, Math.max(1500, Math.min(10000, op.pollAfterMs || 2000)));
-                                settle = () => { clearTimeout(delay); settle = null; resolve(); };
-                            });
-                        } while (active());
+                            registered.push(await register(segments[i], i));
+                        }
+                        const settled = await Promise.all(registered.map((op, i) => ready(op, start + i)));
+                        if (!active() || settled.some(op => !op)) return;
+                        prepared.push(...settled);
+                        status(`Đã chuẩn bị ${prepared.length}/${segments.length} đoạn âm thanh.${prepared.length < segments.length ? ' Đang chuẩn bị phần còn lại…' : ' Đang tải âm thanh để phát liền mạch…'}`);
+                    }
+                    if (typeof fetch === 'function' && typeof URL !== 'undefined' && URL.createObjectURL) {
+                        await Promise.all(prepared.map(async op => {
+                            if (mediaUrls.has(op.mediaId)) return;
+                            const response = await fetch(`${base}/media/${encodeURIComponent(op.mediaId)}`, {credentials: 'same-origin', cache: 'no-store', signal: mediaAbort.signal});
+                            if (!response.ok) throw new Error('Không tải sẵn được âm thanh. Hãy bấm Nghe toàn bộ để thử lại.');
+                            const blob = await response.blob();
+                            if (!blob.type.startsWith('audio/') || blob.size < 44) throw new Error('Âm thanh chưa hợp lệ. Hãy bấm Nghe toàn bộ để thử lại.');
+                            const url = URL.createObjectURL(blob);
+                            if (active()) mediaUrls.set(op.mediaId, url); else URL.revokeObjectURL(url);
+                        }));
                     }
                     if (!active()) return;
                     session = await request(`/sessions/${encodeURIComponent(session.sessionId)}`);
                     if (!active()) return;
                     const count = root()?.querySelector('#scenario-play-count');
                     if (count) count.textContent = `Lần yêu cầu phát: ${session.activities.find(item => item.activityId === a.activityId)?.plays ?? a.plays}.`;
+                }
+                for (const [index, seg] of segments.entries()) {
+                    if (!active()) return;
+                    const op = continuous ? prepared[index] : await ready(await register(seg, index), index);
+                    if (!active()) return;
+                    if (!continuous) {
+                        session = await request(`/sessions/${encodeURIComponent(session.sessionId)}`);
+                        if (!active()) return;
+                        const count = root()?.querySelector('#scenario-play-count');
+                        if (count) count.textContent = `Lần yêu cầu phát: ${session.activities.find(item => item.activityId === a.activityId)?.plays ?? a.plays}.`;
+                    }
                     const audio = root()?.querySelector('#scenario-audio'); if (!audio) return;
                     let finish;
                     const ended = new Promise(resolve => {
                         const done = event => {
-                            // Natural completion emits pause before ended; only a user pause stops the sequence.
-                            if (event?.type === 'pause' && audio.ended) return;
-                            ['ended','error','pause'].forEach(name => audio.removeEventListener(name, done)); settle = null; resolve(event?.type === 'ended');
+                            ['ended','error'].forEach(name => audio.removeEventListener(name, done)); waiters.delete(finish); resolve(event?.type === 'ended');
                         };
-                        finish = () => done(); settle = finish;
-                        ['ended','error','pause'].forEach(name => audio.addEventListener(name, done));
+                        finish = () => done(); waiters.add(finish);
+                        ['ended','error'].forEach(name => audio.addEventListener(name, done));
                     });
                     const ordinal = a.segments.findIndex(s => s.segmentId === seg.segmentId) + 1;
                     const speaker = session.specification.characters.find(c => c.id === seg.speakerId)?.name;
                     const description = `đoạn ${ordinal}/${a.segments.length}${speaker ? ` · ${speaker}` : ''}`;
+                    activeSegmentId = seg.segmentId;
                     status(`Đang nghe ${description}. ${continuous ? 'Các thao tác khác sẽ mở lại khi nghe xong hoặc bấm Dừng nghe.' : ''}`);
-                    if (!await playMedia(op.mediaId, description, continuous)) { finish(); return; }
-                    if (!continuous) { finish(); return; }
+                    const started = await playMedia(op.mediaId, description, continuous);
+                    if (started === 'blocked') { if (!await ended || !active()) return; continue; }
+                    if (!started) { finish(); return; }
+                    if (!continuous) { await ended; return; }
                     if (!await ended || !active()) return;
+                    activeSegmentId = null; updateEvidenceControl();
                 }
                 if (active()) status(segments.length === a.segments.length ? 'Đã nghe xong hoạt động. Bạn có thể nghe lại từng đoạn.' : 'Đã nghe xong đoạn.');
             } finally {
-                settle?.(); if (cancelSequence === cancel) cancelSequence = null;
+                cancel(); if (cancelSequence === cancel) cancelSequence = null;
+                activeSegmentId = null; updateEvidenceControl();
             }
         });
     }
@@ -450,28 +526,29 @@
         const audio = root().querySelector("#scenario-audio"); if (!audio) return false;
         const token = revision, turn = ++playback;
         const active = () => current(token) && turn === playback && root()?.querySelector("#scenario-audio") === audio;
-        cleanupMedia?.(); let pausedSequence = false;
+        cleanupMedia?.();
         const events = {
             error: () => { if (active()) status("Không tải hoặc giải mã được audio. Bấm nghe lại đoạn này; audio đã lưu sẽ được dùng lại."); },
-            pause: () => { if (active() && !audio.ended) { pausedSequence = continuous; status(`Đã tạm dừng ${description}.${continuous ? ' Chuỗi nghe đã dừng. Phát tiếp trên trình nghe chỉ tiếp tục đoạn hiện tại.' : ''}`); } },
-            playing: () => { if (active()) status(`Đang nghe ${description}.${pausedSequence ? ' Chỉ phát đoạn hiện tại; chọn đoạn tiếp theo để nghe tiếp.' : continuous ? ' Các thao tác khác mở lại khi nghe xong hoặc bấm Dừng nghe.' : ''}`); },
-            ended: () => { if (active() && (!continuous || pausedSequence)) status(`Đã nghe xong ${description}.`); }
+            pause: () => { if (active() && !audio.ended) { status(`Đã tạm dừng ${description}.${continuous ? ' Phát tiếp trên trình nghe để tiếp tục toàn bộ hoạt động.' : ''}`); updateEvidenceControl(); } },
+            playing: () => { if (active()) { status(`Đang nghe ${description}.${continuous ? ' Chuỗi tiếp tục khi đoạn này kết thúc.' : ''}`); updateEvidenceControl(); } },
+            ended: () => { if (active()) { if (!continuous) status(`Đã nghe xong ${description}.`); activeSegmentId = null; updateEvidenceControl(); } }
         };
         Object.entries(events).forEach(([name, handler]) => audio.addEventListener(name, handler));
         cleanupMedia = () => Object.entries(events).forEach(([name, handler]) => audio.removeEventListener(name, handler));
-        audio.src = `${base}/media/${encodeURIComponent(id)}`;
+        audio.src = mediaUrls.get(id) || `${base}/media/${encodeURIComponent(id)}`;
         try { await audio.play(); return active(); } catch (error) {
-            if (!active() || error.name === "AbortError") return false;
-            status(error.name === "NotAllowedError" ? "Trình duyệt chặn tự phát. Bấm nút phát trên trình nghe."
+            if (!active()) return false;
+            if (error.name === 'AbortError') return audio.paused ? 'blocked' : false;
+            status(error.name === "NotAllowedError" ? "Trình duyệt chặn tự phát. Bấm nút phát trên trình nghe để tiếp tục chuỗi."
                 : "Không phát được audio. Bấm nghe lại đoạn này; audio đã lưu sẽ được dùng lại.");
-            return false;
+            return error.name === 'NotAllowedError' ? 'blocked' : false;
         }
     }
     function completedHtml() {
         if (session.status !== "COMPLETED") {
             const isTerminalError = ["PREPARATION_FAILED", "GENERATION_FAILED", "FAILED"].includes(session.status);
             return isTerminalError
-                ? `<p>Bài gặp lỗi: ${escape(statusLabels[session.status] || session.status)}. Hãy tạo bài mới hoặc liên hệ hỗ trợ.</p><p><a href="/conversation" data-session="">Tạo bài mới</a></p>`
+                ? `<p>Bài gặp lỗi: ${escape(statusLabels[session.status] || session.status)}.</p>${session.preparationError ? `<p>${escape(operationFailure(session.preparationError))}</p><p>Mã tác vụ: ${escape(session.preparationError.operationId)} · ${escape(session.preparationError.errorCode || session.preparationError.status)}</p>` : '<p>Không còn chi tiết tác vụ. Bạn có thể liên hệ hỗ trợ.</p>'}<p><a href="/conversation" data-session="" ${session.inputVi ? 'data-edit-failed' : ''}>${session.inputVi ? 'Sửa mô tả đã lưu' : 'Tạo bài mới'}</a></p>`
                 : "<p>Bài đang chuẩn bị. Hãy tải lại để xem trạng thái đã lưu.</p>";
         }
         const summary = latest => {
@@ -480,8 +557,15 @@
             const total = session.activities.reduce((n, a) => n + a.questions.length, 0);
             return `<p>${latest ? "Lần chấm thành công mới nhất" : "Lần trả lời đầu"}: ${facts.filter(f => f.status === "CAPTURED").length} câu hiểu đúng; có kết quả ${facts.length}/${total} câu; ${total - facts.length} câu chưa chấm được; ${facts.filter(f => f.status === "PARTIAL").length} hiểu một phần; ${facts.filter(f => f.status === "INCORRECT").length} chưa đúng; ${facts.filter(f => f.status === "MISSED").length} bỏ lỡ; ${facts.filter(f => f.status === "UNCERTAIN").length} chưa đủ căn cứ. ${attempts.filter(t => t?.support?.hintOpened).length} hoạt động dùng gợi ý chiến lược; ${attempts.filter(t => t?.support?.transcriptOpened).length} hoạt động mở bản chép (có thể trùng nhau).</p>`;
         };
-        return `<h3 id="scenario-step-heading" tabindex="-1">Đã hoàn thành</h3>${summary(false)}${summary(true)}<p>Đây không phải điểm chứng chỉ. Kết quả có hỗ trợ không phải phép đo nghe độc lập.</p>
-            <div class="scenario-result-actions">${followupSkill() ? '<button type="button" id="scenario-review-needed">Xem câu cần luyện</button>' : ''}<button type="button" id="scenario-practice-similar">Luyện tương tự</button></div><p>Luyện tương tự mở mô tả để bạn chỉnh và xem trước. Gợi ý dựa trên bài này, không phải đánh giá trình độ.</p>
+        const first = session.activities.map(a => a.attempts[0]);
+        const latest = session.activities.map(a => a.attempts.filter(t => t.status === 'GRADED').at(-1));
+        const facts = latest.flatMap(t => t?.result?.facts || []);
+        const total = session.activities.reduce((n, a) => n + a.questions.length, 0);
+        const ungradedFirst = total - first.filter(t => t?.status === 'GRADED').flatMap(t => t.result?.facts || []).length;
+        const needsReview = facts.some(f => ['PARTIAL','INCORRECT','MISSED'].includes(f.status));
+        const assisted = latest.some(t => t?.support?.hintOpened || t?.support?.transcriptOpened);
+        return `<h3 id="scenario-step-heading" tabindex="-1">Đã hoàn thành</h3><p><strong>${facts.filter(f => f.status === 'CAPTURED').length}/${facts.length} câu đã chấm được hiểu đúng.</strong> ${total - facts.length ? `${total - facts.length} câu chưa chấm được. ` : ''}${needsReview ? 'Xem câu cần luyện để đối chiếu đáp án và nghe lại bằng chứng.' : 'Bạn có thể luyện một tình huống tương tự.'}</p>${ungradedFirst ? `<p>Lần đầu có ${ungradedFirst} câu chưa chấm; không thể suy tiến bộ từ việc các câu này được chấm ở lần sau.</p>` : ''}<p>${assisted ? 'Có dùng gợi ý hoặc bản chép. ' : ''}Đây không phải điểm chứng chỉ; kết quả có hỗ trợ không phải phép đo nghe độc lập.</p>
+            <div class="scenario-result-actions">${needsReview ? '<button type="button" id="scenario-review-needed">Xem câu cần luyện</button>' : ''}<button type="button" id="scenario-practice-similar">Luyện tương tự</button></div><details><summary>Xem thống kê đầy đủ</summary>${summary(false)}${summary(true)}</details><p>Luyện tương tự mở mô tả để bạn chỉnh và xem trước. Gợi ý dựa trên bài này, không phải đánh giá trình độ.</p>
             <form id="scenario-remix"><label for="scenario-remix-input">Bạn muốn biến thể như thế nào?</label><textarea id="scenario-remix-input" name="inputVi" class="scenario-answer-field" maxlength="1200" required rows="3"></textarea>
             ${session.learningContext ? `<p>Biến thể giữ mục tiêu và mức luyện của bài này: ${escape(profiles[session.learningContext.profile.id])}.</p>` : `<label for="scenario-remix-profile">Mức luyện</label><select id="scenario-remix-profile" name="profileId">${Object.keys(profiles).map(p => `<option value="${p}">${profiles[p]}</option>`).join("")}</select>`}<button class="primary-button">Xem trước biến thể mới</button></form>`;
     }

@@ -284,12 +284,20 @@
 /* ── Status / toast ──────────────────────────────────────────── */
 
 .scenario-status {
-    margin-top: 10px;
+    position: sticky;
+    top: 64px;
+    z-index: 5;
+    margin: 0 0 10px;
     min-height: 20px;
     font-size: .875rem;
     color: var(--ink-soft);
     line-height: 1.4;
+    background: var(--paper);
+    border-left: 3px solid var(--blue);
+    padding: 8px 12px;
 }
+.scenario-status:empty { display: none; }
+.scenario-continue { padding: 12px 16px; border: 1px solid var(--line); background: var(--cream); }
 
 .scenario-status[data-kind="error"] { color: var(--coral-deep); }
 .scenario-status[data-kind="info"]  { color: var(--blue); }
