@@ -73,6 +73,16 @@ public class ScenarioLearningController {
             @RequestHeader(value="Idempotency-Key",required=false) String key,HttpServletRequest http) throws IOException {
         return noStore(engine.play(owner.id(),session,activity,key,read(http,ScenarioEngine.PlayRequest.class)));
     }
+    @PostMapping(value="/sessions/{session}/activities/{activity}/prepare",consumes="application/json")
+    ResponseEntity<JsonNode> prepare(@AuthenticationPrincipal DictaLabPrincipal owner,@PathVariable String session,@PathVariable String activity,
+            @RequestHeader(value="Idempotency-Key",required=false) String key,@RequestParam(defaultValue="false") boolean retryFailed,HttpServletRequest http) throws IOException {
+        return noStore(engine.prepareAudio(owner.id(),session,activity,key,read(http,ScenarioEngine.PlayRequest.class),retryFailed));
+    }
+    @PostMapping(value="/sessions/{session}/activities/{activity}/played",consumes="application/json")
+    ResponseEntity<JsonNode> played(@AuthenticationPrincipal DictaLabPrincipal owner,@PathVariable String session,@PathVariable String activity,
+            @RequestHeader(value="Idempotency-Key",required=false) String key,HttpServletRequest http) throws IOException {
+        return noStore(engine.played(owner.id(),session,activity,key,read(http,ScenarioEngine.PlayRequest.class)));
+    }
     @PostMapping(value="/sessions/{session}/activities/{activity}/complete",consumes="application/json")
     ResponseEntity<JsonNode> complete(@AuthenticationPrincipal DictaLabPrincipal owner,@PathVariable String session,@PathVariable String activity,
             @RequestHeader(value="Idempotency-Key",required=false) String key,HttpServletRequest http) throws IOException {

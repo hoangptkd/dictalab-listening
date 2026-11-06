@@ -185,6 +185,54 @@ paths:
                 segmentId: {type: string}
       responses:
         '200': {description: 'Operation with sessionVersion, or cached {mediaId,status:READY,audioUrl,sessionVersion}'}
+  /api/v2/scenarios/sessions/{session}/activities/{activity}/prepare:
+    parameters: [{$ref: '#/components/parameters/Session'}, {$ref: '#/components/parameters/Activity'}]
+    post:
+      summary: Prepare a segment without incrementing plays or session version
+      description: >-
+        Reuses the same owned cache, voice snapshot and TTS admission as legacy play.
+        Automatic/reload preparation never retries failed audio. Explicit user playback may
+        set retryFailed=true; the existing three-attempt bound still applies. UNKNOWN never retries.
+      parameters:
+        - {$ref: '#/components/parameters/Idempotency'}
+        - {in: query, name: retryFailed, schema: {type: boolean, default: false}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedVersion, segmentId]
+              properties:
+                expectedVersion: {type: integer, minimum: 0}
+                segmentId: {type: string}
+      responses:
+        '200': {description: 'Operation or cached READY media, with unchanged sessionVersion'}
+  /api/v2/scenarios/sessions/{session}/activities/{activity}/played:
+    parameters: [{$ref: '#/components/parameters/Session'}, {$ref: '#/components/parameters/Activity'}]
+    post:
+      summary: Acknowledge a browser-observed start of an already READY segment
+      description: >-
+        Never submits a provider job. Increments plays and session version once per idempotency key.
+        This records a media start, not proof that the learner heard the entire segment.
+        Uses the same owner, activity order, version and cache fingerprint checks as prepare.
+      parameters: [{$ref: '#/components/parameters/Idempotency'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedVersion, segmentId]
+              properties:
+                expectedVersion: {type: integer, minimum: 0}
+                segmentId: {type: string}
+      responses:
+        '200': {description: 'READY media with incremented sessionVersion'}
+        '400': {description: 'No matching READY media or invalid activity order'}
+        '409': {$ref: '#/components/responses/Error'}
   /api/v2/scenarios/media/{id}:
     parameters: [{$ref: '#/components/parameters/Id'}]
     get:

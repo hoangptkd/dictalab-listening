@@ -66,3 +66,72 @@ preview được đối chiếu đúng cả version 2 và 3 từ definition đã
 - Giữ giới hạn hai nhân vật của schema hiện hành. Không thêm chọn/clone giọng.
 - Đưa code lên nhánh task không đồng nghĩa triển khai production. Nhánh này
   không có PR mở; workflow hiện tự chạy khi push main hoặc có PR vào main.
+
+## Cập nhật 2026-11-06: chuẩn bị bài và tải âm thanh cuốn chiếu
+
+### Hành vi mới
+
+- Xác nhận bài mở ngay màn chuẩn bị; các giai đoạn phản ánh đăng ký yêu cầu,
+  tạo hội thoại/câu hỏi và chuẩn bị hai đoạn đầu. Không có phần trăm hoặc ETA giả.
+  Khi reload Conversation, lớp “Đang mở DictaLab” được bỏ sau khi mở view để
+  người dùng thấy màn chuẩn bị và dùng được nút vào bài trước khi audio sẵn sàng.
+- Chỉ đợi tối đa hai đoạn đầu; hai worker chuẩn bị/tải/giải mã cuốn chiếu.
+  File nào READY được tải ngay, không chờ cả nhóm. Những đoạn sau chạy nền khi
+  đang nghe. Nếu thiếu đoạn tiếp theo, thông báo đệm thay vì giả đang phát.
+- `POST .../prepare` dùng admission/cache/voice snapshot có sẵn, không tăng
+  `plays` hoặc session version. Reload không retry FAILED; chỉ lần bấm nghe
+  chủ động có `retryFailed=true`. UNKNOWN luôn giữ tác vụ cũ.
+- `POST .../played` chỉ nhận media READY đúng owner/activity/fingerprint;
+  không thể gọi provider. Sự kiện `playing` ghi một lượt trên mỗi lần gán đoạn,
+  không đếm lại khi pause/resume hoặc buffering. Đây là ghi nhận bắt đầu phát,
+  không chứng minh đã nghe hết. Số lịch sử từ API `/play` cũ vẫn là lượt yêu cầu.
+- Prepare và ghi lượt phát xếp cùng hàng đợi, lấy version lúc gửi. Poll/download
+  chạy ngoài hàng đợi. Dừng nghe ngăn admission mới; tác vụ đã gửi có thể tiếp tục
+  phía server. Ghi nhận phát đã quan sát phải xong trước khi nộp câu trả lời.
+- Nếu mất phản hồi ghi lượt, retry đúng body/key một lần vì endpoint không gọi
+  provider; nếu vẫn chưa xác nhận, chặn mutation và yêu cầu tải lại, giữ bản nháp.
+- GRADE đang chờ nằm trong bài, giữ câu trả lời và lịch sử; submit trùng bị chặn.
+  Poll nền không thay màn hình giữa một thao tác help/playback. Nút kiểm tra
+  trạng thái được gắn lại sau render và bỏ qua phản hồi của operation cũ.
+- Help dùng trực tiếp response, không GET lại session. Blob giữ trong phạm vi
+  bài đang mở và được thu hồi khi rời bài/đổi tài khoản. Không thêm dependency,
+  migration, thay prompt, model, dữ liệu bài học hoặc cấu hình production.
+
+### Kiểm chứng bản cập nhật
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `node --test src/test/js/*.test.cjs` | 409/409 đạt |
+| `mvn -q -Dtest=ScenarioEngineIntegrationTest test` | 78/78 đạt |
+| Native browser: chuẩn bị → nghe → pause/resume → stop → help | Đạt; giữ bản nháp và không GET thừa khi mở help |
+| Native browser: nộp → chờ chấm trong bài → chữa → hoạt động tiếp theo | Đạt; gọi GRADE thật trên bài QA đã có |
+| Hai giọng qua prepare/played mới | Hai media cache READY, hai voice ID khác nhau; không thêm TTS job |
+| Mobile 390 px và 320 px | Không tràn ngang trong bài được thử |
+
+Bài QA `6a12dd79-72e7-4494-82ba-1c0897a74145`, không sinh thêm hội thoại:
+
+- Hoạt động 1 đo cold: chuẩn bị hai đoạn đầu **9.556 ms**, sau sẵn sàng bấm nghe
+  đến `playing` **72,2 ms**; ba khoảng `ended → playing` **27,1 / 29,0 / 29,4 ms**.
+  Sau khi màn chuẩn bị bị lớp khởi động che ở lượt đầu, đã sửa router và chụp
+  lại màn chuẩn bị thật trên hoạt động 2; không dùng ảnh bị che làm bằng chứng UI.
+- Hoạt động 2: hai đoạn đầu đã chuẩn bị, hai đoạn sau chưa có audio. Bấm nghe
+  đến `playing` **765,0 ms**, các khoảng chuyển **50,9 / 58,4 / 53,8 ms**.
+  Đo tốc độ audio bình thường, không mock provider/media và không xóa cache.
+- Đối chiếu DB cho từng lượt: chuẩn bị giữ `plays=0`; nghe bốn đoạn thành `4`;
+  nghe lại một đoạn rồi pause/resume/stop thành `5`. TTS chỉ có bốn job cho bốn
+  segment; replay/help không tăng job. Hoạt động 2 trước phát có version `12`
+  và `plays=0`; version bao gồm GRADE/complete trước đó, không so với trước GRADE.
+- Mốc cũ khoảng 27 giây là chuẩn bị đủ bốn đoạn ở bài khác. Các phép đo đơn lẻ
+  này không đủ để tuyên bố phần trăm cải thiện ổn định. TTS chậm vẫn có thể gây
+  đệm; hai worker là giới hạn client, không hủy job server đã gửi trước khi Stop.
+
+Bằng chứng riêng, ngoài Git:
+
+- `data/conversation-e2e-learning-audit-20261106/rolling-preparation/result.json`:
+  lượt cold đầu, request/event timeline và DB trước/sau.
+- `data/conversation-e2e-learning-audit-20261106/rolling-preparation-final/`:
+  `preparing-desktop.png`, `pending-grade-desktop.png`, ảnh desktop/mobile,
+  `result.json` và `two-voice/new-voice-play.json`.
+
+Đây là kiểm tra hành vi audio và bảo toàn trạng thái trên local, không phải
+đánh giá nội dung AI hoặc chứng minh phát âm/giọng nói tự nhiên trong mọi bài.

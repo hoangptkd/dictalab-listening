@@ -361,7 +361,17 @@ public class ScenarioEngine {
     }
 
     public JsonNode play(long user,String session,String activity,String key,PlayRequest request) {
-        return data.tx.execute(tx -> data.receipt(user,"play/"+activity,key,request,() -> {
+        return audio(user,session,activity,key,request,"play",true);
+    }
+    public JsonNode prepareAudio(long user,String session,String activity,String key,PlayRequest request,boolean retryFailed) {
+        return audio(user,session,activity,key,request,"prepare",retryFailed);
+    }
+    public JsonNode played(long user,String session,String activity,String key,PlayRequest request) {
+        return audio(user,session,activity,key,request,"played",false);
+    }
+    private JsonNode audio(long user,String session,String activity,String key,PlayRequest request,String action,boolean retryFailed) {
+        Object intent=action.equals("prepare") ? Map.of("request",request,"retryFailed",retryFailed) : request;
+        return data.tx.execute(tx -> data.receipt(user,action+"/"+activity,key,intent,() -> {
             var s=data.owned("scenario_sessions",user,session); version(s,request.expectedVersion());
             var draft=data.owned("scenario_drafts",user,(String)s.get("draft_id"));
             require(Set.of("ACTIVE","COMPLETED").contains(s.get("status")));
@@ -374,6 +384,7 @@ public class ScenarioEngine {
             // Keep the historical cache namespace for sessions created before voice snapshots.
             String fingerprint=ttsFingerprint(a,segment,tts);
             var rows=data.db.queryForList("SELECT id,status FROM scenario_media WHERE activity_id=? AND segment_id=? AND fingerprint=?",activity,request.segmentId(),fingerprint);
+            if (action.equals("played")) require(!rows.isEmpty() && "READY".equals(rows.get(0).get("status")));
             String mediaId;
             JsonNode result;
             if (!rows.isEmpty()) {
@@ -382,7 +393,7 @@ public class ScenarioEngine {
                 else {
                     var ops=data.db.queryForList("SELECT id FROM scenario_operations WHERE user_id=? AND kind='TTS' AND resource_id=? ORDER BY created_at DESC,id DESC",String.class,user,mediaId);
                     require(!ops.isEmpty());
-                    if ("FAILED".equals(rows.get(0).get("status")) && ops.size()<3) {
+                    if (retryFailed && "FAILED".equals(rows.get(0).get("status")) && ops.size()<3) {
                         requireProgram(user,draft);
                         data.db.update("UPDATE scenario_media SET status='PENDING' WHERE id=?",mediaId);
                         result=operations.create(user,"tts/"+mediaId+"/"+ops.size(),key,request,"TTS",mediaId,tts);
@@ -393,8 +404,10 @@ public class ScenarioEngine {
                 data.db.update("INSERT INTO scenario_media(id,activity_id,segment_id,fingerprint,status) VALUES (?,?,?,?,'PENDING')",mediaId,activity,request.segmentId(),fingerprint);
                 result=operations.create(user,"tts/"+mediaId,key,request,"TTS",mediaId,tts);
             }
-            data.db.update("UPDATE scenario_activities SET plays=plays+1 WHERE id=?",activity); bump(session);
-            ((ObjectNode)result).put("sessionVersion",request.expectedVersion()+1); return result;
+            if (!action.equals("prepare")) {
+                data.db.update("UPDATE scenario_activities SET plays=plays+1 WHERE id=?",activity); bump(session);
+            }
+            ((ObjectNode)result).put("sessionVersion",request.expectedVersion()+(action.equals("prepare") ? 0 : 1)); return result;
         }));
     }
     private String ttsFingerprint(Map<String,Object> activity,JsonNode segment,JsonNode tts) {

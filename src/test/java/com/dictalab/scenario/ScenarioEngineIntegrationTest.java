@@ -720,6 +720,74 @@ class ScenarioEngineIntegrationTest {
         assertThat(saved.path("activities").get(0).path("questions")).hasSize(2);
     }
 
+    @Test void preparationDoesNotCountAndOnlyReadyObservedPlaybackBumpsVersionOncePerReceipt() {
+        var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        long version=session.path("version").asLong(); var request=new ScenarioEngine.PlayRequest(version,"s1");
+        assertThatThrownBy(() -> engine.played(user,sid,aid,id(),request)).isInstanceOf(ScenarioFailure.class);
+        String key=id(); var pending=engine.prepareAudio(user,sid,aid,key,request,false);
+        assertThat(pending.path("sessionVersion").asLong()).isEqualTo(version);
+        assertThatThrownBy(() -> engine.played(user,sid,aid,id(),request)).isInstanceOf(ScenarioFailure.class);
+        assertThat(engine.prepareAudio(user,sid,aid,key,request,false).toString()).isEqualTo(pending.toString());
+        var ready=dispatch(pending);
+        assertThat(engine.prepareAudio(user,sid,aid,id(),request,false).path("mediaId").asText()).isEqualTo(ready.path("mediaId").asText());
+        var untouched=engine.session(user,sid);
+        assertThat(untouched.path("version").asLong()).isEqualTo(version);
+        assertThat(untouched.path("activities").get(0).path("plays").asInt()).isZero();
+        clearInvocations(ai);
+        String observedKey=id(); var observed=engine.played(user,sid,aid,observedKey,request);
+        assertThat(engine.played(user,sid,aid,observedKey,request).toString()).isEqualTo(observed.toString());
+        assertThat(observed.path("sessionVersion").asLong()).isEqualTo(version+1);
+        assertThat(engine.session(user,sid).path("activities").get(0).path("plays").asInt()).isEqualTo(1);
+        verifyNoInteractions(ai);
+        assertThatThrownBy(() -> engine.prepareAudio(user,sid,aid,id(),request,false)).isInstanceOf(ScenarioFailure.class);
+        assertThatThrownBy(() -> engine.played(user,sid,aid,id(),request)).isInstanceOf(ScenarioFailure.class);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_operations WHERE user_id=? AND kind='TTS'",Integer.class,user)).isEqualTo(1);
+    }
+
+    @Test void automaticPreparationDoesNotRetryFailedOrUnknownButExplicitRetryRemainsBounded() {
+        var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        var request=new ScenarioEngine.PlayRequest(session.path("version").asLong(),"s1");
+        doAnswer(call -> object().put("schemaVersion","1").put("jobId",(String)call.getArgument(1)).put("status","FAILED")).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        dispatch(engine.prepareAudio(user,sid,aid,id(),request,false));
+        assertThat(engine.prepareAudio(user,sid,aid,id(),request,false).path("status").asText()).isEqualTo("FAILED");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_operations WHERE user_id=? AND kind='TTS'",Integer.class,user)).isEqualTo(1);
+        for(int i=0;i<2;i++) dispatch(engine.prepareAudio(user,sid,aid,id(),request,true));
+        assertThat(engine.prepareAudio(user,sid,aid,id(),request,true).path("status").asText()).isEqualTo("FAILED");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_operations WHERE user_id=? AND kind='TTS'",Integer.class,user)).isEqualTo(3);
+        doAnswer(call -> object().put("schemaVersion","1").put("jobId",(String)call.getArgument(1)).put("status","UNKNOWN")).when(ai).submitScenario(anyLong(),anyString(),any(),any());
+        var second=new ScenarioEngine.PlayRequest(session.path("version").asLong(),"s2");
+        dispatch(engine.prepareAudio(user,sid,aid,id(),second,false));
+        assertThat(engine.prepareAudio(user,sid,aid,id(),second,true).path("status").asText()).isEqualTo("UNKNOWN");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_operations WHERE user_id=? AND kind='TTS'",Integer.class,user)).isEqualTo(4);
+        assertThat(engine.session(user,sid).path("activities").get(0).path("plays").asInt()).isZero();
+    }
+
+    @Test void preparationAndObservedPlaybackKeepOwnerOrderCsrfAndStrictRequestValidation() throws Exception {
+        var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        var request=new ScenarioEngine.PlayRequest(session.path("version").asLong(),"s1");
+        var other=users.saveAndFlush(new AppUser(id()+"@audio.test","Other","unused",Instant.now()));
+        String later=session.path("activities").get(1).path("activityId").asText();
+        for(String action:List.of("prepare","played")) {
+            String path="/api/v2/scenarios/sessions/"+sid+"/activities/"+aid+"/"+action;
+            mvc.perform(post(path).with(user(DictaLabPrincipal.from(owner))).header("Idempotency-Key",id())
+                    .contentType("application/json").content(json(request))).andExpect(status().isForbidden());
+            mvc.perform(post(path).with(user(DictaLabPrincipal.from(other))).with(csrf()).header("Idempotency-Key",id())
+                    .contentType("application/json").content(json(request))).andExpect(status().isNotFound());
+            mvc.perform(post(path).with(user(DictaLabPrincipal.from(owner))).with(csrf()).header("Idempotency-Key",id())
+                    .contentType("application/json").content("{\"expectedVersion\":1,\"segmentId\":\"s1\",\"extra\":true}")).andExpect(status().isBadRequest());
+            mvc.perform(post("/api/v2/scenarios/sessions/"+sid+"/activities/"+later+"/"+action).with(user(DictaLabPrincipal.from(owner)))
+                    .with(csrf()).header("Idempotency-Key",id()).contentType("application/json").content(json(request))).andExpect(status().isBadRequest());
+        }
+        var registered=mvc.perform(post("/api/v2/scenarios/sessions/"+sid+"/activities/"+aid+"/prepare")
+                .with(user(DictaLabPrincipal.from(owner))).with(csrf()).header("Idempotency-Key",id())
+                .contentType("application/json").content(json(request))).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control","no-store")).andReturn();
+        dispatch(tree(registered.getResponse().getContentAsString()));
+        mvc.perform(post("/api/v2/scenarios/sessions/"+sid+"/activities/"+aid+"/played")
+                .with(user(DictaLabPrincipal.from(owner))).with(csrf()).header("Idempotency-Key",id())
+                .contentType("application/json").content(json(request))).andExpect(status().isOk());
+    }
+
     @Test void manualAudioRetriesAreBoundedAndUnknownNeverCreatesAnotherPaidJob() {
         var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
         doAnswer(call -> object().put("schemaVersion","1").put("jobId",(String)call.getArgument(1)).put("status","FAILED")).when(ai).submitScenario(anyLong(),anyString(),any(),any());

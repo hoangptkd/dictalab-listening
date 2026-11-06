@@ -15,7 +15,7 @@ function harness(api, storage = new Map(), environment = {}) {
                 this.listeners[name] = event => { for (const entry of [...this.events[name]]) { if (entry.once) this.removeEventListener(name, entry.fn); entry.fn(event || {type: name}); } };
             },
             removeEventListener(name, fn) {this.events[name] = (this.events[name] || []).filter(e => e.fn !== fn);},
-            dataset: {}, hasAttribute() {return false;}, setAttribute() {}, focus() {focused = key;}, async play() {this.paused = false;},
+            dataset: {}, hasAttribute() {return false;}, setAttribute() {}, focus() {focused = key;}, async play() {this.paused = false; this.listeners.playing?.({type:'playing'});},
             pause() {this.paused = true; this.listeners.pause?.({type:'pause'});}, load() {}, removeAttribute(name) {delete this[name];}});
         return nodes.get(key);
     }
@@ -42,7 +42,7 @@ function harness(api, storage = new Map(), environment = {}) {
     const window = {DictaLabListeningBridge: {currentUser: () => user, navigate() {},
         async api(url, options) {calls.push({url, options}); return api(url, options);}}};
     vm.runInNewContext(source, {window, document: {querySelector: () => root}, AbortController, crypto,
-        fetch: environment.fetch, URL: environment.URL,
+        fetch: environment.fetch, URL: environment.URL, Audio: environment.Audio,
         setTimeout: fn => {timers.push(fn); return timers.length;}, clearTimeout() {},
         sessionStorage: {getItem: key => storage.get(key), setItem: (key, value) => {if (environment.rejectWrites) throw new Error('storage blocked'); storage.set(key, value);}, removeItem: key => {if (environment.rejectWrites) throw new Error('storage blocked'); storage.delete(key);}},
         FormData: class extends Map {constructor(form) {super(form.values || []);}}});
@@ -71,7 +71,7 @@ test('completion opens a persisted answer review before the next activity and su
             s.activities[0].questions[0].evidence = [{segmentId: 's1', quoteEn: 'At nine.'}];
             return s;
         }
-        if (url.endsWith('/play')) return {status: 'READY', mediaId: 'cached-media'};
+        if (url.includes('/prepare')) return {status: 'READY', mediaId: 'cached-media'};
         return s;
     };
     const h = harness(api, storage); await h.module.show(s.sessionId);
@@ -124,12 +124,13 @@ test('unknown grading preserves the lesson without offering a fresh paid retry',
 
 test('playback separates autoplay and decode errors and ignores late errors after navigation', async () => {
     const s = session(); s.specification.characters = [{id: 'a', name: 'Alice', roleVi: 'Khách'}];
-    const h = harness(async url => url.endsWith('/play') ? {status: 'READY', mediaId: 'cached'} : s);
+    const h = harness(async url => url.includes('/prepare') ? {status: 'READY', mediaId: 'cached'} : s);
     await h.module.show(s.sessionId);
     assert.match(h.root.innerHTML, /Đoạn 1 · Alice/);
     h.node('#scenario-audio').play = async () => {const error = new Error('blocked'); error.name = 'NotAllowedError'; throw error;};
     h.node('data-play:0').listeners.click(); await tick(); await tick();
     assert.match(h.node('#scenario-status').textContent, /chặn tự phát/);
+    assert.equal(h.calls.filter(c=>c.url.endsWith('/played')).length,0);
     const lateError = h.node('#scenario-audio').events.error[0].fn;
     h.node('#scenario-audio').listeners.error();
     assert.match(h.node('#scenario-status').textContent, /Không tải hoặc giải mã/);
@@ -338,7 +339,7 @@ test('unsaved personalization changes block generation with the previous saved t
 test('play-all prepares only the selected activity and waits for a user gesture when autoplay is blocked', async () => {
     const s = session(); s.activities[0].segments.push({segmentId: 's2', speakerId: 'a'}, {segmentId: 's3', speakerId: 'a'});
     let n = 0;
-    const h = harness(async url => url.endsWith('/play') ? {status: 'READY', mediaId: 'cached-' + (++n)} : s);
+    const h = harness(async url => url.includes('/prepare') ? {status: 'READY', mediaId: 'cached-' + (++n)} : s);
     await h.module.show(s.sessionId);
     const audio = h.node('#scenario-audio');
     audio.paused = true;
@@ -404,20 +405,20 @@ test('play-all continues through queued and cached segments, refreshing versions
     const s = session(); s.activities[0].segments.push({segmentId:'s2'}, {segmentId:'s3'});
     let checks = 0;
     const h = harness(async (url, options = {}) => {
-        if (url.endsWith('/play')) {
-            const id = options.body.segmentId; s.version++;
+        if (url.includes('/prepare')) {
+            const id = options.body.segmentId;
             return id === 's1' ? {operationId:'queued', stage:'TTS', status:'PENDING'} : {status:'READY', mediaId:id};
         }
-        if (url.endsWith('/operations/queued')) return ++checks === 1 ? {status:'RUNNING'} : {status:'SUCCEEDED', mediaId:'s1'};
+        if (url.endsWith('/operations/queued')) return ++checks === 1 ? {operationId:'queued',status:'RUNNING'} : {operationId:'queued',status:'SUCCEEDED', mediaId:'s1'};
         return s;
     });
     await h.module.show(s.sessionId);
     h.node('#scenario-play-all').listeners.click(); await tick(); await tick();
-    assert.equal(h.calls.filter(c => c.url.endsWith('/play')).length, 2);
+    assert.equal(h.calls.filter(c => c.url.includes('/prepare')).length, 3);
     for (let i=0; i<8 && !h.node('#scenario-audio').src; i++) {
         h.timers.shift()?.(); await tick(); await tick();
     }
-    assert.equal(h.calls.filter(c => c.url.endsWith('/play')).length, 3);
+    assert.equal(h.calls.filter(c => c.url.includes('/prepare')).length, 3);
     for (let i=0; i<3; i++) {
         assert.match(h.node('#scenario-audio').src, new RegExp(`s${i+1}$`));
         h.node('#scenario-audio').ended = true;
@@ -425,9 +426,9 @@ test('play-all continues through queued and cached segments, refreshing versions
         h.node('#scenario-audio').listeners.ended(); await tick();
         h.node('#scenario-audio').ended = false;
     }
-    const plays = h.calls.filter(c => c.url.endsWith('/play'));
+    const plays = h.calls.filter(c => c.url.includes('/prepare'));
     assert.deepEqual(plays.map(c => c.options.body.segmentId), ['s1','s2','s3']);
-    assert.deepEqual(plays.map(c => c.options.body.expectedVersion), [1,2,3]);
+    assert.deepEqual(plays.map(c => c.options.body.expectedVersion), [1,1,1]);
     assert.match(h.node('#scenario-status').textContent, /Đã nghe xong hoạt động/);
     // Browser event dispatch may resume the sequence before its other ended listener runs.
     h.node('#scenario-audio').listeners.ended();
@@ -438,24 +439,25 @@ test('play-all continues through queued and cached segments, refreshing versions
 
 for (const interruption of ['pause','error','stop','leave']) test(`play-all handles ${interruption} within the user-selected activity`, async () => {
     const s=session(); s.activities[0].segments.push({segmentId:'s2'});
-    const h=harness(async url => url.endsWith('/play') ? {status:'READY',mediaId:'s1'} : s);
+    const h=harness(async url => url.includes('/prepare') ? {status:'READY',mediaId:'s1'} : s);
     await h.module.show(s.sessionId); h.node('#scenario-play-all').listeners.click(); await tick();
     if (interruption === 'leave') h.module.leave();
     else if (interruption === 'stop') h.node('#scenario-stop-audio').listeners.click();
     else h.node('#scenario-audio').listeners[interruption]();
     await tick();
-    assert.equal(h.calls.filter(c=>c.url.endsWith('/play')).length,2);
+    assert.equal(h.calls.filter(c=>c.url.includes('/prepare')).length,2);
     assert.equal(h.node('#scenario-audio').events.ended.length,['stop','leave'].includes(interruption) ? 0 : interruption === 'pause' ? 2 : 1); // Pause retains the sequence; stop/error/leave end it.
     if(interruption==='error') assert.match(h.node('#scenario-status').textContent,/Không tải hoặc giải mã/);
 });
 
-test('stopping queued play-all preserves its operation for reload and prevents late autoplay', async () => {
-    const s=session(), h=harness(async url=>url.endsWith('/play') ? {operationId:'queued',stage:'TTS',status:'PENDING'} : url.includes('/operations/') ? {status:'RUNNING'} : s);
+test('stopping queued preparation clears intent and prevents late autoplay or resubmission', async () => {
+    const s=session(), h=harness(async url=>url.includes('/prepare') ? {operationId:'queued',stage:'TTS',status:'PENDING'} : url.includes('/operations/') ? {status:'RUNNING'} : s);
     await h.module.show(s.sessionId); h.node('#scenario-play-all').listeners.click(); await tick();
     h.node('#scenario-stop-audio').listeners.click(); await tick();
     const before=h.calls.length; await h.timers.shift()(); await tick();
     assert.equal(h.calls.length,before);
-    assert.equal(JSON.parse(h.storage.get('dictalab:scenario:10:operation')).operationId,'queued');
+    assert.equal(h.storage.has('dictalab:scenario:10:operation'),false);
+    assert.equal(h.storage.has('dictalab:scenario:10:audioIntent'),false);
     assert.equal(h.node('#scenario-audio').src,undefined);
 });
 
@@ -487,25 +489,25 @@ test('active listening hides content goals and roles; correction uses safe backe
     assert.match(h.root.innerHTML,/IELTS Listening/); assert.match(h.root.innerHTML,/Hãy nghe lại đoạn 2/);
 });
 
-test('draft survives a lost confirmation response and deliberate exit clears it before navigation', async () => {
+test('draft survives a lost confirmation response and return to saved brief', async () => {
     const draft={draftId:'draft',version:1,status:'READY',specification:{constraintsVi:[],assumptionsVi:[],characters:[]}};
     const storage=new Map([['dictalab:scenario:10:draft',JSON.stringify({draftId:'draft'})]]);
     const h=harness(async (url,options={})=>{ if(options.method==='POST') throw new Error('offline'); return draft; },storage);
     await h.module.show(); h.node('#scenario-confirm').listeners.click(); await tick();
     assert.equal(JSON.parse(storage.get('dictalab:scenario:10:draft')).draftId,'draft');
     h.node('data-session:0').listeners.click({preventDefault(){}});
-    assert.equal(storage.has('dictalab:scenario:10:draft'),false);
+    assert.equal(storage.has('dictalab:scenario:10:draft'),true);
 });
 
-test('stop cancels a late single-segment response while adopting the acknowledged session version', async () => {
+test('stop cancels a late preparation response without counting a play', async () => {
     const s=session(); let respond;
-    const h=harness(async url => url.endsWith('/play') ? await new Promise(resolve=>{respond=resolve;}) : s);
+    const h=harness(async url => url.includes('/prepare') ? await new Promise(resolve=>{respond=resolve;}) : s);
     await h.module.show(s.sessionId); h.node('data-play:0').listeners.click(); await tick();
-    h.node('#scenario-stop-audio').listeners.click(); respond({status:'READY',mediaId:'late',sessionVersion:2}); await tick();
+    h.node('#scenario-stop-audio').listeners.click(); respond({status:'READY',mediaId:'late',sessionVersion:1}); await tick();
     assert.equal(h.node('#scenario-audio').src,undefined);
     h.node('data-play:0').listeners.click(); await tick();
-    assert.equal(h.calls.filter(c=>c.url.endsWith('/play'))[1].options.body.expectedVersion,2);
-    respond({status:'READY',mediaId:'second',sessionVersion:3}); await tick();
+    assert.equal(h.calls.filter(c=>c.url.includes('/prepare'))[1].options.body.expectedVersion,1);
+    respond({status:'READY',mediaId:'second',sessionVersion:1}); await tick();
     assert.match(h.node('#scenario-audio').src,/second$/);
 });
 
@@ -550,7 +552,7 @@ test('optional recommendation outage retains catalog and session load failure ha
 
 test('native single playback shows real ordinal, pause and ended without replacing answers', async () => {
     const s=session();s.activities[0].segments.push({segmentId:'s2',speakerId:'a'});
-    const h=harness(async url=>url.endsWith('/play') ? {status:'READY',mediaId:'second'} : s);
+    const h=harness(async url=>url.includes('/prepare') ? {status:'READY',mediaId:'second'} : s);
     await h.module.show(s.sessionId); h.node('data-play:1').listeners.click(); await tick();
     assert.match(h.node('#scenario-status').textContent,/đoạn 2\/2/);
     h.node('#scenario-audio').listeners.pause(); assert.match(h.node('#scenario-status').textContent,/tạm dừng/);
@@ -558,11 +560,11 @@ test('native single playback shows real ordinal, pause and ended without replaci
     assert.match(h.root.innerHTML,/scenario-answer/);
 });
 
-test('play-all keeps mutation buttons locked during pause and leaves stop usable', async () => {
-    const s=session(); const h=harness(async url=>url.endsWith('/play') ? {status:'READY',mediaId:'one'} : s);
+test('play-all locks playback buttons but keeps other actions and stop available', async () => {
+    const s=session(); const h=harness(async url=>url.includes('/prepare') ? {status:'READY',mediaId:'one'} : s);
     await h.module.show(s.sessionId);h.node('#scenario-play-all').listeners.click(); await tick();
-    assert.equal(h.node('#scenario-refresh').disabled,true); assert.notEqual(h.node('#scenario-stop-audio').disabled,true);
-    h.node('#scenario-audio').listeners.pause(); await tick(); assert.equal(h.node('#scenario-refresh').disabled,true);
+    assert.equal(h.node('#scenario-refresh').disabled,false); assert.notEqual(h.node('#scenario-stop-audio').disabled,true);
+    h.node('#scenario-audio').listeners.pause(); await tick(); assert.equal(h.node('#scenario-refresh').disabled,false);
     h.node('#scenario-stop-audio').listeners.click(); await tick(); assert.equal(h.node('#scenario-refresh').disabled,false);
 });
 
@@ -577,16 +579,16 @@ test('review brings focus to its heading and places answer, correction and sourc
 
 test('opened hint stays separate from playback messages on reload', async () => {
     const s=session();s.activities[0].hintOpened=true;s.activities[0].hintVi='Chú ý lý do.';
-    const h=harness(async url=>url.endsWith('/play') ? {status:'READY',mediaId:'one'} : s);
+    const h=harness(async url=>url.includes('/prepare') ? {status:'READY',mediaId:'one'} : s);
     await h.module.show(s.sessionId);h.node('data-play:0').listeners.click();await tick();
     assert.match(h.root.innerHTML,/scenario-listening-hint[\s\S]*Chú ý lý do/);
     assert.match(h.node('#scenario-status').textContent,/Đang nghe/);
 });
 
-test('play-all buffers media before starting and changes segments without another network request', async () => {
+test('play-all buffers media and changes segments without a preparation or download barrier', async () => {
     const s=session(); s.activities[0].segments.push({segmentId:'s2',speakerId:'a'});
     let mediaGets=0, serial=0;
-    const h=harness(async url=>url.endsWith('/play') ? {status:'READY',mediaId:`m${++serial}`} : s, new Map(), {
+    const h=harness(async url=>url.includes('/prepare') ? {status:'READY',mediaId:`m${++serial}`} : s, new Map(), {
         fetch: async () => {mediaGets++; return {ok:true,blob:async()=>({type:'audio/wav',size:48})};},
         URL: {createObjectURL:()=>`blob:media-${++serial}`,revokeObjectURL() {}}
     });
@@ -597,7 +599,7 @@ test('play-all buffers media before starting and changes segments without anothe
     const before=h.calls.length;
     const audio=h.node('#scenario-audio'); audio.ended=true; audio.listeners.ended();
     for(let i=0;i<5;i++) await tick();
-    assert.equal(h.calls.length,before);
+    assert.equal(h.calls.slice(before).filter(c=>!c.url.endsWith('/played')).length,0);
     assert.equal(mediaGets,2);
     assert.match(audio.src,/^blob:/);
 });
@@ -607,7 +609,7 @@ test('reopening a completed TTS operation does not autoplay audio', async () => 
     const storage=new Map([['dictalab:scenario:10:operation',JSON.stringify({operationId:'tts-op',action:'TTS',sessionId:s.sessionId})]]);
     const h=harness(async url=>url.includes('/operations/') ? {status:'SUCCEEDED',mediaId:'m1'} : s,storage);
     await h.module.show(s.sessionId); h.node('#scenario-check').listeners.click(); await tick(); await tick();
-    assert.equal(h.calls.filter(c=>c.url.endsWith('/play')).length,0);
+    assert.equal(h.calls.filter(c=>c.url.includes('/prepare')).length,0);
     assert.equal(h.node('#scenario-audio').src,undefined);
     assert.match(h.node('#scenario-status').textContent,/Bấm nghe đoạn/);
 });
@@ -636,7 +638,7 @@ test('new answer in memory wins over stale storage when only writes fail', async
 
 test('pausing before play resolves keeps the selected sequence waiting for native resume', async () => {
     const s=session(); s.activities[0].segments.push({segmentId:'s2',speakerId:'a'});
-    const h=harness(async url=>url.endsWith('/play') ? {status:'READY',mediaId:url.includes('/play') ? 'ready' : ''} : s);
+    const h=harness(async url=>url.includes('/prepare') ? {status:'READY',mediaId:url.includes('/prepare') ? 'ready' : ''} : s);
     await h.module.show(s.sessionId);
     let rejectPlay; const audio=h.node('#scenario-audio');
     audio.play=()=>new Promise((_,reject)=>{rejectPlay=reject;});
@@ -645,10 +647,157 @@ test('pausing before play resolves keeps the selected sequence waiting for nativ
     audio.pause(); const error=new Error('paused before play settled'); error.name='AbortError'; rejectPlay(error);
     await tick();
     assert.equal(audio.events.ended.length,2);
-    assert.equal(h.node('#scenario-refresh').disabled,true);
+    assert.equal(h.node('#scenario-refresh').disabled,false);
     audio.play=async()=>{audio.paused=false; audio.listeners.playing?.();};
     await audio.play(); audio.ended=true; audio.listeners.ended();
     for(let i=0;i<5;i++) await tick();
     assert.match(audio.src,/ready$/);
-    assert.equal(h.calls.filter(c=>c.url.endsWith('/play')).length,2);
+    assert.equal(h.calls.filter(c=>c.url.includes('/prepare')).length,2);
+});
+
+test('rolling preparation downloads ready audio immediately with two workers and starts before the later buffer', async () => {
+    const s=session(); s.activities[0].segments=[1,2,3,4,5].map(i=>({segmentId:`s${i}`,speakerId:'a'}));
+    const downloads=[], pending=new Map(); let inflight=0, peak=0;
+    const h=harness(async (url,options={})=> {
+        if(url.includes('/prepare')) return {status:'READY',mediaId:options.body.segmentId,sessionVersion:s.version};
+        if(url.endsWith('/played')) return {status:'READY',sessionVersion:s.version+1};
+        return s;
+    },new Map(),{
+        fetch: async url=>{downloads.push(url); inflight++; peak=Math.max(peak,inflight);
+            if(url.endsWith('s1') || url.endsWith('s2')) {inflight--;return {ok:true,blob:async()=>({type:'audio/wav',size:48})};}
+            return new Promise(resolve=>pending.set(url.split('/').at(-1),()=>{inflight--;resolve({ok:true,blob:async()=>({type:'audio/wav',size:48})});}));},
+        URL:{createObjectURL:()=>`blob:${downloads.length}`,revokeObjectURL(){}}
+    });
+    await h.module.show(s.sessionId); h.node('#scenario-play-all').listeners.click();
+    for(let i=0;i<8;i++) await tick();
+    assert.match(h.node('#scenario-status').textContent,/Đang nghe đoạn 1/);
+    assert.equal(pending.size,2); assert.equal(peak,2);
+    assert.equal(h.calls.filter(c=>c.url.includes('/prepare')).length,4);
+    h.node('#scenario-stop-audio').listeners.click();
+    for(const done of pending.values()) done();
+    for(let i=0;i<5;i++) await tick();
+    assert.equal(h.calls.filter(c=>c.url.includes('/prepare')).length,4); // Segment five was never admitted.
+    assert.equal(h.calls.filter(c=>c.url.endsWith('/played')).length,1);
+});
+
+test('one observed media start is counted once and its acknowledgement drains before answering', async () => {
+    const s=session(); let acknowledge;
+    const h=harness(async (url,options={})=>{
+        if(url.includes('/prepare')) return {status:'READY',mediaId:'one',sessionVersion:1};
+        if(url.endsWith('/played')) return new Promise(resolve=>{acknowledge=resolve;});
+        if(url.endsWith('/answers')) return {operationId:'grade',status:'PENDING'};
+        if(url.includes('/operations/')) return {operationId:'grade',status:'RUNNING'};
+        return s;
+    });
+    await h.module.show(s.sessionId); h.node('#scenario-play-all').listeners.click(); await tick();
+    const audio=h.node('#scenario-audio'); audio.pause(); await audio.play(); await tick();
+    assert.equal(h.calls.filter(c=>c.url.endsWith('/played')).length,1);
+    const form=h.node('#scenario-answer');form.values=[['q1','Chín giờ'],['q2','Bánh']];form.listeners.submit({preventDefault(){}});
+    await tick(); assert.equal(h.calls.filter(c=>c.url.endsWith('/answers')).length,0);
+    acknowledge({status:'READY',sessionVersion:2}); for(let i=0;i<5;i++) await tick();
+    assert.equal(h.calls.find(c=>c.url.endsWith('/answers')).options.body.expectedVersion,2);
+    assert.match(h.root.innerHTML,/scenario-pending-grade/); assert.match(h.root.innerHTML,/Chín giờ/);
+    assert.match(h.root.innerHTML,/id="scenario-answer"/);
+});
+
+for(const recovered of [true,false]) test(`lost playback acknowledgement ${recovered ? 'retries its identical receipt' : 'blocks mutations until reload'}`, async()=>{
+    const s=session(); let attempts=0;
+    const h=harness(async(url,options={})=>{
+        if(url.includes('/prepare')) return {status:'READY',mediaId:'one',sessionVersion:1};
+        if(url.endsWith('/played')) { attempts++; if(recovered && attempts===2) return {status:'READY',sessionVersion:2}; throw new Error('connection lost'); }
+        if(url.endsWith('/help')) return {version:3,hintVi:'Nghe ý chính.'};
+        return s;
+    });
+    await h.module.show(s.sessionId);h.node('#scenario-play-all').listeners.click();for(let i=0;i<5;i++)await tick();
+    const posts=h.calls.filter(c=>c.url.endsWith('/played'));
+    assert.equal(posts.length,2);assert.equal(posts[0].options.headers['Idempotency-Key'],posts[1].options.headers['Idempotency-Key']);
+    assert.equal(JSON.stringify(posts[0].options.body),JSON.stringify(posts[1].options.body));
+    h.node('data-help:0').listeners.click();for(let i=0;i<5;i++)await tick();
+    assert.equal(h.calls.filter(c=>c.url.endsWith('/help')).length,recovered ? 1 : 0);
+    if(!recovered) {
+        assert.match(h.node('#scenario-status').textContent,/tải lại bài/i);
+        await h.module.show(s.sessionId);h.node('data-help:0').listeners.click();await tick();
+        assert.equal(h.calls.filter(c=>c.url.endsWith('/help')).length,1);
+    }
+});
+
+test('new lesson preparation shows a real screen, prepares two segments without counting and never autoplays',async()=>{
+    const s=session();s.activities[0].segments.push({segmentId:'s2',speakerId:'a'},{segmentId:'s3',speakerId:'a'});
+    const storage=new Map([['dictalab:scenario:10:startAudio',JSON.stringify(s.sessionId)]]);
+    let release;const gate=new Promise(resolve=>{release=resolve;});
+    const h=harness(async(url,options={})=>{if(url.endsWith('/prepare')){await gate;return {status:'READY',mediaId:options.body.segmentId,sessionVersion:1};} return s;},storage);
+    const opening=h.module.show(s.sessionId);await tick();assert.match(h.root.innerHTML,/Đang chuẩn bị bài nghe/);
+    assert.match(h.root.innerHTML,/scenario-skip-preparation/);release();await opening;
+    assert.equal(h.calls.filter(c=>c.url.endsWith('/prepare')).length,2);
+    assert.equal(h.calls.filter(c=>c.url.endsWith('/played')).length,0);
+    assert.equal(h.node('#scenario-audio').src,undefined);assert.match(h.root.innerHTML,/Lượt phát đoạn: 0/);
+    assert.match(h.node('#scenario-status').textContent,/sẵn sàng/);
+});
+
+for(const outcome of ['FAILED','UNKNOWN']) test(`reload preparation preserves ${outcome} without requesting a paid retry`,async()=>{
+    const s=session(),storage=new Map([['dictalab:scenario:10:audioIntent',JSON.stringify({sessionId:s.sessionId,activityId:'activity-1'})]]);
+    const h=harness(async url=>url.endsWith('/prepare') ? {status:outcome,operationId:'saved-job'} : s,storage);
+    await h.module.show(s.sessionId);
+    assert.equal(h.calls.filter(c=>c.url.endsWith('/prepare')).length,1);
+    assert.equal(h.calls.filter(c=>c.url.includes('retryFailed=true')).length,0);
+    assert.match(h.node('#scenario-status').textContent,/saved-job/);
+    assert.equal(h.calls.filter(c=>c.url.endsWith('/played')).length,0);
+});
+
+test('hint and transcript reuse their response, preserve drafts and do not refetch the lesson',async()=>{
+    const s=session(),h=harness(async(url,options={})=>url.endsWith('/help') ? options.body.kind==='HINT'
+        ? {version:2,hintVi:'Nghe lý do.'} : {version:3,segments:[{id:'s1',textEn:'At nine.'}],translations:[{textVi:'Lúc chín giờ.'}]} : s);
+    await h.module.show(s.sessionId);const form=h.node('#scenario-answer');form.values=[['q1','Bản nháp']];form.listeners.input();
+    h.node('data-help:0').listeners.click();await tick();assert.match(h.root.innerHTML,/Nghe lý do/);
+    h.node('data-help:1').listeners.click();await tick();assert.match(h.root.innerHTML,/At nine/);assert.match(h.root.innerHTML,/Lúc chín giờ/);
+    h.node('data-help:0').listeners.click();await tick();
+    assert.equal(h.calls.filter(c=>c.url.endsWith('/help')).length,2);
+    assert.equal(h.calls.filter(c=>c.options.method!=='POST').length,1);
+    assert.match(h.root.innerHTML,/Bản nháp/);
+});
+
+test('skip preparation cancels a decoder wait, keeps the lesson and admits no further segment',async()=>{
+    const s=session(),storage=new Map([['dictalab:scenario:10:startAudio',JSON.stringify(s.sessionId)]]);
+    let decoding=0;
+    const h=harness(async(url,options={})=>url.endsWith('/prepare') ? {status:'READY',mediaId:options.body.segmentId} : s,storage,{
+        fetch:async()=>({ok:true,blob:async()=>({type:'audio/wav',size:48})}),
+        URL:{createObjectURL:()=>'blob:waiting',revokeObjectURL(){}},
+        Audio:class {addEventListener(){decoding++;} removeEventListener(){} removeAttribute(){} load(){}}
+    });
+    const opening=h.module.show(s.sessionId);for(let i=0;i<5;i++)await tick();assert.ok(decoding);
+    h.node('#scenario-skip-preparation').listeners.click();await opening;
+    assert.match(h.root.innerHTML,/id="scenario-answer"/);
+    assert.equal(h.calls.filter(c=>c.url.endsWith('/played')).length,0);
+    assert.equal(storage.has('dictalab:scenario:10:audioIntent'),false);
+});
+
+test('an observed start queued behind preparation is never acknowledged under another account',async()=>{
+    const s=session();s.activities[0].segments=[1,2,3].map(i=>({segmentId:`s${i}`,speakerId:'a'}));
+    let release;
+    const h=harness(async(url,options={})=>{
+        if(url.includes('/prepare')) {if(options.body.segmentId==='s3')return new Promise(resolve=>{release=resolve;}); return {status:'READY',mediaId:options.body.segmentId};}
+        return s;
+    });
+    await h.module.show(s.sessionId);h.node('#scenario-play-all').listeners.click();for(let i=0;i<5;i++)await tick();
+    assert.match(h.node('#scenario-status').textContent,/Đang nghe/);
+    h.setUser(20);h.module.leave();release({status:'READY',mediaId:'s3'});for(let i=0;i<5;i++)await tick();
+    assert.equal(h.calls.filter(c=>c.url.endsWith('/played')).length,0);
+});
+
+test('pending grade status remains usable after help and background polling waits for the help version',async()=>{
+    const s=session(),storage=new Map([['dictalab:scenario:10:operation',JSON.stringify({operationId:'grade',action:'GRADE',sessionId:s.sessionId})]]);
+    s.activities[0].attempts=[{...graded(),status:'PENDING',result:null}];
+    let support,done=false;
+    const h=harness(async url=>{
+        if(url.endsWith('/help'))return new Promise(resolve=>{support=resolve;});
+        if(url.includes('/operations/'))return {status:done?'SUCCEEDED':'RUNNING',operationId:'grade'};
+        return s;
+    },storage);
+    await h.module.show(s.sessionId);h.node('data-help:0').listeners.click();await tick();
+    const before=h.calls.length;h.timers.shift()?.();await tick();assert.equal(h.calls.length,before);
+    support({version:2,hintVi:'Nghe mục đích.'});for(let i=0;i<4;i++)await tick();
+    done=true;h.node('#scenario-check').listeners.click();for(let i=0;i<5;i++)await tick();
+    assert.equal(storage.has('dictalab:scenario:10:operation'),false);
+    assert.doesNotMatch(h.root.innerHTML,/scenario-pending-grade/);
+    assert.match(h.root.innerHTML,/Nghe mục đích/);
 });

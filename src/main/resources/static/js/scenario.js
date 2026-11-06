@@ -9,8 +9,8 @@
     const profiles = {supported: "Có hỗ trợ", standard: "Tiêu chuẩn", challenge: "Thử thách", a1: "A1", a2: "A2", b1: "B1", b2: "B2", c1: "C1", c2: "C2"};
     const skills = {detail: "Nghe chi tiết", "main-idea": "Hiểu ý chính", reason: "Hiểu lý do", purpose: "Hiểu mục đích", "speaker-attitude": "Hiểu quan điểm", "supported-inference": "Nghe và suy luận"};
     const programNames = {"general-communication": "Giao tiếp", "toeic-listening": "TOEIC Listening", "ielts-listening": "IELTS Listening"};
-    let revision = 0, owner = null, abort = null, timer = null, session = null, busy = false, playback = 0, cancelSequence = null, cleanupMedia = null, activeSegmentId = null;
-    const memory = new Map(), mediaUrls = new Map();
+    let revision = 0, owner = null, abort = null, timer = null, session = null, busy = false, playback = 0, cancelSequence = null, cleanupMedia = null, activeSegmentId = null, audioTask = null, versionUncertain = false;
+    const memory = new Map(), mediaUrls = new Map(), preparedAudio = new Map();
     const storageKey = (suffix, user = owner) => `dictalab:scenario:${user}:${suffix}`;
     function read(suffix, fallback, user = owner) { const key = storageKey(suffix,user); if (memory.has(key)) return memory.get(key) ?? fallback; try { return JSON.parse(sessionStorage.getItem(key)) ?? fallback; } catch (_) { return fallback; } }
     function save(suffix, value, user = owner) { const key = storageKey(suffix,user); memory.set(key,value); try { if (value === null) sessionStorage.removeItem(key); else sessionStorage.setItem(key, JSON.stringify(value)); } catch (_) { /* In-memory retry protection remains when storage is unavailable. */ } }
@@ -24,11 +24,12 @@
         if (op.errorCode === 'AI_PROVIDER_UNAVAILABLE') return 'Nhà cung cấp AI tạm quá tải hoặc gặp lỗi máy chủ. Chưa nhận được kết quả hợp lệ từ các model được cấu hình. Hệ thống giữ dữ liệu đã lưu và không tự gửi lại toàn bộ tác vụ để tránh gọi trùng. Hãy chờ rồi chủ động thử lại sau.';
         return 'Tác vụ tạo bài không hoàn tất. Mô tả đã lưu vẫn được giữ; bạn có thể sửa mô tả rồi chủ động tạo bài mới.';
     }
-    function frame(html) { stopAudio(); clearMediaUrls(); root().innerHTML = `<div class="scenario-browser"><p id="scenario-status" class="scenario-status" role="status" aria-live="polite"></p>${html}</div>`; }
+    function frame(html) { stopAudio(); root().innerHTML = `<div class="scenario-browser"><p id="scenario-status" class="scenario-status" role="status" aria-live="polite"></p>${html}</div>`; }
     function focusStep(selector = '#scenario-step-heading') { const heading = root()?.querySelector(selector); heading?.focus(); heading?.scrollIntoView?.({block: 'nearest'}); }
-    function busyControls(locked) {
+    function busyControls(locked, audioOnly = false) {
         root()?.querySelectorAll('button').forEach(button => {
             if (button.id === 'scenario-stop-audio') return;
+            if (audioOnly && button.id !== 'scenario-play-all' && !button.hasAttribute('data-play')) return;
             if (locked && !button.disabled) { button.dataset.busyDisabled = 'true'; button.disabled = true; }
             else if (!locked && button.dataset.busyDisabled) { button.disabled = false; delete button.dataset.busyDisabled; }
         });
@@ -38,7 +39,7 @@
         root().querySelector('#scenario-load-retry').addEventListener('click', () => show(id)); bindSessionLinks(); focusStep();
     }
     function stopAudio() { cancelSequence?.(); cancelSequence = null; playback++; cleanupMedia?.(); cleanupMedia = null; activeSegmentId = null; updateEvidenceControl(); const audio = root()?.querySelector("audio"); if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); } }
-    function clearMediaUrls() { if (typeof URL !== 'undefined' && URL.revokeObjectURL) for (const url of mediaUrls.values()) URL.revokeObjectURL(url); mediaUrls.clear(); }
+    function clearMediaUrls() { if (typeof URL !== 'undefined' && URL.revokeObjectURL) for (const url of mediaUrls.values()) URL.revokeObjectURL(url); mediaUrls.clear(); preparedAudio.clear(); }
     function updateEvidenceControl() {
         root()?.querySelectorAll('[data-play]').forEach(button => {
             if (!button.closest?.('.scenario-review-question')) return;
@@ -47,22 +48,25 @@
             button.textContent = same ? (root()?.querySelector('audio')?.paused ? 'Tiếp tục bằng chứng' : 'Tạm dừng bằng chứng') : `Nghe bằng chứng · Đoạn ${button.dataset.ordinal}`;
         });
     }
-    function leave() { revision++; clearTimeout(timer); timer = null; abort?.abort(); abort = null; stopAudio(); clearMediaUrls(); busy = false; }
-    async function mutation(path, body) {
+    function leave() { revision++; clearTimeout(timer); timer = null; abort?.abort(); abort = null; stopAudio(); clearMediaUrls(); busy = false; versionUncertain = false; root()?.removeAttribute('aria-busy'); }
+    async function mutation(path, body, rememberOperation = true) {
+        if (versionUncertain) throw new Error('Chưa xác nhận được lượt phát đã lưu. Hãy tải lại bài; câu trả lời nháp vẫn được giữ.');
         // Keep the same key after transport failure and across reload, until Core acknowledges registration.
         const actor = owner, activeSession = session, identity = path + "/" + JSON.stringify(body), pending = read("mutations", {}, actor);
         const key = pending[identity] || crypto.randomUUID(); pending[identity] = key; save("mutations", pending, actor);
         const result = await request(path, {method: "POST", headers: {"Idempotency-Key": key}, body});
-        if (owner === actor && session === activeSession && session && Number.isSafeInteger(result.sessionVersion)) session.version = result.sessionVersion;
-        if (result.operationId) save("operation", {...result, action: result.stage, sessionId: result.sessionId || path.match(/^\/sessions\/([^/]+)\//)?.[1]}, actor);
+        if (owner === actor && session === activeSession && session && Number.isSafeInteger(result.sessionVersion)) session.version = Math.max(session.version, result.sessionVersion);
+        if (rememberOperation && result.operationId) save("operation", {...result, action: result.stage, sessionId: result.sessionId || path.match(/^\/sessions\/([^/]+)\//)?.[1]}, actor);
         delete pending[identity]; save("mutations", pending, actor); return result;
     }
-    async function run(work) {
+    async function run(work, audioOnly = false) {
+        const requested = revision;
+        if (busy && cancelSequence) { const previous = audioTask; save('audioIntent', null); stopAudio(); await previous; if (!current(requested)) return; }
         if (busy) { status('Đang xử lý thao tác trước. Bạn có thể dừng nghe để tiếp tục.'); return; }
         busy = true; const token = revision, trigger = document.activeElement;
-        root()?.setAttribute("aria-busy", "true");
-        busyControls(true);
-        try { await work(token); }
+        if (!audioOnly) root()?.setAttribute("aria-busy", "true");
+        busyControls(true, audioOnly);
+        try { return await work(token); }
         catch (error) { if (current(token) && error.name !== "AbortError") status(error.status === 409 ? "Phiên đã thay đổi. Câu trả lời nháp vẫn được giữ; bấm tải lại bài để tiếp tục." : error.message); }
         finally { if (current(token)) {
             busy = false; root()?.removeAttribute("aria-busy"); busyControls(false);
@@ -72,7 +76,7 @@
     async function show(id) {
         leave(); owner = bridge().currentUser()?.id; if (!owner || !root()) return;
         abort = new AbortController(); session = null; const token = revision;
-        frame("<p>Đang tải bài học…</p>");
+        frame('<section class="scenario-loading" aria-busy="true"><h2>Đang tải bài học</h2><p>Đang đọc bài và dữ liệu đã lưu…</p></section>');
         try {
             const pending = read("operation", null);
             if (pending && (!id || pending.sessionId === id)) { await wait(pending, token); return; }
@@ -243,15 +247,23 @@
     async function track(operation, token) { save("operation", operation); await wait(operation, token); }
     async function wait(pending, token, started = Date.now()) {
         if (!current(token)) return;
-        frame(`<div class="scenario-waiting"><h2 id="scenario-step-heading" tabindex="-1">Đang xử lý: ${escape(stageLabels[pending.stage || pending.action] || pending.stage || pending.action)}</h2><p>Yêu cầu đã được lưu. Có thể rời trang rồi quay lại.</p><button id="scenario-check" type="button">Kiểm tra trạng thái</button></div>`);
-        focusStep();
-        const check = async () => {
+        if (pending.action === 'GRADE' && pending.sessionId) await openSession(pending.sessionId, token);
+        else {
+            frame(`<section class="scenario-loading"><h2 id="scenario-step-heading" tabindex="-1">${pending.action === 'GENERATE' ? 'Đang chuẩn bị bài nghe' : `Đang xử lý: ${escape(stageLabels[pending.stage || pending.action] || pending.stage || pending.action)}`}</h2><p>${pending.action === 'GENERATE' ? 'Đang tạo hội thoại và câu hỏi. Tiếp theo, hệ thống sẽ chuẩn bị những đoạn âm thanh đầu tiên.' : 'Yêu cầu đã được lưu.'}</p><p>Có thể rời trang rồi quay lại. Không cần gửi yêu cầu mới.</p><button id="scenario-check" type="button">Kiểm tra trạng thái</button><a href="/conversation" data-session="">Về bài đã lưu</a></section>`);
+            bindSessionLinks(); focusStep();
+        }
+        const defer = () => { timer = setTimeout(() => { check().catch(error => { if (current(token)) status(error.message); }); }, 1500); };
+        const check = async (foreground = false) => {
+            if (!current(token) || read('operation', null)?.operationId !== pending.operationId) return;
+            if (pending.action === 'GRADE' && busy && !foreground) { defer(); return; }
             const op = await request(`/operations/${encodeURIComponent(pending.operationId)}`);
-            if (!current(token)) return;
+            if (!current(token) || read('operation', null)?.operationId !== pending.operationId) return;
+            // Do not replace the lesson while a help/playback action is still adopting its version.
+            if (pending.action === 'GRADE' && busy && !foreground) { defer(); return; }
             if (op.status === "SUCCEEDED") {
                 save("operation", null);
                 if (pending.action === "EXTRACT") { save("draft", {draftId: op.draftId, sourceSessionId: pending.sessionId || ''}); if (pending.sessionId) save(`remix:${pending.sessionId}`, null); await preview(await request(`/drafts/${encodeURIComponent(op.draftId)}`), token); }
-                else if (pending.action === "GENERATE") { save('draft', null); bridge().navigate("conversation", {sessionId: op.sessionId}); }
+                else if (pending.action === "GENERATE") { save('draft', null); save('startAudio', op.sessionId); bridge().navigate("conversation", {sessionId: op.sessionId}); }
                 else {
                     await openSession(pending.sessionId, token);
                     if (pending.action === "TTS" && current(token)) status('Âm thanh đã sẵn sàng. Bấm nghe đoạn hoặc nghe toàn bộ để phát.');
@@ -266,10 +278,10 @@
                 frame(`<h2 id="scenario-step-heading" tabindex="-1">${escape(op.errorCode === 'AI_PROVIDER_UNAVAILABLE' ? 'Nhà cung cấp AI tạm quá tải' : statusLabels[op.status] || op.status)}</h2><p>${escape(operationFailure({...op, stage: pending.action}))}</p><p>Mã tác vụ: ${escape(pending.operationId)} · ${escape(op.errorCode || op.status)}</p><a href="/conversation" data-session="" data-discard-draft>Về mô tả đã lưu</a>${pending.sessionId ? `<p><a href="/conversation/${encodeURIComponent(pending.sessionId)}" data-session="${escape(pending.sessionId)}">Quay lại bài học</a></p>` : ''}`);
                 bindSessionLinks(); focusStep();
             } else if (Date.now() - started < 300000) timer = setTimeout(() => { check().catch(error => { if (current(token)) status(error.message); }); }, Math.max(1500, Math.min(10000, op.pollAfterMs || 2000)));
-            else status("Tác vụ còn đang chạy. Bấm kiểm tra trạng thái để tiếp tục, không cần gửi yêu cầu mới.");
+            else status("Tác vụ mất nhiều thời gian hơn bình thường. Bấm kiểm tra trạng thái để tiếp tục; bài và câu trả lời đã lưu vẫn được giữ.");
         };
-        root().querySelector("#scenario-check").addEventListener("click", () => { clearTimeout(timer); run(check); });
-        await check();
+        if (pending.action !== 'GRADE') root().querySelector("#scenario-check").addEventListener("click", () => { clearTimeout(timer); run(() => check(true)); });
+        await check(true);
     }
     async function preview(draft, token) {
         if (!current(token)) return;
@@ -287,6 +299,8 @@
         });
         bindSessionLinks(); focusStep();
         root().querySelector("#scenario-confirm").addEventListener("click", () => run(async token => {
+            frame('<section class="scenario-loading"><h2 id="scenario-step-heading" tabindex="-1">Đang chuẩn bị bài nghe</h2><p>Đang lưu yêu cầu tạo hội thoại và câu hỏi…</p><a href="/conversation" data-session="">Về mô tả đã lưu</a></section>');
+            bindSessionLinks(); focusStep();
             const op = await mutation("/sessions", {draftId: draft.draftId, draftVersion: draft.version});
             save("draft", null);
             if (current(token)) await track({...op, action: "GENERATE"}, token);
@@ -294,7 +308,20 @@
     }
     async function openSession(id, token) {
         const loaded = await request(`/sessions/${encodeURIComponent(id)}`); if (!current(token)) return;
-        stopAudio(); session = loaded; renderSession();
+        stopAudio(); session = loaded; versionUncertain = false;
+        const start = read('startAudio', null) === id, intent = read('audioIntent', null);
+        const activity = loaded.activities.find(a => a.status !== 'COMPLETED');
+        if (start) save('startAudio', null);
+        if (activity && loaded.status === 'ACTIVE' && (start || intent?.sessionId === id)) {
+            frame(`<section class="scenario-loading"><h2 id="scenario-step-heading" tabindex="-1">Đang chuẩn bị bài nghe</h2><p>${escape(loaded.titleVi)}</p><p>Chuẩn bị tối đa hai đoạn đầu của hoạt động ${activity.ordinal}. Các đoạn sau sẽ được chuẩn bị cuốn chiếu khi bạn nghe.</p><p id="scenario-preparation-progress">Đang kiểm tra âm thanh đã lưu…</p><button id="scenario-skip-preparation" type="button">Vào bài, chuẩn bị âm thanh sau</button><a href="/conversation" data-session="">Về bài đã lưu</a></section>`);
+            bindSessionLinks(); focusStep();
+            root().querySelector('#scenario-skip-preparation').addEventListener('click', () => { save('audioIntent', null); stopAudio(); });
+            audioTask = run(t => streamAudio(activity, activity.segments.slice(0, 2), t, {prepareOnly: true, retryFailed: false}), true);
+            const result = await audioTask;
+            if (!current(token) || session !== loaded) return;
+            renderSession();
+            status(result?.error || (result?.ready ? 'Âm thanh đầu đã sẵn sàng. Bấm Nghe toàn bộ hoạt động để bắt đầu.' : 'Bạn có thể bấm nghe khi sẵn sàng.'));
+        } else renderSession();
     }
     function answerKey(activity) { return `answers:${session.sessionId}:${activity.activityId}`; }
     function renderSession() {
@@ -303,9 +330,14 @@
         const activity = review || session.activities.find(a => a.status !== "COMPLETED");
         frame(`<div class="scenario-session-topbar"><h2>${escape(session.titleVi)}</h2><a href="/conversation" data-session="">Tình huống khác</a><button id="scenario-refresh" type="button">Tải lại bài</button></div>
             ${contextHtml(session.learningContext)}${session.status === 'COMPLETED' ? `<p>${escape(session.specification.settingVi)}</p><p>${escape(session.specification.goalVi)}</p>` : '<p>Nghe cuộc trao đổi, rồi trả lời theo điều bạn hiểu. Bối cảnh chi tiết được xem lại khi chữa bài.</p>'}<p>Trạng thái: ${escape(statusLabels[session.status] || session.status)}</p>
+            ${read('operation', null)?.sessionId === session.sessionId && read('operation', null)?.action === 'GRADE' ? '<aside class="scenario-pending-grade"><h3>Đang chấm câu trả lời đã lưu</h3><p>Bạn vẫn có thể đọc lại bài hoặc rời trang. Kết quả chỉ xuất hiện khi chấm hoàn tất.</p><button id="scenario-check" type="button">Kiểm tra trạng thái</button></aside>' : ''}
             ${session.activities.filter(a => a.status === "COMPLETED").map(a => `<button type="button" data-review="${escape(a.activityId)}">Chữa hoạt động ${a.ordinal}</button>`).join("")}
             ${review ? reviewHtml(review) : activity ? activityHtml(activity) : completedHtml()}`);
         bindSessionLinks(); root().querySelector("#scenario-refresh").addEventListener("click", () => run(token => openSession(session.sessionId, token)));
+        root().querySelector('#scenario-check')?.addEventListener('click', () => {
+            clearTimeout(timer); const pending = read('operation', null);
+            if (pending) run(token => wait(pending, token));
+        });
         root().querySelectorAll("[data-review]").forEach(button => button.addEventListener("click", () => run(() => {
             save(`review:${session.sessionId}`, button.dataset.review); renderSession();
         })));
@@ -342,11 +374,11 @@
         const transcript = a.segments.map((s, i) => s.textEn ? `<p lang="en"><strong>Đoạn ${i + 1} · ${escape(names.get(s.speakerId) || s.speakerId)}:</strong> ${escape(s.textEn)}</p>` : '').join('') + (a.translations || []).map((t, i) => `<p><strong>Đoạn ${i + 1}:</strong> ${escape(t.textVi)}</p>`).join('');
         return `<section class="scenario-audio-panel"><h3 ${a.status !== 'COMPLETED' ? 'id="scenario-step-heading" tabindex="-1"' : ''}>Hoạt động ${a.ordinal} / ${session.activities.length}</h3>
             <div class="scenario-context-card">${session.specification.characters.map(c => `<span>${escape(c.name)}${a.status === 'COMPLETED' ? ` · ${escape(c.roleVi)}` : ''}</span>`).join(" / ")}</div>
-            <div class="scenario-audio-controls"><button type="button" class="primary-button" id="scenario-play-all" ${a.segments.some(s => s.canPlay === false) ? 'disabled' : ''}>▶ Nghe toàn bộ hoạt động</button><button type="button" id="scenario-stop-audio">Dừng nghe</button></div><p>Nghe toàn bộ chuẩn bị âm thanh cho từng đoạn trước khi phát; mỗi đoạn tính một lượt yêu cầu phát.</p>
+            <div class="scenario-audio-controls"><button type="button" class="primary-button" id="scenario-play-all" ${a.segments.some(s => s.canPlay === false) ? 'disabled' : ''}>▶ Nghe toàn bộ hoạt động</button><button type="button" id="scenario-stop-audio">Dừng nghe</button></div><p>Chuẩn bị các đoạn đầu, rồi tải tiếp khi bạn nghe. Nếu âm thanh tiếp theo chưa sẵn sàng, hệ thống sẽ báo đang đệm. Chuẩn bị âm thanh không tính là lượt phát.</p>
             ${session.playbackRestrictionVi ? `<p>${escape(session.playbackRestrictionVi)} Audio đã lưu vẫn có thể nghe nếu nút đoạn được bật.</p>` : ''}
             <div class="scenario-segment-list">${a.segments.map((s, si) => `<button type="button" class="scenario-support-btn" data-play="${escape(s.segmentId)}" ${s.canPlay === false ? 'disabled' : ''}>Đoạn ${si + 1} · ${escape(names.get(s.speakerId) || s.speakerId)}</button>`).join("")}</div><audio id="scenario-audio" controls preload="none" aria-label="Audio đoạn hội thoại"></audio>
             ${transcript ? a.status === 'COMPLETED' ? `<details><summary>Xem bản chép và dịch</summary>${transcript}</details>` : transcript : ''}
-            <p><span id="scenario-play-count">Lần yêu cầu phát: ${a.plays}.</span> ${a.transcriptOpened && a.hintOpened ? "Ghi nhận: đã dùng cả gợi ý và bản chép." : a.transcriptOpened ? "Ghi nhận: đã mở bản chép." : a.hintOpened ? "Ghi nhận: đã dùng gợi ý chiến lược, chưa mở bản chép." : "Chưa dùng gợi ý/bản chép trước khi hoàn thành."}</p></section>`;
+            <p><span id="scenario-play-count">Lượt phát đoạn: ${a.plays}.</span> ${a.transcriptOpened && a.hintOpened ? "Ghi nhận: đã dùng cả gợi ý và bản chép." : a.transcriptOpened ? "Ghi nhận: đã mở bản chép." : a.hintOpened ? "Ghi nhận: đã dùng gợi ý chiến lược, chưa mở bản chép." : "Chưa dùng gợi ý/bản chép trước khi hoàn thành."}</p></section>`;
     }
     function attemptsHtml(a) {
         return a.attempts.map(t => `<section><h4>Lần ${t.ordinal} · ${escape(labels[t.status] || statusLabels[t.status] || t.status)}</h4>
@@ -390,8 +422,14 @@
             });
         });
         root().querySelectorAll("[data-help]").forEach(button => button.addEventListener("click", () => run(async token => {
+            if (button.dataset.help === 'HINT' ? a.hintOpened : a.transcriptOpened) { status('Nội dung hỗ trợ đã mở trong bài.'); return; }
             const result = await mutation(`/sessions/${session.sessionId}/activities/${a.activityId}/help`, {expectedVersion: session.version, kind: button.dataset.help});
-            if (current(token)) { await openSession(session.sessionId, token); root().querySelector(`[data-help="${button.dataset.help}"]`)?.focus(); }
+            if (current(token)) {
+                session.version = result.version;
+                if (button.dataset.help === 'HINT') { a.hintOpened = true; a.hintVi = result.hintVi; }
+                else { a.transcriptOpened = true; a.segments.forEach(s => { s.textEn = result.segments.find(t => t.id === s.segmentId)?.textEn; }); a.translations = result.translations; }
+                renderSession(); root().querySelector(`[data-help="${button.dataset.help}"]`)?.focus();
+            }
         })));
         root().querySelectorAll("[data-retry-grade]").forEach(button => button.addEventListener("click", () => run(async token => {
             const op = await mutation(`/sessions/${session.sessionId}/activities/${a.activityId}/attempts/${button.dataset.retryGrade}/retry-grade`, {expectedVersion: session.version});
@@ -403,7 +441,7 @@
         }));
     }
     function bindAudio(a) {
-        root().querySelector('#scenario-stop-audio').addEventListener('click', () => { stopAudio(); status('Đã dừng nghe. Bạn có thể phát lại từng đoạn.'); });
+        root().querySelector('#scenario-stop-audio').addEventListener('click', () => { save('audioIntent', null); stopAudio(); status('Đã dừng nghe. Tác vụ âm thanh đã gửi có thể vẫn hoàn tất; không gửi thêm đoạn mới.'); });
         root().querySelectorAll("[data-play]").forEach(button => button.addEventListener("click", () => {
             const audio = root()?.querySelector('#scenario-audio');
             if (button.dataset.play === activeSegmentId && audio && !audio.ended) {
@@ -411,116 +449,146 @@
                 else audio.pause();
                 return;
             }
-            play(a.segments.filter(s => s.segmentId === button.dataset.play), false);
+            play(a.segments.filter(s => s.segmentId === button.dataset.play));
         }));
         root().querySelector("#scenario-play-all")?.addEventListener("click", () => play(a.segments));
-        const play = (segments, continuous = true) => run(async token => {
-            stopAudio();
-            let cancelled = false;
-            const waiters = new Set(), mediaAbort = new AbortController();
-            const cancel = () => { cancelled = true; mediaAbort.abort(); for (const wake of [...waiters]) wake(); };
-            cancelSequence = cancel;
-            const active = () => !cancelled && current(token);
-            try {
-                const register = async (seg, index) => {
-                    status(`Đang chuẩn bị âm thanh ${index + 1}/${segments.length}…`);
-                    return mutation(`/sessions/${session.sessionId}/activities/${a.activityId}/play`, {expectedVersion: session.version, segmentId: seg.segmentId});
-                };
-                const ready = async (initial, index) => {
-                    if (!active()) return null;
-                    let op = initial;
-                    if (op.status === 'READY') return op;
-                    const pending = {...op, action: 'TTS', sessionId: session.sessionId}; save('operation', pending);
-                    const started = Date.now();
-                    do {
-                        op = await request(`/operations/${encodeURIComponent(pending.operationId)}`);
-                        if (!active()) return null;
-                        if (['FAILED','UNKNOWN','CANCELLED','EXPIRED'].includes(op.status)) {
-                            if (read('operation', null)?.operationId === pending.operationId) save('operation', null);
-                            status(`Không phát được đoạn ${index + 1}. Mã tác vụ: ${pending.operationId} · ${op.errorCode || op.status}. Không tự gửi lại yêu cầu.`);
-                            cancel(); return null;
-                        }
-                        if (op.status === 'SUCCEEDED') {
-                            if (read('operation', null)?.operationId === pending.operationId) save('operation', null);
-                            return op;
-                        }
-                        if (Date.now() - started >= 300000) { status('Âm thanh còn đang chuẩn bị. Tải lại bài để kiểm tra tác vụ đã lưu; không cần tạo yêu cầu mới.'); cancel(); return null; }
-                        await new Promise(resolve => {
-                            const delay = setTimeout(wake, Math.max(1500, Math.min(10000, op.pollAfterMs || 2000)));
-                            function wake() { clearTimeout(delay); waiters.delete(wake); resolve(); }
-                            waiters.add(wake);
+        const play = segments => { audioTask = run(token => streamAudio(a, segments, token, {retryFailed: true}), true); };
+    }
+    async function streamAudio(a, segments, token, {prepareOnly = false, retryFailed = false} = {}) {
+        stopAudio();
+        const targetSession = session, sid = session.sessionId, actor = owner;
+        let cancelled = false, resolveCancel, next = 0, completed = 0, failedAt = Infinity, queueFault = null;
+        let registrations = Promise.resolve();
+        const cancelledPromise = new Promise(resolve => { resolveCancel = resolve; });
+        const waiters = new Set(), mediaAbort = new AbortController();
+        const active = () => !cancelled && current(token) && session === targetSession;
+        const cancel = () => { cancelled = true; mediaAbort.abort(); resolveCancel(null); for (const wake of [...waiters]) wake(); };
+        cancelSequence = cancel;
+        save('audioIntent', {sessionId: sid, activityId: a.activityId});
+        const report = message => { if (!active()) return; status(message); const p = root()?.querySelector('#scenario-preparation-progress'); if (p) p.textContent = message; };
+        const submit = (action, seg, acknowledgement = false) => {
+            const task = registrations.then(async () => {
+                if (!current(token) || session !== targetSession || (!acknowledgement && !active())) return null;
+                if (queueFault) throw queueFault;
+                const path = `/sessions/${sid}/activities/${a.activityId}/${action}`, body = {expectedVersion: targetSession.version, segmentId: seg.segmentId};
+                try { return await mutation(path, body, false); }
+                catch (error) {
+                    // READY-only acknowledgements cannot call a provider; retry the identical receipt once.
+                    if (acknowledgement && !error.status && current(token)) {
+                        try { return await mutation(path, body, false); }
+                        catch (retryError) { versionUncertain = true; queueFault = retryError; throw retryError; }
+                    }
+                    if (error.status === 409) { versionUncertain = true; queueFault = error; }
+                    throw error;
+                }
+            });
+            registrations = task.catch(() => {});
+            return task;
+        };
+        const ready = async (seg, index) => {
+            const key = `${sid}/${a.activityId}/${seg.segmentId}`;
+            if (preparedAudio.has(key)) return preparedAudio.get(key);
+            let op = await submit(`prepare${retryFailed ? '?retryFailed=true' : ''}`, seg);
+            if (!active() || !op) return null;
+            const started = Date.now();
+            while (!['READY', 'SUCCEEDED'].includes(op.status)) {
+                if (['FAILED','UNKNOWN','CANCELLED','EXPIRED'].includes(op.status)) throw new Error(`Không phát được đoạn ${index + 1}. Mã tác vụ: ${op.operationId} · ${op.errorCode || op.status}. Không tự gửi lại yêu cầu.`);
+                if (Date.now() - started >= 90000) throw new Error(`Âm thanh đoạn ${index + 1} còn đang chuẩn bị. Có thể quay lại bài để kiểm tra tác vụ ${op.operationId}; không cần tạo lại.`);
+                op = await request(`/operations/${encodeURIComponent(op.operationId)}`);
+                if (!active()) return null;
+                if (['READY','SUCCEEDED','FAILED','UNKNOWN','CANCELLED','EXPIRED'].includes(op.status)) continue;
+                if (!activeSegmentId) report(`Đã tải sẵn ${completed}/${segments.length} đoạn. ${Date.now() - started > 15000 ? 'Nhà cung cấp đang xử lý lâu hơn bình thường; bạn có thể vào bài hoặc quay lại sau.' : 'Đang chuẩn bị âm thanh…'}`);
+                await new Promise(resolve => {
+                    const delay = setTimeout(wake, Math.max(500, Math.min(2000, op.pollAfterMs || 2000)));
+                    function wake() { clearTimeout(delay); waiters.delete(wake); resolve(); }
+                    waiters.add(wake);
+                });
+                if (!active()) return null;
+            }
+            if (typeof fetch === 'function' && typeof URL !== 'undefined' && URL.createObjectURL && !mediaUrls.has(op.mediaId)) {
+                const response = await fetch(`${base}/media/${encodeURIComponent(op.mediaId)}`, {credentials: 'same-origin', cache: 'no-store', signal: mediaAbort.signal});
+                if (!response.ok) throw new Error('Không tải được âm thanh. Bài vẫn được giữ; bạn có thể chủ động thử nghe lại.');
+                const blob = await response.blob();
+                if (!blob.type.startsWith('audio/') || blob.size < 44) throw new Error('Âm thanh chưa hợp lệ. Hãy giữ bài để kiểm tra, không cần tạo hội thoại mới.');
+                const url = URL.createObjectURL(blob);
+                if (!active()) { URL.revokeObjectURL(url); return null; }
+                mediaUrls.set(op.mediaId, url);
+                if (typeof Audio === 'function') {
+                    const preload = new Audio(); preload.preload = 'auto'; preload.src = url;
+                    try {
+                        await new Promise((resolve, reject) => {
+                            const finish = error => {
+                                clearTimeout(timeout); waiters.delete(stopped);
+                                preload.removeEventListener('loadeddata', loaded); preload.removeEventListener('error', failed);
+                                if (error) reject(error); else resolve();
+                            };
+                            const loaded = () => finish(), stopped = () => finish();
+                            const failed = () => finish(new Error('Không giải mã được âm thanh đã tải.'));
+                            const timeout = setTimeout(() => finish(new Error('Chưa giải mã được âm thanh. Hãy chủ động thử nghe lại đoạn đã lưu.')), 15000);
+                            waiters.add(stopped); preload.addEventListener('loadeddata', loaded); preload.addEventListener('error', failed); preload.load();
                         });
-                    } while (active());
-                    return null;
+                    } catch (error) { mediaUrls.delete(op.mediaId); URL.revokeObjectURL(url); throw error; }
+                    finally { preload.removeAttribute('src'); preload.load(); }
+                }
+            }
+            if (!active()) return null;
+            preparedAudio.set(key, op); return op;
+        };
+        const slots = segments.map(() => { let resolve; const promise = new Promise(done => {resolve = done;}); return {promise, resolve, value: null}; });
+        const worker = async () => {
+            while (active()) {
+                const index = next++; if (index >= segments.length || index > failedAt) return;
+                try {
+                    const op = await ready(segments[index], index);
+                    slots[index].value = op; slots[index].resolve(op); if (!op) return;
+                    completed++;
+                    if (!activeSegmentId) report(`Đã tải sẵn ${completed}/${segments.length} đoạn âm thanh.`);
+                } catch (error) {
+                    if (!active()) return;
+                    failedAt = Math.min(failedAt, index); slots[index].value = {error}; slots[index].resolve({error}); return;
+                }
+            }
+        };
+        const workers = Promise.all(Array.from({length: Math.min(2, segments.length)}, worker));
+        const get = index => Promise.race([slots[index].promise, cancelledPromise]);
+        try {
+            for (let i = 0; i < Math.min(2, segments.length); i++) { const first = await get(i); if (!first) return; if (first.error) throw first.error; }
+            if (prepareOnly) { save('audioIntent', null, actor); return {ready: true}; }
+            for (const [index, seg] of segments.entries()) {
+                if (!active()) return;
+                if (!slots[index].value) report(`Đang đệm đoạn ${index + 1}/${segments.length}. Âm thanh đã gửi đang được xử lý; không tạo yêu cầu trùng.`);
+                const op = await get(index); if (!op || !active()) return; if (op.error) throw op.error;
+                const audio = root()?.querySelector('#scenario-audio'); if (!audio) return;
+                const ordinal = a.segments.findIndex(s => s.segmentId === seg.segmentId) + 1;
+                const speaker = targetSession.specification.characters.find(c => c.id === seg.speakerId)?.name;
+                const description = `đoạn ${ordinal}/${a.segments.length}${speaker ? ` · ${speaker}` : ''}`;
+                let counted = false, finish;
+                const count = () => {
+                    if (counted || !active()) return; counted = true; save('audioIntent', null, actor);
+                    submit('played', seg, true).then(result => {
+                        if (!result || !current(token) || session !== targetSession) return;
+                        a.plays++; const node = root()?.querySelector('#scenario-play-count'); if (node) node.textContent = `Lượt phát đoạn: ${a.plays}.`;
+                    }).catch(error => { if (current(token)) { versionUncertain = true; status(error.status === 409 ? 'Phiên đã thay đổi. Hãy tải lại bài; câu trả lời nháp vẫn được giữ.' : 'Chưa xác nhận được lượt phát. Hãy tải lại bài trước thao tác tiếp theo; câu trả lời nháp vẫn được giữ.'); cancel(); } });
                 };
-                const prepared = [];
-                if (continuous) {
-                    // Keep one of the three active-job slots free for other user actions.
-                    for (let start = 0; start < segments.length; start += 2) {
-                        const registered = [];
-                        for (let i = start; i < Math.min(start + 2, segments.length); i++) {
-                            if (!active()) return;
-                            registered.push(await register(segments[i], i));
-                        }
-                        const settled = await Promise.all(registered.map((op, i) => ready(op, start + i)));
-                        if (!active() || settled.some(op => !op)) return;
-                        prepared.push(...settled);
-                        status(`Đã chuẩn bị ${prepared.length}/${segments.length} đoạn âm thanh.${prepared.length < segments.length ? ' Đang chuẩn bị phần còn lại…' : ' Đang tải âm thanh để phát liền mạch…'}`);
-                    }
-                    if (typeof fetch === 'function' && typeof URL !== 'undefined' && URL.createObjectURL) {
-                        await Promise.all(prepared.map(async op => {
-                            if (mediaUrls.has(op.mediaId)) return;
-                            const response = await fetch(`${base}/media/${encodeURIComponent(op.mediaId)}`, {credentials: 'same-origin', cache: 'no-store', signal: mediaAbort.signal});
-                            if (!response.ok) throw new Error('Không tải sẵn được âm thanh. Hãy bấm Nghe toàn bộ để thử lại.');
-                            const blob = await response.blob();
-                            if (!blob.type.startsWith('audio/') || blob.size < 44) throw new Error('Âm thanh chưa hợp lệ. Hãy bấm Nghe toàn bộ để thử lại.');
-                            const url = URL.createObjectURL(blob);
-                            if (active()) mediaUrls.set(op.mediaId, url); else URL.revokeObjectURL(url);
-                        }));
-                    }
-                    if (!active()) return;
-                    session = await request(`/sessions/${encodeURIComponent(session.sessionId)}`);
-                    if (!active()) return;
-                    const count = root()?.querySelector('#scenario-play-count');
-                    if (count) count.textContent = `Lần yêu cầu phát: ${session.activities.find(item => item.activityId === a.activityId)?.plays ?? a.plays}.`;
-                }
-                for (const [index, seg] of segments.entries()) {
-                    if (!active()) return;
-                    const op = continuous ? prepared[index] : await ready(await register(seg, index), index);
-                    if (!active()) return;
-                    if (!continuous) {
-                        session = await request(`/sessions/${encodeURIComponent(session.sessionId)}`);
-                        if (!active()) return;
-                        const count = root()?.querySelector('#scenario-play-count');
-                        if (count) count.textContent = `Lần yêu cầu phát: ${session.activities.find(item => item.activityId === a.activityId)?.plays ?? a.plays}.`;
-                    }
-                    const audio = root()?.querySelector('#scenario-audio'); if (!audio) return;
-                    let finish;
-                    const ended = new Promise(resolve => {
-                        const done = event => {
-                            ['ended','error'].forEach(name => audio.removeEventListener(name, done)); waiters.delete(finish); resolve(event?.type === 'ended');
-                        };
-                        finish = () => done(); waiters.add(finish);
-                        ['ended','error'].forEach(name => audio.addEventListener(name, done));
-                    });
-                    const ordinal = a.segments.findIndex(s => s.segmentId === seg.segmentId) + 1;
-                    const speaker = session.specification.characters.find(c => c.id === seg.speakerId)?.name;
-                    const description = `đoạn ${ordinal}/${a.segments.length}${speaker ? ` · ${speaker}` : ''}`;
-                    activeSegmentId = seg.segmentId;
-                    status(`Đang nghe ${description}. ${continuous ? 'Các thao tác khác sẽ mở lại khi nghe xong hoặc bấm Dừng nghe.' : ''}`);
-                    const started = await playMedia(op.mediaId, description, continuous);
-                    if (started === 'blocked') { if (!await ended || !active()) return; continue; }
-                    if (!started) { finish(); return; }
-                    if (!continuous) { await ended; return; }
-                    if (!await ended || !active()) return;
-                    activeSegmentId = null; updateEvidenceControl();
-                }
-                if (active()) status(segments.length === a.segments.length ? 'Đã nghe xong hoạt động. Bạn có thể nghe lại từng đoạn.' : 'Đã nghe xong đoạn.');
-            } finally {
-                cancel(); if (cancelSequence === cancel) cancelSequence = null;
+                const ended = new Promise(resolve => {
+                    const done = event => { ['ended','error'].forEach(name => audio.removeEventListener(name, done)); audio.removeEventListener('playing', count); waiters.delete(finish); resolve(event?.type === 'ended'); };
+                    finish = () => done(); waiters.add(finish); audio.addEventListener('playing', count); ['ended','error'].forEach(name => audio.addEventListener(name, done));
+                });
+                activeSegmentId = seg.segmentId; report(`Đang nghe ${description}. Bạn có thể tạm dừng hoặc tiếp tục trên trình nghe.`);
+                const started = await playMedia(op.mediaId, description, segments.length > 1);
+                if (!started) { finish(); return; }
+                if (!await ended || !active()) return;
                 activeSegmentId = null; updateEvidenceControl();
             }
-        });
+            if (active()) report(segments.length === a.segments.length ? 'Đã nghe xong hoạt động. Bạn có thể nghe lại từng đoạn.' : 'Đã nghe xong đoạn.');
+            return {ready: true};
+        } catch (error) {
+            if (active()) { report(error.message); return {error: error.message}; }
+        } finally {
+            cancel(); await workers; await registrations;
+            if (cancelSequence === cancel) cancelSequence = null;
+            if (current(token)) { activeSegmentId = null; updateEvidenceControl(); }
+        }
     }
     async function playMedia(id, description = 'đoạn hội thoại', continuous = false) {
         const audio = root().querySelector("#scenario-audio"); if (!audio) return false;

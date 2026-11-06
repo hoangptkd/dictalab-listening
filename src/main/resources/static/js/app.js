@@ -827,6 +827,7 @@
                 if (pushHistory) router.push("conversation", params);
                 else router.replace("conversation", params);
                 await _showView("conversation");
+                document.querySelector("#app-loading")?.remove();
                 await window.DictaLabConversation?.show(params.sessionId);
                 return;
             }

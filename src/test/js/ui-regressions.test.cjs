@@ -668,6 +668,25 @@ test('startup keeps the auth form hidden while checking the session and clears l
     }
 });
 
+test('conversation exposes its preparation screen before audio resolves while preserving the auth boundary', async () => {
+    const source=read('app.js').match(/    async function resolveUrlAndNavigate\([\s\S]*?\n    }\n/)[0];
+    for(const authenticated of [true,false]) {
+        const events=[];let finish;
+        const pending=new Promise(resolve=>{finish=resolve;});
+        const resolve=vm.runInNewContext(source+'\nresolveUrlAndNavigate',{
+            state:{currentUser:authenticated ? {id:7} : null},isAdminArea:false,
+            router:{replace(){},toPath:()=>'/conversation/lesson'},
+            _showView:async()=>{events.push('view');},showAuthScreen:()=>events.push('auth'),
+            document:{querySelector:()=>({remove:()=>events.push('loading removed')})},
+            window:{DictaLabConversation:{show:()=>{events.push('preparing');return pending;}}}
+        });
+        const navigation=resolve({route:'conversation',params:{sessionId:'lesson'}},false);
+        await new Promise(setImmediate);
+        assert.deepEqual(events,authenticated ? ['view','loading removed','preparing'] : ['auth']);
+        finish();await navigation;
+    }
+});
+
 test('admin startup does not access learner elements or request learning data', async () => {
     const source = read('app.js').match(/    async function enterApplication\([\s\S]*?\n    }\n/)[0];
     const requested = [];
