@@ -115,10 +115,12 @@ final class ScenarioContent {
     }
     private static void meanings(JsonNode activity,Map<String,String> segments,JsonNode context) {
         var assessment=activity.path("assessment"); fields(assessment,"policyVersion","meanings");
-        check(text(assessment,"policyVersion",40).equals(ScenarioAssessment.POLICY)); list(assessment.path("meanings"),3,6);
+        String policy=text(assessment,"policyVersion",40); check(Set.of(ScenarioAssessment.POLICY,ScenarioAssessment.PARTS_POLICY).contains(policy));
+        boolean parts=policy.equals(ScenarioAssessment.PARTS_POLICY); list(assessment.path("meanings"),3,6);
         var meanings=new LinkedHashMap<String,JsonNode>(); var labels=new HashSet<String>(); int ordinal=0;
         for (var meaning : assessment.path("meanings")) {
-            fields(meaning,"id","meaningEn","skill","supportKind","inferenceReasonEn","evidence");
+            if (parts) fields(meaning,"id","meaningEn","skill","supportKind","inferenceReasonEn","evidence","requiredParts");
+            else fields(meaning,"id","meaningEn","skill","supportKind","inferenceReasonEn","evidence");
             String id=id(meaning,"id"); check(id.equals("m"+ ++ordinal) && meanings.put(id,meaning)==null);
             String label=normalize(text(meaning,"meaningEn",300)); check(!label.isEmpty() && labels.add(label));
             String skill=text(meaning,"skill",30),support=text(meaning,"supportKind",16);
@@ -133,6 +135,20 @@ final class ScenarioContent {
                 fields(evidence,"segmentId","quoteEn"); String sid=id(evidence,"segmentId"),quote=text(evidence,"quoteEn",400);
                 check(segments.containsKey(sid) && segments.get(sid).contains(quote));
                 check(evidenceSet.add(sid+"\u0000"+quote));
+            }
+            if (parts) {
+                list(meaning.path("requiredParts"),1,4); var partLabels=new HashSet<String>(); int partOrdinal=0;
+                for (var part : meaning.path("requiredParts")) {
+                    fields(part,"id","meaningEn","evidence"); check(id(part,"id").equals("p"+ ++partOrdinal));
+                    check(partLabels.add(normalize(text(part,"meaningEn",300)))); list(part.path("evidence"),1,3);
+                    var partEvidence=new HashSet<String>();
+                    for (var evidence : part.path("evidence")) {
+                        fields(evidence,"segmentId","quoteEn"); String sid=id(evidence,"segmentId"),quote=text(evidence,"quoteEn",400);
+                        check(partEvidence.add(sid+"\u0000"+quote));
+                        check(java.util.stream.StreamSupport.stream(meaning.path("evidence").spliterator(),false)
+                                .anyMatch(e -> e.path("segmentId").asText().equals(sid) && e.path("quoteEn").asText().contains(quote)));
+                    }
+                }
             }
         }
         var covered=new HashSet<String>();

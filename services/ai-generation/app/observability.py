@@ -188,7 +188,8 @@ def trace_job(function):
         context = getattr(event.payload, "learningContext", None)
         if context is not None:
             if event.payload.contractVersion == "scenario-job.v3":
-                from .scenario_assessment import release
+                from .scenario_assessment import selected_release
+                release = selected_release(event.payload.promptHash)
                 metadata.update(assessmentPolicyVersion=release.POLICY_VERSION,
                                 harnessPolicyVersion=release.HARNESS_POLICY["version"])
             else:

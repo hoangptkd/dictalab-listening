@@ -273,6 +273,18 @@ def test_provider_status_trace_captures_only_numeric_status_not_private_error_de
     assert "private-response-body-canary" not in str(span.attributes)
 
 
+def test_required_part_grade_trace_uses_its_pinned_policy_and_derivation_gate(tracing):
+    from test_scenario_assessment import execute
+    from test_scenario_assessment_parts import two_part_check
+    exporter, scores = tracing
+    value, response = two_part_check()
+    result, _ = execute(value, [response])
+    span = next(s for s in exporter.get_finished_spans() if s.name == "ai.scenario.grade")
+    assert json.loads(span.attributes["langfuse.trace.metadata.assessmentPolicyVersion"]) == "scenario-meaning-assessment.v2"
+    assert result["task"]["meanings"][0]["status"] == "PARTIAL"
+    assert any(s["name"] == "gate.derive_grade" and s["value"] == 1 for s in scores)
+
+
 def test_repeated_gate_upserts_one_final_score(tracing):
     _, scores = tracing
     @obs.trace_gate

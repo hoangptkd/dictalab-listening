@@ -9,8 +9,8 @@ import static org.assertj.core.api.Assertions.*;
 
 class ScenarioAssessmentTest {
     @Test void immutableMeaningReleasesAcceptOnlyTheirExactHashVersionPair() {
-        var hashes=List.of(ScenarioAssessment.LEGACY_PROMPT_HASH,ScenarioAssessment.WIRE_V2_PROMPT_HASH,ScenarioAssessment.PROMPT_HASH);
-        var versions=List.of("SCENARIO_MEANING_ASSESSMENT_V1","SCENARIO_MEANING_ASSESSMENT_V2","SCENARIO_MEANING_ASSESSMENT_V3");
+        var hashes=List.of(ScenarioAssessment.LEGACY_PROMPT_HASH,ScenarioAssessment.WIRE_V2_PROMPT_HASH,ScenarioAssessment.PROMPT_HASH,ScenarioAssessment.PARTS_PROMPT_HASH);
+        var versions=List.of("SCENARIO_MEANING_ASSESSMENT_V1","SCENARIO_MEANING_ASSESSMENT_V2","SCENARIO_MEANING_ASSESSMENT_V3","SCENARIO_MEANING_ASSESSMENT_V4");
         for (int hash=0;hash<hashes.size();hash++) for (int version=0;version<versions.size();version++)
             assertThat(ScenarioAssessment.releaseMatches(hashes.get(hash),versions.get(version))).isEqualTo(hash==version);
         assertThat(ScenarioAssessment.releaseMatches("0".repeat(64),"SCENARIO_MEANING_ASSESSMENT_V3")).isFalse();
@@ -40,6 +40,76 @@ class ScenarioAssessmentTest {
         var result=object(); var meanings=result.putArray("meanings");
         for (int i=0;i<statuses.length;i++) meanings.addObject().put("meaningId","m"+(i+1)).put("status",statuses[i]);
         return Map.of("support_json",support.toString(),"result_json",result.toString(),"status","GRADED");
+    }
+    static JsonNode partsFixture() {
+        var f=fixture();
+        for (var activity : f.path("content").path("activities")) {
+            ((ObjectNode)activity.path("assessment")).put("policyVersion",ScenarioAssessment.PARTS_POLICY);
+            for (var m : activity.path("assessment").path("meanings")) {
+                var part=((ObjectNode)m).putArray("requiredParts").addObject().put("id","p1").put("meaningEn",m.path("meaningEn").asText());
+                part.set("evidence",m.path("evidence").deepCopy());
+            }
+        }
+        return f;
+    }
+    @Test void partsMustBeDistinctBoundedAndGroundedWithinTheirMeaning() throws Exception {
+        var f=partsFixture(); var program=new ScenarioProgramRegistry().require("general-communication",4);
+        var context=ScenarioPersonalization.context(program,new ScenarioGoalRequest.Target("cefr-listening","LISTENING","a1"),null,"detail");
+        ScenarioContent.content(f.path("content"),f.path("specification"),f.path("profile"),context,true,true);
+        for (String fault : List.of("empty","duplicate","foreign","blank","outside","ungrounded")) {
+            var content=f.path("content").deepCopy(); var parts=(tools.jackson.databind.node.ArrayNode)content.path("activities").get(0).path("assessment").path("meanings").get(0).path("requiredParts");
+            var part=(ObjectNode)parts.get(0);
+            switch (fault) {
+                case "empty" -> parts.removeAll();
+                case "duplicate" -> parts.add(part.deepCopy().put("id","p2"));
+                case "foreign" -> part.put("id","p2");
+                case "blank" -> part.put("meaningEn"," ");
+                case "outside" -> ((ObjectNode)part.path("evidence").get(0)).put("quoteEn","Bread costs six pounds.");
+                case "ungrounded" -> ((ObjectNode)part.path("evidence").get(0)).put("quoteEn","invented");
+            }
+            assertThatThrownBy(() -> ScenarioContent.content(content,f.path("specification"),f.path("profile"),context,true,true)).as(fault).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+    @Test void coreIndependentlyRejectsFalseFullCreditMissingPartsAndAlteredEvidence() {
+        var activity=partsFixture().path("content").path("activities").get(0);
+        var source=(ObjectNode)activity.path("assessment").path("meanings").get(0);
+        ((tools.jackson.databind.node.ArrayNode)source.path("requiredParts")).add(source.path("requiredParts").get(0).deepCopy());
+        ((ObjectNode)source.path("requiredParts").get(1)).put("id","p2").put("meaningEn","a second required detail");
+        var submission=object().put("mode","CHECKS").put("recapText",""); submission.putArray("meaningIds").add("m1");
+        submission.putArray("answers").addObject().put("questionId","q1").put("textVi","nine");
+        var result=object(); var m=result.putArray("meanings").addObject().put("meaningId","m1").put("status","PARTIAL");
+        var evidence=m.putArray("evidence"); evidence.addObject().put("responseId","q1").put("quote","nine");
+        var parts=m.putArray("parts"); var first=parts.addObject().put("partId","p1").put("status","CAPTURED"); first.set("evidence",evidence.deepCopy());
+        parts.addObject().put("partId","p2").put("status","ABSENT").putArray("evidence");
+        ScenarioAssessment.grade(result,submission,activity);
+        for (String fault : List.of("full","missing","duplicate","foreign","quote","union","absentEvidence","uncertainWithoutEvidence")) {
+            var bad=result.deepCopy(); var item=(ObjectNode)bad.path("meanings").get(0); var p=(tools.jackson.databind.node.ArrayNode)item.path("parts");
+            switch (fault) {
+                case "full" -> item.put("status","CAPTURED");
+                case "missing" -> p.remove(1);
+                case "duplicate" -> ((ObjectNode)p.get(1)).put("partId","p1");
+                case "foreign" -> ((ObjectNode)p.get(1)).put("partId","p4");
+                case "quote" -> ((ObjectNode)p.get(0).path("evidence").get(0)).put("quote","ten");
+                case "union" -> item.putArray("evidence").addObject().put("responseId","q1").put("quote","nin");
+                case "absentEvidence" -> ((ObjectNode)p.get(1)).set("evidence",evidence.deepCopy());
+                case "uncertainWithoutEvidence" -> { ((ObjectNode)p.get(1)).put("status","UNCERTAIN"); item.put("status","UNCERTAIN"); }
+            }
+            assertThatThrownBy(() -> ScenarioAssessment.grade(bad,submission,activity)).as(fault).isInstanceOf(IllegalArgumentException.class);
+        }
+        for (var part : parts) { ((ObjectNode)part).put("status","ABSENT").putArray("evidence"); }
+        m.putArray("evidence"); m.put("status","MISSED"); ScenarioAssessment.grade(result,submission,activity);
+        submission.put("mode","RECAP").put("recapText","They are discussing a book."); submission.putArray("answers");
+        m.put("status","UNASSESSED"); ScenarioAssessment.grade(result,submission,activity);
+    }
+    @Test void aggregationNeverAwardsFullCreditWhenAnyRequiredPartIsUnresolved() {
+        for (String first : List.of("CAPTURED","PARTIAL","INCORRECT","UNCERTAIN","ABSENT"))
+            for (String second : List.of("CAPTURED","PARTIAL","INCORRECT","UNCERTAIN","ABSENT")) {
+                var statuses=List.of(first,second); String status=ScenarioAssessment.aggregateParts(statuses,true);
+                assertThat(status.equals("CAPTURED")).isEqualTo(statuses.stream().allMatch("CAPTURED"::equals));
+                if (statuses.contains("UNCERTAIN")) assertThat(status).isEqualTo("UNCERTAIN");
+            }
+        assertThat(ScenarioAssessment.aggregateParts(List.of("CAPTURED","ABSENT"),false)).isEqualTo("PARTIAL");
+        assertThat(ScenarioAssessment.aggregateParts(List.of("ABSENT","ABSENT"),false)).isEqualTo("MISSED");
     }
     @Test void v3IsSeparateAndRejectsUngroundedMissingDuplicateAndUnsupportedMeanings() throws Exception {
         var f=fixture(); var program=new ScenarioProgramRegistry().require("general-communication",4);

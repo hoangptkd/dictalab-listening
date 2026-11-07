@@ -121,7 +121,9 @@ def reconcile(previous, current, changed, stage):
 
 
 async def generate(dialogue, payload, call, deadline):
-    state = h.State(deadline, policy=a.release.HARNESS_POLICY)
+    selected = a.selected_release(payload.promptHash)
+    parts = selected is a.parts_release
+    state = h.State(deadline, policy=selected.HARNESS_POLICY)
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)}
     frozen = {"dialogue": h.digest(dialogue), "specification": h.digest(payload.specification),
               "learningContext": h.digest(payload.learningContext)}
@@ -180,7 +182,7 @@ async def generate(dialogue, payload, call, deadline):
             try:
                 patch = await state.extra(call, purpose, {"dialogue": dialogue.model_dump(),
                     "specification": payload.specification.model_dump(), "failedOutput": original.model_dump(),
-                    "issues": issues, "allowedTargets": targets, **context}, a.QuestionPatch if stage == "QUESTIONS" else w.TranslationPatch)
+                    "issues": issues, "allowedTargets": targets, **context}, (a.PartsQuestionPatch if parts else a.QuestionPatch) if stage == "QUESTIONS" else w.TranslationPatch)
                 candidate = merge_patch(original, patch, allowed, stage)
                 attempt["candidateHash"] = h.digest(candidate)
                 before, after = items(original, stage), items(candidate, stage)
@@ -213,7 +215,7 @@ async def generate(dialogue, payload, call, deadline):
     with observation("scenario.quality_harness", metadata={"harnessPolicyVersion": state.policy["version"],
                      "harnessPolicyHash": h.digest(state.policy)}) as span:
         try:
-            questions = await call("QUESTIONS", {"dialogue": dialogue.model_dump(), **context}, a.Questions)
+            questions = await call("QUESTIONS", {"dialogue": dialogue.model_dump(), **context}, a.PartsQuestions if parts else a.Questions)
             errors = structural(questions, dialogue, payload, "QUESTIONS")
             state.record("QUESTIONS", "FAIL" if errors else "PASS", errors)
             question_review = question_status = None

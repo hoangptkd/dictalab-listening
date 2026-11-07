@@ -96,7 +96,7 @@ public class ScenarioEngine {
                 parent,family,Timestamp.from(Instant.now().plusSeconds(86400)),context==null ? null : context.toString(),
                 object().put("contractVersion",program.meaningAssessment() ? "scenario-job.v3" : context!=null ? "scenario-job.v2" : "scenario-job.v1")
                         .put("promptHash",program.meaningAssessment() ? release.assessmentPromptHash() : context!=null ? release.personalizedPromptHash() : release.promptHash())
-                        .put("assessmentPolicyVersion",program.meaningAssessment() ? ScenarioAssessment.POLICY : "").toString());
+                        .put("assessmentPolicyVersion",program.meaningAssessment() ? ScenarioAssessment.policyFor(release.assessmentPromptHash()) : "").toString());
         return operations.create(user,scope,key,intent,"EXTRACT",draft,payload(data.owned("scenario_drafts",user,draft),"EXTRACT").put("inputVi",input));
     }
 
@@ -211,7 +211,7 @@ public class ScenarioEngine {
         boolean done=completed || meaning && ScenarioAssessment.done(assessmentState,evidence);
         if (meaning) {
             boolean recap=!assessmentState.path("recapSkipped").asBoolean() && !evidence.recap() && !evidence.checks();
-            var assessment=result.putObject("assessment").put("policyVersion",ScenarioAssessment.POLICY).put("stage",done ? "DONE" : recap ? "RECAP" : "CHECKS")
+            var assessment=result.putObject("assessment").put("policyVersion",content.path("activity").path("assessment").path("policyVersion").asText()).put("stage",done ? "DONE" : recap ? "RECAP" : "CHECKS")
                     .put("round",assessmentState.path("checksRound").asInt()).put("canComplete",!completed && ScenarioAssessment.canComplete(assessmentState,evidence)).put("recapAllowed",recap && !evidence.pending());
             assessment.set("coverage",ScenarioAssessment.coverage(content.path("activity"),evidence,done));
         }
@@ -541,7 +541,10 @@ public class ScenarioEngine {
             ScenarioContent.check(ScenarioAssessment.releaseMatches(input.path("promptHash").asText(),result.path("promptVersion").asText())
                     && input.path("promptHash").asText().equals(result.path("promptHash").asText())
                     && input.path("programHash").asText().equals(result.path("programHash").asText())
-                    && result.path("assessmentPolicyVersion").asText().equals(ScenarioAssessment.POLICY));
+                    && result.path("assessmentPolicyVersion").asText().equals(ScenarioAssessment.policyFor(input.path("promptHash").asText())));
+            if (kind.equals("GRADE")) ScenarioContent.check(input.path("activity").path("assessment").path("policyVersion").asText().equals(result.path("assessmentPolicyVersion").asText()));
+            if (kind.equals("GENERATE")) for (var activity : result.path("task").path("activities"))
+                ScenarioContent.check(activity.path("assessment").path("policyVersion").asText().equals(result.path("assessmentPolicyVersion").asText()));
             var allowedModels=new HashSet<String>(); allowedModels.add(result.path("model").asText());
             if (result.has("modelRouting")) {
                 var routing=result.path("modelRouting"); ScenarioContent.fields(routing,"primaryModel","fallbackModels");

@@ -186,3 +186,35 @@ Next quality decision: evaluate a versioned required-part representation within 
 ### Delivery status
 
 Delivery scope: task branch `codex/fix-scenario-provider-503-20261106`; exact commit and remote verification are reported with the final handoff. Production deployment is not authorized in this task. Contextual audio remains blocked on an explicitly configured provider/model with verified two-speaker fidelity and real alignment; grading quality remains a separate open release gate. Do not interpret a branch push or passing contract tests as production approval.
+
+## 10. Required-part candidate implementation — 2026-11-07
+
+User authorized continuing implementation after the delivery above. Implemented the next quality decision as an isolated **meaning V4 candidate**, policy `scenario-meaning-assessment.v2`, hash `b9be440e03b9b31163f02c75e685092277fb42fb1ecc0156d871d030efa94503`.
+
+### Contract and behavior
+
+- Keep the existing job v3/context v2 envelopes. Each new meaning adds 1–4 `requiredParts`, with contiguous IDs p1..pN, a meaning statement and exact source evidence contained within that meaning's evidence. Questions can still ask multiple details; no atomic-question restriction was introduced.
+- QUESTIONS creates the parts with the meaning map, after dialogue completion. Existing scoped meaning repair replaces the complete meaning, including its parts, and cannot edit untargeted items or the dialogue. REVIEW_QUESTIONS also evaluates completeness, importance and grounding of the parts. Structural validators in both services check bounds, IDs, duplicate labels and exact evidence provenance; semantic equivalence still needs evaluation.
+- GRADE returns only part IDs, statuses and learner evidence. A model-supplied whole-meaning status is a schema error. Part statuses are CAPTURED/PARTIAL/INCORRECT/UNCERTAIN/ABSENT. Every non-ABSENT part requires an exact quote from an eligible learner response. No second grading call was added.
+- Worker derives the whole status: all CAPTURED → CAPTURED; otherwise any UNCERTAIN → UNCERTAIN; otherwise any CAPTURED/PARTIAL → PARTIAL; otherwise any INCORRECT → INCORRECT; otherwise recap → UNASSESSED, checks → MISSED. The result retains part evidence and its deduplicated aggregate. Core independently recomputes the status and verifies the full evidence union before persistence.
+- Public results, finite question selection, assisted/independent evidence, answer withholding and unresolved completion remain unchanged. Core projects the saved activity's actual policy. New and old policies cannot be crossed under a different prompt pin.
+- Existing meaning V1/V2/V3 schemas and hashes remain unchanged. No saved lesson, admitted operation, catalog definition or database migration was changed. Langfuse now obtains the assessment policy from each request's exact pinned release, including historical requests.
+
+### Measured evidence and activation decision
+
+One-shot Gemini 3.5 Flash Lite diagnostics reused the previous saved dialogue and learner submissions. Required parts for the grading diagnostic were human-authored from the frozen target meanings; they were **not** supplied by a successfully validated new generation. This isolates grading from map-generation quality.
+
+| Diagnostic | Meaning V3 | Meaning V4 candidate |
+|---|---|---|
+| Same three saved grading cases | 2/3 | 3/3 |
+| Five additional answer contrasts on the same transcript | Not measured | 4/5 |
+| Total V4 focused grading cases | — | 7/8 |
+| New QUESTIONS map from the saved three-activity dialogue | Not rerun | Rejected: activity 3 had only two meanings and two questions; contract requires at least three |
+
+The remaining grading mismatch: recap “They mentioned some books.” was expected to leave all four meanings UNASSESSED; the model marked the book-selection meaning PARTIAL. The original false-full-credit case now correctly returns PARTIAL when only the reading-duration consequence is recalled. Correct Vietnamese paraphrase, a contradictory answer and an empty explicit answer also matched expected statuses. These are small diagnostics on one transcript, not an accuracy estimate or proof of learning improvement.
+
+No failed provider call was replayed, no schema bound/reviewer gate was weakened and no grading model was switched. Preserve every raw result and expectation under ignored `data/conversation-meaning-assessment-20261106/required-parts-v4/` (`questions.json`, `grades.json`, one-shot markers and the isolated job ledger). Existing Langfuse tracing captures the candidate hash, provider/model, raw part evidence and derivation gate.
+
+Final related checks: 300 Python tests passed (assessment, workflow, jobs, observability and contracts); 91 Java tests passed (9 assessment and 82 engine integration), with zero failures/errors/skips in those Java runs. Coverage includes mixed-policy rejection, the four-release hash/version matrix, part-boundary/evidence tampering, all status pairs, scoped repairs, persisted checks/completion and historical pin retention after admission changes. UTF-8 validation passed for all 13 changed files; diff whitespace checks passed. No frontend source changed, so no new browser/visual claim is made. The local Core/API/worker from the prior turn were no longer running after shutdown; diagnostics used the protected existing registry and isolated evaluation ledger, without restarting or changing product admission.
+
+**Do not promote V4.** The product admission resource `workflow-v3.sha256` and default Python release remain meaning V3. Candidate V4 is registered for exact-pin worker evaluation and independent Core validation; it is not a default user-facing change. The next release gate needs a valid automatically generated map, end-to-end grading on that map and held-out semantic checks. The scarcity in activity 3 and the vague-topic over-credit must remain visible; do not pad with trivia or fix the test labels to obtain a pass. Contextual audio remains blocked as recorded above.

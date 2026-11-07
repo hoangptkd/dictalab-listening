@@ -277,6 +277,15 @@ paths:
         status,independentStatus,assistedStatus. UNASSESSED does not occupy first independent
         evidence. Completion exposes the full reference bank. This is guided practice, not an
         official exam simulation, percentage comprehension, mastery claim or calibrated score.
+        Candidate meaning release V4 uses policy scenario-meaning-assessment.v2. Its private
+        meanings contain 1-4 grounded requiredParts; the model grades parts only. The worker
+        derives the meaning status and Core independently validates that derivation and the
+        union of exact learner evidence. All parts must be CAPTURED for full credit; any
+        UNCERTAIN part makes the result UNCERTAIN; otherwise any correct contribution is
+        PARTIAL, a contradiction without a correct contribution is INCORRECT, and all ABSENT
+        parts become UNASSESSED for recap or MISSED for checks. Required-part labels remain
+        private; existing public coverage and completion behavior are unchanged. V4 is not
+        the default admission pin and has not passed the general-release quality gate.
       parameters: [{$ref: '#/components/parameters/Idempotency'}]
       requestBody:
         required: true

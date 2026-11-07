@@ -17,6 +17,7 @@ from . import scenario_workflow as w
 from . import scenario_prompts_meaning_v1 as legacy_release
 from . import scenario_prompts_meaning_v2 as previous_release
 from . import scenario_prompts_meaning_v3 as release
+from . import scenario_prompts_meaning_v4 as parts_release
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .observability import trace_gate
@@ -135,6 +136,69 @@ class Grade(StrictModel):
     meanings: list[GradeItem] = Field(min_length=1, max_length=6)
 
 
+class RequiredPart(StrictModel):
+    id: Annotated[str, Field(pattern=r"^p[1-4]$")]
+    meaningEn: str = Field(min_length=1, max_length=300)
+    evidence: list[w.Evidence] = Field(min_length=1, max_length=3)
+
+
+class PartsMeaning(Meaning):
+    requiredParts: list[RequiredPart] = Field(min_length=1, max_length=4)
+
+
+class PartsAssessment(Assessment):
+    policyVersion: Literal["scenario-meaning-assessment.v2"]
+    meanings: list[PartsMeaning] = Field(min_length=3, max_length=6)
+
+
+class PartsActivityDraft(ActivityDraft):
+    assessment: PartsAssessment
+
+
+class PartsQuestions(Questions):
+    activities: list[PartsActivityDraft] = Field(min_length=3, max_length=3)
+
+
+class PartsActivity(Activity):
+    assessment: PartsAssessment
+
+
+class PartsContent(Content):
+    activities: list[PartsActivity] = Field(min_length=3, max_length=3)
+
+
+class PartsMeaningReplacement(MeaningReplacement):
+    meaning: PartsMeaning
+
+
+class PartsQuestionPatch(QuestionPatch):
+    meaningReplacements: list[PartsMeaningReplacement] = Field(max_length=18)
+
+
+class PartGrade(StrictModel):
+    partId: Annotated[str, Field(pattern=r"^p[1-4]$")]
+    status: Literal["CAPTURED", "PARTIAL", "INCORRECT", "UNCERTAIN", "ABSENT"]
+    evidence: list[LearnerEvidence] = Field(max_length=6)
+
+
+class PartsGradeItem(StrictModel):
+    meaningId: MeaningId
+    parts: list[PartGrade] = Field(min_length=1, max_length=4)
+
+
+class PartsGrade(StrictModel):
+    meanings: list[PartsGradeItem] = Field(min_length=1, max_length=6)
+
+
+class DerivedGradeItem(GradeItem):
+    evidence: list[LearnerEvidence] = Field(max_length=24)
+    parts: list[PartGrade] = Field(min_length=1, max_length=4)
+
+
+class DerivedGrade(Grade):
+    meanings: list[DerivedGradeItem] = Field(min_length=1, max_length=6)
+
+
 class ScenarioAssessmentInput(StrictModel):
     kind: Literal["scenario"] = "scenario"
     phase: Literal["EXTRACT", "GENERATE", "GRADE"]
@@ -144,13 +208,13 @@ class ScenarioAssessmentInput(StrictModel):
     profile: w.PersonalizedProfile
     inputVi: str = Field(default="", max_length=2000)
     specification: w.PersonalizedSpecification | None = None
-    activity: Activity | None = None
+    activity: Activity | PartsActivity | None = None
     learningContext: AssessmentContext
     assessmentSubmission: Submission | None = None
 
     @model_validator(mode="after")
     def phase_input(self):
-        selected_release(self.promptHash)
+        selected = selected_release(self.promptHash)
         context = self.learningContext
         if context.programHash != self.programHash or any(getattr(context.profile, key) != getattr(self.profile, key)
                 for key in ("id", "minWordsPerActivity", "maxWordsPerActivity", "maxWordsPerSession")):
@@ -164,6 +228,8 @@ class ScenarioAssessmentInput(StrictModel):
         else:
             if self.specification is not None or self.activity is None or self.assessmentSubmission is None:
                 raise ValueError("invalid grade input")
+            if (selected is parts_release) != isinstance(self.activity, PartsActivity):
+                raise ValueError("assessment policy does not match pinned release")
             validate_submission(self.activity, self.assessmentSubmission)
         self.inputVi = redact_string(self.inputVi)
         return self
@@ -198,23 +264,30 @@ def response_schema(model, *, legacy=False):
 
 @cache
 def prompt_hash(selected=release):
+    parts = selected is parts_release
     models = (AssessmentContext, w.PersonalizedSpecification, w.PersonalizedExtraction, w.Dialogue,
-              Questions, Content, w.Translations, QuestionReview, w.PersonalizedReview, Submission, Grade)
+              PartsQuestions if parts else Questions, PartsContent if parts else Content, w.Translations,
+              QuestionReview, w.PersonalizedReview, Submission, PartsGrade if parts else Grade)
     legacy = selected is legacy_release
     manifest = {"version": selected.PROMPT_VERSION, "assessmentPolicyVersion": selected.POLICY_VERSION,
                 "instructions": selected.INSTRUCTIONS, "outputTokens": selected.OUTPUT_TOKENS,
                 "schemas": {m.__name__: m.model_json_schema() for m in models},
                 "reviewResponseSchemas": {m.__name__: response_schema(m, legacy=legacy) for m in (QuestionReview, w.PersonalizedReview)},
                 "harness": {"policy": selected.HARNESS_POLICY,
-                            "schemas": {m.__name__: response_schema(m, legacy=legacy) for m in (QuestionPatch, w.TranslationPatch)}}}
+                            "schemas": {m.__name__: response_schema(m, legacy=legacy) for m in
+                                        (PartsQuestionPatch if parts else QuestionPatch, w.TranslationPatch)}}}
     if not legacy:
         manifest["responseSchemas"] = {m.__name__: response_schema(m) for m in
-            (w.PersonalizedExtraction, w.Dialogue, Questions, QuestionReview, w.Translations, w.PersonalizedReview, Grade)}
+            (w.PersonalizedExtraction, w.Dialogue, PartsQuestions if parts else Questions, QuestionReview,
+             w.Translations, w.PersonalizedReview, PartsGrade if parts else Grade)}
+    if parts:
+        manifest["derivedGradeSchema"] = DerivedGrade.model_json_schema()
+        manifest["aggregation"] = "all-captured;any-uncertain;any-correct-partial;any-incorrect;mode-omission.v1"
     return hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def selected_release(requested_hash):
-    for selected in (release, previous_release, legacy_release):
+    for selected in (parts_release, release, previous_release, legacy_release):
         if requested_hash == prompt_hash(selected):
             return selected
     raise ValueError("scenario prompt mismatch")
@@ -259,6 +332,8 @@ def validate_questions(questions, dialogue, context):
     total_questions = 0
     focus_meaning = focus_question = False
     for source, activity in zip(dialogue.activities, questions.activities):
+        if activity.assessment.policyVersion != questions.activities[0].assessment.policyVersion:
+            raise _invalid("mixed assessment policies", activity.id)
         meanings = activity.assessment.meanings
         if [m.id for m in meanings] != [f"m{i + 1}" for i in range(len(meanings))]:
             raise _invalid("meaning IDs mismatch", activity.id)
@@ -274,6 +349,21 @@ def validate_questions(questions, dialogue, context):
         for meaning in meanings:
             _support(meaning, context, activity.id, "meaning")
             _evidence(meaning, segments, activity.id, "meaning")
+            if isinstance(meaning, PartsMeaning):
+                if [p.id for p in meaning.requiredParts] != [f"p{i + 1}" for i in range(len(meaning.requiredParts))]:
+                    raise _invalid("required part IDs mismatch", activity.id, meaning.id, "meaning")
+                labels = [" ".join(p.meaningEn.casefold().split()) for p in meaning.requiredParts]
+                if not all(labels) or len(set(labels)) != len(labels):
+                    raise _invalid("duplicate or empty required part", activity.id, meaning.id, "meaning")
+                for part in meaning.requiredParts:
+                    try:
+                        _evidence(part, segments, activity.id, "meaning")
+                    except ValueError as invalid:
+                        invalid.item_id = meaning.id
+                        raise
+                    if any(not any(pe.segmentId == me.segmentId and pe.quoteEn in me.quoteEn
+                                   for me in meaning.evidence) for pe in part.evidence):
+                        raise _invalid("required part outside meaning evidence", activity.id, meaning.id, "meaning")
             focus_meaning |= meaning.skill == context.focusSkill
         for question in activity.questions:
             _support(question, context, activity.id, "question")
@@ -315,7 +405,8 @@ def validate_questions(questions, dialogue, context):
 
 def attach_questions(dialogue, questions, context):
     validate_questions(questions, dialogue, context)
-    return Content(activities=[Activity(**source.model_dump(), assessment=draft.assessment,
+    content_model, activity_model = (PartsContent, PartsActivity) if isinstance(questions, PartsQuestions) else (Content, Activity)
+    return content_model(activities=[activity_model(**source.model_dump(), assessment=draft.assessment,
         questions=[Question(**q.model_dump(exclude={"factEn", "speechAct"}), type="MEANING_RECALL_VI")
                    for q in draft.questions]) for source, draft in zip(dialogue.activities, questions.activities)])
 
@@ -380,6 +471,45 @@ def validate_grade(grade, payload):
                 raise ValueError("learner evidence from unrelated check")
 
 
+def aggregate_parts(statuses, mode):
+    if not statuses:
+        raise ValueError("missing required part statuses")
+    if all(s == "CAPTURED" for s in statuses):
+        return "CAPTURED"
+    if "UNCERTAIN" in statuses:
+        return "UNCERTAIN"
+    if any(s in ("CAPTURED", "PARTIAL") for s in statuses):
+        return "PARTIAL"
+    if "INCORRECT" in statuses:
+        return "INCORRECT"
+    return "UNASSESSED" if mode == "RECAP" else "MISSED"
+
+
+@trace_gate
+def derive_grade(grade, payload):
+    expected = {m.id: m for m in payload.activity.assessment.meanings if m.id in payload.assessmentSubmission.meaningIds}
+    if len(grade.meanings) != len(expected) or {m.meaningId for m in grade.meanings} != expected.keys():
+        raise ValueError("grade meaning IDs mismatch")
+    results = []
+    for item in grade.meanings:
+        part_ids = {p.id for p in expected[item.meaningId].requiredParts}
+        if len(item.parts) != len(part_ids) or {p.partId for p in item.parts} != part_ids:
+            raise ValueError("grade required part IDs mismatch")
+        evidence = {}
+        for part in item.parts:
+            if (part.status == "ABSENT") != (not part.evidence):
+                raise ValueError("invalid required part evidence")
+            # Reuse the historical exact learner-quote and related-question trust boundary per part.
+            status = aggregate_parts([part.status], payload.assessmentSubmission.mode)
+            validate_grade(Grade(meanings=[GradeItem(meaningId=item.meaningId, status=status, evidence=part.evidence)]),
+                payload.model_copy(update={"assessmentSubmission": payload.assessmentSubmission.model_copy(update={"meaningIds": [item.meaningId]})}))
+            for quote in part.evidence:
+                evidence[(quote.responseId, quote.quote)] = quote
+        results.append(DerivedGradeItem(meaningId=item.meaningId, parts=item.parts,
+            status=aggregate_parts([p.status for p in item.parts], payload.assessmentSubmission.mode), evidence=list(evidence.values())))
+    return DerivedGrade(meanings=results)
+
+
 async def execute(event, settings):
     """Use the existing gateway and fallback rules; never replay completed stages."""
     if not settings.scenario_enabled:
@@ -439,9 +569,12 @@ async def execute(event, settings):
                 raise w.QualityRejected("invalid extraction provenance") from invalid
         elif payload.phase == "GRADE":
             grade = await call("GRADE", {"activity": payload.activity.model_dump(),
-                "assessmentSubmission": payload.assessmentSubmission.model_dump(), **context}, Grade)
+                "assessmentSubmission": payload.assessmentSubmission.model_dump(), **context}, PartsGrade if selected is parts_release else Grade)
             try:
-                validate_grade(grade, payload)
+                if selected is parts_release:
+                    grade = derive_grade(grade, payload)
+                else:
+                    validate_grade(grade, payload)
             except ValueError as invalid:
                 raise w.QualityRejected("invalid grade evidence") from invalid
             result = grade.model_dump()

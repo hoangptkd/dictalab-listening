@@ -109,20 +109,27 @@ class ScenarioEngineIntegrationTest {
                     .put("policyVersion",harnessV9 ? "scenario-quality-harness.v2" : "scenario-quality-harness.v1")
                     .put("policyHash",harnessV9 ? "e15c2b30a59f2b505b047b1920ebdff9c4cb7ccb2ae87cf9cf24803e2e8c2a66" : "ac1a80c90c9f24149f14a9221c0c7382e653d94fccbd823b3862c55fa043bc6b");
             if (meaning) {
+                boolean parts=ScenarioAssessment.PARTS_PROMPT_HASH.equals(input.path("promptHash").asText());
                 result.put("promptVersion",ScenarioAssessment.LEGACY_PROMPT_HASH.equals(input.path("promptHash").asText()) ? "SCENARIO_MEANING_ASSESSMENT_V1"
-                        : ScenarioAssessment.WIRE_V2_PROMPT_HASH.equals(input.path("promptHash").asText()) ? "SCENARIO_MEANING_ASSESSMENT_V2" : "SCENARIO_MEANING_ASSESSMENT_V3").put("assessmentPolicyVersion",ScenarioAssessment.POLICY);
+                        : ScenarioAssessment.WIRE_V2_PROMPT_HASH.equals(input.path("promptHash").asText()) ? "SCENARIO_MEANING_ASSESSMENT_V2" : parts ? "SCENARIO_MEANING_ASSESSMENT_V4" : "SCENARIO_MEANING_ASSESSMENT_V3")
+                        .put("assessmentPolicyVersion",ScenarioAssessment.policyFor(input.path("promptHash").asText()));
                 if (phase.equals("GENERATE")) {
-                    result.set("task",ScenarioAssessmentTest.fixture().path("content"));
+                    result.set("task",(parts ? ScenarioAssessmentTest.partsFixture() : ScenarioAssessmentTest.fixture()).path("content"));
                     result.putObject("qualityHarness").put("extraCalls",0).put("policyVersion","scenario-meaning-harness.v1").put("policyHash","56d0d6d5e826e1b46f20b5ab4a3868dada9537cca996cb35999d3886ee3d6fe2");
                 } else if (phase.equals("GRADE")) {
                     var task=object(); var meanings=task.putArray("meanings"); var submission=input.path("assessmentSubmission");
                     for (var mid : submission.path("meaningIds")) {
                         var item=meanings.addObject().put("meaningId",mid.asText()).put("status",meaningGradeStatus); var evidence=item.putArray("evidence");
-                        if (meaningGradeStatus.equals("CAPTURED")) {
+                        if (meaningGradeStatus.equals("CAPTURED") || parts && Set.of("PARTIAL","INCORRECT","UNCERTAIN").contains(meaningGradeStatus)) {
                             String response="recap",quote=submission.path("recapText").asText();
                             if (submission.path("mode").asText().equals("CHECKS")) for (var q : input.path("activity").path("questions")) if (java.util.stream.StreamSupport.stream(q.path("meaningIds").spliterator(),false).anyMatch(mid::equals))
                                 for (var answer : submission.path("answers")) if (answer.path("questionId").equals(q.path("id"))) { response=answer.path("questionId").asText(); quote=answer.path("textVi").asText(); }
                             evidence.addObject().put("responseId",response).put("quote",quote);
+                        }
+                        if (parts) {
+                            var part=item.putArray("parts").addObject().put("partId","p1")
+                                    .put("status",Set.of("UNASSESSED","MISSED").contains(meaningGradeStatus) ? "ABSENT" : meaningGradeStatus);
+                            part.set("evidence",evidence.deepCopy());
                         }
                     }
                     result.set("task",task);
@@ -181,6 +188,25 @@ class ScenarioEngineIntegrationTest {
         var another=activeMeaning(); String other=another.path("sessionId").asText(),a=another.path("activities").get(0).path("activityId").asText();
         meaningGradeStatus="CAPTURED"; dispatch(engine.assessment(user,other,a,id(),new ScenarioEngine.AssessmentRequest(another.path("version").asLong(),"RECAP","nine, six pounds, tomorrow",List.of())));
         another=engine.session(user,other); assertThat(another.path("activities").get(0).path("assessment").path("canComplete").asBoolean()).isTrue(); assertThat(another.path("activities").get(0).path("questions")).isEmpty();
+    }
+    @Test void requiredPartLessonKeepsItsPolicyAndPinThroughChecksCompletionAndAdmissionChanges() {
+        when(release.assessmentPromptHash()).thenReturn(ScenarioAssessment.PARTS_PROMPT_HASH);
+        var session=activeMeaning(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        assertThat(session.path("activities").get(0).path("assessment").path("policyVersion").asText()).isEqualTo(ScenarioAssessment.PARTS_POLICY);
+        session=engine.assessment(user,sid,aid,id(),new ScenarioEngine.AssessmentRequest(session.path("version").asLong(),"SKIP_RECAP","",List.of()));
+        assertThat(session.toString()).doesNotContain("requiredParts","answerVi","quoteEn");
+        var answers=new ArrayList<ScenarioEngine.Answer>(); for (var q : session.path("activities").get(0).path("questions")) answers.add(new ScenarioEngine.Answer(q.path("questionId").asText(),"I recall part of this."));
+        when(release.assessmentPromptHash()).thenReturn(ScenarioAssessment.PROMPT_HASH);
+        meaningGradeStatus="PARTIAL";
+        var operation=engine.assessment(user,sid,aid,id(),new ScenarioEngine.AssessmentRequest(session.path("version").asLong(),"CHECKS","",answers));
+        var pinned=tree(db.queryForObject("SELECT payload_json FROM scenario_operations WHERE id=?",String.class,operation.path("operationId").asText()));
+        assertThat(pinned.path("promptHash").asText()).isEqualTo(ScenarioAssessment.PARTS_PROMPT_HASH);
+        assertThat(dispatch(operation).path("status").asText()).isEqualTo("SUCCEEDED");
+        session=engine.session(user,sid); var assessment=session.path("activities").get(0).path("assessment");
+        assertThat(assessment.path("coverage").path("partial").asInt()).isEqualTo(3);
+        assertThat(assessment.path("canComplete").asBoolean()).isTrue();
+        session=engine.completeActivity(user,sid,aid,id(),new ScenarioEngine.VersionRequest(session.path("version").asLong()));
+        assertThat(session.path("activities").get(0).path("questions").get(0).has("answerVi")).isTrue();
     }
     @Test void historicalGradeRecoversGenerationPinAndRejectsMissingProvenanceAndEmergencyStop() {
         var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
