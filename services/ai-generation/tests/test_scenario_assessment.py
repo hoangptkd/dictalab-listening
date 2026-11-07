@@ -163,6 +163,22 @@ def test_each_admitted_release_keeps_its_exact_grader_prompt_and_metadata(select
     assert capability_metadata(value, Settings())["promptVersion"] == selected.PROMPT_VERSION
 
 
+def test_v3_1_candidate_changes_only_grading_without_retrofitting_saved_maps():
+    selected = a.grader_candidate
+    assert a.prompt_hash(selected) == "6ee9928abf107c83121a0f80a6fb584c0cc5c8b49445c305292ba01be5800a76"
+    assert a.selected_release(a.prompt_hash(selected)) is selected
+    assert {stage for stage in selected.INSTRUCTIONS if selected.INSTRUCTIONS[stage] != a.release.INSTRUCTIONS[stage]} == {"GRADE"}
+    value = payload("GRADE", promptHash=a.prompt_hash(selected))
+    before = value.activity.model_dump()
+    result, calls = execute(value, [recap_grade()])
+    assert result["promptVersion"] == selected.PROMPT_VERSION
+    assert calls[0][1][0]["content"] == selected.INSTRUCTIONS["GRADE"]
+    assert value.activity.model_dump() == before
+    assert "requiredParts" not in json.dumps(before)
+    assert "substantive claim" in selected.INSTRUCTIONS["GRADE"]
+    assert a.prompt_hash() == "650193db73e2fb03c4f94a7ccb8f29fc9bc1c3f77c8391fabc0b0e07803f287e"
+
+
 def test_full_meaning_release_changes_only_the_observed_failure_stages():
     changed = {stage for stage in a.release.INSTRUCTIONS
                if a.release.INSTRUCTIONS[stage] != a.previous_release.INSTRUCTIONS[stage]}

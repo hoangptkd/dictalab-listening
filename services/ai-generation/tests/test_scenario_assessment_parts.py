@@ -145,6 +145,23 @@ def test_candidate_collects_localized_errors_into_one_scoped_repair_without_chan
     assert bad["activities"][0]["assessment"]["meanings"][0]["requiredParts"][0]["evidence"][0]["quoteEn"] == "invented"
 
 
+def test_v4_5_consistency_candidate_keeps_part_grading_wire_and_repair_contracts():
+    selected = a.parts_consistency_candidate
+    assert a.prompt_hash(selected) == "2307e4d21648e6150016e5647ec3b5fbcbb60a5aaa3d6e787bc0cd44a602d5e3"
+    assert a.selected_release(a.prompt_hash(selected)) is selected
+    assert selected.INSTRUCTIONS["GRADE"] == a.parts_v4_1.INSTRUCTIONS["GRADE"]
+    assert selected.MINIMUM_TARGETS and selected.COLLECT_ITEM_ERRORS
+    assert selected.HARNESS_POLICY == a.parts_candidate.HARNESS_POLICY
+    result, calls = execute(parts_payload(promptHash=a.prompt_hash(selected)), parts_fixtures())
+    assert result["task"]["qualityPassed"] and len(calls) == 5
+    assert calls[1][2] == a.response_schema(a.PartsQuestions, minimum_targets=True)
+    assert calls[2][2] == a.response_schema(a.QuestionReview)
+    value, grade = two_part_check()
+    value = a.ScenarioAssessmentInput.model_validate({**value.model_dump(), "promptHash": a.prompt_hash(selected)})
+    result, _ = execute(value, [grade])
+    assert result["task"]["meanings"][0]["status"] == "PARTIAL"
+
+
 def test_generate_persists_required_parts_and_repairs_with_the_right_schema():
     responses = parts_fixtures()
     result, calls = execute(parts_payload(), responses)

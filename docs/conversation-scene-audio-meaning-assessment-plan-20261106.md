@@ -271,3 +271,98 @@ Keep product admission on meaning V3; do not advertise V4 as active or deploy it
 - UTF-8 validation passed for all 10 changed files; diff-whitespace checks passed. No frontend source changed or new browser/audio-quality claim is made.
 - Private evidence remains outside Git under `data/conversation-meaning-assessment-20261106/`: `required-parts-v4_1/`, `required-parts-v4_3/`, `required-parts-v4-wire-minimum/`, `required-parts-v4_4/`, `required-parts-v4_4-final/` and `required-parts-v4_4-collected/`. The last folder contains `harness.json`, `manual-quality-review.json`, `actual-map-grades.json`, isolated job ledger, pre-call expectations and the reviewer-comparison HTTP status. Existing Langfuse traces retain inputs, outputs and pinned metadata; the preliminary wire-only probe is explicitly experimental and its exact schema is retained with the continuation.
 - Product Core/API/worker were not restarted and no production deployment was performed. The user's shutdown request was cancelled; do not shut down the computer.
+
+## 12. V3 grader and V4 consistency candidates — 2026-11-07
+
+Added two immutable candidates for controlled evaluation. Meaning V3.1 changes only the V3-schema
+grader's substantive-claim/topic-only guidance. Meaning V4.5 shares a compact source/parent/parts/
+question/reference consistency contract across question generation, review and repair. It retains
+V4.4's wire minimums and collected structural errors, V4.1's grader, and deterministic aggregation.
+Core registers only the exact version/hash pairs below. Default Python admission and the Core
+`workflow-v3.sha256` resource remain meaning V3. No historical lesson, pin, grade or schema was changed.
+
+| Candidate | Exact workflow hash |
+|---|---|
+| V3.1 | `6ee9928abf107c83121a0f80a6fb584c0cc5c8b49445c305292ba01be5800a76` |
+| V4.5 | `2307e4d21648e6150016e5647ec3b5fbcbb60a5aaa3d6e787bc0cd44a602d5e3` |
+
+The existing `meaningIds` schema requires the question and complete reference answer to elicit the
+whole referenced meaning. Narrowing/splitting a target or broadening its question is valid when
+grounded in the transcript. Crediting an unexpressed component is not. No required-parts retrofit,
+per-part question mapping, history migration or regrading was introduced. Historical V3 lessons
+with narrower questions retain that known limitation.
+
+### Controlled model evidence and rejection
+
+All calls used the configured Gemini 3.5 Flash Lite registry, unchanged authorization, provider
+quotas and emergency stop. Expectations were written before each call. Saved inputs/dialogue were
+reused; the corrected map is a private evaluation artifact, not a rewritten stored lesson or a
+new automatically generated map. Its changes preserve proposal/options and uncertainty, split the
+two benefits, ask for the actual target information, and use three distinct practical targets in
+activity 3 instead of its former praise target.
+
+| Diagnostic | Result |
+|---|---|
+| Identical 10-case V3 comparison, current | 6 expected outcomes; 4 semantic mismatches |
+| Identical 10-case V3.1 comparison | 4 expected; 3 semantic mismatches; 1 validator rejection; 2 HTTP 503 gaps |
+| V3.1 topic-only recap | Correctly UNASSESSED; current V3 gave PARTIAL to one meaning |
+| V3.1 topic-only explicit check | Incorrectly PARTIAL, expected MISSED; current V3 also failed |
+| V3.1 blank explicit check | False CAPTURED with copied reference text; exact learner-evidence validator rejected it |
+| V4.5 replay of eight saved grading cases | 6 expected outcomes; 2 HTTP 503 gaps |
+| Every corrected reference answer | 8 CAPTURED; 1 HTTP 503 gap; no completed semantic mismatch |
+| Independently worded complete English answer | CAPTURED |
+| Omit arrangement, confidence benefit, or discussion benefit | 3/3 PARTIAL |
+| Corrected-map topic-only recaps | 2 UNASSESSED; 1 HTTP 503 gap |
+| V4.5 reviewer, exact saved negative content/draft/context | Detected 0/5 required defect classes; falsely passed all five |
+| V4.5 reviewer, corrected positive map | PASS |
+
+The five reviewer failures are the saved narrow reason question, supplied arrangement/duration,
+possible-to-definite drift, parent agreement omitted from parts, and independently omittable
+benefits bundled in one part. A preliminary review with reconstructed draft fact labels also
+missed all five; the exact saved draft fields were then evaluated separately and failed likewise.
+Neither result is a fresh end-to-end generation benchmark.
+
+**Both candidates fail activation gates.** V3.1 did not pass the topic-only/check or no-regression
+requirements. V4.5 did not detect saved negatives, and its provider gaps leave some grading gates
+incomplete. No further prompt iteration, activation override or additional two-genre experiment
+was performed. Keep meaning V3 admission; the historical false-full-credit risk remains explicit.
+
+There were 47 one-shot attempts, 41 raw responses and six explicit HTTP 503 gaps. One raw V3.1
+response failed independent evidence validation. No failed/uncertain call was replayed and no model
+fallback was used. Provider responses reported 116,445 input and 13,359 output tokens (129,804 total);
+actual cost was unavailable. These small diagnostics do not establish general accuracy.
+
+Private evidence is ignored under `data/conversation-meaning-assessment-20261106/consistency-v3_1-v4_5/`:
+`acceptance-summary.json`, paired `v3-summary.json`, `v4-summary.json`, `corrected-map.json`, individual
+pre-call expectation markers and full input/raw result files. The reviewer regression uses
+`review-frozen-original-fields--SCENARIO_MEANING_ASSESSMENT_V4_5.json`; positive review uses
+`review-corrected-positive--SCENARIO_MEANING_ASSESSMENT_V4_5.json`. Existing Langfuse observations retain
+the pinned metadata and exact calls. No private evidence or runtime configuration belongs in Git.
+
+### Verification and local QA outcome
+
+341 related Python tests passed (assessment, required parts, workflow/harness, contracts, jobs and
+observability). The 83 warnings are existing Python 3.14/Starlette/dependency deprecations.
+Python compilation, UTF-8 checks for eight task files and diff-whitespace checks passed.
+The final Java run passed 94 tests (9 assessment and 85 engine integration), with zero
+failures, errors or skips. The isolated Core package also built successfully.
+
+The parent integration run packaged an isolated Core JAR and started the local baseline on ports
+18082/8094 with QA user 14. Extraction succeeded and the new draft retained the original V3 hash.
+Generation reached GENERATE and QUESTIONS, then the configured Gemini 3.5 Flash Lite returned
+HTTP 503 during REPAIR_QUESTIONS. The operation settled UNKNOWN/AI_PROVIDER_UNAVAILABLE, with
+the worker ledger UNKNOWN/PROVIDER_UNAVAILABLE and no result. It was not replayed. Therefore
+this API run does not verify grading or completion. The test's own authenticated session was
+logged out; baseline Core/API health remained UP. No candidate was activated or TTS requested.
+The private receipt is `data/conversation-meaning-assessment-20261106/local-api-v4-followup-20261107T070445Z/flow.json`.
+An additional authenticated read confirmed the old completed lesson remains readable and all
+six original operation payloads match the saved evidence. That test session was also logged out.
+`historical-and-health.json` records the checks and successful Core/API health responses.
+
+Independent GPT-6 Astra acceptance: retain both exact-pinned candidates as evaluation code and
+reject both activations. No critical diff bug was found. The three blockers are V3.1's topic-only
+check/incomplete-recall over-credit, its blank-answer CAPTURED with fabricated reference evidence
+(correctly blocked by validation), and V4.5's false acceptance of all five saved reviewer defects.
+Positive grading on a corrected map does not demonstrate automatic generator quality. Default V3,
+historical pins/schemas, deterministic aggregation and release gates remain unchanged. No further
+prompt revision or paid call was performed after this rejection.

@@ -17,10 +17,12 @@ from . import scenario_workflow as w
 from . import scenario_prompts_meaning_v1 as legacy_release
 from . import scenario_prompts_meaning_v2 as previous_release
 from . import scenario_prompts_meaning_v3 as release
+from . import scenario_prompts_meaning_v3_1 as grader_candidate
 from . import scenario_prompts_meaning_v4 as parts_release
 from . import scenario_prompts_meaning_v4_1 as parts_v4_1
 from . import scenario_prompts_meaning_v4_3 as parts_v4_3
 from . import scenario_prompts_meaning_v4_4 as parts_candidate
+from . import scenario_prompts_meaning_v4_5 as parts_consistency_candidate
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .observability import trace_gate
@@ -297,7 +299,7 @@ def prompt_hash(selected=release):
 
 
 def selected_release(requested_hash):
-    for selected in (parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
+    for selected in (parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
         if requested_hash == prompt_hash(selected):
             return selected
     raise ValueError("scenario prompt mismatch")
