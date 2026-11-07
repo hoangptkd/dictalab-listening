@@ -27,15 +27,20 @@ def finding(code, stage, key=None, *, semantic=False, reason=None):
 def structural(artifact, dialogue, payload, stage, merged=None):
     try:
         if stage == "QUESTIONS":
+            if getattr(a.selected_release(payload.promptHash), "COLLECT_ITEM_ERRORS", False):
+                a.validate_questions(artifact, dialogue, payload.learningContext, collect_errors=True)
             content = a.attach_questions(dialogue, artifact, payload.learningContext)
             a.validate_content(content, payload.specification, payload.profile, payload.learningContext)
         else:
             a.validate_content(merged, payload.specification, payload.profile, payload.learningContext, artifact)
         return []
     except ValueError as error:
-        activity, item = getattr(error, "activity_id", None), getattr(error, "item_id", None)
-        key = (getattr(error, "item_kind", "question"), activity, item) if activity and item else None
-        return [finding(str(error).replace(" ", "_"), stage, key)]
+        issues = []
+        for invalid in getattr(error, "item_errors", [error]):
+            activity, item = getattr(invalid, "activity_id", None), getattr(invalid, "item_id", None)
+            key = (getattr(invalid, "item_kind", "question"), activity, item) if activity and item else None
+            issues.append(finding(str(invalid).replace(" ", "_"), stage, key))
+        return issues
 
 
 def review_items(verdict, stage):
@@ -122,7 +127,7 @@ def reconcile(previous, current, changed, stage):
 
 async def generate(dialogue, payload, call, deadline):
     selected = a.selected_release(payload.promptHash)
-    parts = selected is a.parts_release
+    parts = selected.POLICY_VERSION == a.parts_release.POLICY_VERSION
     state = h.State(deadline, policy=selected.HARNESS_POLICY)
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)}
     frozen = {"dialogue": h.digest(dialogue), "specification": h.digest(payload.specification),

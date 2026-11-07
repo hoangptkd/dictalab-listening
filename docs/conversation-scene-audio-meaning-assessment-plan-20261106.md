@@ -218,3 +218,56 @@ No failed provider call was replayed, no schema bound/reviewer gate was weakened
 Final related checks: 300 Python tests passed (assessment, workflow, jobs, observability and contracts); 91 Java tests passed (9 assessment and 82 engine integration), with zero failures/errors/skips in those Java runs. Coverage includes mixed-policy rejection, the four-release hash/version matrix, part-boundary/evidence tampering, all status pairs, scoped repairs, persisted checks/completion and historical pin retention after admission changes. UTF-8 validation passed for all 13 changed files; diff whitespace checks passed. No frontend source changed, so no new browser/visual claim is made. The local Core/API/worker from the prior turn were no longer running after shutdown; diagnostics used the protected existing registry and isolated evaluation ledger, without restarting or changing product admission.
 
 **Do not promote V4.** The product admission resource `workflow-v3.sha256` and default Python release remain meaning V3. Candidate V4 is registered for exact-pin worker evaluation and independent Core validation; it is not a default user-facing change. The next release gate needs a valid automatically generated map, end-to-end grading on that map and held-out semantic checks. The scarcity in activity 3 and the vague-topic over-credit must remain visible; do not pad with trivia or fix the test labels to obtain a pass. Contextual audio remains blocked as recorded above.
+
+## 11. V4 continuation and measured release decision — 2026-11-07
+
+### Changes delivered for evaluation
+
+- V4.1 distinguishes a topic mention from a substantive claim. Merely saying that people discussed books is ABSENT for the required parts, producing UNASSESSED for a recap. It also separates the number of meanings/questions from the number of parts.
+- V4.3 keeps V4.1 grading and replaces the question instructions with a shorter contract and one example aligning a train's departure time/platform with both the question and reference answer. Review independently derives the actual requested meaning and answer units. No additional review schema was introduced.
+- V4.4 retains these instructions and restores **only minItems=3 for meanings and questions** in the Gemini wire schema. A real request compiled and returned three of each in all activities. Nested upper bounds remain absent on the wire; all local and Core bounds remain enforced. Earlier releases still receive their original wire schemas.
+- V4.4 also collects one detected structural error per affected meaning/question before its single scoped repair. Previously, validation stopped at the first item: a repair fixed a missing quotation but then failed on a different item's unsupported skill. The new path exposes all detected item scopes together, preserves the dialogue and untargeted items, and still rejects a patch with any remaining structural error. Budget, deadline, call order and review policy are unchanged. Earlier releases retain their first-error behavior.
+- Question repair explicitly requires every referenced meaning's source quotation, including contextual quotations. Part grading and deterministic aggregation are unchanged from V4.1. Historical hashes, saved jobs/lessons, program/context hashes and default V3 admission remain intact.
+
+| Registered meaning release | Exact workflow hash |
+|---|---|
+| V4.1 | `ce0a72c6c7616ebfaab979bf3404379d5534ca9e21b4fbf8e4344a0bcea02714` |
+| V4.3 | `139a7d7789923e10af8412d5f23f6fec7577116e4d1c97eb6ce907230a56f0aa` |
+| V4.4 candidate | `09b222b0c140c0a3b07164639ff020cb272779319e6f79758eac55b058ce13bc` |
+
+The V4.4 fingerprint includes both its wire schema and `all-localized-items.v1` structural-findings behavior. Core accepts only exact hash/version pairs. Intermediate experiment sources/results are retained privately; they were not admitted as product jobs. The abandoned V4.2 per-part reviewer schema was removed: it increased output size but still accepted visible defects.
+
+### Real-model evidence
+
+All diagnostics reused the same saved three-activity library-club transcript. No dialogue regeneration, training, dataset change or automatic replay of an uncertain request occurred. Expectations were saved before grading calls. These are small diagnostics on one transcript, not an accuracy estimate or a generalization benchmark.
+
+| Measurement | Result |
+|---|---|
+| V4.1 grading on human-authored required parts | 8/8 expected outcomes; original V4 was 7/8 |
+| V4.1 generated question map | 3/3/3 meanings/questions; reviewer passed, manual scope defects remained |
+| V4.3 generated question map | 2/2/2; rejected before review |
+| Minimal wire-bound experiment | 3/3/3; compiled without the previous HTTP 400, then rejected for missing source evidence |
+| V4.4 initial scoped repair | Fixed the first item's evidence, then rejected on another item's unsupported skill |
+| V4.4 collected-scope continuation | Reused the completed QUESTIONS response; one repair plus question review, translation and translation review completed with PASS |
+| V4.4 grading on the **actual automatically generated map** | 8/8 expected outcomes: complete/partial/blank/bilingual answers, topic-only recap and two incomplete reference answers |
+| Gemini 3.1 Flash Lite reviewer comparison | HTTP 503; no completed review or quality conclusion; not automatically replayed |
+
+The collected-scope run is a frozen-artifact harness continuation, **not a fresh end-to-end browser lesson**. The original rejected runs remain rejected. Its successful structural/reviewer flags do not establish semantic quality.
+
+### Remaining defects: activation is blocked
+
+Manual inspection found at least two reviewer false acceptances:
+
+1. **a1/q1** asks why Lan prefers short stories, supplying the preference in its wording. Its reference gives only the reason, while m1 requires both the preference and reason. Grading that reference correctly returns PARTIAL.
+2. **a2/q3** supplies the first-fifteen-minutes reading activity and asks only its benefits. The reference omits the required action/duration. Grading it also correctly returns PARTIAL.
+
+Additional map issues remain: a1/m2 changes the source's possible consequence into a definite causal statement; a3/m2 mentions agreement but its parts omit that component; a2/m2 still groups two independently omittable benefits inside one part. The reviewer reported PASS despite these defects. Therefore this continuation demonstrates better structural recovery and the intended grading behavior, **not a releasable question generator**. A student must not be penalized for fully answering a narrower question generated by the application.
+
+Keep product admission on meaning V3; do not advertise V4 as active or deploy it. The next quality gate must resolve the saved question/target/reference scope defects and validate reviewer detection against these saved negatives before another activation decision. Do not weaken counts, evidence checks, scoring or expected labels to obtain a pass. No further prompt expansion is justified by the current evidence alone.
+
+### Checks, evidence and delivery scope
+
+- 304 related Python tests passed; 94 Java tests passed (9 assessment, 85 engine integration), zero Java failures/errors/skips. Tests cover release pairing, old pins, candidate-only wire bounds, multiple repair scopes in one bounded pass, evidence/part tampering, grading aggregation and persisted completion. Existing Python 3.14/dependency deprecation warnings remain.
+- UTF-8 validation passed for all 10 changed files; diff-whitespace checks passed. No frontend source changed or new browser/audio-quality claim is made.
+- Private evidence remains outside Git under `data/conversation-meaning-assessment-20261106/`: `required-parts-v4_1/`, `required-parts-v4_3/`, `required-parts-v4-wire-minimum/`, `required-parts-v4_4/`, `required-parts-v4_4-final/` and `required-parts-v4_4-collected/`. The last folder contains `harness.json`, `manual-quality-review.json`, `actual-map-grades.json`, isolated job ledger, pre-call expectations and the reviewer-comparison HTTP status. Existing Langfuse traces retain inputs, outputs and pinned metadata; the preliminary wire-only probe is explicitly experimental and its exact schema is retained with the continuation.
+- Product Core/API/worker were not restarted and no production deployment was performed. The user's shutdown request was cancelled; do not shut down the computer.

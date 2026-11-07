@@ -18,6 +18,9 @@ from . import scenario_prompts_meaning_v1 as legacy_release
 from . import scenario_prompts_meaning_v2 as previous_release
 from . import scenario_prompts_meaning_v3 as release
 from . import scenario_prompts_meaning_v4 as parts_release
+from . import scenario_prompts_meaning_v4_1 as parts_v4_1
+from . import scenario_prompts_meaning_v4_3 as parts_v4_3
+from . import scenario_prompts_meaning_v4_4 as parts_candidate
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .observability import trace_gate
@@ -228,14 +231,14 @@ class ScenarioAssessmentInput(StrictModel):
         else:
             if self.specification is not None or self.activity is None or self.assessmentSubmission is None:
                 raise ValueError("invalid grade input")
-            if (selected is parts_release) != isinstance(self.activity, PartsActivity):
+            if (selected.POLICY_VERSION == parts_release.POLICY_VERSION) != isinstance(self.activity, PartsActivity):
                 raise ValueError("assessment policy does not match pinned release")
             validate_submission(self.activity, self.assessmentSubmission)
         self.inputVi = redact_string(self.inputVi)
         return self
 
 
-def response_schema(model, *, legacy=False):
+def response_schema(model, *, legacy=False, minimum_targets=False):
     if model is QuestionReview:
         schema = model.model_json_schema()
         # Same Gemini audit-array limitation as historical reviews; counts remain locally enforced.
@@ -259,27 +262,34 @@ def response_schema(model, *, legacy=False):
                 for child in value:
                     remove_array_bounds(child)
         remove_array_bounds(schema)
+    if minimum_targets and model is PartsQuestions:
+        # These two lower bounds compile on Gemini; nested upper bounds did not.
+        for name, field in (("PartsAssessment", "meanings"), ("PartsActivityDraft", "questions")):
+            schema["$defs"][name]["properties"][field]["minItems"] = 3
     return schema
 
 
 @cache
 def prompt_hash(selected=release):
-    parts = selected is parts_release
+    parts = selected.POLICY_VERSION == parts_release.POLICY_VERSION
     models = (AssessmentContext, w.PersonalizedSpecification, w.PersonalizedExtraction, w.Dialogue,
               PartsQuestions if parts else Questions, PartsContent if parts else Content, w.Translations,
               QuestionReview, w.PersonalizedReview, Submission, PartsGrade if parts else Grade)
     legacy = selected is legacy_release
+    wire = {"legacy": legacy, "minimum_targets": getattr(selected, "MINIMUM_TARGETS", False)}
     manifest = {"version": selected.PROMPT_VERSION, "assessmentPolicyVersion": selected.POLICY_VERSION,
                 "instructions": selected.INSTRUCTIONS, "outputTokens": selected.OUTPUT_TOKENS,
                 "schemas": {m.__name__: m.model_json_schema() for m in models},
-                "reviewResponseSchemas": {m.__name__: response_schema(m, legacy=legacy) for m in (QuestionReview, w.PersonalizedReview)},
+                "reviewResponseSchemas": {m.__name__: response_schema(m, **wire) for m in (QuestionReview, w.PersonalizedReview)},
                 "harness": {"policy": selected.HARNESS_POLICY,
-                            "schemas": {m.__name__: response_schema(m, legacy=legacy) for m in
+                            "schemas": {m.__name__: response_schema(m, **wire) for m in
                                         (PartsQuestionPatch if parts else QuestionPatch, w.TranslationPatch)}}}
     if not legacy:
-        manifest["responseSchemas"] = {m.__name__: response_schema(m) for m in
+        manifest["responseSchemas"] = {m.__name__: response_schema(m, **wire) for m in
             (w.PersonalizedExtraction, w.Dialogue, PartsQuestions if parts else Questions, QuestionReview,
              w.Translations, w.PersonalizedReview, PartsGrade if parts else Grade)}
+    if getattr(selected, "COLLECT_ITEM_ERRORS", False):
+        manifest["structuralFindings"] = "all-localized-items.v1"
     if parts:
         manifest["derivedGradeSchema"] = DerivedGrade.model_json_schema()
         manifest["aggregation"] = "all-captured;any-uncertain;any-correct-partial;any-incorrect;mode-omission.v1"
@@ -287,7 +297,7 @@ def prompt_hash(selected=release):
 
 
 def selected_release(requested_hash):
-    for selected in (parts_release, release, previous_release, legacy_release):
+    for selected in (parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
         if requested_hash == prompt_hash(selected):
             return selected
     raise ValueError("scenario prompt mismatch")
@@ -326,7 +336,8 @@ def _evidence(item, segments, activity, kind):
 
 
 @trace_gate
-def validate_questions(questions, dialogue, context):
+def validate_questions(questions, dialogue, context, *, collect_errors=False):
+    item_errors = []
     if [a.id for a in questions.activities] != [a.id for a in dialogue.activities]:
         raise _invalid("question activity mismatch")
     total_questions = 0
@@ -347,56 +358,70 @@ def validate_questions(questions, dialogue, context):
         covered = set()
         prompts = set()
         for meaning in meanings:
-            _support(meaning, context, activity.id, "meaning")
-            _evidence(meaning, segments, activity.id, "meaning")
-            if isinstance(meaning, PartsMeaning):
-                if [p.id for p in meaning.requiredParts] != [f"p{i + 1}" for i in range(len(meaning.requiredParts))]:
-                    raise _invalid("required part IDs mismatch", activity.id, meaning.id, "meaning")
-                labels = [" ".join(p.meaningEn.casefold().split()) for p in meaning.requiredParts]
-                if not all(labels) or len(set(labels)) != len(labels):
-                    raise _invalid("duplicate or empty required part", activity.id, meaning.id, "meaning")
-                for part in meaning.requiredParts:
-                    try:
-                        _evidence(part, segments, activity.id, "meaning")
-                    except ValueError as invalid:
-                        invalid.item_id = meaning.id
-                        raise
-                    if any(not any(pe.segmentId == me.segmentId and pe.quoteEn in me.quoteEn
-                                   for me in meaning.evidence) for pe in part.evidence):
-                        raise _invalid("required part outside meaning evidence", activity.id, meaning.id, "meaning")
-            focus_meaning |= meaning.skill == context.focusSkill
+            try:
+                _support(meaning, context, activity.id, "meaning")
+                _evidence(meaning, segments, activity.id, "meaning")
+                if isinstance(meaning, PartsMeaning):
+                    if [p.id for p in meaning.requiredParts] != [f"p{i + 1}" for i in range(len(meaning.requiredParts))]:
+                        raise _invalid("required part IDs mismatch", activity.id, meaning.id, "meaning")
+                    labels = [" ".join(p.meaningEn.casefold().split()) for p in meaning.requiredParts]
+                    if not all(labels) or len(set(labels)) != len(labels):
+                        raise _invalid("duplicate or empty required part", activity.id, meaning.id, "meaning")
+                    for part in meaning.requiredParts:
+                        try:
+                            _evidence(part, segments, activity.id, "meaning")
+                        except ValueError as invalid:
+                            invalid.item_id = meaning.id
+                            raise
+                        if any(not any(pe.segmentId == me.segmentId and pe.quoteEn in me.quoteEn
+                                       for me in meaning.evidence) for pe in part.evidence):
+                            raise _invalid("required part outside meaning evidence", activity.id, meaning.id, "meaning")
+                focus_meaning |= meaning.skill == context.focusSkill
+            except ValueError as error:
+                if not collect_errors:
+                    raise
+                item_errors.append(error)
         for question in activity.questions:
-            _support(question, context, activity.id, "question")
-            _evidence(question, segments, activity.id, "question")
-            focus_question |= question.skill == context.focusSkill
-            refs = set(question.meaningIds)
-            if len(refs) != len(question.meaningIds) or not refs <= by_id.keys():
-                raise _invalid("invalid meaning references", activity.id, question.id)
-            if any(not any(qe.segmentId == me.segmentId and me.quoteEn in qe.quoteEn for qe in question.evidence)
-                   for mid in refs for me in by_id[mid].evidence):
-                raise _invalid("question omits referenced meaning evidence", activity.id, question.id)
-            covered |= refs
-            prompt = " ".join(question.promptVi.casefold().split())
-            if not prompt or prompt in prompts or not question.answerVi.strip():
-                raise _invalid("duplicate or empty question", activity.id, question.id)
-            prompts.add(prompt)
-            if question.answerVi.casefold() in question.promptVi.casefold():
-                raise _invalid("answer leaked in question", activity.id, question.id)
-            if isinstance(question, QuestionDraft):
-                if not question.factEn.strip():
-                    raise _invalid("empty fact", activity.id, question.id)
-                if question.speechAct == "proposal" and re.search(
-                        r"\b(?:họ|cả hai|hai người|hai bên)\s+(?:đã\s+)?(?:thống nhất|đồng ý|chốt|quyết định|xác nhận)\b",
-                        question.promptVi, re.IGNORECASE):
-                    raise _invalid("proposal question asserts agreement", activity.id, question.id)
-                if question.speechAct == "agreement":
-                    positions = {s.id: i for i, s in enumerate(source.segments)}
-                    ordered = [positions[e.segmentId] for e in question.evidence]
-                    if len({segments[e.segmentId].speakerId for e in question.evidence}) < 2 or ordered != sorted(ordered):
-                        raise _invalid("agreement requires ordered evidence from both speakers", activity.id, question.id)
-        if covered != by_id.keys():
+            try:
+                _support(question, context, activity.id, "question")
+                _evidence(question, segments, activity.id, "question")
+                focus_question |= question.skill == context.focusSkill
+                refs = set(question.meaningIds)
+                if len(refs) != len(question.meaningIds) or not refs <= by_id.keys():
+                    raise _invalid("invalid meaning references", activity.id, question.id)
+                if any(not any(qe.segmentId == me.segmentId and me.quoteEn in qe.quoteEn for qe in question.evidence)
+                       for mid in refs for me in by_id[mid].evidence):
+                    raise _invalid("question omits referenced meaning evidence", activity.id, question.id)
+                covered |= refs
+                prompt = " ".join(question.promptVi.casefold().split())
+                if not prompt or prompt in prompts or not question.answerVi.strip():
+                    raise _invalid("duplicate or empty question", activity.id, question.id)
+                prompts.add(prompt)
+                if question.answerVi.casefold() in question.promptVi.casefold():
+                    raise _invalid("answer leaked in question", activity.id, question.id)
+                if isinstance(question, QuestionDraft):
+                    if not question.factEn.strip():
+                        raise _invalid("empty fact", activity.id, question.id)
+                    if question.speechAct == "proposal" and re.search(
+                            r"\b(?:họ|cả hai|hai người|hai bên)\s+(?:đã\s+)?(?:thống nhất|đồng ý|chốt|quyết định|xác nhận)\b",
+                            question.promptVi, re.IGNORECASE):
+                        raise _invalid("proposal question asserts agreement", activity.id, question.id)
+                    if question.speechAct == "agreement":
+                        positions = {s.id: i for i, s in enumerate(source.segments)}
+                        ordered = [positions[e.segmentId] for e in question.evidence]
+                        if len({segments[e.segmentId].speakerId for e in question.evidence}) < 2 or ordered != sorted(ordered):
+                            raise _invalid("agreement requires ordered evidence from both speakers", activity.id, question.id)
+            except ValueError as error:
+                if not collect_errors:
+                    raise
+                item_errors.append(error)
+        if not item_errors and covered != by_id.keys():
             raise _invalid("meaning coverage mismatch", activity.id)
         total_questions += len(activity.questions)
+    if item_errors:
+        error = ValueError("invalid question items")
+        error.item_errors = item_errors
+        raise error
     if total_questions > context.profile.maxQuestionsPerSession:
         raise _invalid("question bank exceeds practice profile")
     if not focus_meaning or not focus_question:
@@ -528,7 +553,8 @@ async def execute(event, settings):
             nonlocal call_settings
             stage = {"REPAIR_QUESTIONS": "QUESTIONS", "REPAIR_TRANSLATIONS": "TRANSLATE"}.get(purpose, purpose)
             gateway = ModelGateway(call_settings.model_copy(update={"num_predict": selected.OUTPUT_TOKENS[stage]}), client)
-            schema = response_schema(model, legacy=selected is legacy_release)
+            schema = response_schema(model, legacy=selected is legacy_release,
+                                     minimum_targets=getattr(selected, "MINIMUM_TARGETS", False))
             if purpose == "GENERATE":
                 schema["$defs"]["Segment"]["properties"]["speakerId"]["enum"] = [c.id for c in payload.specification.characters]
             try:
@@ -569,9 +595,9 @@ async def execute(event, settings):
                 raise w.QualityRejected("invalid extraction provenance") from invalid
         elif payload.phase == "GRADE":
             grade = await call("GRADE", {"activity": payload.activity.model_dump(),
-                "assessmentSubmission": payload.assessmentSubmission.model_dump(), **context}, PartsGrade if selected is parts_release else Grade)
+                "assessmentSubmission": payload.assessmentSubmission.model_dump(), **context}, PartsGrade if isinstance(payload.activity, PartsActivity) else Grade)
             try:
-                if selected is parts_release:
+                if isinstance(payload.activity, PartsActivity):
                     grade = derive_grade(grade, payload)
                 else:
                     validate_grade(grade, payload)

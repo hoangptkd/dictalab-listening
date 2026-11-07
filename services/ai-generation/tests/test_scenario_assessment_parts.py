@@ -57,6 +57,94 @@ def test_candidate_keeps_all_historical_hashes_and_uses_its_own_strict_schema():
     assert "status" not in a.PartsGradeItem.model_json_schema()["properties"]
 
 
+def test_v4_1_is_pinned_and_preserves_v4_schemas_and_default_admission():
+    assert a.prompt_hash(a.parts_v4_1) == "ce0a72c6c7616ebfaab979bf3404379d5534ca9e21b4fbf8e4344a0bcea02714"
+    assert a.selected_release(a.prompt_hash(a.parts_v4_1)) is a.parts_v4_1
+    value = parts_payload(promptHash=a.prompt_hash(a.parts_v4_1))
+    result, calls = execute(value, parts_fixtures())
+    assert result["promptVersion"] == "SCENARIO_MEANING_ASSESSMENT_V4_1"
+    assert result["assessmentPolicyVersion"] == a.parts_release.POLICY_VERSION
+    assert calls[1][2] == a.response_schema(a.PartsQuestions)
+    value, grade = two_part_check()
+    value = a.ScenarioAssessmentInput.model_validate({**value.model_dump(), "promptHash": a.prompt_hash(a.parts_v4_1)})
+    result, calls = execute(value, [grade])
+    assert result["task"]["meanings"][0]["status"] == "PARTIAL"
+    assert len(calls) == 1
+    assert calls[0][1][0]["content"] == a.parts_v4_1.INSTRUCTIONS["GRADE"]
+    assert a.prompt_hash() == "650193db73e2fb03c4f94a7ccb8f29fc9bc1c3f77c8391fabc0b0e07803f287e"
+
+
+def test_compact_v4_3_uses_existing_schemas_and_keeps_v4_1_grading():
+    assert a.prompt_hash(a.parts_v4_3) == "139a7d7789923e10af8412d5f23f6fec7577116e4d1c97eb6ce907230a56f0aa"
+    assert a.parts_v4_3.INSTRUCTIONS["GRADE"] == a.parts_v4_1.INSTRUCTIONS["GRADE"]
+    value = parts_payload(promptHash=a.prompt_hash(a.parts_v4_3))
+    result, calls = execute(value, parts_fixtures())
+    assert result["promptVersion"] == "SCENARIO_MEANING_ASSESSMENT_V4_3"
+    assert result["task"]["qualityPassed"] and len(calls) == 5
+    assert calls[1][2] == a.response_schema(a.PartsQuestions)
+    assert calls[2][2] == a.response_schema(a.QuestionReview)
+    value, response = two_part_check()
+    value = a.ScenarioAssessmentInput.model_validate({**value.model_dump(), "promptHash": a.prompt_hash(a.parts_v4_3)})
+    result, calls = execute(value, [response])
+    assert result["task"]["meanings"][0]["status"] == "PARTIAL"
+    assert len(calls) == 1
+
+
+def test_v4_4_enforces_only_target_minimums_on_wire_without_changing_local_or_historical_schemas():
+    assert a.prompt_hash(a.parts_candidate) == "09b222b0c140c0a3b07164639ff020cb272779319e6f79758eac55b058ce13bc"
+    assert a.parts_candidate.INSTRUCTIONS["GRADE"] == a.parts_v4_1.INSTRUCTIONS["GRADE"]
+    wire = a.response_schema(a.PartsQuestions, minimum_targets=True)
+    bounded = []
+
+    def walk(node, path=()):
+        if isinstance(node, dict):
+            if "minItems" in node or "maxItems" in node:
+                bounded.append((path, node.get("minItems"), node.get("maxItems")))
+            for key, child in node.items():
+                walk(child, (*path, key))
+        elif isinstance(node, list):
+            for index, child in enumerate(node):
+                walk(child, (*path, index))
+
+    walk(wire)
+    assert set(bounded) == {
+        (("$defs", "PartsAssessment", "properties", "meanings"), 3, None),
+        (("$defs", "PartsActivityDraft", "properties", "questions"), 3, None),
+    }
+    result, calls = execute(parts_payload(promptHash=a.prompt_hash(a.parts_candidate)), parts_fixtures())
+    assert result["promptVersion"] == "SCENARIO_MEANING_ASSESSMENT_V4_4"
+    assert calls[1][2] == wire
+    assert calls[2][2] == a.response_schema(a.QuestionReview)
+    bad = parts_fixtures()[1]
+    bad["activities"][0]["assessment"]["meanings"].pop()
+    with pytest.raises(ValueError):
+        a.PartsQuestions.model_validate(bad)
+    assert a.PartsAssessment.model_json_schema()["properties"]["meanings"]["maxItems"] == 6
+
+
+def test_candidate_collects_localized_errors_into_one_scoped_repair_without_changing_old_releases():
+    from app import scenario_assessment_harness as harness
+
+    responses = parts_fixtures()
+    bad = copy.deepcopy(responses[1])
+    for index in (0, 2):
+        bad["activities"][index]["assessment"]["meanings"][0]["requiredParts"][0]["evidence"][0]["quoteEn"] = "invented"
+    dialogue = w.Dialogue.model_validate(responses[0])
+    questions = a.PartsQuestions.model_validate(bad)
+    value = parts_payload(promptHash=a.prompt_hash(a.parts_candidate))
+    findings = harness.structural(questions, dialogue, value, "QUESTIONS")
+    assert [(i["activityId"], i["itemId"]) for i in findings] == [("a1", "m1"), ("a3", "m1")]
+    assert len(harness.structural(questions, dialogue, parts_payload(), "QUESTIONS")) == 1
+    patch = dict(meaningReplacements=[dict(activityId=f"a{i+1}", meaning=responses[1]["activities"][i]["assessment"]["meanings"][0])
+                                     for i in (0, 2)], questionReplacements=[])
+    result, calls = execute(value, [responses[0], bad, patch, *responses[2:]])
+    assert [c[0] for c in calls].count("scenario_repair_questions") == 1
+    assert result["qualityHarness"]["extraCalls"] == 2
+    assert result["qualityHarness"]["attempts"][0]["accepted"]
+    assert len(json.loads(calls[2][1][1]["content"])["allowedTargets"]) == 2
+    assert bad["activities"][0]["assessment"]["meanings"][0]["requiredParts"][0]["evidence"][0]["quoteEn"] == "invented"
+
+
 def test_generate_persists_required_parts_and_repairs_with_the_right_schema():
     responses = parts_fixtures()
     result, calls = execute(parts_payload(), responses)

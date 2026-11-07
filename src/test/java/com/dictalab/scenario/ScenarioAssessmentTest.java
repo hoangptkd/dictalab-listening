@@ -9,11 +9,12 @@ import static org.assertj.core.api.Assertions.*;
 
 class ScenarioAssessmentTest {
     @Test void immutableMeaningReleasesAcceptOnlyTheirExactHashVersionPair() {
-        var hashes=List.of(ScenarioAssessment.LEGACY_PROMPT_HASH,ScenarioAssessment.WIRE_V2_PROMPT_HASH,ScenarioAssessment.PROMPT_HASH,ScenarioAssessment.PARTS_PROMPT_HASH);
-        var versions=List.of("SCENARIO_MEANING_ASSESSMENT_V1","SCENARIO_MEANING_ASSESSMENT_V2","SCENARIO_MEANING_ASSESSMENT_V3","SCENARIO_MEANING_ASSESSMENT_V4");
+        var hashes=List.of(ScenarioAssessment.LEGACY_PROMPT_HASH,ScenarioAssessment.WIRE_V2_PROMPT_HASH,ScenarioAssessment.PROMPT_HASH,ScenarioAssessment.PARTS_PROMPT_HASH,ScenarioAssessment.PARTS_V4_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_3_PROMPT_HASH,ScenarioAssessment.PARTS_V4_4_PROMPT_HASH);
+        var versions=List.of("SCENARIO_MEANING_ASSESSMENT_V1","SCENARIO_MEANING_ASSESSMENT_V2","SCENARIO_MEANING_ASSESSMENT_V3","SCENARIO_MEANING_ASSESSMENT_V4","SCENARIO_MEANING_ASSESSMENT_V4_1","SCENARIO_MEANING_ASSESSMENT_V4_3","SCENARIO_MEANING_ASSESSMENT_V4_4");
         for (int hash=0;hash<hashes.size();hash++) for (int version=0;version<versions.size();version++)
             assertThat(ScenarioAssessment.releaseMatches(hashes.get(hash),versions.get(version))).isEqualTo(hash==version);
         assertThat(ScenarioAssessment.releaseMatches("0".repeat(64),"SCENARIO_MEANING_ASSESSMENT_V3")).isFalse();
+        assertThat(ScenarioAssessment.policyFor(ScenarioAssessment.PARTS_V4_1_PROMPT_HASH)).isEqualTo(ScenarioAssessment.PARTS_POLICY);
     }
     static JsonNode fixture() {
         try (var input=ScenarioAssessmentTest.class.getResourceAsStream("/scenario/workflow-example.json")) {

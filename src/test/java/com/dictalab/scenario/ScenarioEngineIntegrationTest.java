@@ -6,6 +6,8 @@ import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -109,9 +111,12 @@ class ScenarioEngineIntegrationTest {
                     .put("policyVersion",harnessV9 ? "scenario-quality-harness.v2" : "scenario-quality-harness.v1")
                     .put("policyHash",harnessV9 ? "e15c2b30a59f2b505b047b1920ebdff9c4cb7ccb2ae87cf9cf24803e2e8c2a66" : "ac1a80c90c9f24149f14a9221c0c7382e653d94fccbd823b3862c55fa043bc6b");
             if (meaning) {
-                boolean parts=ScenarioAssessment.PARTS_PROMPT_HASH.equals(input.path("promptHash").asText());
+                boolean parts=ScenarioAssessment.PARTS_POLICY.equals(ScenarioAssessment.policyFor(input.path("promptHash").asText()));
+                boolean partsV4_1=ScenarioAssessment.PARTS_V4_1_PROMPT_HASH.equals(input.path("promptHash").asText());
+                boolean partsV4_4=ScenarioAssessment.PARTS_V4_4_PROMPT_HASH.equals(input.path("promptHash").asText());
+                boolean partsV4_3=ScenarioAssessment.PARTS_V4_3_PROMPT_HASH.equals(input.path("promptHash").asText());
                 result.put("promptVersion",ScenarioAssessment.LEGACY_PROMPT_HASH.equals(input.path("promptHash").asText()) ? "SCENARIO_MEANING_ASSESSMENT_V1"
-                        : ScenarioAssessment.WIRE_V2_PROMPT_HASH.equals(input.path("promptHash").asText()) ? "SCENARIO_MEANING_ASSESSMENT_V2" : parts ? "SCENARIO_MEANING_ASSESSMENT_V4" : "SCENARIO_MEANING_ASSESSMENT_V3")
+                        : ScenarioAssessment.WIRE_V2_PROMPT_HASH.equals(input.path("promptHash").asText()) ? "SCENARIO_MEANING_ASSESSMENT_V2" : partsV4_4 ? "SCENARIO_MEANING_ASSESSMENT_V4_4" : partsV4_3 ? "SCENARIO_MEANING_ASSESSMENT_V4_3" : partsV4_1 ? "SCENARIO_MEANING_ASSESSMENT_V4_1" : parts ? "SCENARIO_MEANING_ASSESSMENT_V4" : "SCENARIO_MEANING_ASSESSMENT_V3")
                         .put("assessmentPolicyVersion",ScenarioAssessment.policyFor(input.path("promptHash").asText()));
                 if (phase.equals("GENERATE")) {
                     result.set("task",(parts ? ScenarioAssessmentTest.partsFixture() : ScenarioAssessmentTest.fixture()).path("content"));
@@ -189,8 +194,9 @@ class ScenarioEngineIntegrationTest {
         meaningGradeStatus="CAPTURED"; dispatch(engine.assessment(user,other,a,id(),new ScenarioEngine.AssessmentRequest(another.path("version").asLong(),"RECAP","nine, six pounds, tomorrow",List.of())));
         another=engine.session(user,other); assertThat(another.path("activities").get(0).path("assessment").path("canComplete").asBoolean()).isTrue(); assertThat(another.path("activities").get(0).path("questions")).isEmpty();
     }
-    @Test void requiredPartLessonKeepsItsPolicyAndPinThroughChecksCompletionAndAdmissionChanges() {
-        when(release.assessmentPromptHash()).thenReturn(ScenarioAssessment.PARTS_PROMPT_HASH);
+    @ParameterizedTest @ValueSource(strings={ScenarioAssessment.PARTS_PROMPT_HASH,ScenarioAssessment.PARTS_V4_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_3_PROMPT_HASH,ScenarioAssessment.PARTS_V4_4_PROMPT_HASH})
+    void requiredPartLessonKeepsItsPolicyAndPinThroughChecksCompletionAndAdmissionChanges(String pin) {
+        when(release.assessmentPromptHash()).thenReturn(pin);
         var session=activeMeaning(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
         assertThat(session.path("activities").get(0).path("assessment").path("policyVersion").asText()).isEqualTo(ScenarioAssessment.PARTS_POLICY);
         session=engine.assessment(user,sid,aid,id(),new ScenarioEngine.AssessmentRequest(session.path("version").asLong(),"SKIP_RECAP","",List.of()));
@@ -200,7 +206,7 @@ class ScenarioEngineIntegrationTest {
         meaningGradeStatus="PARTIAL";
         var operation=engine.assessment(user,sid,aid,id(),new ScenarioEngine.AssessmentRequest(session.path("version").asLong(),"CHECKS","",answers));
         var pinned=tree(db.queryForObject("SELECT payload_json FROM scenario_operations WHERE id=?",String.class,operation.path("operationId").asText()));
-        assertThat(pinned.path("promptHash").asText()).isEqualTo(ScenarioAssessment.PARTS_PROMPT_HASH);
+        assertThat(pinned.path("promptHash").asText()).isEqualTo(pin);
         assertThat(dispatch(operation).path("status").asText()).isEqualTo("SUCCEEDED");
         session=engine.session(user,sid); var assessment=session.path("activities").get(0).path("assessment");
         assertThat(assessment.path("coverage").path("partial").asInt()).isEqualTo(3);

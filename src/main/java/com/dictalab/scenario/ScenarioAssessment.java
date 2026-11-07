@@ -11,6 +11,9 @@ final class ScenarioAssessment {
     static final String POLICY="scenario-meaning-assessment.v1";
     static final String PARTS_POLICY="scenario-meaning-assessment.v2";
     static final String PARTS_PROMPT_HASH="b9be440e03b9b31163f02c75e685092277fb42fb1ecc0156d871d030efa94503";
+    static final String PARTS_V4_1_PROMPT_HASH="ce0a72c6c7616ebfaab979bf3404379d5534ca9e21b4fbf8e4344a0bcea02714";
+    static final String PARTS_V4_3_PROMPT_HASH="139a7d7789923e10af8412d5f23f6fec7577116e4d1c97eb6ce907230a56f0aa";
+    static final String PARTS_V4_4_PROMPT_HASH="09b222b0c140c0a3b07164639ff020cb272779319e6f79758eac55b058ce13bc";
     static final String LEGACY_PROMPT_HASH="ff50fd266eb277d973b8daed92dbf5b7ccb1beb17c28ad6c353fcaaf86c58630";
     static final String WIRE_V2_PROMPT_HASH="4693e3c73b820a6eaea53311eaa5d8beaa7269cb9a71089fca6af98c112d31eb";
     static final String PROMPT_HASH="650193db73e2fb03c4f94a7ccb8f29fc9bc1c3f77c8391fabc0b0e07803f287e";
@@ -18,9 +21,12 @@ final class ScenarioAssessment {
         return LEGACY_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V1".equals(version)
                 || WIRE_V2_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V2".equals(version)
                 || PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V3".equals(version)
-                || PARTS_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V4".equals(version);
+                || PARTS_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V4".equals(version)
+                || PARTS_V4_1_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V4_1".equals(version)
+                || PARTS_V4_3_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V4_3".equals(version)
+                || PARTS_V4_4_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V4_4".equals(version);
     }
-    static String policyFor(String hash) { return PARTS_PROMPT_HASH.equals(hash) ? PARTS_POLICY : POLICY; }
+    static String policyFor(String hash) { return Set.of(PARTS_PROMPT_HASH,PARTS_V4_1_PROMPT_HASH,PARTS_V4_3_PROMPT_HASH,PARTS_V4_4_PROMPT_HASH).contains(hash) ? PARTS_POLICY : POLICY; }
     static boolean enabled(JsonNode activity) { return activity.has("assessment"); }
     static ObjectNode initial() {
         var state=object().put("recapSkipped",false).put("checksRound",0); state.putArray("pendingQuestionIds"); return state;
