@@ -2,6 +2,7 @@
 import asyncio
 import copy
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -177,6 +178,48 @@ def test_v3_1_candidate_changes_only_grading_without_retrofitting_saved_maps():
     assert "requiredParts" not in json.dumps(before)
     assert "substantive claim" in selected.INSTRUCTIONS["GRADE"]
     assert a.prompt_hash() == "650193db73e2fb03c4f94a7ccb8f29fc9bc1c3f77c8391fabc0b0e07803f287e"
+
+
+def test_projected_grader_removes_reference_sources_and_unasked_targets_but_keeps_real_call():
+    selected = a.projected_grader_candidate
+    assert a.prompt_hash(selected) == "5cb6422287d537676b1f0cd2cc636418dda1767612ce7560520f7cf74d0eed53"
+    value = payload("GRADE", promptHash=a.prompt_hash(selected))
+    value.assessmentSubmission = a.Submission(mode="CHECKS", recapText="", answers=[dict(questionId="q1", textVi="")], meaningIds=["m1"])
+    original = value.model_dump()
+    response = dict(meanings=[dict(meaningId="m1", status="MISSED", evidence=[])])
+    result, calls = execute(value, [response])
+    assert len(calls) == 1 and result["task"] == response
+    projected = json.loads(calls[0][1][1]["content"])
+    assert projected["assessmentSubmission"] == original["assessmentSubmission"]
+    assert projected["activity"]["assessment"]["meanings"] == [dict(id="m1", meaningEn=value.activity.assessment.meanings[0].meaningEn)]
+    assert projected["activity"]["questions"] == [dict(id="q1", meaningIds=["m1"], promptVi=value.activity.questions[0].promptVi)]
+    assert all(field not in json.dumps(projected) for field in ('"segments"', '"evidence"', '"answerVi"', '"learningContext"', '"factEn"'))
+    assert value.model_dump() == original
+    assert a.project_input(a.release, "GRADE", original) is original
+    assert "Use the activity's private meaning map, transcript and reference answers." not in selected.INSTRUCTIONS["GRADE"]
+
+
+def test_projected_grader_still_rejects_fabricated_blank_evidence():
+    value = payload("GRADE", promptHash=a.prompt_hash(a.projected_grader_candidate))
+    value.assessmentSubmission = a.Submission(mode="CHECKS", recapText="", answers=[dict(questionId="q1", textVi="")], meaningIds=["m1"])
+    response = dict(meanings=[dict(meaningId="m1", status="CAPTURED", evidence=[dict(responseId="q1", quote=value.activity.questions[0].answerVi)])])
+    with pytest.raises(w.QualityRejected, match="invalid grade evidence"):
+        execute(value, [response])
+
+
+def test_frozen_failures_keep_learner_response_but_exclude_reference_contamination():
+    rows = json.loads((Path(__file__).parent / "fixtures/scenario-projection-regressions.json").read_text(encoding="utf-8"))["cases"]
+    for row in rows:
+        original = copy.deepcopy(row["input"])
+        projected = a.project_input(a.projected_grader_candidate, "GRADE", row["input"])
+        assert projected["assessmentSubmission"] == original["assessmentSubmission"]
+        assert row["input"] == original
+        assert all(field not in json.dumps(projected) for field in ('"answerVi"', '"segments"', '"evidence"'))
+    blank = rows[0]
+    quote = blank["observedRaw"]["meanings"][0]["evidence"][0]["quote"]
+    assert blank["input"]["assessmentSubmission"]["answers"][0]["textVi"] == ""
+    assert quote == blank["input"]["activity"]["questions"][0]["answerVi"]
+    assert blank["validationError"]["message"] == "invented or duplicate learner evidence"
 
 
 def test_full_meaning_release_changes_only_the_observed_failure_stages():

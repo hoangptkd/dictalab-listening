@@ -23,6 +23,8 @@ from . import scenario_prompts_meaning_v4_1 as parts_v4_1
 from . import scenario_prompts_meaning_v4_3 as parts_v4_3
 from . import scenario_prompts_meaning_v4_4 as parts_candidate
 from . import scenario_prompts_meaning_v4_5 as parts_consistency_candidate
+from . import scenario_prompts_meaning_v3_2 as projected_grader_candidate
+from . import scenario_prompts_meaning_v4_6 as projected_parts_candidate
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .observability import trace_gate
@@ -292,6 +294,8 @@ def prompt_hash(selected=release):
              w.Translations, w.PersonalizedReview, PartsGrade if parts else Grade)}
     if getattr(selected, "COLLECT_ITEM_ERRORS", False):
         manifest["structuralFindings"] = "all-localized-items.v1"
+    if getattr(selected, "INPUT_PROJECTION", None):
+        manifest["inputProjection"] = selected.INPUT_PROJECTION
     if parts:
         manifest["derivedGradeSchema"] = DerivedGrade.model_json_schema()
         manifest["aggregation"] = "all-captured;any-uncertain;any-correct-partial;any-incorrect;mode-omission.v1"
@@ -299,10 +303,47 @@ def prompt_hash(selected=release):
 
 
 def selected_release(requested_hash):
-    for selected in (parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
+    for selected in (projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
         if requested_hash == prompt_hash(selected):
             return selected
     raise ValueError("scenario prompt mismatch")
+
+
+def project_input(selected, purpose, data):
+    """Candidate-only context reduction; validation still uses the complete original payload."""
+    if not getattr(selected, "INPUT_PROJECTION", None):
+        return data
+    if purpose == "GRADE":
+        submission = data["assessmentSubmission"]
+        admitted = set(submission["meaningIds"])
+        question_ids = {answer["questionId"] for answer in submission["answers"]}
+        meanings = []
+        for meaning in data["activity"]["assessment"]["meanings"]:
+            if meaning["id"] in admitted:
+                target = {key: meaning[key] for key in ("id", "meaningEn")}
+                if "requiredParts" in meaning:
+                    target["requiredParts"] = [{key: part[key] for key in ("id", "meaningEn")}
+                                               for part in meaning["requiredParts"]]
+                meanings.append(target)
+        questions = [{key: question[key] for key in ("id", "meaningIds", "promptVi")}
+                     for question in data["activity"]["questions"] if question["id"] in question_ids]
+        return {"activity": {"id": data["activity"]["id"], "assessment": {"meanings": meanings},
+                             "questions": questions}, "assessmentSubmission": submission}
+    if purpose == "REVIEW_QUESTIONS" and selected is projected_parts_candidate:
+        questions, targets = [], []
+        content = {activity["id"]: activity for activity in data["content"]["activities"]}
+        for activity in data["groundedQuestions"]["activities"]:
+            grounding = []
+            for question in activity["questions"]:
+                questions.append({"activityId": activity["id"], **{key: question[key] for key in
+                                  ("id", "meaningIds", "promptVi", "answerVi")}})
+                grounding.append({key: value for key, value in question.items()
+                                  if key not in ("promptVi", "answerVi", "meaningIds")})
+            targets.append({"activityId": activity["id"], "segments": content[activity["id"]]["segments"],
+                            "assessment": activity["assessment"], "questionGrounding": grounding})
+        return {"questions": questions, "targets": targets, "learningContext": data["learningContext"],
+                **{key: data[key] for key in ("repairContext", "formatFeedback") if key in data}}
+    return data
 
 
 def metadata(settings, requested_hash=None):
@@ -553,6 +594,7 @@ async def execute(event, settings):
     async with httpx.AsyncClient(timeout=remaining, limits=httpx.Limits(max_connections=settings.effective_http_max_connections)) as client:
         async def call(purpose, data, model):
             nonlocal call_settings
+            data = project_input(selected, purpose, data)
             stage = {"REPAIR_QUESTIONS": "QUESTIONS", "REPAIR_TRANSLATIONS": "TRANSLATE"}.get(purpose, purpose)
             gateway = ModelGateway(call_settings.model_copy(update={"num_predict": selected.OUTPUT_TOKENS[stage]}), client)
             schema = response_schema(model, legacy=selected is legacy_release,

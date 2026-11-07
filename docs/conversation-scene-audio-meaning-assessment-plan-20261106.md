@@ -366,3 +366,107 @@ check/incomplete-recall over-credit, its blank-answer CAPTURED with fabricated r
 Positive grading on a corrected map does not demonstrate automatic generator quality. Default V3,
 historical pins/schemas, deterministic aggregation and release gates remain unchanged. No further
 prompt revision or paid call was performed after this rejection.
+
+### Bounded input-projection follow-up — 2026-11-07
+
+The next authorized diagnostic changes candidate input framing once. Raw V3.1 inspection found
+that the blank check's fabricated learner quote exactly equals its private `answerVi`. The inherited
+V1 instruction explicitly tells the grader to use the transcript and reference answers; the wire
+input also contains unrelated meanings and questions. The exact-quote validator correctly rejected
+that response. It cannot reject a semantically insufficient but genuine learner quote: topic-only
+`They mentioned novels.` received PARTIAL, and `Novels take too long to read.` received CAPTURED
+despite omitting the target's possible falling-behind consequence. Preference-only recap evidence
+likewise received CAPTURED without the reason. These are observed failures; context contamination
+as the cause of every semantic mismatch remains a hypothesis.
+
+The V4.5 reviewer receives the same map twice in `content` and `groundedQuestions`. Its narrow reason
+question's `requestedMeaningEn` repeats the complete parent meaning, while `answerUnitsVi` contains
+only the reason; every flag is true. Thus the audit did not independently establish requested
+coverage. More instructions alone did not resolve the five saved defects.
+
+| Evaluation candidate | Exact workflow hash |
+|---|---|
+| V3.2 | `5cb6422287d537676b1f0cd2cc636418dda1767612ce7560520f7cf74d0eed53` |
+| V4.6 measured projection v1, rejected; never admitted | `be609308096fc41dc366f6ddb913aa1c38e9cd2b1a4f86ec6418d903d9e63b7c` |
+| V4.6 corrected projection v2, offline verification only | `290f0b30728a30e1b37373d1de88c8e60eae4905fe38096114e76052d2f3a4d6` |
+
+Their manifests fingerprint the projection version. Candidate grading sends only selected
+meaning/part IDs and text, the unchanged learner submission, and submitted questions' IDs,
+meaning references and wording. It excludes transcript, source evidence, reference answers,
+unrelated targets and profile context. Question wording supports interpreting elliptical answers;
+facts supplied by the question still do not demonstrate recall. The inherited instruction to use
+the transcript/reference is replaced. Each grade still makes one real provider call and uses the
+original payload for validation and deterministic aggregation; blank answers are not synthesized.
+
+V4.6 review sends actual question wording/reference once, separately from the complete meaning/part
+inventory, source segments, grounding metadata and learning profile, joined by IDs. Repair findings
+remain available. This is a smaller independent audit request, not a blind extraction protocol.
+Historical hashes, schemas, lessons, validation and default V3 admission remain unchanged.
+
+Sanitized fictional excerpts of the four observed grader failures are checked in as
+`services/ai-generation/tests/fixtures/scenario-projection-regressions.json`. Offline tests verify
+projection isolation, original-payload preservation, a real call for blank input, rejection of
+fabricated evidence, retained part aggregation and complete reviewer inventory. They do not claim
+model-quality accuracy. The private finite experiment is prepared under ignored
+`data/conversation-meaning-assessment-20261106/consistency-projection-v3_2-v4_6/`; it uses the same
+frozen inputs and labels, saved current V3 outputs as the explicitly historical baseline, then
+one candidate call per case. Provider errors or unknown outcomes cannot be counted as passes.
+
+#### Projection diagnostic result
+
+The configured Gemini 3.5 Flash Lite completed the bounded comparison with no model fallback.
+Current V3's ten saved calls are the historical baseline (6 expected matches, 4 semantic
+mismatches), not simultaneous reruns. `baseline-manifest.json` preserves their file, input and
+expected-label hashes. Every candidate uses the same frozen logical input and expected labels;
+the projected wire input, exact messages, schema, raw response, usage and error are saved separately.
+
+| Candidate diagnostic | Expected matches | Semantic mismatches | Validator rejections | Explicit HTTP 503 gaps |
+|---|---:|---:|---:|---:|
+| V3.2 grading, ten cases | 9 | 0 | 0 | 1 |
+| V4.6 negative reviewer, one map with five defect classes | 0 | 1 | 0 | 0 |
+| V4.6 corrected positive reviewer | 0 | 0 | 0 | 1 |
+
+V3.2 correctly graded the blank check MISSED, the topic-only check MISSED, the topic-only recap
+UNASSESSED, both incomplete recall cases PARTIAL, the full English recap and short English/Vietnamese
+answers CAPTURED, and the contradictory check INCORRECT. The complete mixed-language answer received
+HTTP 503 and remains an unverified regression gate. No semantic mismatch was observed among its nine
+completed cases; this small frozen diagnostic is not a general accuracy estimate.
+
+V4.6 still passed all five saved reviewer defects. Its narrow reason question now has a correctly
+narrow `requestedMeaningEn` (asking why), but the coverage flag remains true against a parent that
+also requires the preference. Smaller input improved that extracted description without fixing the
+comparison. Its corrected-positive review received HTTP 503 and was not replayed.
+
+**Reject both activations.** V4.6 fails the five-class negative gate; V3.2 lacks the complete
+mixed-language regression result. Keep default meaning V3. Stop this candidate iteration: no further
+prompt changes, V4 grading expansion, new genres, local full-flow/TTS run, regeneration or production
+activation follows these results. The parent restored Docker dependencies through Explorer after
+the first preflight found the registry unavailable; that preflight made no provider request.
+
+There were 12 one-shot provider attempts, 10 raw responses and two explicit HTTP 503 gaps. Completed
+responses reported 14,897 input and 3,538 output tokens (18,435 total); actual cost was unavailable.
+`acceptance-summary.json` counts result files only; pre-call `-started.json` markers are excluded.
+The two failures and all raw outputs remain in the ignored projection evidence directory. The
+earlier unknown local generation operation was not replayed.
+
+Final offline review found that projection v1 dropped the harness's `formatFeedback` on an UNKNOWN
+review retry. The corrected implementation preserves both repair context and format feedback;
+an offline retry regression verifies the exact failed output and schema issues reach the next
+request. Only the review projection version changed to v2, producing the distinct hash above.
+The old hash was used solely by the direct diagnostic helper, never committed/admitted or queued
+as a product job. Its raw evidence remains unchanged. The corrected hash has **no paid model-quality
+measurement** and inherits no passing claim from the old result; no provider call followed this
+feedback-preservation correction. Default V3 remains active.
+
+Python verification passed 346 related tests before that feedback correction (83 existing
+dependency/deprecation warnings), then 97 focused assessment/parts tests after it (one existing
+Python 3.14 deprecation warning). The stricter exact-feedback regression also passed independently.
+Python compilation, UTF-8 checks for seven task files and diff-whitespace checks passed. These
+offline results verify the correction's call data and harness behavior, not its model quality.
+
+Final Java verification with the corrected worker/Core pin passed 107 tests: 9 assessment, 87
+engine integration and 11 content tests, with zero failures, errors or skips. UTF-8 verification
+passed all ten task files. Independent Astra acceptance rejected activation and identified the
+format-feedback retention bug; its approved correction uses a new projection hash and keeps the
+measured raw evidence unchanged. No candidate was activated and no local full-flow, audio or
+production check was performed in this follow-up.

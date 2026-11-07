@@ -47,6 +47,51 @@ def two_part_check():
     return value, grade
 
 
+def test_projected_parts_candidate_preserves_parts_and_single_call_aggregation():
+    assert a.prompt_hash(a.projected_parts_candidate) == "290f0b30728a30e1b37373d1de88c8e60eae4905fe38096114e76052d2f3a4d6"
+    value, grade = two_part_check()
+    value = a.ScenarioAssessmentInput.model_validate({**value.model_dump(), "promptHash": a.prompt_hash(a.projected_parts_candidate)})
+    result, calls = execute(value, [grade])
+    assert len(calls) == 1 and result["task"]["meanings"][0]["status"] == "PARTIAL"
+    projected = json.loads(calls[0][1][1]["content"])
+    assert len(projected["activity"]["assessment"]["meanings"]) == 1
+    assert projected["activity"]["assessment"]["meanings"][0]["requiredParts"] == [
+        dict(id=part.id, meaningEn=part.meaningEn) for part in value.activity.assessment.meanings[0].requiredParts]
+    assert '"evidence"' not in json.dumps(projected)
+
+
+def test_projected_reviewer_has_one_inventory_and_all_source_metadata():
+    selected = a.projected_parts_candidate
+    result, calls = execute(parts_payload(promptHash=a.prompt_hash(selected)), parts_fixtures())
+    assert result["task"]["qualityPassed"] and len(calls) == 5
+    data = json.loads(calls[2][1][1]["content"])
+    assert set(data) == {"questions", "targets", "learningContext"}
+    assert len(data["questions"]) == 9 and len(data["targets"]) == 3
+    for target in data["targets"]:
+        assert target["segments"] and len(target["assessment"]["meanings"]) == 3
+        for grounding in target["questionGrounding"]:
+            assert {"id", "factEn", "speechAct", "skill", "supportKind", "inferenceReasonEn", "evidence"} <= grounding.keys()
+            assert "promptVi" not in grounding and "answerVi" not in grounding
+    original = {"content": "unchanged"}
+    assert a.project_input(a.parts_consistency_candidate, "REVIEW_QUESTIONS", original) is original
+
+
+def test_projected_reviewer_unknown_retry_preserves_exact_format_feedback():
+    responses = parts_fixtures()
+    incomplete = copy.deepcopy(responses[2])
+    incomplete["meaningChecks"].pop()
+    result, calls = execute(parts_payload(promptHash=a.prompt_hash(a.projected_parts_candidate)),
+                            [*responses[:2], incomplete, *responses[2:]])
+    assert len(calls) == 6 and result["task"]["qualityPassed"]
+    first = json.loads(calls[2][1][1]["content"])
+    retry = json.loads(calls[3][1][1]["content"])
+    feedback = retry.pop("formatFeedback")
+    assert retry == first
+    assert feedback["failedOutput"] == incomplete
+    assert feedback["schemaIssues"] == [dict(type="too_short", loc=["meaningChecks"])]
+    assert feedback["instruction"] == "Cover each supplied ID exactly once in the exact schema; do not force passing flags or change artifacts."
+
+
 def test_candidate_keeps_all_historical_hashes_and_uses_its_own_strict_schema():
     assert a.prompt_hash(a.parts_release) == "b9be440e03b9b31163f02c75e685092277fb42fb1ecc0156d871d030efa94503"
     assert a.selected_release(a.prompt_hash(a.parts_release)) is a.parts_release

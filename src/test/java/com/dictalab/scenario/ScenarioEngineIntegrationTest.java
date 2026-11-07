@@ -118,6 +118,8 @@ class ScenarioEngineIntegrationTest {
                 result.put("promptVersion",ScenarioAssessment.LEGACY_PROMPT_HASH.equals(input.path("promptHash").asText()) ? "SCENARIO_MEANING_ASSESSMENT_V1"
                         : ScenarioAssessment.WIRE_V2_PROMPT_HASH.equals(input.path("promptHash").asText()) ? "SCENARIO_MEANING_ASSESSMENT_V2" : partsV4_4 ? "SCENARIO_MEANING_ASSESSMENT_V4_4" : partsV4_3 ? "SCENARIO_MEANING_ASSESSMENT_V4_3" : partsV4_1 ? "SCENARIO_MEANING_ASSESSMENT_V4_1" : parts ? "SCENARIO_MEANING_ASSESSMENT_V4" : "SCENARIO_MEANING_ASSESSMENT_V3")
                         .put("assessmentPolicyVersion",ScenarioAssessment.policyFor(input.path("promptHash").asText()));
+                if (ScenarioAssessment.V3_2_PROMPT_HASH.equals(input.path("promptHash").asText())) result.put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V3_2");
+                if (ScenarioAssessment.PARTS_V4_6_PROMPT_HASH.equals(input.path("promptHash").asText())) result.put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_6");
                 if (phase.equals("GENERATE")) {
                     result.set("task",(parts ? ScenarioAssessmentTest.partsFixture() : ScenarioAssessmentTest.fixture()).path("content"));
                     result.putObject("qualityHarness").put("extraCalls",0).put("policyVersion","scenario-meaning-harness.v1").put("policyHash","56d0d6d5e826e1b46f20b5ab4a3868dada9537cca996cb35999d3886ee3d6fe2");
@@ -166,7 +168,9 @@ class ScenarioEngineIntegrationTest {
         assertThat(generation.path("status").asText()).isEqualTo("SUCCEEDED");
         return engine.session(user,generation.path("sessionId").asText());
     }
-    @Test void meaningRecapSkipIsDurableFreeAndChecksAreServerSelectedAndSecretUntilDone() {
+    @ParameterizedTest @ValueSource(strings={ScenarioAssessment.PROMPT_HASH,ScenarioAssessment.V3_2_PROMPT_HASH})
+    void meaningRecapSkipIsDurableFreeAndChecksAreServerSelectedAndSecretUntilDone(String pin) {
+        when(release.assessmentPromptHash()).thenReturn(pin);
         var session=activeMeaning(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
         assertThat(session.path("activities").get(0).path("questions")).isEmpty();
         int jobs=db.queryForObject("SELECT COUNT(*) FROM scenario_operations WHERE user_id=?",Integer.class,user);
@@ -194,7 +198,7 @@ class ScenarioEngineIntegrationTest {
         meaningGradeStatus="CAPTURED"; dispatch(engine.assessment(user,other,a,id(),new ScenarioEngine.AssessmentRequest(another.path("version").asLong(),"RECAP","nine, six pounds, tomorrow",List.of())));
         another=engine.session(user,other); assertThat(another.path("activities").get(0).path("assessment").path("canComplete").asBoolean()).isTrue(); assertThat(another.path("activities").get(0).path("questions")).isEmpty();
     }
-    @ParameterizedTest @ValueSource(strings={ScenarioAssessment.PARTS_PROMPT_HASH,ScenarioAssessment.PARTS_V4_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_3_PROMPT_HASH,ScenarioAssessment.PARTS_V4_4_PROMPT_HASH})
+    @ParameterizedTest @ValueSource(strings={ScenarioAssessment.PARTS_PROMPT_HASH,ScenarioAssessment.PARTS_V4_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_3_PROMPT_HASH,ScenarioAssessment.PARTS_V4_4_PROMPT_HASH,ScenarioAssessment.PARTS_V4_6_PROMPT_HASH})
     void requiredPartLessonKeepsItsPolicyAndPinThroughChecksCompletionAndAdmissionChanges(String pin) {
         when(release.assessmentPromptHash()).thenReturn(pin);
         var session=activeMeaning(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();

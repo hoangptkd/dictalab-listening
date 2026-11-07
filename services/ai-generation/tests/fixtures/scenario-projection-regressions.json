@@ -1,0 +1,536 @@
+{
+  "description": "Sanitized fictional lesson excerpts from frozen rejected V3.1 diagnostics. These are observed failures, not model accuracy tests. Credentials, runtime config, account identifiers and learner account data excluded.",
+  "cases": [
+    {
+      "name": "v3-blank-check",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "assessment": {
+            "meanings": [
+              {
+                "evidence": [
+                  {
+                    "quoteEn": "Novels take too long, and some members might fall behind.",
+                    "segmentId": "s2"
+                  }
+                ],
+                "id": "m3",
+                "inferenceReasonEn": "",
+                "meaningEn": "Novels take too long to read, and some members might fall behind.",
+                "skill": "detail",
+                "supportKind": "direct"
+              }
+            ]
+          },
+          "questions": [
+            {
+              "answerVi": "Mất quá nhiều thời gian và một số thành viên có thể bị tụt lại phía sau.",
+              "evidence": [
+                {
+                  "quoteEn": "Novels take too long, and some members might fall behind.",
+                  "segmentId": "s2"
+                }
+              ],
+              "id": "q3",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m3"
+              ],
+              "promptVi": "Điều gì có thể xảy ra nếu chọn đọc tiểu thuyết?",
+              "skill": "detail",
+              "supportKind": "direct",
+              "type": "MEANING_RECALL_VI"
+            }
+          ],
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "minh",
+              "textEn": "Lan, we should decide what kind of book our library reading club should start with. Why do you think short stories are better than novels for our first meeting?"
+            },
+            {
+              "id": "s2",
+              "speakerId": "lan",
+              "textEn": "I think short stories are much better because everyone can finish reading them quickly before they come. Novels take too long, and some members might fall behind."
+            },
+            {
+              "id": "s3",
+              "speakerId": "minh",
+              "textEn": "That makes sense. If the text is short, busy students will not feel stressed, and we will have more time to talk about the main ideas during the session."
+            }
+          ]
+        },
+        "assessmentSubmission": {
+          "mode": "CHECKS",
+          "recapText": "",
+          "answers": [
+            {
+              "questionId": "q3",
+              "textVi": ""
+            }
+          ],
+          "meaningIds": [
+            "m3"
+          ]
+        }
+      },
+      "expected": {
+        "m3": "MISSED"
+      },
+      "observedRaw": {
+        "meanings": [
+          {
+            "meaningId": "m3",
+            "status": "CAPTURED",
+            "evidence": [
+              {
+                "responseId": "q3",
+                "quote": "Mất quá nhiều thời gian và một số thành viên có thể bị tụt lại phía sau."
+              }
+            ]
+          }
+        ]
+      },
+      "validationError": {
+        "type": "ValueError",
+        "message": "invented or duplicate learner evidence"
+      }
+    },
+    {
+      "name": "v3-topic-only-check",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "assessment": {
+            "meanings": [
+              {
+                "evidence": [
+                  {
+                    "quoteEn": "Novels take too long, and some members might fall behind.",
+                    "segmentId": "s2"
+                  }
+                ],
+                "id": "m3",
+                "inferenceReasonEn": "",
+                "meaningEn": "Novels take too long to read, and some members might fall behind.",
+                "skill": "detail",
+                "supportKind": "direct"
+              }
+            ]
+          },
+          "questions": [
+            {
+              "answerVi": "Mất quá nhiều thời gian và một số thành viên có thể bị tụt lại phía sau.",
+              "evidence": [
+                {
+                  "quoteEn": "Novels take too long, and some members might fall behind.",
+                  "segmentId": "s2"
+                }
+              ],
+              "id": "q3",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m3"
+              ],
+              "promptVi": "Điều gì có thể xảy ra nếu chọn đọc tiểu thuyết?",
+              "skill": "detail",
+              "supportKind": "direct",
+              "type": "MEANING_RECALL_VI"
+            }
+          ],
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "minh",
+              "textEn": "Lan, we should decide what kind of book our library reading club should start with. Why do you think short stories are better than novels for our first meeting?"
+            },
+            {
+              "id": "s2",
+              "speakerId": "lan",
+              "textEn": "I think short stories are much better because everyone can finish reading them quickly before they come. Novels take too long, and some members might fall behind."
+            },
+            {
+              "id": "s3",
+              "speakerId": "minh",
+              "textEn": "That makes sense. If the text is short, busy students will not feel stressed, and we will have more time to talk about the main ideas during the session."
+            }
+          ]
+        },
+        "assessmentSubmission": {
+          "mode": "CHECKS",
+          "recapText": "",
+          "answers": [
+            {
+              "questionId": "q3",
+              "textVi": "They mentioned novels."
+            }
+          ],
+          "meaningIds": [
+            "m3"
+          ]
+        }
+      },
+      "expected": {
+        "m3": "MISSED"
+      },
+      "observedRaw": {
+        "meanings": [
+          {
+            "meaningId": "m3",
+            "status": "PARTIAL",
+            "evidence": [
+              {
+                "responseId": "q3",
+                "quote": "They mentioned novels."
+              }
+            ]
+          }
+        ]
+      },
+      "validationError": null
+    },
+    {
+      "name": "v3-partial-multi-detail-and-empty-check",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "assessment": {
+            "meanings": [
+              {
+                "evidence": [
+                  {
+                    "quoteEn": "Novels take too long, and some members might fall behind.",
+                    "segmentId": "s2"
+                  }
+                ],
+                "id": "m3",
+                "inferenceReasonEn": "",
+                "meaningEn": "Novels take too long to read, and some members might fall behind.",
+                "skill": "detail",
+                "supportKind": "direct"
+              },
+              {
+                "evidence": [
+                  {
+                    "quoteEn": "If the text is short, busy students will not feel stressed, and we will have more time to talk about the main ideas during the session.",
+                    "segmentId": "s3"
+                  }
+                ],
+                "id": "m4",
+                "inferenceReasonEn": "",
+                "meaningEn": "Minh notes that short texts prevent busy students from feeling stressed and allow more discussion time.",
+                "skill": "reason",
+                "supportKind": "direct"
+              }
+            ]
+          },
+          "questions": [
+            {
+              "answerVi": "Mất quá nhiều thời gian và một số thành viên có thể bị tụt lại phía sau.",
+              "evidence": [
+                {
+                  "quoteEn": "Novels take too long, and some members might fall behind.",
+                  "segmentId": "s2"
+                }
+              ],
+              "id": "q3",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m3"
+              ],
+              "promptVi": "Điều gì có thể xảy ra nếu chọn đọc tiểu thuyết?",
+              "skill": "detail",
+              "supportKind": "direct",
+              "type": "MEANING_RECALL_VI"
+            },
+            {
+              "answerVi": "Không cảm thấy căng thẳng và có nhiều thời gian hơn để thảo luận về các ý chính.",
+              "evidence": [
+                {
+                  "quoteEn": "If the text is short, busy students will not feel stressed, and we will have more time to talk about the main ideas during the session.",
+                  "segmentId": "s3"
+                }
+              ],
+              "id": "q4",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m4"
+              ],
+              "promptVi": "Theo Minh, văn bản ngắn mang lại lợi ích gì cho các học sinh bận rộn?",
+              "skill": "reason",
+              "supportKind": "direct",
+              "type": "MEANING_RECALL_VI"
+            }
+          ],
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "minh",
+              "textEn": "Lan, we should decide what kind of book our library reading club should start with. Why do you think short stories are better than novels for our first meeting?"
+            },
+            {
+              "id": "s2",
+              "speakerId": "lan",
+              "textEn": "I think short stories are much better because everyone can finish reading them quickly before they come. Novels take too long, and some members might fall behind."
+            },
+            {
+              "id": "s3",
+              "speakerId": "minh",
+              "textEn": "That makes sense. If the text is short, busy students will not feel stressed, and we will have more time to talk about the main ideas during the session."
+            }
+          ]
+        },
+        "assessmentSubmission": {
+          "mode": "CHECKS",
+          "recapText": "",
+          "answers": [
+            {
+              "questionId": "q3",
+              "textVi": "Novels take too long to read."
+            },
+            {
+              "questionId": "q4",
+              "textVi": ""
+            }
+          ],
+          "meaningIds": [
+            "m3",
+            "m4"
+          ]
+        }
+      },
+      "expected": {
+        "m3": "PARTIAL",
+        "m4": "MISSED"
+      },
+      "observedRaw": {
+        "meanings": [
+          {
+            "meaningId": "m3",
+            "status": "CAPTURED",
+            "evidence": [
+              {
+                "responseId": "q3",
+                "quote": "Novels take too long to read."
+              }
+            ]
+          },
+          {
+            "meaningId": "m4",
+            "status": "MISSED",
+            "evidence": []
+          }
+        ]
+      },
+      "validationError": null
+    },
+    {
+      "name": "v3-partial-reason-recap",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "assessment": {
+            "meanings": [
+              {
+                "evidence": [
+                  {
+                    "quoteEn": "Lan, we should decide what kind of book our library reading club should start with.",
+                    "segmentId": "s1"
+                  }
+                ],
+                "id": "m1",
+                "inferenceReasonEn": "",
+                "meaningEn": "Minh and Lan are deciding what kind of book the library reading club should start with.",
+                "skill": "main-idea",
+                "supportKind": "direct"
+              },
+              {
+                "evidence": [
+                  {
+                    "quoteEn": "I think short stories are much better because everyone can finish reading them quickly before they come.",
+                    "segmentId": "s2"
+                  }
+                ],
+                "id": "m2",
+                "inferenceReasonEn": "",
+                "meaningEn": "Lan prefers short stories because everyone can finish reading them quickly before coming.",
+                "skill": "reason",
+                "supportKind": "direct"
+              },
+              {
+                "evidence": [
+                  {
+                    "quoteEn": "Novels take too long, and some members might fall behind.",
+                    "segmentId": "s2"
+                  }
+                ],
+                "id": "m3",
+                "inferenceReasonEn": "",
+                "meaningEn": "Novels take too long to read, and some members might fall behind.",
+                "skill": "detail",
+                "supportKind": "direct"
+              },
+              {
+                "evidence": [
+                  {
+                    "quoteEn": "If the text is short, busy students will not feel stressed, and we will have more time to talk about the main ideas during the session.",
+                    "segmentId": "s3"
+                  }
+                ],
+                "id": "m4",
+                "inferenceReasonEn": "",
+                "meaningEn": "Minh notes that short texts prevent busy students from feeling stressed and allow more discussion time.",
+                "skill": "reason",
+                "supportKind": "direct"
+              }
+            ]
+          },
+          "questions": [
+            {
+              "answerVi": "Câu lạc bộ đọc sách",
+              "evidence": [
+                {
+                  "quoteEn": "Lan, we should decide what kind of book our library reading club should start with.",
+                  "segmentId": "s1"
+                }
+              ],
+              "id": "q1",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m1"
+              ],
+              "promptVi": "Minh và Lan đang thảo luận về việc chọn loại sách nào cho hoạt động gì của thư viện?",
+              "skill": "main-idea",
+              "supportKind": "direct",
+              "type": "MEANING_RECALL_VI"
+            },
+            {
+              "answerVi": "Vì mọi người có thể đọc xong nhanh trước khi đến.",
+              "evidence": [
+                {
+                  "quoteEn": "I think short stories are much better because everyone can finish reading them quickly before they come.",
+                  "segmentId": "s2"
+                }
+              ],
+              "id": "q2",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m2"
+              ],
+              "promptVi": "Tại sao Lan nghĩ truyện ngắn tốt hơn cho buổi họp đầu tiên?",
+              "skill": "reason",
+              "supportKind": "direct",
+              "type": "MEANING_RECALL_VI"
+            },
+            {
+              "answerVi": "Mất quá nhiều thời gian và một số thành viên có thể bị tụt lại phía sau.",
+              "evidence": [
+                {
+                  "quoteEn": "Novels take too long, and some members might fall behind.",
+                  "segmentId": "s2"
+                }
+              ],
+              "id": "q3",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m3"
+              ],
+              "promptVi": "Điều gì có thể xảy ra nếu chọn đọc tiểu thuyết?",
+              "skill": "detail",
+              "supportKind": "direct",
+              "type": "MEANING_RECALL_VI"
+            },
+            {
+              "answerVi": "Không cảm thấy căng thẳng và có nhiều thời gian hơn để thảo luận về các ý chính.",
+              "evidence": [
+                {
+                  "quoteEn": "If the text is short, busy students will not feel stressed, and we will have more time to talk about the main ideas during the session.",
+                  "segmentId": "s3"
+                }
+              ],
+              "id": "q4",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m4"
+              ],
+              "promptVi": "Theo Minh, văn bản ngắn mang lại lợi ích gì cho các học sinh bận rộn?",
+              "skill": "reason",
+              "supportKind": "direct",
+              "type": "MEANING_RECALL_VI"
+            }
+          ],
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "minh",
+              "textEn": "Lan, we should decide what kind of book our library reading club should start with. Why do you think short stories are better than novels for our first meeting?"
+            },
+            {
+              "id": "s2",
+              "speakerId": "lan",
+              "textEn": "I think short stories are much better because everyone can finish reading them quickly before they come. Novels take too long, and some members might fall behind."
+            },
+            {
+              "id": "s3",
+              "speakerId": "minh",
+              "textEn": "That makes sense. If the text is short, busy students will not feel stressed, and we will have more time to talk about the main ideas during the session."
+            }
+          ]
+        },
+        "assessmentSubmission": {
+          "mode": "RECAP",
+          "recapText": "Minh và Lan đang chọn sách cho câu lạc bộ đọc sách. Tôi nhớ họ muốn chọn truyện ngắn.",
+          "answers": [],
+          "meaningIds": [
+            "m1",
+            "m2",
+            "m3",
+            "m4"
+          ]
+        }
+      },
+      "expected": {
+        "m1": "CAPTURED",
+        "m2": "PARTIAL",
+        "m3": "UNASSESSED",
+        "m4": "UNASSESSED"
+      },
+      "observedRaw": {
+        "meanings": [
+          {
+            "meaningId": "m1",
+            "status": "CAPTURED",
+            "evidence": [
+              {
+                "responseId": "recap",
+                "quote": "Minh và Lan đang chọn sách cho câu lạc bộ đọc sách."
+              }
+            ]
+          },
+          {
+            "meaningId": "m2",
+            "status": "CAPTURED",
+            "evidence": [
+              {
+                "responseId": "recap",
+                "quote": "Tôi nhớ họ muốn chọn truyện ngắn."
+              }
+            ]
+          },
+          {
+            "meaningId": "m3",
+            "status": "UNASSESSED",
+            "evidence": []
+          },
+          {
+            "meaningId": "m4",
+            "status": "UNASSESSED",
+            "evidence": []
+          }
+        ]
+      },
+      "validationError": null
+    }
+  ]
+}
