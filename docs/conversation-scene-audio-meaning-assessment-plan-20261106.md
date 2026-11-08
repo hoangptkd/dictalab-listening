@@ -470,3 +470,18 @@ passed all ten task files. Independent Astra acceptance rejected activation and 
 format-feedback retention bug; its approved correction uses a new projection hash and keeps the
 measured raw evidence unchanged. No candidate was activated and no local full-flow, audio or
 production check was performed in this follow-up.
+
+### Independent V4.7 audit follow-up — 2026-11-08
+
+The approved independent-audit implementation and frozen pins, offline evidence, bounded
+measurement protocol and remaining call-cost activation blocker are recorded in
+[the V4.7 implementation plan, section 8](conversation-v4-independent-audit-implementation-plan-20261108.md#8-implementation-results--2026-11-08).
+Default meaning V3 remains unchanged. V4.7 evidence does not alter the historical V4.5/V4.6 results.
+The one-shot V4.7 diagnostic made five provider POSTs: three HTTP 200 valid ledgers and two HTTP 503
+gaps (negative question audit; positive comparison). Both final semantic verdicts are unavailable;
+no retry or replay followed. Final frozen-pin Java checks passed 115 tests. The related Python run
+had 408 passes and one OpenAPI discriminator failure reproduced on the clean baseline; final
+frozen-pin assessment/audit/parts/harness checks passed 174 tests with one existing warning.
+V4.7 remains inactive. Its eleven-call envelope also requires a separately authorized accounting
+fix: GENERATE currently reserves five calls, while the application envelope and V49 constraint
+allow at most seven. No admission, budget or migration change was made in this follow-up.

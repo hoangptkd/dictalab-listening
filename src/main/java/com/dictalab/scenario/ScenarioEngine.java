@@ -552,7 +552,8 @@ public class ScenarioEngine {
                 ScenarioContent.list(routing.path("fallbackModels"),0,3);
                 for (var model : routing.path("fallbackModels")) ScenarioContent.check(model.isTextual() && model.asText().matches("gemini-[a-zA-Z0-9_.-]{1,93}") && allowedModels.add(model.asText()));
             }
-            ScenarioContent.list(result.path("calls"),kind.equals("GENERATE") ? 5 : 1,kind.equals("GENERATE") ? 9 : 1);
+            boolean independentAudit=ScenarioAssessment.PARTS_V4_7_PROMPT_HASH.equals(input.path("promptHash").asText());
+            ScenarioContent.list(result.path("calls"),kind.equals("GENERATE") ? independentAudit ? 7 : 5 : 1,kind.equals("GENERATE") ? independentAudit ? 11 : 9 : 1);
             for (var call : result.path("calls")) { ScenarioContent.fields(call,"purpose","provider","model"); ScenarioContent.check(provider.equals(call.path("provider").asText()) && allowedModels.contains(call.path("model").asText()) && (kind.equals("GENERATE") || kind.equals(call.path("purpose").asText()))); }
             if (kind.equals("GENERATE")) validateHarnessCalls(result);
         } else if (!kind.equals("TTS")) {
@@ -671,6 +672,10 @@ public class ScenarioEngine {
     static void validateHarnessCalls(JsonNode result) {
         var purposes=new ArrayList<String>();
         for (var call : result.path("calls")) purposes.add(call.path("purpose").asText());
+        if (ScenarioAssessment.PARTS_V4_7_PROMPT_HASH.equals(result.path("promptHash").asText())) {
+            validateAuditHarnessCalls(result,purposes);
+            return;
+        }
         ScenarioContent.check(purposes.size()>=5 && purposes.size()<=9
                 && purposes.get(0).equals("GENERATE") && purposes.get(1).equals("QUESTIONS"));
         int cursor=2, extra=0;
@@ -700,6 +705,51 @@ public class ScenarioEngine {
                 && report.path("extraCalls").isIntegralNumber() && report.path("extraCalls").asInt()==extra
                 && report.path("policyVersion").asText().equals(meaning ? "scenario-meaning-harness.v1" : v9 ? "scenario-quality-harness.v2" : "scenario-quality-harness.v1")
                 && report.path("policyHash").asText().equals(meaning ? "56d0d6d5e826e1b46f20b5ab4a3868dada9537cca996cb35999d3886ee3d6fe2" : v9 ? "e15c2b30a59f2b505b047b1920ebdff9c4cb7ccb2ae87cf9cf24803e2e8c2a66" : "ac1a80c90c9f24149f14a9221c0c7382e653d94fccbd823b3862c55fa043bc6b"));
+    }
+
+    private static int[] auditChain(List<String> purposes,int cursor,boolean retryAllowed) {
+        int retries=0;
+        for (String stage : List.of("AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS")) {
+            ScenarioContent.check(cursor<purposes.size() && purposes.get(cursor++).equals(stage));
+            if (cursor<purposes.size() && purposes.get(cursor).equals(stage)) {
+                ScenarioContent.check(retryAllowed && retries++==0); cursor++;
+            }
+        }
+        return new int[]{cursor,retries};
+    }
+
+    private static void validateAuditHarnessCalls(JsonNode result,List<String> purposes) {
+        ScenarioContent.check(ScenarioAssessment.releaseMatches(result.path("promptHash").asText(),result.path("promptVersion").asText())
+                && purposes.size()>=7 && purposes.size()<=11 && purposes.get(0).equals("GENERATE") && purposes.get(1).equals("QUESTIONS"));
+        int cursor=2,extra=0;
+        if (purposes.get(cursor).equals("REPAIR_QUESTIONS")) {
+            var chain=auditChain(purposes,cursor+1,false); cursor=chain[0]; extra=4;
+        } else {
+            var chain=auditChain(purposes,cursor,true); cursor=chain[0]; extra=chain[1];
+            if (cursor<purposes.size() && purposes.get(cursor).equals("REPAIR_QUESTIONS")) {
+                ScenarioContent.check(extra==0); cursor++; extra++;
+                if (cursor<purposes.size() && purposes.get(cursor).equals("AUDIT_MEANINGS")) {
+                    chain=auditChain(purposes,cursor,false); cursor=chain[0]; extra+=3;
+                }
+            }
+        }
+        ScenarioContent.check(cursor<purposes.size() && purposes.get(cursor++).equals("TRANSLATE"));
+        if (cursor<purposes.size() && purposes.get(cursor).equals("REPAIR_TRANSLATIONS")) {
+            cursor++; extra+=2;
+            ScenarioContent.check(cursor<purposes.size() && purposes.get(cursor++).equals("REVIEW"));
+        } else {
+            ScenarioContent.check(cursor<purposes.size() && purposes.get(cursor++).equals("REVIEW"));
+            if (cursor<purposes.size() && purposes.get(cursor).equals("REVIEW")) { cursor++; extra++; }
+            if (cursor<purposes.size() && purposes.get(cursor).equals("REPAIR_TRANSLATIONS")) {
+                cursor++; extra++;
+                if (cursor<purposes.size() && purposes.get(cursor).equals("REVIEW")) { cursor++; extra++; }
+            }
+        }
+        var report=result.path("qualityHarness");
+        ScenarioContent.check(cursor==purposes.size() && extra<=4
+                && report.path("extraCalls").isIntegralNumber() && report.path("extraCalls").asInt()==extra
+                && report.path("policyVersion").asText().equals("scenario-meaning-harness.v2")
+                && report.path("policyHash").asText().equals(ScenarioAssessment.AUDIT_HARNESS_POLICY_HASH));
     }
 
     void failed(Map<String,Object> op,String status) {

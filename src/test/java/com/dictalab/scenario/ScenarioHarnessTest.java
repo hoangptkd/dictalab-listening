@@ -8,6 +8,42 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
 class ScenarioHarnessTest {
+    static ObjectNode auditTranscript(int extra,String... stages) {
+        var result=transcript(extra,stages).put("promptHash",ScenarioAssessment.PARTS_V4_7_PROMPT_HASH).put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_7");
+        ((ObjectNode)result.path("qualityHarness")).put("policyVersion","scenario-meaning-harness.v2").put("policyHash",ScenarioAssessment.AUDIT_HARNESS_POLICY_HASH);
+        return result;
+    }
+
+    @Test void independentAuditAcceptsFiniteNormalRepairAndSingleStageRetryPaths() {
+        var base=List.of("GENERATE","QUESTIONS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW");
+        var paths=new java.util.ArrayList<ObjectNode>(); paths.add(auditTranscript(0,base.toArray(String[]::new)));
+        for (int stage=2;stage<=4;stage++) {
+            var retry=new java.util.ArrayList<>(base); retry.add(stage,retry.get(stage));
+            paths.add(auditTranscript(1,retry.toArray(String[]::new)));
+        }
+        paths.add(auditTranscript(4,"GENERATE","QUESTIONS","REPAIR_QUESTIONS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW"));
+        paths.add(auditTranscript(4,"GENERATE","QUESTIONS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","REPAIR_QUESTIONS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW"));
+        paths.add(auditTranscript(1,"GENERATE","QUESTIONS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","REPAIR_QUESTIONS","TRANSLATE","REVIEW"));
+        paths.add(auditTranscript(2,"GENERATE","QUESTIONS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REPAIR_TRANSLATIONS","REVIEW"));
+        paths.add(auditTranscript(3,"GENERATE","QUESTIONS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW","REVIEW","REPAIR_TRANSLATIONS","REVIEW"));
+        for (var path : paths) assertThatCode(() -> ScenarioEngine.validateHarnessCalls(path)).doesNotThrowAnyException();
+    }
+
+    @Test void independentAuditRejectsIncompleteReorderedDuplicatedAndUnaccountedPaths() {
+        var paths=List.of(
+            auditTranscript(0,"GENERATE","QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW"),
+            auditTranscript(0,"GENERATE","QUESTIONS","AUDIT_QUESTIONS","AUDIT_MEANINGS","REVIEW_QUESTIONS","TRANSLATE","REVIEW"),
+            auditTranscript(2,"GENERATE","QUESTIONS","AUDIT_MEANINGS","AUDIT_MEANINGS","AUDIT_QUESTIONS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW"),
+            auditTranscript(4,"GENERATE","QUESTIONS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","REPAIR_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW"),
+            auditTranscript(3,"GENERATE","QUESTIONS","REPAIR_QUESTIONS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW"),
+            auditTranscript(5,"GENERATE","QUESTIONS","AUDIT_MEANINGS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","REPAIR_QUESTIONS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW"));
+        for (var path : paths) assertThatThrownBy(() -> ScenarioEngine.validateHarnessCalls(path)).isInstanceOf(IllegalArgumentException.class);
+        for (String field : List.of("policyHash","policyVersion","extraCalls")) {
+            var path=auditTranscript(0,"GENERATE","QUESTIONS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW");
+            ((ObjectNode)path.path("qualityHarness")).put(field,"wrong");
+            assertThatThrownBy(() -> ScenarioEngine.validateHarnessCalls(path)).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
     static ObjectNode transcript(int extra, String... stages) {
         var result=ScenarioData.object();
         var calls=result.putArray("calls");

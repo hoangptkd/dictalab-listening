@@ -1,0 +1,16 @@
+{
+  "provenance": "Sanitized fictional minimal reproductions of frozen F1-F5; labels are offline expectations, never provider input.",
+  "cases": [
+    {"id":"F1","source":"I prefer short stories because they fit our lunch break.","meaning":"Mira prefers short stories because they fit the lunch break.","negative":"Vì sao Mira thích truyện ngắn?","positive":"Mira thích loại truyện nào và vì sao?","expectedFlag":"questionMatchesFact","relation":"NOT_REQUESTED"},
+    {"id":"F2","source":"I recommend a ten-minute walk. It helps me relax.","meaning":"Mira recommends a ten-minute walk because it helps her relax.","negative":"Đi bộ mười phút giúp Mira thế nào?","positive":"Mira đề xuất làm gì, trong bao lâu và vì sao?","expectedFlag":"questionMatchesFact","relation":"GIVEN"},
+    {"id":"F3","source":"Some guests might arrive late.","meaning":"Some guests will arrive late.","negative":"Some guests will arrive late.","positive":"Some guests might arrive late.","expectedFlag":"meaningSupported","relation":"UNSUPPORTED"},
+    {"id":"F4","source":"Let us meet Friday. Yes, Friday works for me. I will book a room.","meaning":"They agree to meet Friday, and Mira will book a room.","negative":["Mira will book a room."],"positive":["They agree to meet Friday.","Mira will book a room."],"expectedFlag":"groundingSupported","relation":"UNMAPPED"},
+    {"id":"F5","source":"The walk lowers stress and improves sleep.","meaning":"The walk lowers stress and improves sleep.","negative":["The walk lowers stress and improves sleep."],"positive":["The walk lowers stress.","The walk improves sleep."],"expectedFlag":"distinctMeaning","relation":"BUNDLED"}
+  ],
+  "adjacentPositives": [
+    {"label":"valid multi-detail question","meaning":"Mira prefers short stories because they fit the break.","promptVi":"Mira thích loại truyện nào và vì sao?","claims":2,"parts":2},
+    {"label":"paraphrase","meaning":"The shop opens at nine.","promptVi":"Mấy giờ cửa hàng bắt đầu mở cửa?","claims":1,"parts":1},
+    {"label":"one proposition with time","meaning":"They move the meeting to Friday.","promptVi":"Họ dời cuộc họp sang ngày nào?","claims":1,"parts":1},
+    {"label":"why targets reason only","meaning":"Short stories fit the lunch break.","promptVi":"Vì sao truyện ngắn phù hợp?","claims":1,"parts":1}
+  ]
+}

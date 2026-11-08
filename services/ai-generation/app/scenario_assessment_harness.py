@@ -128,6 +128,7 @@ def reconcile(previous, current, changed, stage):
 async def generate(dialogue, payload, call, deadline):
     selected = a.selected_release(payload.promptHash)
     parts = selected.POLICY_VERSION == a.parts_release.POLICY_VERSION
+    independent = bool(getattr(selected, "AUDIT_PROTOCOL", None))
     state = h.State(deadline, policy=selected.HARNESS_POLICY)
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)}
     frozen = {"dialogue": h.digest(dialogue), "specification": h.digest(payload.specification),
@@ -144,6 +145,50 @@ async def generate(dialogue, payload, call, deadline):
                 "translations": artifact.model_dump(), **context}
 
     async def review(stage, artifact, *, extra=False, retry_format=True, repair_context=None):
+        if stage == "QUESTIONS" and independent:
+            from . import scenario_assessment_audit as audit
+            data = review_data(stage, artifact)
+            ledgers = {}
+            verdict = None
+            stages = (("AUDIT_MEANINGS", audit.MeaningAudit), ("AUDIT_QUESTIONS", audit.QuestionAudit),
+                      ("REVIEW_QUESTIONS", audit.AuditedQuestionReview))
+            for purpose, model in stages:
+                stage_data = {**data, **ledgers}
+                if purpose == "REVIEW_QUESTIONS" and repair_context is not None:
+                    stage_data["repairContext"] = repair_context
+                while True:
+                    raw = None
+                    try:
+                        raw = await (state.extra(call, purpose, stage_data, model) if extra or "formatFeedback" in stage_data else call(purpose, stage_data, model))
+                        if purpose == "AUDIT_MEANINGS":
+                            audit.validate_meanings(raw, artifact)
+                            ledgers["meaningAudit"] = raw.model_dump()
+                        elif purpose == "AUDIT_QUESTIONS":
+                            audit.validate_questions(raw, artifact)
+                            ledgers["questionAudit"] = raw.model_dump()
+                        else:
+                            verdict = audit.to_review(raw, audit.MeaningAudit.model_validate(ledgers["meaningAudit"]),
+                                audit.QuestionAudit.model_validate(ledgers["questionAudit"]), artifact, dialogue)
+                        state.artifacts[purpose + ":" + h.digest(artifact)] = h.digest(raw)
+                        status, findings = ("PASS", []) if purpose != "REVIEW_QUESTIONS" else review_status(verdict, artifact, stage)
+                        if status == "UNKNOWN":
+                            raise ValueError("audit review contract mismatch")
+                        state.record(purpose, status, findings)
+                        break
+                    except ValueError as error:
+                        if raw is None and not hasattr(error, "failed_output"):
+                            raise
+                        state.record(purpose, "UNKNOWN", [finding("audit_contract", stage)])
+                        if not retry_format or "QUESTION_AUDIT_CHAIN" in state.format_retries or not state.available(1):
+                            contract = w.QualityRejected("invalid independent audit contract")
+                            contract.audit_contract = True
+                            raise contract from error
+                        state.format_retries.add("QUESTION_AUDIT_CHAIN")
+                        stage_data["formatFeedback"] = {"failedOutput": raw.model_dump() if raw else getattr(error, "failed_output", None),
+                            "schemaIssues": getattr(error, "schema_issues", [{"type": str(error), "loc": []}]),
+                            "instruction": "Cover each supplied ID exactly once in the exact schema; do not force passing flags or change artifacts."}
+            status, issues = review_status(verdict, artifact, stage)
+            return verdict, status, issues
         purpose = "REVIEW_QUESTIONS" if stage == "QUESTIONS" else "REVIEW"
         model = a.QuestionReview if stage == "QUESTIONS" else w.PersonalizedReview
         data = review_data(stage, artifact)
@@ -173,9 +218,13 @@ async def generate(dialogue, payload, call, deadline):
 
     async def repair(stage, original, issues, previous=None):
         allowed = {(i["itemType"], i["activityId"], i["itemId"]) for i in issues if i["repairable"]}
+        if independent and stage == "QUESTIONS":
+            meanings = {(activity, item) for kind, activity, item in allowed if kind == "meaning"}
+            allowed |= {("question", act.id, q.id) for act in original.activities for q in act.questions
+                        if any((act.id, mid) in meanings for mid in q.meaningIds)}
         attempt = {"stage": stage, "accepted": False, "attempted": False, "originalHash": h.digest(original)}
         state.attempts.append(attempt)
-        if not allowed or any(not i["repairable"] for i in issues) or not state.available(2):
+        if not allowed or any(not i["repairable"] for i in issues) or not state.available(4 if independent and stage == "QUESTIONS" else 2):
             attempt["reason"] = "unlocalized_issue" if not allowed or any(not i["repairable"] for i in issues) else "budget_or_deadline"
             return original, previous, None
         purpose = "REPAIR_QUESTIONS" if stage == "QUESTIONS" else "REPAIR_TRANSLATIONS"
@@ -212,7 +261,9 @@ async def generate(dialogue, payload, call, deadline):
                 state.record("REPAIR_REVIEW", status, semantic)
                 attempt.update(accepted=True, reason="accepted" if status == "PASS" else "accepted_with_warnings")
                 return candidate, verdict, status
-            except ValueError:
+            except ValueError as error:
+                if getattr(error, "audit_contract", False):
+                    raise
                 return original, previous, None
             finally:
                 _safe(span, "update", output=trace_content(attempt))

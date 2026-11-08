@@ -8,6 +8,13 @@ import static com.dictalab.scenario.ScenarioData.*;
 import static org.assertj.core.api.Assertions.*;
 
 class ScenarioAssessmentTest {
+    @Test void independentAuditCandidateHasAnExactPartsPin() {
+        assertThat(ScenarioAssessment.releaseMatches(ScenarioAssessment.PARTS_V4_7_PROMPT_HASH,"SCENARIO_MEANING_ASSESSMENT_V4_7")).isTrue();
+        for (String version : List.of("SCENARIO_MEANING_ASSESSMENT_V3","SCENARIO_MEANING_ASSESSMENT_V4_6"))
+            assertThat(ScenarioAssessment.releaseMatches(ScenarioAssessment.PARTS_V4_7_PROMPT_HASH,version)).isFalse();
+        assertThat(ScenarioAssessment.releaseMatches(ScenarioAssessment.PARTS_V4_6_PROMPT_HASH,"SCENARIO_MEANING_ASSESSMENT_V4_7")).isFalse();
+        assertThat(ScenarioAssessment.policyFor(ScenarioAssessment.PARTS_V4_7_PROMPT_HASH)).isEqualTo(ScenarioAssessment.PARTS_POLICY);
+    }
     @Test void immutableMeaningReleasesAcceptOnlyTheirExactHashVersionPair() {
         var hashes=List.of(ScenarioAssessment.LEGACY_PROMPT_HASH,ScenarioAssessment.WIRE_V2_PROMPT_HASH,ScenarioAssessment.PROMPT_HASH,ScenarioAssessment.PARTS_PROMPT_HASH,ScenarioAssessment.PARTS_V4_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_3_PROMPT_HASH,ScenarioAssessment.PARTS_V4_4_PROMPT_HASH,ScenarioAssessment.V3_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_5_PROMPT_HASH,ScenarioAssessment.V3_2_PROMPT_HASH,ScenarioAssessment.PARTS_V4_6_PROMPT_HASH);
         var versions=List.of("SCENARIO_MEANING_ASSESSMENT_V1","SCENARIO_MEANING_ASSESSMENT_V2","SCENARIO_MEANING_ASSESSMENT_V3","SCENARIO_MEANING_ASSESSMENT_V4","SCENARIO_MEANING_ASSESSMENT_V4_1","SCENARIO_MEANING_ASSESSMENT_V4_3","SCENARIO_MEANING_ASSESSMENT_V4_4","SCENARIO_MEANING_ASSESSMENT_V3_1","SCENARIO_MEANING_ASSESSMENT_V4_5","SCENARIO_MEANING_ASSESSMENT_V3_2","SCENARIO_MEANING_ASSESSMENT_V4_6");
