@@ -71,16 +71,43 @@ class AiUsageBudgetIntegrationTest {
                     INSERT INTO scenario_operations(id,user_id,request_key,scope,input_hash,kind,resource_id,payload_json,deadline)
                     VALUES (?,?,?,?,?,'GENERATE',?,'{}',CURRENT_TIMESTAMP)
                     """,operation,actor,UUID.randomUUID().toString(),"qa-budget-test","0".repeat(64),UUID.randomUUID().toString());
-            budget.reserveScenario(actor,operation,5,false,false);
-            budget.reserveScenario(actor,operation,5,false,false);
+            budget.reserveScenario(actor,operation,11,false,false);
+            budget.reserveScenario(actor,operation,11,false,false);
         });
-        assertThat(db.queryForObject("SELECT calls_reserved FROM scenario_operation_budget WHERE operation_id=?",Integer.class,operation)).isEqualTo(5);
+        assertThat(db.queryForObject("SELECT calls_reserved FROM scenario_operation_budget WHERE operation_id=?",Integer.class,operation)).isEqualTo(11);
         assertThat(db.queryForObject("SELECT calls FROM ai_daily_budget WHERE scope='GLOBAL'",Integer.class)).isEqualTo(1);
         assertThatThrownBy(()->budget.reserve(actor+1,false)).isInstanceOf(AiUsageBudget.Rejected.class);
-        assertThatThrownBy(()->budget.reserveScenario(actor,UUID.randomUUID().toString(),8,false,false)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->budget.reserveScenario(actor,UUID.randomUUID().toString(),12,false,false)).isInstanceOf(IllegalArgumentException.class);
         budget.setEnabled(actor,false);
         assertThatThrownBy(()->new TransactionTemplate(manager).executeWithoutResult(status ->
-                budget.reserveScenario(actor,UUID.randomUUID().toString(),5,false,false))).isInstanceOf(AiUsageBudget.Rejected.class);
+                budget.reserveScenario(actor,UUID.randomUUID().toString(),11,false,false))).isInstanceOf(AiUsageBudget.Rejected.class);
+    }
+
+    @Test void elevenCallReservationIsIdempotentAndRejectedAdmissionRollsBackDailyCounters() {
+        var budget=budget(1000,1000,11);
+        String operation=UUID.randomUUID().toString();
+        new TransactionTemplate(manager).executeWithoutResult(status -> {
+            db.update("""
+                    INSERT INTO scenario_operations(id,user_id,request_key,scope,input_hash,kind,resource_id,payload_json,deadline)
+                    VALUES (?,?,?,?,?,'GENERATE',?,'{}',CURRENT_TIMESTAMP)
+                    """,operation,actor,UUID.randomUUID().toString(),"budget-test","0".repeat(64),UUID.randomUUID().toString());
+            budget.reserveScenario(actor,operation,11,false,false);
+            budget.reserveScenario(actor,operation,11,false,false);
+        });
+        assertThat(db.queryForObject("SELECT calls_reserved FROM scenario_operation_budget WHERE operation_id=?",Integer.class,operation)).isEqualTo(11);
+        assertThat(db.queryForObject("SELECT calls FROM ai_daily_budget WHERE scope='GLOBAL'",Integer.class)).isEqualTo(11);
+        assertThat(db.queryForObject("SELECT reserved_microusd FROM ai_daily_budget WHERE scope='GLOBAL'",Long.class)).isEqualTo(110);
+
+        String rejected=UUID.randomUUID().toString();
+        assertThatThrownBy(() -> new TransactionTemplate(manager).executeWithoutResult(status -> {
+            db.update("""
+                    INSERT INTO scenario_operations(id,user_id,request_key,scope,input_hash,kind,resource_id,payload_json,deadline)
+                    VALUES (?,?,?,?,?,'GENERATE',?,'{}',CURRENT_TIMESTAMP)
+                    """,rejected,actor,UUID.randomUUID().toString(),"budget-test","1".repeat(64),UUID.randomUUID().toString());
+            budget.reserveScenario(actor,rejected,11,false,false);
+        })).isInstanceOf(AiUsageBudget.Rejected.class);
+        assertThat(db.queryForObject("SELECT calls FROM ai_daily_budget WHERE scope='GLOBAL'",Integer.class)).isEqualTo(11);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_operation_budget WHERE operation_id=?",Integer.class,rejected)).isZero();
     }
 
     @Test void localQaHasPaidPracticeAndAiAccessWithoutBecomingAdministrator() {

@@ -210,6 +210,8 @@ class ScenarioEngineIntegrationTest {
     void requiredPartLessonKeepsItsPolicyAndPinThroughChecksCompletionAndAdmissionChanges(String pin) {
         when(release.assessmentPromptHash()).thenReturn(pin);
         var session=activeMeaning(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        assertThat(db.queryForObject("SELECT b.calls_reserved FROM scenario_operation_budget b JOIN scenario_operations o ON o.id=b.operation_id WHERE o.kind='GENERATE' AND o.resource_id=?",Integer.class,sid))
+                .isEqualTo(ScenarioAssessment.PARTS_V4_7_PROMPT_HASH.equals(pin) ? 11 : 9);
         assertThat(session.path("activities").get(0).path("assessment").path("policyVersion").asText()).isEqualTo(ScenarioAssessment.PARTS_POLICY);
         session=engine.assessment(user,sid,aid,id(),new ScenarioEngine.AssessmentRequest(session.path("version").asLong(),"SKIP_RECAP","",List.of()));
         assertThat(session.toString()).doesNotContain("requiredParts","answerVi","quoteEn");

@@ -89,7 +89,11 @@ def project(purpose, data):
 def _index(rows, key, expected):
     indexed = {key(row): row for row in rows}
     if len(indexed) != len(rows) or indexed.keys() != expected:
-        raise ValueError("audit ID coverage mismatch")
+        keys = [key(row) for row in rows]
+        raise ValueError("audit ID coverage mismatch: "
+            f"missing={sorted(set(expected) - indexed.keys())[:6]}; "
+            f"unexpected={sorted(indexed.keys() - set(expected))[:6]}; "
+            f"duplicates={sorted({k for k in keys if keys.count(k) > 1})[:6]}")
     return indexed
 
 
@@ -160,8 +164,8 @@ def to_review(comparison, meanings, questions, artifact, dialogue):
                 lower(out, "distinctMeaning", f"AUDIT_DUPLICATE:{key[0]}/{key[1]}/{cid}")
     for key, row in qchecks.items():
         target, out = prompts[key], qrows[key]
-        expected = {(mid, p.id) for mid in target.meaningIds for p in targets[(key[0], mid)].requiredParts}
-        parts = _index(row.partChecks, lambda p: (p.meaningId, p.partId), expected)
+        expected = {(*key, mid, p.id) for mid in target.meaningIds for p in targets[(key[0], mid)].requiredParts}
+        parts = _index(row.partChecks, lambda p: (*key, p.meaningId, p.partId), expected)
         out.requestedMeaningEn = requests[key].requestedEn
         for part in parts.values():
             label = f"{key[0]}/{key[1]}/{part.meaningId}/{part.partId}"

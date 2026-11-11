@@ -71,7 +71,7 @@ public class AiUsageBudget {
     /** An operation and its full bounded call envelope commit atomically with this admission. */
     @org.springframework.transaction.annotation.Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void reserveScenario(long userId, String operationId, int calls, boolean tts, boolean local) {
-        if (calls < 1 || calls > 7 || tts && calls != 1) throw new IllegalArgumentException("Invalid scenario envelope");
+        if (calls < 1 || calls > 11 || tts && calls != 1) throw new IllegalArgumentException("Invalid scenario envelope");
         if (db.queryForObject("SELECT COUNT(*) FROM scenario_operation_budget WHERE operation_id=?", Integer.class, operationId) > 0) return;
         if (premium != null) premium.takeAi(userId, tts);
         Boolean accepting = db.queryForObject("SELECT enabled FROM ai_budget_control WHERE id=1 FOR UPDATE", Boolean.class);

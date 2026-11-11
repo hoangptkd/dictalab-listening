@@ -10,6 +10,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import Field, model_validator
+from typing_extensions import TypeAliasType
 
 from . import coach, review, tts, conversation_demo, scenario_workflow
 from . import scenario_assessment
@@ -18,7 +19,8 @@ from .config import CLOUD_PROVIDERS
 
 QUEUE = "dictalab.ai.platform.v1"
 DLQ = QUEUE + ".dead"
-ScenarioPayload = Annotated[scenario_workflow.ScenarioInput | scenario_assessment.ScenarioAssessmentInput, Field(discriminator="contractVersion")]
+# A named alias gives OpenAPI's outer discriminator a reference instead of an inline mapping.
+ScenarioPayload = TypeAliasType("ScenarioPayload", Annotated[scenario_workflow.ScenarioInput | scenario_assessment.ScenarioAssessmentInput, Field(discriminator="contractVersion")])
 Payload = Annotated[coach.CoachInput | review.ReviewInput | tts.TtsInput | tts.ScenarioTtsInput | conversation_demo.ConversationDemoInput | ScenarioPayload, Field(discriminator="kind")]
 
 

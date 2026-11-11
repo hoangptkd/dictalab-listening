@@ -9,9 +9,32 @@ from fastapi.testclient import TestClient
 
 def test_schema_and_health_contract():
     assert SCHEMA["required"][:2] == ["slots", "utteranceEn"]
-    assert set(app.openapi()["paths"]) >= {"/health/live", "/health/ready", "/v1/conversation/tasks",
+    schema = app.openapi()
+    assert set(schema["paths"]) >= {"/health/live", "/health/ready", "/v1/conversation/tasks",
                                            "/v1/tts/jobs", "/v1/coach/reports", "/v1/review/tasks"}
+    payload_schema = schema["components"]["schemas"]["JobRequest"]["properties"]["payload"]
+    scenario_schema = schema["components"]["schemas"]["ScenarioPayload"]
+    assert payload_schema["discriminator"]["mapping"]["scenario"] == "#/components/schemas/ScenarioPayload"
+    assert scenario_schema["discriminator"]["mapping"] == {
+        "scenario-job.v1": "#/components/schemas/ScenarioInput",
+        "scenario-job.v2": "#/components/schemas/ScenarioInput",
+        "scenario-job.v3": "#/components/schemas/ScenarioAssessmentInput",
+    }
+    assert scenario_schema["oneOf"] == [
+        {"$ref": "#/components/schemas/ScenarioInput"},
+        {"$ref": "#/components/schemas/ScenarioAssessmentInput"},
+    ]
     assert Settings().model == "qwen3.5:9b"
+
+
+def test_job_payload_union_still_validates_both_scenario_contracts():
+    from test_scenario_assessment import payload as assessment_payload
+    from test_scenario_workflow import payload as workflow_payload, request
+    from app.scenario_assessment import ScenarioAssessmentInput
+    from app.scenario_workflow import ScenarioInput
+
+    assert isinstance(request(workflow_payload()).payload, ScenarioInput)
+    assert isinstance(request(assessment_payload()).payload, ScenarioAssessmentInput)
 
 
 def test_live_and_invalid_request_contract():

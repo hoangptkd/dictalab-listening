@@ -8,6 +8,20 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
 class ScenarioHarnessTest {
+    @Test void callEnvelopeCoversPinnedGenerationContractsWithoutChangingLegacyDefault() {
+        assertThat(ScenarioOperations.callEnvelope("GENERATE", ScenarioData.object()
+                .put("promptHash", ScenarioAssessment.PARTS_V4_7_PROMPT_HASH))).isEqualTo(11);
+        assertThat(ScenarioOperations.callEnvelope("GENERATE", ScenarioData.object()
+                .put("contractVersion", "scenario-job.v3"))).isEqualTo(9);
+        assertThat(ScenarioOperations.callEnvelope("GENERATE", ScenarioData.object()
+                .put("promptHash", "a98960f21fabe1f652f68fac72794c41e5c18870a400059cef4b03f50a9a838b"))).isEqualTo(9);
+        assertThat(ScenarioOperations.callEnvelope("GENERATE", ScenarioData.object()
+                .put("promptHash", "df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303"))).isEqualTo(9);
+        assertThat(ScenarioOperations.callEnvelope("GENERATE", ScenarioData.object())).isEqualTo(5);
+        assertThat(ScenarioOperations.callEnvelope("EXTRACT", ScenarioData.object()
+                .put("promptHash", ScenarioAssessment.PARTS_V4_7_PROMPT_HASH))).isEqualTo(1);
+    }
+
     static ObjectNode auditTranscript(int extra,String... stages) {
         var result=transcript(extra,stages).put("promptHash",ScenarioAssessment.PARTS_V4_7_PROMPT_HASH).put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_7");
         ((ObjectNode)result.path("qualityHarness")).put("policyVersion","scenario-meaning-harness.v2").put("policyHash",ScenarioAssessment.AUDIT_HARNESS_POLICY_HASH);

@@ -400,3 +400,120 @@ older nine-call harness). No budget admission or database migration was changed 
 verify that accounting in a separately authorized task before admitting V4.7 product jobs. The
 default V3 pin remains unchanged. Two frozen audit measurements do not establish general accuracy,
 full generation/learning-flow quality, mixed-language grading quality or production readiness.
+
+## 9. Follow-up fixes and measured limits — 2026-11-11
+
+Scope: repair the remaining technical defects and investigate the five semantic defects.
+Implementation/review stayed with the parent; tests and bounded provider runs were delegated to
+GPT-6 Luna High. Default V3 and historical prompt hashes remain unchanged.
+
+### Technical changes retained
+
+- `jobs.py`: make the nested scenario union a named `typing_extensions.TypeAliasType`, preserving
+  the declared Python 3.11 minimum with the existing Pydantic dependency. OpenAPI can reference
+  that schema from the outer `kind` discriminator instead of embedding a schema object where a
+  reference string is required. Request shapes and strict input validation are unchanged.
+- `ScenarioOperations.callEnvelope`: reserve eleven calls for V4.7, nine for meaning-assessment
+  and personalized V8/V9 harness jobs, five for legacy generation and one for other operations.
+  Existing reservations are not rewritten; idempotent requests retain their original reservation.
+- `AiUsageBudget`: accept bounded envelopes up to eleven. Daily limits, Premium access, local QA
+  scope, emergency stop and transaction rollback remain effective.
+- V52 expands the database check to 1–11 without changing V49 or historical rows. It finds the
+  old range check in the current schema and excludes `IS NOT NULL` checks, which PostgreSQL also
+  exposes through `information_schema.check_constraints`. The wider check is installed before
+  removing the old range check. `NOT NULL`, foreign keys and other constraints stay intact.
+- A new private measurement helper records HTTP status and raw dict/list/text responses before
+  extracting usage. The original helper and all original receipts are retained. Offline capture
+  tests cover 503 JSON lists, 503 HTML and a successful JSON object. Provider errors now remain
+  `ProviderHttpError(503)` instead of being masked by the diagnostic hook's `AttributeError`.
+- Audit coverage errors now identify the missing, unexpected and duplicate IDs (bounded to six
+  entries per category), including activity/question context for question-part pairs, so the
+  existing format retry receives actionable contract feedback.
+  Coverage requirements and verdict derivation are unchanged.
+
+Migration release decision: **safe with conditions**, not a production deployment approval.
+PostgreSQL runs V52 transactionally with a five-second lock timeout and a thirty-second statement
+timeout. Adding the check validates existing rows and takes a table lock; this is not lock-free.
+Production row count, traffic and overlapping versions were not inspected. Deploy the migration
+before code admits eleven-call jobs; abort on timeout and rerun through Flyway after resolving the
+lock. An old application can still read existing/new envelope rows; rollback must not restore a
+1–7 constraint after eleven-call reservations exist. H2 is covered as a test database only.
+
+### Semantic measurements, with explicit costs and failures
+
+All inputs reuse the two frozen maps. No new dialogue or training dataset was generated. The
+reviewer policy/gates were not weakened. Experiments have separate exclusive receipts, immutable
+input/output/projection hashes, bounded POST counts, and no automatic retry or model fallback.
+
+| Experiment | New HTTP POSTs | Result |
+|---|---:|---|
+| V4.7 / Gemini 3.5 Flash Lite, reuse three valid ledgers | 3 | Negative comparison 503; positive incorrectly flagged two duplicate meanings |
+| Experimental V4.8 / Gemini 3.5 Flash Lite | 3 | Negative comparison missed all five expected flags; positive meaning audit 503 |
+| First Gemini 3.1 setup check | 0 | In-memory model override disagreed with registry default; request hook stopped before transport |
+| Experimental V4.8 / Gemini 3.1 Flash Lite | 6 | Positive normalized PASS; negative comparison returned explicit 503 |
+| Separate negative comparison after explicit 503, reuse same-model ledgers | 1 | HTTP 200, but audit contract invalid; no accepted semantic verdict |
+
+Total: **13 actual POSTs**, 53,011 reported tokens from successful HTTP responses; monetary cost
+was not available. Result rows read from cache are not calls. The zero-POST setup failure changed
+no registry entry: the corrected diagnostic selected 3.1 only in its in-memory settings snapshot.
+The explicit 503 body identifies model high demand (`UNAVAILABLE`), not account quota exhaustion.
+Production already supports opt-in fallback for explicit Gemini 500/503 rejections; the current
+configured fallback list is empty. No persistent model/fallback configuration was changed here.
+
+The positive V4.7 failure exposed a decomposition problem: two benefits or alternative options
+were combined into one claim, so distinct correct parts mapped to that claim and were flagged as
+duplicates. Experimental V4.8 added a general instruction to split independently recallable
+outcomes/options while preserving shared actor/action context. Its frozen prompt hash was
+`7844d3e53e14eb1e210195db48648ae4dfc9a5cd8d0bb64c9bdbd10711e47122`.
+That edit did not demonstrate sufficient improvement: 3.5 still marked all five expected defect
+flags as passing. One positive 3.1 verdict is insufficient without a valid negative verdict.
+The final 3.1 negative response omitted `a1/q1 -> m1/p1` and `a2/q3 -> m2/p1` from question-part
+checks. The backend correctly rejected that incomplete comparison. Improving the error details
+for a future format retry is a technical fix, not evidence that this failed response now passes.
+
+Therefore the new V4.8 runtime registration and source were removed before delivery. The exact
+candidate prompt and runtime patch remain in private `independent-audit-v4_8-20261111/` alongside
+the raw evidence. They are recoverable research artifacts, not an activated or shipped release.
+This avoids accumulating an unproven prompt change in the application.
+
+### Acceptance status
+
+The accounting implementation blocker is repaired in source and migration tests; the migration
+has not been applied to the user's local product database or production. OpenAPI and diagnostic
+capture are fixed. The five semantic defects are **not proven resolved**. V4.7 stays inactive,
+and V3 stays the product default. Further semantic work needs a reviewer-capability/design change
+validated against both failing and correct examples, not more assertions that offline tests prove
+language understanding. No additional paid calls or blind retries follow this bounded investigation.
+
+References for the implementation decisions:
+[Pydantic named type aliases](https://pydantic.dev/docs/validation/latest/concepts/types/#named-type-aliases),
+[PostgreSQL 17 ALTER TABLE](https://www.postgresql.org/docs/17/sql-altertable.html).
+
+### Final regression verification — 2026-11-12
+
+Tests were delegated to GPT-6 Luna High; parent reviewed the production diff and delivery.
+No additional provider calls were made in this final verification.
+
+- Python: **257 passed**, 434 dependency/deprecation warnings, zero failures. From
+  `services/ai-generation`:
+  `python -m pytest tests/test_contract.py tests/test_jobs.py tests/test_scenario_assessment_audit.py tests/test_scenario_assessment.py tests/test_scenario_assessment_parts.py tests/test_scenario_harness.py tests/test_scenario_harness_v9.py tests/test_gemini_model_fallback.py tests/test_model_gateway.py`.
+  This includes OpenAPI construction, both scenario request contracts, exact missing question-part
+  feedback, frozen historical prompt hashes, fail-closed validation and provider fallback behavior.
+- Java: **127 passed**, zero failures/errors, one PostgreSQL test skipped in this final run:
+  `mvn '-Dtest=ScenarioEngineIntegrationTest,ScenarioHarnessTest,ScenarioMigrationIntegrationTest,AiUsageBudgetIntegrationTest' test`
+  (106 passed, one skipped), followed by
+  `mvn '-Dtest=ScenarioAssessmentTest,ScenarioContentTest' test` (21 passed).
+  H2 applied/validated all 52 migrations. Tests verify eleven-call admission, idempotency,
+  rollback of rejected admissions, emergency stop, QA scope and pinned lesson persistence.
+- PostgreSQL migration evidence is the earlier **one passing test on 2026-11-11 at 18:24 UTC+7**.
+  It covers upgrades from 47/49/50/51 and a fresh schema, retains an existing seven-call row,
+  accepts eleven and rejects zero/twelve/NULL. Migration and test source were unchanged after
+  that passing run. Docker was unavailable during final verification; no PostgreSQL rerun or
+  product database migration is claimed.
+- Parent checks passed: Python compilation, Python 3.11 syntax parsing for `jobs.py`, UTF-8
+  validation of all twelve task files, and `git diff --check`. Runtime assessment source,
+  historical pins and the default V3 remain unchanged from the delivered baseline.
+
+These checks establish technical contracts and accounting behavior. They do **not** resolve the
+five semantic quality failures or justify activating V4.7. Full browser/audio flow and production
+deployment were not exercised in this follow-up.

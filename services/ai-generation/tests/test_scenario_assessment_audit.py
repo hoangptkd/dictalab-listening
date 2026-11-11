@@ -165,6 +165,18 @@ def test_one_format_retry_repeats_only_failed_stage_and_keeps_exact_feedback(ord
     assert feedback["schemaIssues"] and result["qualityHarness"]["extraCalls"] == 1
 
 
+def test_missing_question_part_feedback_identifies_the_specific_required_pair():
+    base = parts_fixtures()
+    audits = list(ledgers(base))
+    failed = copy.deepcopy(audits[2])
+    failed["questionChecks"][0]["partChecks"][0]["partId"] = "p2"
+    responses = [*base[:2], *audits[:2], failed, *audits[2:], *base[3:]]
+    result, calls = execute(candidate(), responses)
+    assert result["task"]["qualityPassed"]
+    feedback = json.loads(calls[5][1][1]["content"])["formatFeedback"]["schemaIssues"]
+    assert any("missing=[('a1', 'q1', 'm1', 'p1')]" in issue["type"] for issue in feedback)
+
+
 def test_second_bad_stage_fails_contract_instead_of_advisory_or_partial_pass():
     base = parts_fixtures()
     with pytest.raises(w.QualityRejected, match="independent audit contract"):
