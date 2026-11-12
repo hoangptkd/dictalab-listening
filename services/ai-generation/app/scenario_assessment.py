@@ -27,6 +27,7 @@ from . import scenario_prompts_meaning_v3_2 as projected_grader_candidate
 from . import scenario_prompts_meaning_v4_6 as projected_parts_candidate
 from . import scenario_prompts_meaning_v4_7 as independent_audit_candidate
 from . import scenario_prompts_meaning_v4_11 as evidence_audit_candidate
+from . import scenario_prompts_meaning_v4_12 as direct_audit_candidate
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .observability import trace_gate
@@ -304,18 +305,18 @@ def prompt_hash(selected=release):
     if getattr(selected, "AUDIT_PROTOCOL", None):
         from . import scenario_assessment_audit as audit
         evidenced = getattr(selected, "EVIDENCE_AUDIT", False)
-        audit_models = (audit.MeaningAudit, audit.QuestionCoverageAudit, audit.EvidenceQuestionReview) if evidenced else (
-            audit.MeaningAudit, audit.QuestionAudit, audit.AuditedQuestionReview)
+        audit_models = audit.models_for(selected)
         manifest["independentAudit"] = {"protocol": selected.AUDIT_PROTOCOL,
             "projection": "actual-question-answer-parts.v2" if evidenced else audit.PROJECTION_VERSION,
-            "derivation": "frozen-coverage-source-fidelity-parts.v2" if evidenced else audit.DERIVATION_VERSION,
+            "derivation": "frozen-coverage-direct-part-alignment.v3" if getattr(selected, "DIRECT_PART_AUDIT", False) else
+                          "frozen-coverage-source-fidelity-parts.v2" if evidenced else audit.DERIVATION_VERSION,
             "schemas": {m.__name__: m.model_json_schema() for m in audit_models},
             "responseSchemas": {m.__name__: response_schema(m, **wire) for m in audit_models}}
     return hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def selected_release(requested_hash):
-    for selected in (evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
+    for selected in (direct_audit_candidate, evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
         if requested_hash == prompt_hash(selected):
             return selected
     raise ValueError("scenario prompt mismatch")
@@ -346,7 +347,7 @@ def project_input(selected, purpose, data):
                      for question in data["activity"]["questions"] if question["id"] in question_ids]
         return {"activity": {"id": data["activity"]["id"], "assessment": {"meanings": meanings},
                              "questions": questions}, "assessmentSubmission": submission}
-    if purpose == "REVIEW_QUESTIONS" and selected in (projected_parts_candidate, independent_audit_candidate, evidence_audit_candidate):
+    if purpose == "REVIEW_QUESTIONS" and selected in (projected_parts_candidate, independent_audit_candidate, evidence_audit_candidate, direct_audit_candidate):
         questions, targets = [], []
         content = {activity["id"]: activity for activity in data["content"]["activities"]}
         for activity in data["groundedQuestions"]["activities"]:

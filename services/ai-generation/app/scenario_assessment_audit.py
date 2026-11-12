@@ -103,6 +103,57 @@ class EvidenceQuestionReview(a.QuestionReview):
     meaningChecks: list[FidelityMeaningCheck] = Field(min_length=9, max_length=18)
 
 
+class EvidenceFirstCoverageCheck(StrictModel):
+    meaningId: a.MeaningId
+    partId: PartId
+    answerQuotesVi: list[str] = Field(max_length=3)
+    reasonVi: str = Field(min_length=1, max_length=300)
+    requestStatus: Literal["REQUESTED", "GIVEN", "NOT_REQUESTED", "UNCERTAIN"]
+    answerStatus: Literal["COMPLETE", "INCOMPLETE", "CONTRADICTED", "UNCERTAIN"]
+
+
+class EvidenceFirstCoverageRow(QuestionRow):
+    partChecks: list[EvidenceFirstCoverageCheck] = Field(min_length=1, max_length=12)
+
+
+class EvidenceFirstCoverageAudit(StrictModel):
+    questions: list[EvidenceFirstCoverageRow] = Field(min_length=9, max_length=18)
+
+
+class DirectPartCheck(StrictModel):
+    partId: PartId
+    evidence: list[w.Evidence] = Field(max_length=3)
+    reasonVi: str = Field(min_length=1, max_length=300)
+    sourceSupport: Literal["SUPPORTED", "UNSUPPORTED", "UNCERTAIN"]
+    parentSupport: Literal["SUPPORTED", "UNSUPPORTED", "UNCERTAIN"]
+
+
+class DuplicatePartPair(StrictModel):
+    leftPartId: PartId
+    rightPartId: PartId
+    sharedMeaningEn: str = Field(min_length=1, max_length=300)
+
+
+class DirectMeaningCheck(a.MeaningCheck):
+    claimChecks: list[FidelityClaimCheck] = Field(min_length=1, max_length=6)
+    partChecks: list[DirectPartCheck] = Field(min_length=1, max_length=4)
+    uncoveredMeaningEn: list[str] = Field(max_length=6)
+    bundledPartIds: list[PartId] = Field(max_length=4)
+    duplicatePartPairs: list[DuplicatePartPair] = Field(max_length=6)
+
+
+class DirectQuestionReview(a.QuestionReview):
+    meaningChecks: list[DirectMeaningCheck] = Field(min_length=9, max_length=18)
+
+
+def models_for(selected):
+    if getattr(selected, "DIRECT_PART_AUDIT", False):
+        return MeaningAudit, EvidenceFirstCoverageAudit, DirectQuestionReview
+    if getattr(selected, "EVIDENCE_AUDIT", False):
+        return MeaningAudit, QuestionCoverageAudit, EvidenceQuestionReview
+    return MeaningAudit, QuestionAudit, AuditedQuestionReview
+
+
 def project_question_coverage(data):
     questions = []
     for activity in data["groundedQuestions"]["activities"]:
@@ -179,6 +230,76 @@ def to_evidence_review(comparison, meanings, coverage, artifact, dialogue):
         if failures:
             p = failures[0]
             qrows[key].reasonVi = (f"{p.meaningId}/{p.partId} {p.requestStatus}/{p.answerStatus}: " + p.reasonVi)[:300]
+    return normalized
+
+
+def to_direct_review(comparison, meanings, coverage, artifact, dialogue):
+    parents = validate_meanings(meanings, artifact)
+    rows = validate_question_coverage(coverage, artifact)
+    targets = {(act.id, m.id): m for act in artifact.activities for m in act.assessment.meanings}
+    _index(comparison.meaningChecks, lambda r: (r.activityId, r.meaningId), targets.keys())
+    _index(comparison.questionChecks, lambda r: (r.activityId, r.questionId), rows.keys())
+    diagnostics = {"claimChecks", "partChecks", "uncoveredMeaningEn", "bundledPartIds", "duplicatePartPairs"}
+    normalized = a.QuestionReview.model_validate({**comparison.model_dump(),
+        "meaningChecks": [r.model_dump(exclude=diagnostics) for r in comparison.meaningChecks]})
+    mrows = {(r.activityId, r.meaningId): r for r in normalized.meaningChecks}
+    source = {act.id: {s.id: s.textEn for s in act.segments} for act in dialogue.activities}
+
+    def lower(row, flag, detail):
+        setattr(row, flag, False)
+        row.reasonVi = (detail + " | " + row.reasonVi)[:300]
+
+    for row in comparison.meaningChecks:
+        key = (row.activityId, row.meaningId)
+        target, out = targets[key], mrows[key]
+        claims = _index(row.claimChecks, lambda c: c.claimId, {c.id for c in parents[key].claims})
+        parts = _index(row.partChecks, lambda p: p.partId, {p.id for p in target.requiredParts})
+        for check in [*claims.values(), *parts.values()]:
+            quotes = [(e.segmentId, e.quoteEn) for e in check.evidence]
+            if (not check.reasonVi.strip() or len(quotes) != len(set(quotes))
+                    or any(not quote.strip() or sid not in source[key[0]] or quote not in source[key[0]][sid]
+                           for sid, quote in quotes)):
+                raise ValueError("unanchored direct audit evidence or blank reason")
+            if check.sourceSupport == "SUPPORTED" and not quotes:
+                raise ValueError("supported direct audit item lacks evidence")
+            supported = check.sourceSupport == "SUPPORTED"
+            if isinstance(check, FidelityClaimCheck):
+                supported = supported and check.certaintyPreserved and check.speechActPreserved
+            if not supported:
+                lower(out, "meaningSupported", "Ý không được nguồn hỗ trợ đầy đủ.")
+                lower(out, "groundingSupported", "Cần đối chiếu lại bằng chứng nguồn.")
+        for part in parts.values():
+            if part.parentSupport != "SUPPORTED":
+                lower(out, "groundingSupported", f"Phần {part.partId} không khớp ý gốc.")
+        if (len(set(row.bundledPartIds)) != len(row.bundledPartIds)
+                or not set(row.bundledPartIds) <= parts.keys()
+                or any(not text.strip() for text in row.uncoveredMeaningEn)):
+            raise ValueError("invalid direct part diagnostics")
+        pairs = set()
+        for pair in row.duplicatePartPairs:
+            ids = frozenset((pair.leftPartId, pair.rightPartId))
+            if len(ids) != 2 or not ids <= parts.keys() or ids in pairs or not pair.sharedMeaningEn.strip():
+                raise ValueError("invalid duplicate part pair")
+            pairs.add(ids)
+        # Exact duplicates are checkable without assuming the blind ledger's granularity.
+        texts = [" ".join(p.meaningEn.casefold().split()) for p in target.requiredParts]
+        if pairs or len(set(texts)) != len(texts):
+            lower(out, "distinctMeaning", "Có phần chấm lặp cùng một thông tin.")
+        if row.bundledPartIds:
+            lower(out, "distinctMeaning", "Gộp ý độc lập: " + ",".join(row.bundledPartIds))
+        if row.uncoveredMeaningEn:
+            lower(out, "groundingSupported", "Thiếu ý: " + "; ".join(row.uncoveredMeaningEn))
+    for out in normalized.questionChecks:
+        row = rows[(out.activityId, out.questionId)]
+        out.requestedMeaningEn = row.requestedEn
+        failures = [p for p in row.partChecks if p.requestStatus != "REQUESTED" or p.answerStatus != "COMPLETE"]
+        if failures:
+            p = failures[0]
+            lower(out, "questionMatchesFact", f"{p.meaningId}/{p.partId} {p.requestStatus}/{p.answerStatus}: {p.reasonVi}")
+        if any(p.answerStatus == "CONTRADICTED" for p in row.partChecks):
+            lower(out, "answerSupported", "Đáp án mâu thuẫn với phần cần trả lời.")
+    normalized.valid = comparison.valid and not normalized.issues and all(value is not False
+        for row in [*normalized.meaningChecks, *normalized.questionChecks] for value in row.model_dump().values())
     return normalized
 
 

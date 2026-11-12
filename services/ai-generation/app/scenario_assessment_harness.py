@@ -151,9 +151,9 @@ async def generate(dialogue, payload, call, deadline):
             data = review_data(stage, artifact)
             ledgers = {}
             verdict = None
-            stages = (("AUDIT_MEANINGS", audit.MeaningAudit),
-                      ("AUDIT_QUESTIONS", audit.QuestionCoverageAudit if evidenced else audit.QuestionAudit),
-                      ("REVIEW_QUESTIONS", audit.EvidenceQuestionReview if evidenced else audit.AuditedQuestionReview))
+            meaning_model, question_model, review_model = audit.models_for(selected)
+            stages = (("AUDIT_MEANINGS", meaning_model), ("AUDIT_QUESTIONS", question_model),
+                      ("REVIEW_QUESTIONS", review_model))
             for purpose, model in stages:
                 stage_data = {**data, **ledgers}
                 if purpose == "REVIEW_QUESTIONS" and repair_context is not None:
@@ -169,9 +169,10 @@ async def generate(dialogue, payload, call, deadline):
                             (audit.validate_question_coverage if evidenced else audit.validate_questions)(raw, artifact)
                             ledgers["questionAudit"] = raw.model_dump()
                         else:
-                            question_model = audit.QuestionCoverageAudit if evidenced else audit.QuestionAudit
-                            verdict = (audit.to_evidence_review if evidenced else audit.to_review)(raw,
-                                audit.MeaningAudit.model_validate(ledgers["meaningAudit"]),
+                            normalize = audit.to_direct_review if getattr(selected, "DIRECT_PART_AUDIT", False) else (
+                                audit.to_evidence_review if evidenced else audit.to_review)
+                            verdict = normalize(raw,
+                                meaning_model.model_validate(ledgers["meaningAudit"]),
                                 question_model.model_validate(ledgers["questionAudit"]), artifact, dialogue)
                         state.artifacts[purpose + ":" + h.digest(artifact)] = h.digest(raw)
                         status, findings = ("PASS", []) if purpose != "REVIEW_QUESTIONS" else review_status(verdict, artifact, stage)

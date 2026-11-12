@@ -122,7 +122,8 @@ class ScenarioEngineIntegrationTest {
                 if (ScenarioAssessment.PARTS_V4_6_PROMPT_HASH.equals(input.path("promptHash").asText())) result.put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_6");
                 boolean independentAudit=ScenarioAssessment.independentAudit(input.path("promptHash").asText());
                 if (independentAudit) result.put("promptVersion",ScenarioAssessment.PARTS_V4_11_PROMPT_HASH.equals(input.path("promptHash").asText())
-                        ? "SCENARIO_MEANING_ASSESSMENT_V4_11" : "SCENARIO_MEANING_ASSESSMENT_V4_7");
+                        ? "SCENARIO_MEANING_ASSESSMENT_V4_11" : ScenarioAssessment.PARTS_V4_12_PROMPT_HASH.equals(input.path("promptHash").asText())
+                        ? "SCENARIO_MEANING_ASSESSMENT_V4_12" : "SCENARIO_MEANING_ASSESSMENT_V4_7");
                 if (phase.equals("GENERATE")) {
                     result.set("task",(parts ? ScenarioAssessmentTest.partsFixture() : ScenarioAssessmentTest.fixture()).path("content"));
                     result.putObject("qualityHarness").put("extraCalls",0).put("policyVersion","scenario-meaning-harness.v1").put("policyHash","56d0d6d5e826e1b46f20b5ab4a3868dada9537cca996cb35999d3886ee3d6fe2");
@@ -207,7 +208,7 @@ class ScenarioEngineIntegrationTest {
         meaningGradeStatus="CAPTURED"; dispatch(engine.assessment(user,other,a,id(),new ScenarioEngine.AssessmentRequest(another.path("version").asLong(),"RECAP","nine, six pounds, tomorrow",List.of())));
         another=engine.session(user,other); assertThat(another.path("activities").get(0).path("assessment").path("canComplete").asBoolean()).isTrue(); assertThat(another.path("activities").get(0).path("questions")).isEmpty();
     }
-    @ParameterizedTest @ValueSource(strings={ScenarioAssessment.PARTS_PROMPT_HASH,ScenarioAssessment.PARTS_V4_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_3_PROMPT_HASH,ScenarioAssessment.PARTS_V4_4_PROMPT_HASH,ScenarioAssessment.PARTS_V4_6_PROMPT_HASH,ScenarioAssessment.PARTS_V4_7_PROMPT_HASH,ScenarioAssessment.PARTS_V4_11_PROMPT_HASH})
+    @ParameterizedTest @ValueSource(strings={ScenarioAssessment.PARTS_PROMPT_HASH,ScenarioAssessment.PARTS_V4_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_3_PROMPT_HASH,ScenarioAssessment.PARTS_V4_4_PROMPT_HASH,ScenarioAssessment.PARTS_V4_6_PROMPT_HASH,ScenarioAssessment.PARTS_V4_7_PROMPT_HASH,ScenarioAssessment.PARTS_V4_11_PROMPT_HASH,ScenarioAssessment.PARTS_V4_12_PROMPT_HASH})
     void requiredPartLessonKeepsItsPolicyAndPinThroughChecksCompletionAndAdmissionChanges(String pin) {
         when(release.assessmentPromptHash()).thenReturn(pin);
         var session=activeMeaning(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
