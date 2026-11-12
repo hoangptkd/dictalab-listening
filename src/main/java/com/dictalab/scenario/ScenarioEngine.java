@@ -25,7 +25,7 @@ public class ScenarioEngine {
     private final AiPlatformClient ai;
     private final MediaStorageService media;
     private final S3MediaLifecycle lifecycle;
-    private final boolean local;
+    private final boolean usageLimitsEnabled;
     private final ScenarioPersonalization personalization;
     private final ScenarioEngineProperties config;
 
@@ -34,7 +34,8 @@ public class ScenarioEngine {
                           S3MediaLifecycle lifecycle, Environment environment, ScenarioPersonalization personalization, ScenarioEngineProperties config) {
         this.data=data; this.operations=operations; this.release=release;
         this.ai=ai; this.media=media; this.lifecycle=lifecycle;
-        this.local=environment.acceptsProfiles(Profiles.of("local"));
+        this.usageLimitsEnabled=!environment.acceptsProfiles(Profiles.of("local"))
+                && environment.getProperty("dictalab.operational-limits-enabled",Boolean.class,false);
         this.personalization=personalization;
         this.config=config;
     }
@@ -117,11 +118,11 @@ public class ScenarioEngine {
             require(program.definitionHash().equals(draft.get("program_hash")));
             if (data.db.queryForObject("SELECT COUNT(*) FROM scenario_sessions WHERE draft_id=?",Integer.class,request.draftId())>0)
                 throw new ScenarioFailure(409,"DRAFT_ALREADY_USED","Bản nháp đã có bài học. Hãy mở bài đã tạo.");
-            int count=data.db.queryForObject("""
+            if (usageLimitsEnabled && data.db.queryForObject("""
                     SELECT (SELECT COUNT(*) FROM ai_conversation_sessions WHERE user_id=? AND created_at>?)
                          + (SELECT COUNT(*) FROM scenario_sessions WHERE user_id=? AND created_at>?)
-                    """,Integer.class,user,Timestamp.from(Instant.now().minusSeconds(86400)),user,Timestamp.from(Instant.now().minusSeconds(86400)));
-            if (!local && count>=20) throw new ScenarioFailure(429,"USER_QUOTA_EXCEEDED","Đã đạt giới hạn 20 bài trong 24 giờ.");
+                    """,Integer.class,user,Timestamp.from(Instant.now().minusSeconds(86400)),user,Timestamp.from(Instant.now().minusSeconds(86400)))>=20)
+                throw new ScenarioFailure(429,"USER_QUOTA_EXCEEDED","Đã đạt giới hạn 20 bài trong 24 giờ.");
             String session=id();
             data.db.update("""
                     INSERT INTO scenario_sessions(id,user_id,draft_id,title_vi,status,parent_session_id,family_id)

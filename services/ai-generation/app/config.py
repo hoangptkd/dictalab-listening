@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     artifact_version: str = "conversation-cefr-b1-v7-20261021"
     artifact_sha256: str = ""
     max_concurrency: int = 1
-    operational_limits_enabled: bool = Field(default=True,
+    operational_limits_enabled: bool = Field(default=False,
         validation_alias="DICTALAB_OPERATIONAL_LIMITS_ENABLED")
     primary_provider: str = "auto"
     conversation_enabled: bool = True

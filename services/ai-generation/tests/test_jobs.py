@@ -71,6 +71,7 @@ def test_two_workers_claim_only_once(tmp_path):
 
 def test_unrestricted_job_admission_passes_1000_without_dropping_existing_jobs(tmp_path):
     settings, store, req, job_id, _ = setup_job(tmp_path)
+    settings.operational_limits_enabled = True
     with store.connect() as db:
         db.executemany("INSERT INTO jobs(id,scope,idem,fingerprint,status,deadline,updated) VALUES (?,?,?,?,?,?,?)",
             [(f"pending-{i}", req.userScope, f"pending-{i}", "fixture", "PENDING", time.time()+60, time.time())

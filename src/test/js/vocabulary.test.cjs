@@ -21,6 +21,12 @@ function session(answer=null,evaluation=null) {
     return {id:'session',mode:'SRS',status:'ACTIVE',items:[{id:'item',position:0,kind:'WORD_RECALL',prompt:'mượn',answer,evaluation,gradedAt:null,assisted:false,
         feedback:answer===null?{}:{term:'borrow',meaning_vi:'mượn',example_en:'<script>unsafe</script>',example_vi:'ví dụ'}}]};
 }
+test('unrestricted vocabulary home explains unlimited new cards',async()=>{
+    const h=harness(async url=>url.includes('/decks?')?{items:[]}:{due:0,new_cards:12,newLimit:10,usageLimitsEnabled:false});
+    await h.module.show();
+    assert.match(h.root.innerHTML,/không giới hạn mỗi ngày/);
+    assert.doesNotMatch(h.root.innerHTML,/tối đa 10 thẻ mới/);
+});
 test('recall hides answer until attempted and escapes feedback markup',async()=>{
     let state=session(); const h=harness(async url=>url.includes('/decks?')?{items:[]}:state);
     await h.module.show('session'); assert.match(h.root.innerHTML,/mượn/);assert.doesNotMatch(h.root.innerHTML,/borrow/);assert.ok(h.input.focused);

@@ -10,6 +10,8 @@ import static com.dictalab.vocabulary.VocabularyDtos.*;
 @Transactional(readOnly=true)
 public class VocabularyContentService {
     final VocabularyRepository repo;
+    @org.springframework.beans.factory.annotation.Value("${dictalab.operational-limits-enabled:false}")
+    private boolean usageLimitsEnabled = true;
     public VocabularyContentService(VocabularyRepository repo) { this.repo=repo; }
     static int page(int page) { if (page<1 || page>10000) throw invalid("Trang không hợp lệ."); return page; }
     static String ownerClause(Long owner) { return owner==null ? "owner_user_id IS NULL" : "owner_user_id=?"; }
@@ -47,7 +49,7 @@ public class VocabularyContentService {
     public Map<String,Object> createDeck(long user,String key,DeckEdit edit,boolean system) {
         return repo.receipt(user,key,"create-deck/"+system,edit,Map.class,()-> {
             Long owner=system ? null : user;
-            if (repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_decks WHERE "+ownerClause(owner),Integer.class,owner==null ? new Object[]{}:new Object[]{owner})>=200)
+            if (usageLimitsEnabled && repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_decks WHERE "+ownerClause(owner),Integer.class,owner==null ? new Object[]{}:new Object[]{owner})>=200)
                 throw conflict("Đã đạt giới hạn 200 bộ từ.");
             String id=id();
             repo.jdbc().update("INSERT INTO vocab_decks(id,owner_user_id,title,description,level) VALUES (?,?,?,?,?)",id,owner,edit.title().strip(),edit.description().strip(),edit.level());
@@ -84,7 +86,7 @@ public class VocabularyContentService {
         });
     }
     String insertNote(Long owner,String deckId,NoteEdit edit,String source,String sourceId,Long sourceRevision) {
-        if (repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_notes WHERE "+ownerClause(owner),Integer.class,owner==null?new Object[]{}:new Object[]{owner})>=10000)
+        if (usageLimitsEnabled && repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_notes WHERE "+ownerClause(owner),Integer.class,owner==null?new Object[]{}:new Object[]{owner})>=10000)
             throw conflict("Đã đạt giới hạn 10.000 mục từ.");
         String note=id();
         repo.jdbc().update("INSERT INTO vocab_notes(id,owner_user_id,term,meaning_vi,part_of_speech,example_en,example_vi,tags,alternatives_json,source_kind,source_note_id,source_revision) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -100,8 +102,8 @@ public class VocabularyContentService {
     record NewNote(String id,NoteEdit note,String source,String sourceId,Long sourceRevision) {}
     void insertBatch(long user,String deck,List<NewNote> notes) {
         if(notes.isEmpty()) return;
-        int current=repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_notes WHERE owner_user_id=?",Integer.class,user);
-        if(current+notes.size()>10000) throw conflict("Đã đạt giới hạn 10.000 mục từ.");
+        if(usageLimitsEnabled && repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_notes WHERE owner_user_id=?",Integer.class,user)+notes.size()>10000)
+            throw conflict("Đã đạt giới hạn 10.000 mục từ.");
         List<Object[]> values=new ArrayList<>(),links=new ArrayList<>(),cards=new ArrayList<>();
         for(var item:notes) {
             var note=item.note();

@@ -80,7 +80,7 @@ async def test_only_safe_local_failures_with_opt_in_attempt_fallback(tmp_path, s
 
 
 def test_budget_is_durable_atomic_and_reserves_both_calls_before_cloud(tmp_path):
-    settings, store, request, event = setup(tmp_path, demo_daily_budget_microusd=100,
+    settings, store, request, event = setup(tmp_path, operational_limits_enabled=True, demo_daily_budget_microusd=100,
         demo_call_reservation_microusd=50, demo_daily_cloud_calls=2)
     def reserve(index):
         try:
@@ -94,6 +94,17 @@ def test_budget_is_durable_atomic_and_reserves_both_calls_before_cloud(tmp_path)
         assert [tuple(r) for r in db.execute("SELECT reserved,calls FROM demo_budget ORDER BY scope")] == [(100, 2), (100, 2)]
     with pytest.raises(OverflowError):
         store.reserve_demo_cloud("new", request.userScope, Settings(), 2)
+
+
+def test_unlimited_demo_preserves_usage_records_and_never_replays_consumed_reservation(tmp_path):
+    settings, store, request, event = setup(tmp_path, operational_limits_enabled=False,
+        demo_daily_budget_microusd=1, demo_call_reservation_microusd=50, demo_daily_cloud_calls=1)
+    store.reserve_demo_cloud("first",request.userScope,settings,2)
+    store.reserve_demo_cloud("second",request.userScope,settings,2)
+    with pytest.raises(OverflowError,match="already consumed"):
+        store.reserve_demo_cloud("first",request.userScope,settings,2)
+    with store.connect() as db:
+        assert [tuple(r) for r in db.execute("SELECT reserved,calls FROM demo_budget ORDER BY scope")] == [(200,4),(200,4)]
 
 
 async def test_inference_rejects_false_provenance_and_preserves_invalid_raw(tmp_path):

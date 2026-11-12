@@ -48,6 +48,22 @@ class AiUsageBudgetIntegrationTest {
         assertThat(db.queryForObject("SELECT reserved_microusd FROM ai_daily_budget WHERE scope='GLOBAL'",Long.class)).isEqualTo(10);
     }
 
+    @Test void applicationLimitsOffAllowsRegularAccountsWithoutChangingMembershipOrEmergencyStop() {
+        var config=new com.dictalab.config.BillingProperties(true,49000,30,1,1,"https://billing.test","test","test","test");
+        var premium=new PremiumAccessService(db,config,java.time.Clock.systemUTC());
+        org.springframework.test.util.ReflectionTestUtils.setField(premium,"usageLimitsEnabled",false);
+        var budget=budget(1,1,1);
+        org.springframework.test.util.ReflectionTestUtils.setField(budget,"usageLimitsEnabled",false);
+        budget.configurePremium(premium);
+        for(int i=0;i<5;i++) { premium.takePractice(actor); budget.reserve(actor,false); budget.reserve(actor,true); }
+        assertThat(premium.status(actor)).containsEntry("premium",false).containsEntry("administrator",false).containsEntry("usageLimitsEnabled",false);
+        assertThat(premium.aiAllowed(actor)).isTrue();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM ai_daily_budget",Integer.class)).isZero();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM premium_daily_usage WHERE user_id=?",Integer.class,actor)).isZero();
+        budget.setEnabled(actor,false);
+        assertThatThrownBy(()->budget.reserve(actor,false)).isInstanceOf(AiUsageBudget.Rejected.class);
+    }
+
     @Test void concurrentAdmissionsNeverExceedGlobalBudget() throws Exception {
         var budget=budget(50,100,100);
         var start=new CountDownLatch(1);

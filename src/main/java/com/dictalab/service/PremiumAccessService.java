@@ -18,6 +18,8 @@ public class PremiumAccessService {
     private final JdbcTemplate db;
     private final BillingProperties config;
     private final java.time.Clock clock;
+    @org.springframework.beans.factory.annotation.Value("${dictalab.operational-limits-enabled:false}")
+    private boolean usageLimitsEnabled = true;
     private static final ZoneId ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     public PremiumAccessService(JdbcTemplate db, BillingProperties config, java.time.Clock paymentClock) { this.db=db; this.config=config; this.clock=paymentClock; }
@@ -28,6 +30,7 @@ public class PremiumAccessService {
         Instant until = account.isEmpty() ? null : instant(account.get(0).get("premium_until"));
         boolean admin = "ADMIN".equals(db.queryForObject("SELECT role FROM app_users WHERE id=?", String.class, userId));
         result.put("enabled", config.enabled());
+        result.put("usageLimitsEnabled", config.enabled() && usageLimitsEnabled);
         result.put("premium", admin || until != null && until.isAfter(clock.instant()));
         result.put("administrator", admin);
         result.put("premiumUntil", until);
@@ -43,7 +46,7 @@ public class PremiumAccessService {
 
     @Transactional
     public void takePractice(long userId) {
-        if (!config.enabled()) return;
+        if (!config.enabled() || !usageLimitsEnabled) return;
         lockUser(userId);
         if (premium(userId)) return;
         Date today = day();
@@ -55,7 +58,7 @@ public class PremiumAccessService {
     }
 
     public boolean aiAllowed(long userId) {
-        return !config.enabled() || premium(userId);
+        return !config.enabled() || !usageLimitsEnabled || premium(userId);
     }
 
     public void requireAi(long userId) {
@@ -65,7 +68,7 @@ public class PremiumAccessService {
 
     // Called inside the durable AI budget transaction, before provider I/O.
     public void takeAi(long userId, boolean tts) {
-        if (!config.enabled()) return;
+        if (!config.enabled() || !usageLimitsEnabled) return;
         String role = lockUser(userId);
         if ("ADMIN".equals(role)) return;
         requireAi(userId);

@@ -20,6 +20,8 @@ import org.slf4j.LoggerFactory;
 
 @Service
 public class ConversationService {
+    @org.springframework.beans.factory.annotation.Value("${dictalab.operational-limits-enabled:false}")
+    private boolean usageLimitsEnabled = true;
     public static final Map<String, String> SCENARIOS = ConversationContent.labels();
     public static List<Map<String,String>> scenarioSuggestions() {
         return ConversationContent.SCENES.stream().map(s -> Map.of("id",s.id(),"titleVi",s.label(),
@@ -227,7 +229,7 @@ public class ConversationService {
         final String focus = practiceFocus;
         String id = transaction.execute(status -> {
           db.queryForObject("SELECT id FROM app_users WHERE id=? FOR UPDATE", Long.class, userId);
-          if (db.queryForObject("""
+          if (usageLimitsEnabled && db.queryForObject("""
                 SELECT (SELECT COUNT(*) FROM ai_conversation_sessions WHERE user_id=? AND created_at>?)
                      + (SELECT COUNT(*) FROM scenario_sessions WHERE user_id=? AND created_at>?)
                 """, Integer.class, userId, Timestamp.from(Instant.now().minusSeconds(86400)),

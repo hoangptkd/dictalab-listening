@@ -25,6 +25,13 @@ function harness(api, search = '') {
 const plan = {enabled: true, premium: false, priceVnd: 49000, durationDays: 30, freeDailyLessons: 3,
     premiumDailyAi: 10, lessonsUsed: 2, aiUsed: 0};
 
+test('unrestricted usage does not advertise daily caps or sell access already available', async () => {
+    const app=harness(async url => url.endsWith('/status') ? {...plan,usageLimitsEnabled:false} : []);
+    await app.mount();
+    assert.match(app.section.innerHTML,/Học không giới hạn lượt/);
+    assert.doesNotMatch(app.section.innerHTML,/bài mới\/ngày|lượt AI\/ngày|data-buy|Premium đang hoạt động/);
+});
+
 test('return URL cannot grant Premium; the browser checks its own authenticated order', async () => {
     const requests = [];
     const app = harness(async (url, options) => {

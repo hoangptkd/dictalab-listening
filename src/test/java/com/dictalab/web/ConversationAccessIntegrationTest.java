@@ -33,6 +33,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties = {"dictalab.billing.enabled=true", "dictalab.conversation.enabled=true",
+        "dictalab.operational-limits-enabled=true",
         "dictalab.coach.enabled=false", "dictalab.ai.queue.enabled=false",
         "dictalab.billing.public-base-url=https://dictalab.example", "dictalab.billing.client-id=test-client",
         "dictalab.billing.api-key=test-api", "dictalab.billing.checksum-key=test-checksum"})

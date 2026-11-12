@@ -10,6 +10,8 @@ import static com.dictalab.vocabulary.VocabularyRepository.*;
 @Transactional(readOnly=true)
 public class ContextExerciseService {
     private final VocabularyRepository repo;
+    @org.springframework.beans.factory.annotation.Value("${dictalab.operational-limits-enabled:false}")
+    private boolean usageLimitsEnabled = true;
     public ContextExerciseService(VocabularyRepository repo) { this.repo=repo; }
     public Page<Map<String,Object>> list(int page) {
         var rows=repo.rows("SELECT * FROM vocab_context_exercises ORDER BY id LIMIT 21 OFFSET ?",(VocabularyContentService.page(page)-1)*20);
@@ -27,7 +29,7 @@ public class ContextExerciseService {
             }
             String id=exerciseId;
             if(id==null) {
-                if(repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_context_exercises",Integer.class)>=5000) throw conflict("Đã đạt giới hạn kho câu.");
+                if(usageLimitsEnabled && repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_context_exercises",Integer.class)>=5000) throw conflict("Đã đạt giới hạn kho câu.");
                 id=id();
                 repo.jdbc().update("INSERT INTO vocab_context_exercises(id,prompt,translation_vi,level,alternatives_json,published) VALUES (?,?,?,?,?,?)",
                         id,edit.prompt().strip(),edit.translationVi().strip(),edit.level(),repo.encode(edit.alternatives()),edit.published());

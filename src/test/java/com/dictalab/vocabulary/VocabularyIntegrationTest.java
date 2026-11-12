@@ -17,7 +17,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties="dictalab.vocabulary.enabled=true")
+@SpringBootTest(properties={"dictalab.vocabulary.enabled=true","dictalab.operational-limits-enabled=true"})
 @AutoConfigureMockMvc
 class VocabularyIntegrationTest {
     @Autowired VocabularyRepository repo;
@@ -150,6 +150,19 @@ class VocabularyIntegrationTest {
         }
         assertThat(start(user,deck).items()).isEmpty();
         assertThatThrownBy(()->study.answer(user(),key(),session.items().get(0).id(),new Answer("x"),false)).isInstanceOf(com.dictalab.exception.ResourceNotFoundException.class);
+    }
+    @Test void unlimitedStudyContinuesAfterDailyNewAllowanceWithoutChangingCardSchedules() {
+        long user=user(); String deck=deck(user);
+        for(int i=0;i<12;i++) note(user,deck,"word"+i,false);
+        var first=start(user,deck);
+        for(var item:first.items()) correct(user,item,((String)item.prompt()).substring("nghĩa ".length()));
+        assertThat(start(user,deck).items()).isEmpty();
+        org.springframework.test.util.ReflectionTestUtils.setField(study,"usageLimitsEnabled",false);
+        try {
+            assertThat(study.summary(user)).containsEntry("usageLimitsEnabled",false);
+            assertThat(start(user,deck).items()).hasSize(2);
+            assertThat(db.queryForObject("SELECT COUNT(*) FROM vocab_review_logs WHERE user_id=?",Integer.class,user)).isEqualTo(10);
+        } finally { org.springframework.test.util.ReflectionTestUtils.setField(study,"usageLimitsEnabled",true); }
     }
     @Test void importPreviewIsAtomicRepeatableAndPreservesUnicodeAndSenses() {
         long user=user(); String deck=deck(user);

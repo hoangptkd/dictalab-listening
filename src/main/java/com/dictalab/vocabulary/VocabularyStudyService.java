@@ -18,6 +18,8 @@ public class VocabularyStudyService {
     private final AnswerEvaluator evaluator;
     private final ContextExerciseProvider contexts;
     private final Clock clock;
+    @org.springframework.beans.factory.annotation.Value("${dictalab.operational-limits-enabled:false}")
+    private boolean usageLimitsEnabled = true;
     private static final ZoneId ZONE=ZoneId.of("Asia/Bangkok");
     @Autowired public VocabularyStudyService(VocabularyRepository repo,VocabularyProperties config,ReviewScheduler scheduler,
                                             AnswerEvaluator evaluator,ContextExerciseProvider contexts) {
@@ -40,6 +42,7 @@ public class VocabularyStudyService {
                 FROM vocab_cards c JOIN vocab_notes n ON n.id=c.note_id WHERE c.user_id=? AND c.suspended=FALSE AND n.archived=FALSE
                 """,Timestamp.from(now),Timestamp.from(now),user);
         count.put("newLimit",config.newCardsPerDay()); count.put("timezone",ZONE.getId());
+        count.put("usageLimitsEnabled",usageLimitsEnabled);
         count.put("reviewedToday",repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_review_logs WHERE user_id=? AND learning_day=?",Integer.class,user,day()));
         count.put("recent",repo.rows("SELECT grade,grading_source,assisted,schedule_changed,reviewed_at FROM vocab_review_logs WHERE user_id=? ORDER BY reviewed_at DESC,id DESC LIMIT 20",user));
         count.put("activeSessions",repo.rows("SELECT id,mode,expires_at FROM vocab_study_sessions WHERE user_id=? AND status='ACTIVE' AND expires_at>? ORDER BY created_at DESC LIMIT 3",user,Timestamp.from(now)));
@@ -59,8 +62,8 @@ public class VocabularyStudyService {
             List<ContextExerciseProvider.Exercise> exercises=List.of();
             if(request.mode().equals("CONTEXT_TRANSLATION")) exercises=contexts.select(user,request.deckId(),Math.min(10,config.sessionSize()));
             else {
-                int learned=repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_review_logs WHERE user_id=? AND learning_day=? AND was_new=TRUE AND schedule_changed=TRUE",Integer.class,user,day());
-                int newLeft=Math.max(0,config.newCardsPerDay()-learned);
+                int learned=usageLimitsEnabled ? repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_review_logs WHERE user_id=? AND learning_day=? AND was_new=TRUE AND schedule_changed=TRUE",Integer.class,user,day()) : 0;
+                int newLeft=usageLimitsEnabled ? Math.max(0,config.newCardsPerDay()-learned) : config.sessionSize();
                 var candidates=repo.rows("""
                         SELECT c.*,n.term,n.meaning_vi,n.alternatives_json,n.example_en,n.example_vi FROM vocab_cards c
                         JOIN vocab_notes n ON n.id=c.note_id WHERE c.user_id=? AND c.suspended=FALSE AND n.archived=FALSE
@@ -81,7 +84,7 @@ public class VocabularyStudyService {
                 cards=picked;
             }
             if(cards.isEmpty() && exercises.isEmpty()) return new Session("",request.mode(),"COMPLETED",now,List.of(),
-                    request.mode().equals("CONTEXT_TRANSLATION") ? "Chưa có câu phù hợp. Hãy thêm từ từ bộ có sẵn hoặc bổ sung ví dụ và bản dịch cho từ của bạn." : "Chưa có thẻ phù hợp hoặc đã đạt giới hạn từ mới hôm nay. Bạn có thể chọn Luyện thêm.");
+                    request.mode().equals("CONTEXT_TRANSLATION") ? "Chưa có câu phù hợp. Hãy thêm từ từ bộ có sẵn hoặc bổ sung ví dụ và bản dịch cho từ của bạn." : usageLimitsEnabled ? "Chưa có thẻ phù hợp hoặc đã đạt giới hạn từ mới hôm nay. Bạn có thể chọn Luyện thêm." : "Chưa có thẻ phù hợp. Hãy thêm từ mới hoặc quay lại khi đến lịch ôn.");
             // An explicit scope switch ends the unfinished session; saved reviews keep their schedules.
             repo.jdbc().update("UPDATE vocab_study_sessions SET status='ABANDONED' WHERE user_id=? AND mode=? AND status='ACTIVE'",user,request.mode());
             String session=id();

@@ -244,9 +244,9 @@ class JobStore:
             for owner in ("GLOBAL", scope):
                 db.execute("INSERT OR IGNORE INTO demo_budget VALUES (?,?,0,0)", (day, owner))
                 changed = db.execute("""UPDATE demo_budget SET reserved=reserved+?,calls=calls+?
-                    WHERE day=? AND scope=? AND reserved<=? AND calls<=?""",
-                    (amount, calls, day, owner, settings.demo_daily_budget_microusd - amount,
-                     settings.demo_daily_cloud_calls - calls)).rowcount
+                    WHERE day=? AND scope=? AND (?=0 OR (reserved<=? AND calls<=?))""",
+                    (amount, calls, day, owner, settings.operational_limits_enabled,
+                     settings.demo_daily_budget_microusd - amount, settings.demo_daily_cloud_calls - calls)).rowcount
                 if changed != 1:
                     raise OverflowError("demo budget exhausted")
             db.execute("INSERT INTO demo_reservations VALUES (?)", (job_id,))

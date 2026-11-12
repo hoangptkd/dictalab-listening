@@ -21,12 +21,13 @@ public class ScenarioOperations {
     private final AiPlatformClient ai;
     private final AiUsageBudget budget;
     private final ObjectProvider<ScenarioEngine> engine;
-    private final boolean local;
+    private final boolean usageLimitsEnabled;
 
     public ScenarioOperations(ScenarioData data, AiPlatformClient ai, AiUsageBudget budget,
                               ObjectProvider<ScenarioEngine> engine, Environment environment) {
         this.data=data; this.ai=ai; this.budget=budget; this.engine=engine;
-        this.local=environment.acceptsProfiles(Profiles.of("local"));
+        this.usageLimitsEnabled=!environment.acceptsProfiles(Profiles.of("local"))
+                && environment.getProperty("dictalab.operational-limits-enabled",Boolean.class,false);
     }
     JsonNode prior(long user, String scope, String key, Object input) {
         key = key(key); String hash = ScenarioJson.hash(ScenarioJson.canonical(ScenarioJson.MAPPER.valueToTree(input)));
@@ -37,7 +38,7 @@ public class ScenarioOperations {
     }
     JsonNode create(long user, String scope, String key, Object intent, String kind, String resource, JsonNode payload) {
         data.lockUser(user); var prior = prior(user,scope,key,intent); if (prior != null) return prior;
-        if (!local && data.db.queryForObject("SELECT COUNT(*) FROM scenario_operations WHERE user_id=? AND status IN ('PENDING','RUNNING')", Integer.class,user) >= 3)
+        if (usageLimitsEnabled && data.db.queryForObject("SELECT COUNT(*) FROM scenario_operations WHERE user_id=? AND status IN ('PENDING','RUNNING')", Integer.class,user) >= 3)
             throw new ScenarioFailure(429,"USER_QUOTA_EXCEEDED","Hãy chờ tác vụ đang chạy hoàn tất.");
         String id = id(), body = payload.toString(); require(body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 60000);
         data.db.update("""
