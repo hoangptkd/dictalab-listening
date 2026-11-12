@@ -34,6 +34,10 @@ Kiểm thử thật: EXTRACT thành công; tạo session HTTP 200, lưu đủ en
 gửi lại cùng mã yêu cầu trả cùng tác vụ. GENERATE sau đó bị `GENERATION_REJECTED` từ quality gate.
 Đây không phải lỗi quota/migration và không được tính là bài mới hoàn thành. Không gọi lại để làm đẹp kết quả.
 
+Đã truy xuất trace cũ `f3220387edfa8bae7a640c541be65c42` và kiểm tra lại JSON ngoại tuyến:
+model trả hai meanings và hai câu hỏi cho mỗi activity; hợp đồng V3 yêu cầu ít nhất ba.
+Lỗi `too_short` xuất hiện ở cả sáu mảng. Không sửa hợp đồng hoặc thêm lời gọi sinh lại trong task bỏ hạn mức này.
+
 ### QA-03: bài cũ không tạo được audio khi đổi bản phát hành
 
 Tách kiểm tra chương trình đã lưu khỏi quyền tạo bài mới. Audio và chấm bài đều kiểm tra
@@ -65,5 +69,36 @@ Bản bỏ hạn mức được tách từ `origin/main` / release đang chạy
 `88ed954fba79e687aace892bf63176a4dc32295d`, tại nhánh
 `codex/remove-usage-limits-production-20261112`.
 Không đưa kèm 15 commit thử nghiệm assessment hoặc migration V52 từ nhánh local.
-Production dùng đường phát hành ba service hiện có, qua CI và kiểm tra sức khỏe; ghi nhận
-commit phát hành và kết quả thực tế sau khi quy trình hoàn tất.
+Commit bỏ hạn mức đã push và xác minh trên nhánh production cùng `main`:
+`dcbe1a0da806c86c16e916bbed67542b8ed9ea98`.
+
+Kiểm tra nhánh production:
+
+- Maven CI: 291 trường hợp, 274 đạt, 17 bỏ qua; kiểm tra tích hợp riêng 159 đạt, một bỏ qua.
+- Python AI: 576 đạt, 27 bỏ qua; JavaScript: 393 đạt.
+- Công cụ Linux: 100 đạt, 20 bỏ qua, chạy trong container Linux; kiểm tra JAR production đạt.
+
+[GitHub Actions 43180150553](https://github.com/hoangptkd/dictalab-listening/actions/runs/43180150553)
+đạt `test-build` và `required-checks`, nhưng bước deploy ban đầu thất bại trước khi chuyển bản chạy.
+Cả bốn unit có `NeedDaemonReload=yes`; guard triển khai đã chặn đúng. Sau khi xác minh
+bundle, hash các unit và cấu hình được bảo vệ, đã thực hiện `systemctl daemon-reload`.
+Không sửa hoặc bỏ guard, không thay cấu hình bí mật.
+
+Đã hoàn tất triển khai thủ công bằng chính công cụ phát hành, bundle và commit đã qua CI:
+
+- Bundle SHA-256: `595dd49c48de0efa6fd48388f9c5d2c7e6d9c283d4378085408a5b15d74094b3`.
+- Receipt: `/var/lib/dictalab-service-backups/activation-p4s4nf0e/activation.json`, phase `complete`.
+- Sao lưu: `/var/lib/dictalab-service-backups/services-6o9hy65m`.
+- Migration chạy bằng owner và hoàn tất; giữ nguyên quyền runtime. Không phục hồi lùi dữ liệu.
+- Con trỏ release và hash Core JAR khớp commit mới; bốn dịch vụ active, readiness đạt,
+  worker có heartbeat; đã gỡ trạng thái bảo trì.
+- Core JAR có mặc định hạn mức `false`; môi trường tiến trình không ghi đè thành `true`.
+  Nạp Settings bằng môi trường thật của AI API và worker đều xác nhận hạn mức đã tắt.
+- Public `/actuator/health` trả HTTP 200 / `UP`; `billing.js` và `vocabulary.js` từ website
+  có hash khớp source production.
+
+Run GitHub ban đầu vẫn hiển thị deploy thất bại; không đổi kết quả đó thành thành công.
+Kết quả production ở trên là triển khai phục hồi thủ công đã xác minh. Không dùng tài khoản
+cá nhân để tạo phiên production mới; chưa chạy lại toàn bộ luồng học có đăng nhập trên production.
+Không tuyên bố bài sinh mới đạt chất lượng: kết quả `GENERATION_REJECTED` local ở trên vẫn còn.
+Các kiểm tra dữ liệu và lỗi từ nhà cung cấp vẫn có hiệu lực.
