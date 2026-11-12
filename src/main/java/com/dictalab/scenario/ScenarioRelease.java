@@ -101,8 +101,14 @@ public class ScenarioRelease {
         return program;
     }
     public void requireGrade(long user,String code,int version,String definitionHash) {
+        requireSavedProgram(user,code,version,definitionHash);
+    }
+    public void requireAudio(long user,String code,int version,String definitionHash) {
+        requireSavedProgram(user,code,version,definitionHash);
+    }
+    private void requireSavedProgram(long user,String code,int version,String definitionHash) {
         if (!rollout.enabled() || !engine.enabled() || !ai.textConfigured())
-            throw new ScenarioFailure(503,"UNSUPPORTED_PROGRAM_MODE","Grading is not currently available.");
+            throw new ScenarioFailure(503,"UNSUPPORTED_PROGRAM_MODE","Saved lesson services are not currently available.");
         ScenarioProgram program;
         try { program=programs.require(code,version); }
         catch (IllegalArgumentException missing) { throw new ScenarioFailure(409,"WORKFLOW_PROVENANCE_MISSING","Historical program is unavailable."); }
@@ -110,7 +116,7 @@ public class ScenarioRelease {
         if (program.status()!=ScenarioProgram.Status.APPROVED && !(engine.localPreviewEnabled() && engine.localPreviewUsers().contains(user)
                 && environment.matchesProfiles("local") && !environment.matchesProfiles("prod","production")
                 && Set.of("127.0.0.1","::1").contains(environment.getProperty("server.address",""))))
-            throw new ScenarioFailure(503,"UNSUPPORTED_PROGRAM_MODE","Historical preview grading is unavailable.");
+            throw new ScenarioFailure(503,"UNSUPPORTED_PROGRAM_MODE","Historical preview services are unavailable.");
     }
     public void require() {
         if (!available()) throw new ScenarioFailure(503, "UNSUPPORTED_PROGRAM_MODE", "Chương trình chưa qua đủ kiểm tra để tạo bài. Bạn vẫn có thể mở bài đã lưu.");

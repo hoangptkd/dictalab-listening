@@ -19,7 +19,7 @@ def settings(n=3, **updates):
     sources = [dict(id=f"s{i}", projectId=f"test-project-{i}", apiKey=f"fake-{i}",
         model="gemini-3.5-flash-lite", rpmLimit=15, operatingRpm=13, rpdLimit=100,
         url="https://example.test/v1/chat/completions", enabled=True) for i in range(n)]
-    return Settings(**(dict(primary_provider="gemini", gemini_quota_enabled=True,
+    return Settings(**(dict(primary_provider="gemini", gemini_quota_enabled=True, operational_limits_enabled=True,
         gemini_quota_backend="memory", gemini_providers=sources,
         gemini_global_rpm_limit=39) | updates))
 
@@ -130,7 +130,8 @@ def test_unrestricted_capacity_and_explicit_zero_do_not_create_zero_permit_pools
     cfg = Settings(max_concurrency=0, http_max_connections=0)
     assert cfg.effective_max_concurrency == 0
     assert cfg.effective_http_max_connections is None
-    assert Settings(max_concurrency=1000, http_max_connections=1000).effective_max_concurrency == 1000
+    assert Settings(operational_limits_enabled=True, max_concurrency=1000, http_max_connections=1000).effective_max_concurrency == 1000
+    assert Settings().operational_limits_enabled is False
     with pytest.raises(ValueError):
         Settings(max_concurrency=-1)
 

@@ -56,6 +56,19 @@ class ScenarioContentTest {
         assertThat(release.available()).isFalse();
         assertThatThrownBy(release::require).isInstanceOfSatisfying(ScenarioFailure.class,e -> assertThat(e.status).isEqualTo(503));
     }
+    @Test void savedAudioChecksHistoricalProgramInsteadOfCurrentGenerationPin() throws Exception {
+        var registry=new ScenarioProgramRegistry(); var program=registry.require("general-communication",3);
+        var ai=mock(com.dictalab.service.AiPlatformClient.class); when(ai.textConfigured()).thenReturn(true);
+        var properties=new ScenarioEngineProperties(true,1,"0".repeat(64),"0".repeat(64),true,java.util.Set.of(3L));
+        var env=new org.springframework.mock.env.MockEnvironment(); env.setActiveProfiles("local"); env.setProperty("server.address","127.0.0.1");
+        var release=new ScenarioRelease(new ScenarioProperties(true),properties,registry,ai,env);
+        assertThatThrownBy(()->release.require(3,program.code(),program.version())).isInstanceOf(ScenarioFailure.class);
+        assertThatCode(()->release.requireAudio(3,program.code(),program.version(),program.definitionHash())).doesNotThrowAnyException();
+        assertThatThrownBy(()->release.requireAudio(3,program.code(),program.version(),"0".repeat(64))).isInstanceOf(ScenarioFailure.class);
+        assertThatThrownBy(()->release.requireAudio(4,program.code(),program.version(),program.definitionHash())).isInstanceOf(ScenarioFailure.class);
+        when(ai.textConfigured()).thenReturn(false);
+        assertThatThrownBy(()->release.requireAudio(3,program.code(),program.version(),program.definitionHash())).isInstanceOf(ScenarioFailure.class);
+    }
     @Test void normalizesUnicodeAndRedactsContactDataBeforeAiAdmission() {
         String clean=ScenarioEngine.safeInput("Tôi cần đặt bánh user@example.com +84912345678",2000);
         assertThat(clean).startsWith("Tôi").doesNotContain("user@example.com","84912345678");

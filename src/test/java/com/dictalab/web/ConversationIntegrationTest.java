@@ -37,6 +37,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {"dictalab.conversation.enabled=true", "dictalab.coach.enabled=false", "dictalab.conversation.curated-starters=false", "dictalab.conversation.generation.repair-enabled=true"})
 @AutoConfigureMockMvc
 class ConversationIntegrationTest {
+    @Test void unrestrictedLegacySessionsContinuePastTwentyWithoutProviderCalls() {
+        for(int i=0;i<20;i++) db.update("INSERT INTO ai_conversation_sessions(id,user_id,scenario,difficulty,state_json) VALUES (?,?,'cafe','A1','{}')",UUID.randomUUID().toString(),owner);
+        assertThat(service.create(owner,"cafe","A1").path("id").asText()).isNotBlank();
+        verify(ai,never()).completeJson(anyString(),anyString());
+    }
     @Test void recentSessionsReportCompletionWithoutExposingTheirStoredState() {
         var owner = users.saveAndFlush(new AppUser("recent-" + UUID.randomUUID() + "@test.local", "Recent", "unused", Instant.now()));
         for (boolean completed : new boolean[]{false, true}) {

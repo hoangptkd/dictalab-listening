@@ -20,6 +20,8 @@ public class AiUsageBudget {
     private final long globalLimit, userLimit, llmReservation, ttsReservation;
     private final int globalCalls, userCalls;
     private final boolean enabled;
+    @Value("${dictalab.operational-limits-enabled:false}")
+    private boolean usageLimitsEnabled = true;
     private PremiumAccessService premium;
     private LocalQaAccount localQa;
     @Value("${dictalab.ai.platform.text-provider:gemini}")
@@ -76,7 +78,7 @@ public class AiUsageBudget {
         if (premium != null) premium.takeAi(userId, tts);
         Boolean accepting = db.queryForObject("SELECT enabled FROM ai_budget_control WHERE id=1 FOR UPDATE", Boolean.class);
         if (!Boolean.TRUE.equals(accepting)) throw new Rejected("AI đang tạm dừng. Bài làm của bạn vẫn được lưu.");
-        if (enabled && !unlimited(userId)) {
+        if (enabled && usageLimitsEnabled && !unlimited(userId)) {
             Date day = Date.valueOf(LocalDate.now(ZoneOffset.UTC));
             long amount = local && !tts ? 0 : Math.multiplyExact(tts ? ttsReservation : llmReservation, calls);
             String prefix = local && !tts ? "LOCAL_" : "";
@@ -91,7 +93,7 @@ public class AiUsageBudget {
             if (premium != null && userId != null) premium.takeAi(userId,tts);
             Boolean accepting=db.queryForObject("SELECT enabled FROM ai_budget_control WHERE id=1 FOR UPDATE",Boolean.class);
             if (!Boolean.TRUE.equals(accepting)) throw new Rejected("AI đang tạm dừng. Bài làm của bạn vẫn được lưu.");
-            if (!enabled || unlimited(userId)) return;
+            if (!enabled || !usageLimitsEnabled || unlimited(userId)) return;
             Date day=Date.valueOf(LocalDate.now(ZoneOffset.UTC));
             long amount=local ? 0 : tts?ttsReservation:llmReservation;
             add(day,local ? "LOCAL_GLOBAL" : "GLOBAL",amount,globalLimit,globalCalls);
@@ -119,7 +121,7 @@ public class AiUsageBudget {
     public Map<String,Object> status() {
         Date day=Date.valueOf(LocalDate.now(ZoneOffset.UTC));
         return Map.of("enabled",Boolean.TRUE.equals(db.queryForObject("SELECT enabled FROM ai_budget_control WHERE id=1",Boolean.class)),
-                "accountingEnabled",enabled,"dayUtc",day.toString(),"globalLimitMicrousd",globalLimit,
+                "accountingEnabled",enabled && usageLimitsEnabled,"dayUtc",day.toString(),"globalLimitMicrousd",globalLimit,
                 "userLimitMicrousd",userLimit,"globalCallLimit",globalCalls,"userCallLimit",userCalls,
                 "usage",db.queryForList("SELECT scope,reserved_microusd,calls FROM ai_daily_budget WHERE budget_day=? ORDER BY scope",day));
     }

@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /** Mock provider verdicts exercise domain safety, not pedagogical release approval. */
-@SpringBootTest(properties={"dictalab.scenario.enabled=true","dictalab.scenario.engine.enabled=true","dictalab.scenario.engine.poll-delay-ms=600000"})
+@SpringBootTest(properties={"dictalab.scenario.enabled=true","dictalab.scenario.engine.enabled=true","dictalab.scenario.engine.poll-delay-ms=600000","dictalab.operational-limits-enabled=true"})
 @AutoConfigureMockMvc
 class ScenarioEngineIntegrationTest {
     @Autowired ScenarioEngine engine;
@@ -668,6 +668,22 @@ class ScenarioEngineIntegrationTest {
         assertThat(dispatch(op).path("status").asText()).isEqualTo("SUCCEEDED");
     }
 
+    @Test void unrestrictedGenerationPreservesEnvelopeAndIdempotencyPastDailyAndPendingCaps() {
+        var environment=new org.springframework.mock.env.MockEnvironment().withProperty("dictalab.operational-limits-enabled","false");
+        var provider=new org.springframework.beans.factory.support.DefaultListableBeanFactory();
+        provider.registerSingleton("engine",engine);
+        var unlimitedOperations=new ScenarioOperations(data,ai,budget,provider.getBeanProvider(ScenarioEngine.class),environment);
+        var unlimitedEngine=new ScenarioEngine(data,unlimitedOperations,release,ai,media,null,environment,personalization,engineConfig);
+        var extract=dispatch(unlimitedEngine.createDraft(user,id(),input()));
+        var draft=unlimitedEngine.draft(user,extract.path("draftId").asText());
+        for(int i=0;i<20;i++) db.update("INSERT INTO ai_conversation_sessions(id,user_id,scenario,difficulty,state_json) VALUES (?,?,'cafe','A1','{}')",id(),user);
+        for(int i=0;i<4;i++) unlimitedEngine.createDraft(user,id(),input());
+        String key=id(); var request=new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong());
+        var op=unlimitedEngine.createSession(user,key,request);
+        assertThat(unlimitedEngine.createSession(user,key,request)).isEqualTo(op);
+        assertThat(db.queryForObject("SELECT calls_reserved FROM scenario_operation_budget WHERE operation_id=?",Integer.class,op.path("operationId").asText())).isEqualTo(5);
+    }
+
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings={"skip_questions","wrong_order","old_version","old_v3_version","old_v4_version","old_v5_version","wrong_hash"})
     void currentWorkflowRejectsSkippedStagesAndVersionDowngrade(String fault) {
@@ -828,7 +844,7 @@ class ScenarioEngineIntegrationTest {
     @Test void restrictedHistoricalProgramOnlyOffersAudioFromItsExactReadyCache() {
         var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
         dispatch(engine.play(user,sid,aid,id(),new ScenarioEngine.PlayRequest(session.path("version").asLong(),"s1")));
-        doThrow(new ScenarioFailure(503,"UNSUPPORTED_PROGRAM_MODE","Chương trình chưa mở.")).when(release).require(user);
+        doThrow(new ScenarioFailure(503,"UNSUPPORTED_PROGRAM_MODE","Chương trình chưa mở.")).when(release).requireAudio(eq(user),anyString(),anyInt(),anyString());
         var saved=engine.session(user,sid);
         assertThat(saved.path("playbackRestrictionVi").asText()).contains("chưa mở");
         assertThat(saved.path("activities").get(0).path("segments").get(0).path("canPlay").asBoolean()).isTrue();
@@ -838,13 +854,24 @@ class ScenarioEngineIntegrationTest {
         assertThatThrownBy(()->engine.play(user,sid,aid,id(),new ScenarioEngine.PlayRequest(version,"s2"))).isInstanceOf(ScenarioFailure.class);
     }
 
+    @Test void changingGenerationApprovalDoesNotDisableSavedLessonAudioPreparation() {
+        var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        doThrow(new ScenarioFailure(503,"UNSUPPORTED_PROGRAM_MODE","New generation disabled")).when(release).require(user);
+        var saved=engine.session(user,sid);
+        assertThat(saved.has("playbackRestrictionVi")).isFalse();
+        assertThat(saved.path("activities").get(0).path("segments").get(1).path("canPlay").asBoolean(true)).isTrue();
+        var op=engine.prepareAudio(user,sid,aid,id(),new ScenarioEngine.PlayRequest(saved.path("version").asLong(),"s2"),false);
+        assertThat(dispatch(op).path("status").asText()).isEqualTo("SUCCEEDED");
+        verify(release,atLeastOnce()).requireAudio(eq(user),eq("general-communication"),eq(1),anyString());
+    }
+
     @Test void invalidHistoricalVoiceSnapshotDoesNotBlockReadingRestrictedLesson() {
         doReturn(recipe()).when(engineConfig).ttsRecipe();
         var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
         var content=(ObjectNode)tree(db.queryForObject("SELECT private_json FROM scenario_activities WHERE id=?",String.class,aid));
         ((ObjectNode)content.path("activity").path("segments").get(0)).put("textEn","[REDACTED]");
         db.update("UPDATE scenario_activities SET private_json=? WHERE id=?",content.toString(),aid);
-        doThrow(new ScenarioFailure(503,"UNSUPPORTED_PROGRAM_MODE","Chương trình chưa mở.")).when(release).require(user);
+        doThrow(new ScenarioFailure(503,"UNSUPPORTED_PROGRAM_MODE","Chương trình chưa mở.")).when(release).requireAudio(eq(user),anyString(),anyInt(),anyString());
         var saved=engine.session(user,sid);
         assertThat(saved.path("activities").get(0).path("segments").get(0).path("canPlay").asBoolean()).isFalse();
         assertThat(saved.path("activities").get(0).path("questions")).hasSize(2);

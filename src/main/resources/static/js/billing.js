@@ -28,18 +28,19 @@
             try {
                 const [plan, orders, refunds] = await Promise.all([api("/api/billing/status"), api("/api/billing/orders"),api("/api/billing/refund-requests")]);
                 if (!root.isConnected) return;
+                const unrestricted = plan.usageLimitsEnabled === false;
                 section.innerHTML = `<div class="billing-summary"><div><p class="section-index">Gói học của bạn</p>
-                    <h2 id="billing-heading">${plan.premium ? "Premium đang hoạt động" : "Thêm thời gian cho việc học."}</h2>
-                    <p>${plan.administrator ? "Quản trị viên có đầy đủ quyền sử dụng." : plan.premium
+                    <h2 id="billing-heading">${unrestricted ? "Học không giới hạn lượt" : plan.premium ? "Premium đang hoạt động" : "Thêm thời gian cho việc học."}</h2>
+                    <p>${unrestricted ? "Mọi tài khoản đều có thể luyện bài và sử dụng AI, TTS không giới hạn lượt của ứng dụng." : plan.administrator ? "Quản trị viên có đầy đủ quyền sử dụng." : plan.premium
                         ? `Có hiệu lực đến ${escape(date(plan.premiumUntil))}. Mua thêm sẽ cộng dồn thời gian.`
                         : "Bắt đầu miễn phí. Nâng cấp khi bạn muốn luyện nhiều hơn."}</p></div>
-                    <div class="billing-price"><strong>${escape(money(plan.priceVnd))}</strong><span> / ${escape(plan.durationDays)} ngày</span></div></div>
-                    <div class="billing-benefits"><p><strong>Miễn phí</strong><br>${escape(plan.freeDailyLessons)} bài mới/ngày · giữ lịch sử và tiến trình.</p>
+                    ${unrestricted ? "" : `<div class="billing-price"><strong>${escape(money(plan.priceVnd))}</strong><span> / ${escape(plan.durationDays)} ngày</span></div>`}</div>
+                    ${unrestricted ? "<p>Lịch sử, tiến trình và thời hạn Premium đã mua vẫn được giữ nguyên.</p>" : `<div class="billing-benefits"><p><strong>Miễn phí</strong><br>${escape(plan.freeDailyLessons)} bài mới/ngày · giữ lịch sử và tiến trình.</p>
                     <p><strong>Premium</strong><br>Luyện không giới hạn · tối đa ${escape(plan.premiumDailyAi)} lượt AI/ngày.</p></div>
                     <p>${plan.enabled ? `Hôm nay: ${escape(plan.lessonsUsed)} bài miễn phí · ${escape(plan.aiUsed)}/${escape(plan.premiumDailyAi)} lượt AI. Hạn mức đặt lại lúc 00:00 giờ Việt Nam.`
-                        : "Thanh toán đang được thiết lập. Hiện chưa áp dụng hạn mức học."}</p>
-                    <p>Thanh toán QR chuyển khoản qua payOS. Mỗi lần mua có hiệu lực ${escape(plan.durationDays)} ngày; bạn chủ động gia hạn, không tự động trừ tiền.</p>
-                    ${plan.administrator ? "" : `<button type="button" class="primary-button" data-buy ${!plan.enabled || busy ? "disabled" : ""}>${plan.premium ? "Gia hạn Premium" : "Mua Premium"}</button>`}
+                        : "Thanh toán đang được thiết lập. Hiện chưa áp dụng hạn mức học."}</p>`}
+                    ${unrestricted ? "" : `<p>Thanh toán QR chuyển khoản qua payOS. Mỗi lần mua có hiệu lực ${escape(plan.durationDays)} ngày; bạn chủ động gia hạn, không tự động trừ tiền.</p>`}
+                    ${plan.administrator || unrestricted ? "" : `<button type="button" class="primary-button" data-buy ${!plan.enabled || busy ? "disabled" : ""}>${plan.premium ? "Gia hạn Premium" : "Mua Premium"}</button>`}
                     <p data-billing-status role="status" aria-live="polite" ${messageError ? 'data-error="true"' : ""}>${escape(message)}</p>
                     ${orders.length ? `<details class="ui-disclosure" ${message ? "open" : ""}><summary>Lịch sử thanh toán (${orders.length} đơn gần nhất)</summary>
                         <ol class="billing-orders">${orders.map(order => `<li><div><strong>Đơn ${escape(order.orderCode)} · ${escape(money(order.amountVnd))}</strong>

@@ -183,7 +183,7 @@
         const newCards  = summary.new_cards ?? 0;
         const newLimit  = summary.newLimit ?? 10;
         const streakDays = summary.streakDays ?? (reviewed > 0 ? 1 : 0);
-        const totalGoal  = due + Math.min(newCards, newLimit);
+        const totalGoal  = due + (summary.usageLimitsEnabled === false ? newCards : Math.min(newCards, newLimit));
         const goalPct    = totalGoal > 0 ? Math.min(1, reviewed / totalGoal) : (reviewed > 0 ? 1 : 0);
 
         root.innerHTML = toolbar() + `
@@ -228,7 +228,7 @@
                         Nhớ trước, xem đáp án sau.
                     </h2>
                     <p style="color:var(--ink-soft);font-size:.9rem;margin:.4rem 0 0">
-                        Ôn từ đến hạn trước, sau đó học tối đa ${newLimit} thẻ mới mỗi ngày.
+                        ${summary.usageLimitsEnabled === false ? "Ôn từ đến hạn trước, sau đó học thêm từ mới không giới hạn mỗi ngày." : `Ôn từ đến hạn trước, sau đó học tối đa ${newLimit} thẻ mới mỗi ngày.`}
                     </p>
                     <div class="vocab-actions">
                         <button class="primary-button" data-vocab-action="start" data-mode="SRS">

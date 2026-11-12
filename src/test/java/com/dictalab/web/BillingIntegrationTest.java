@@ -29,7 +29,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties={"dictalab.billing.enabled=true", "dictalab.billing.public-base-url=https://dictalab.example",
-        "dictalab.billing.client-id=test-client", "dictalab.billing.api-key=test-api", "dictalab.billing.checksum-key=test-checksum"})
+        "dictalab.billing.client-id=test-client", "dictalab.billing.api-key=test-api", "dictalab.billing.checksum-key=test-checksum",
+        "dictalab.operational-limits-enabled=true"})
 @AutoConfigureMockMvc
 class BillingIntegrationTest {
     @Autowired BillingService billing;
