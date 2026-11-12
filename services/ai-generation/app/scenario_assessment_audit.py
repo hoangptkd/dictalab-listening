@@ -73,6 +73,115 @@ class AuditedQuestionReview(a.QuestionReview):
     questionChecks: list[AuditedQuestionCheck] = Field(min_length=9, max_length=18)
 
 
+# Separate schemas keep historical prompt fingerprints unchanged.
+class QuestionCoverageCheck(QuestionPartCheck):
+    reasonVi: str = Field(min_length=1, max_length=300)
+    answerQuotesVi: list[str] = Field(max_length=3)
+
+
+class QuestionCoverageRow(QuestionRow):
+    partChecks: list[QuestionCoverageCheck] = Field(min_length=1, max_length=12)
+
+
+class QuestionCoverageAudit(StrictModel):
+    questions: list[QuestionCoverageRow] = Field(min_length=9, max_length=18)
+
+
+class FidelityClaimCheck(ClaimCheck):
+    reasonVi: str = Field(min_length=1, max_length=300)
+    certaintyPreserved: bool
+    speechActPreserved: bool
+
+
+class FidelityMeaningCheck(AuditedMeaningCheck):
+    claimChecks: list[FidelityClaimCheck] = Field(min_length=1, max_length=6)
+    uncoveredMeaningEn: list[str] = Field(max_length=6)
+    bundledPartIds: list[PartId] = Field(max_length=4)
+
+
+class EvidenceQuestionReview(a.QuestionReview):
+    meaningChecks: list[FidelityMeaningCheck] = Field(min_length=9, max_length=18)
+
+
+def project_question_coverage(data):
+    questions = []
+    for activity in data["groundedQuestions"]["activities"]:
+        meanings = {m["id"]: m for m in activity["assessment"]["meanings"]}
+        for question in activity["questions"]:
+            questions.append({"activityId": activity["id"], "questionId": question["id"],
+                "promptVi": question["promptVi"], "answerVi": question["answerVi"],
+                "requiredParts": [{"meaningId": mid, "partId": p["id"], "meaningEn": p["meaningEn"]}
+                    for mid in question["meaningIds"] for p in meanings[mid]["requiredParts"]]})
+    return {"questions": questions, **{k: data[k] for k in ("formatFeedback",) if k in data}}
+
+
+def validate_question_coverage(ledger, artifact):
+    rows = validate_questions(ledger, artifact)
+    for activity in artifact.activities:
+        meanings = {m.id: m for m in activity.assessment.meanings}
+        for question in activity.questions:
+            key = (activity.id, question.id)
+            expected = {(mid, p.id) for mid in question.meaningIds for p in meanings[mid].requiredParts}
+            checks = _index(rows[key].partChecks, lambda p: (p.meaningId, p.partId), expected)
+            for check in checks.values():
+                if not check.reasonVi.strip():
+                    raise ValueError("blank question coverage reason")
+                quotes = check.answerQuotesVi
+                if len(set(quotes)) != len(quotes) or any(not q.strip() or q not in question.answerVi for q in quotes):
+                    raise ValueError("unanchored reference answer evidence")
+                if check.answerStatus == "COMPLETE" and not quotes:
+                    raise ValueError("complete reference coverage lacks answer evidence")
+    return rows
+
+
+def to_evidence_review(comparison, meanings, coverage, artifact, dialogue):
+    rows = validate_question_coverage(coverage, artifact)
+    _index(comparison.questionChecks, lambda q: (q.activityId, q.questionId), rows.keys())
+    targets = {(act.id, m.id): m for act in artifact.activities for m in act.assessment.meanings}
+    _index(comparison.meaningChecks, lambda m: (m.activityId, m.meaningId), targets.keys())
+    meaning_checks = []
+    for row in comparison.meaningChecks:
+        parts = {p.id for p in targets[(row.activityId, row.meaningId)].requiredParts}
+        if (len(set(row.bundledPartIds)) != len(row.bundledPartIds)
+                or not set(row.bundledPartIds) <= parts
+                or any(not claim.strip() for claim in row.uncoveredMeaningEn)
+                or any(not claim.reasonVi.strip() for claim in row.claimChecks)):
+            raise ValueError("invalid source or part audit diagnostics")
+        claims = []
+        for claim in row.claimChecks:
+            value = claim.model_dump(exclude={"reasonVi", "certaintyPreserved", "speechActPreserved"})
+            if not claim.certaintyPreserved or not claim.speechActPreserved:
+                value["sourceSupport"] = "UNSUPPORTED"
+            claims.append(value)
+        meaning_checks.append({**row.model_dump(exclude={"uncoveredMeaningEn", "bundledPartIds"}),
+                               "claimChecks": claims})
+    # Only the scoped audit owns request/answer coverage; final review cannot overwrite it.
+    legacy = AuditedQuestionReview.model_validate({**comparison.model_dump(), "meaningChecks": meaning_checks,
+        "questionChecks": [{**q.model_dump(), "partChecks": [
+            p.model_dump(exclude={"reasonVi", "answerQuotesVi"}) for p in rows[(q.activityId, q.questionId)].partChecks]}
+            for q in comparison.questionChecks]})
+    requests = QuestionAudit(questions=[QuestionRow(**r.model_dump(exclude={"partChecks"})) for r in coverage.questions])
+    normalized = to_review(legacy, meanings, requests, artifact, dialogue)
+    mrows = {(r.activityId, r.meaningId): r for r in normalized.meaningChecks}
+    qrows = {(r.activityId, r.questionId): r for r in normalized.questionChecks}
+    for row in comparison.meaningChecks:
+        target = mrows[(row.activityId, row.meaningId)]
+        if row.uncoveredMeaningEn:
+            target.groundingSupported = False
+            target.reasonVi = (target.reasonVi + " | Thiếu ý: " + "; ".join(row.uncoveredMeaningEn))[:300]
+            normalized.valid = False
+        if row.bundledPartIds:
+            target.distinctMeaning = False
+            target.reasonVi = (target.reasonVi + " | Gộp ý độc lập: " + ",".join(row.bundledPartIds))[:300]
+            normalized.valid = False
+    for key, row in rows.items():
+        failures = [p for p in row.partChecks if p.requestStatus != "REQUESTED" or p.answerStatus != "COMPLETE"]
+        if failures:
+            p = failures[0]
+            qrows[key].reasonVi = (f"{p.meaningId}/{p.partId} {p.requestStatus}/{p.answerStatus}: " + p.reasonVi)[:300]
+    return normalized
+
+
 def project(purpose, data):
     # Whitelists are rebuilt even for retries; prior outputs belong only in formatFeedback.
     if purpose == "AUDIT_MEANINGS":

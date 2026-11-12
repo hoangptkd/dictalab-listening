@@ -8,6 +8,15 @@ import static com.dictalab.scenario.ScenarioData.*;
 import static org.assertj.core.api.Assertions.*;
 
 class ScenarioAssessmentTest {
+    @Test void evidenceAuditCandidateDoesNotReplaceDefaultOrHistoricalPins() {
+        String pin=ScenarioAssessment.PARTS_V4_11_PROMPT_HASH;
+        assertThat(ScenarioAssessment.releaseMatches(pin,"SCENARIO_MEANING_ASSESSMENT_V4_11")).isTrue();
+        assertThat(ScenarioAssessment.releaseMatches(pin,"SCENARIO_MEANING_ASSESSMENT_V3")).isFalse();
+        assertThat(ScenarioAssessment.releaseMatches(pin,"SCENARIO_MEANING_ASSESSMENT_V4_7")).isFalse();
+        assertThat(ScenarioAssessment.policyFor(pin)).isEqualTo(ScenarioAssessment.PARTS_POLICY);
+        assertThat(ScenarioAssessment.independentAudit(pin)).isTrue();
+        assertThat(ScenarioAssessment.PROMPT_HASH).isEqualTo("650193db73e2fb03c4f94a7ccb8f29fc9bc1c3f77c8391fabc0b0e07803f287e");
+    }
     @Test void independentAuditCandidateHasAnExactPartsPin() {
         assertThat(ScenarioAssessment.releaseMatches(ScenarioAssessment.PARTS_V4_7_PROMPT_HASH,"SCENARIO_MEANING_ASSESSMENT_V4_7")).isTrue();
         for (String version : List.of("SCENARIO_MEANING_ASSESSMENT_V3","SCENARIO_MEANING_ASSESSMENT_V4_6"))

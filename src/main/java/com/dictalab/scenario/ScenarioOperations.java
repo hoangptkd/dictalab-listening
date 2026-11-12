@@ -52,7 +52,7 @@ public class ScenarioOperations {
     static int callEnvelope(String kind, JsonNode payload) {
         if (!kind.equals("GENERATE")) return 1;
         String pin=payload.path("promptHash").asText();
-        if (ScenarioAssessment.PARTS_V4_7_PROMPT_HASH.equals(pin)) return 11;
+        if (ScenarioAssessment.independentAudit(pin)) return 11;
         if (payload.path("contractVersion").asText().equals("scenario-job.v3")
                 || Set.of("a98960f21fabe1f652f68fac72794c41e5c18870a400059cef4b03f50a9a838b",
                           "df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303").contains(pin)) return 9;

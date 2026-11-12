@@ -556,7 +556,7 @@ public class ScenarioEngine {
                 ScenarioContent.list(routing.path("fallbackModels"),0,3);
                 for (var model : routing.path("fallbackModels")) ScenarioContent.check(model.isTextual() && model.asText().matches("gemini-[a-zA-Z0-9_.-]{1,93}") && allowedModels.add(model.asText()));
             }
-            boolean independentAudit=ScenarioAssessment.PARTS_V4_7_PROMPT_HASH.equals(input.path("promptHash").asText());
+            boolean independentAudit=ScenarioAssessment.independentAudit(input.path("promptHash").asText());
             ScenarioContent.list(result.path("calls"),kind.equals("GENERATE") ? independentAudit ? 7 : 5 : 1,kind.equals("GENERATE") ? independentAudit ? 11 : 9 : 1);
             for (var call : result.path("calls")) { ScenarioContent.fields(call,"purpose","provider","model"); ScenarioContent.check(provider.equals(call.path("provider").asText()) && allowedModels.contains(call.path("model").asText()) && (kind.equals("GENERATE") || kind.equals(call.path("purpose").asText()))); }
             if (kind.equals("GENERATE")) validateHarnessCalls(result);
@@ -676,7 +676,7 @@ public class ScenarioEngine {
     static void validateHarnessCalls(JsonNode result) {
         var purposes=new ArrayList<String>();
         for (var call : result.path("calls")) purposes.add(call.path("purpose").asText());
-        if (ScenarioAssessment.PARTS_V4_7_PROMPT_HASH.equals(result.path("promptHash").asText())) {
+        if (ScenarioAssessment.independentAudit(result.path("promptHash").asText())) {
             validateAuditHarnessCalls(result,purposes);
             return;
         }

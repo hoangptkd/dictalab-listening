@@ -129,6 +129,7 @@ async def generate(dialogue, payload, call, deadline):
     selected = a.selected_release(payload.promptHash)
     parts = selected.POLICY_VERSION == a.parts_release.POLICY_VERSION
     independent = bool(getattr(selected, "AUDIT_PROTOCOL", None))
+    evidenced = bool(getattr(selected, "EVIDENCE_AUDIT", False))
     state = h.State(deadline, policy=selected.HARNESS_POLICY)
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)}
     frozen = {"dialogue": h.digest(dialogue), "specification": h.digest(payload.specification),
@@ -150,8 +151,9 @@ async def generate(dialogue, payload, call, deadline):
             data = review_data(stage, artifact)
             ledgers = {}
             verdict = None
-            stages = (("AUDIT_MEANINGS", audit.MeaningAudit), ("AUDIT_QUESTIONS", audit.QuestionAudit),
-                      ("REVIEW_QUESTIONS", audit.AuditedQuestionReview))
+            stages = (("AUDIT_MEANINGS", audit.MeaningAudit),
+                      ("AUDIT_QUESTIONS", audit.QuestionCoverageAudit if evidenced else audit.QuestionAudit),
+                      ("REVIEW_QUESTIONS", audit.EvidenceQuestionReview if evidenced else audit.AuditedQuestionReview))
             for purpose, model in stages:
                 stage_data = {**data, **ledgers}
                 if purpose == "REVIEW_QUESTIONS" and repair_context is not None:
@@ -164,11 +166,13 @@ async def generate(dialogue, payload, call, deadline):
                             audit.validate_meanings(raw, artifact)
                             ledgers["meaningAudit"] = raw.model_dump()
                         elif purpose == "AUDIT_QUESTIONS":
-                            audit.validate_questions(raw, artifact)
+                            (audit.validate_question_coverage if evidenced else audit.validate_questions)(raw, artifact)
                             ledgers["questionAudit"] = raw.model_dump()
                         else:
-                            verdict = audit.to_review(raw, audit.MeaningAudit.model_validate(ledgers["meaningAudit"]),
-                                audit.QuestionAudit.model_validate(ledgers["questionAudit"]), artifact, dialogue)
+                            question_model = audit.QuestionCoverageAudit if evidenced else audit.QuestionAudit
+                            verdict = (audit.to_evidence_review if evidenced else audit.to_review)(raw,
+                                audit.MeaningAudit.model_validate(ledgers["meaningAudit"]),
+                                question_model.model_validate(ledgers["questionAudit"]), artifact, dialogue)
                         state.artifacts[purpose + ":" + h.digest(artifact)] = h.digest(raw)
                         status, findings = ("PASS", []) if purpose != "REVIEW_QUESTIONS" else review_status(verdict, artifact, stage)
                         if status == "UNKNOWN":

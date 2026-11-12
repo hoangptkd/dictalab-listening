@@ -8,6 +8,17 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
 class ScenarioHarnessTest {
+    @Test void evidenceAuditUsesTheSameBoundedProtocolAndRejectsUnaccountedCalls() {
+        String pin=ScenarioAssessment.PARTS_V4_11_PROMPT_HASH;
+        assertThat(ScenarioOperations.callEnvelope("GENERATE",ScenarioData.object().put("promptHash",pin))).isEqualTo(11);
+        assertThat(ScenarioOperations.callEnvelope("GRADE",ScenarioData.object().put("promptHash",pin))).isEqualTo(1);
+        var valid=auditTranscript(0,"GENERATE","QUESTIONS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW")
+                .put("promptHash",pin).put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_11");
+        assertThatCode(() -> ScenarioEngine.validateHarnessCalls(valid)).doesNotThrowAnyException();
+        var invalid=auditTranscript(0,"GENERATE","QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW")
+                .put("promptHash",pin).put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_11");
+        assertThatThrownBy(() -> ScenarioEngine.validateHarnessCalls(invalid)).isInstanceOf(RuntimeException.class);
+    }
     @Test void callEnvelopeCoversPinnedGenerationContractsWithoutChangingLegacyDefault() {
         assertThat(ScenarioOperations.callEnvelope("GENERATE", ScenarioData.object()
                 .put("promptHash", ScenarioAssessment.PARTS_V4_7_PROMPT_HASH))).isEqualTo(11);
