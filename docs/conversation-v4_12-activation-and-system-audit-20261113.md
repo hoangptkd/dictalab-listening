@@ -185,3 +185,23 @@ Evidence riêng, không commit dữ liệu/runtime/credential:
 Đã kiểm tra luồng API thật, không phải audit browser/mobile/accessibility hay nghe đánh giá giọng TTS bằng tai. Chỉ kiểm tra một segment audio, chưa chứng nhận nghe toàn activity liền mạch/multi-voice. Chưa có so sánh full-generation V3/V4.12 trên corpus lớn cùng model. Test code xanh chứng minh tính tương thích trong phạm vi test; **không chứng minh nội dung AI đã tốt**.
 
 Kết luận: **V4.12 đang hoạt động trên local để bạn kiểm tra, chấm điểm đã đúng các probe, nhưng reviewer và cơ chế repair còn lỗi cần xử lý trước khi mở rộng.**
+
+## 7. Khôi phục trang quản trị Gemini sau kích hoạt
+
+Sau khi người dùng mở `/admin/gemini`, trang báo thiếu cấu hình quản trị. Nguyên nhân là launcher preview đã đọc bộ `data/microservices/core.env` và `ai.env` chạy inference, bỏ sót cấu hình quản trị hiện hữu ở `data/microservices/gemini-admin-local/`. Đây là thiếu sót cấu hình lúc khởi động, không phải mất chức năng hoặc lỗi prompt V4.12.
+
+Core đã có `text-transport=python` nhưng thiếu `DICTALAB_AI_PROVIDER_ADMIN_TOKEN`, nên `GeminiAdminController.exchange` từ chối trước khi gọi Python. API cũng thiếu `AI_PROVIDER_ADMIN_TOKEN`, `AI_PROVIDER_ADMIN_DATABASE_URL` và telemetry DSN.
+
+Đã nạp lại đúng token/kết nối được bảo vệ hiện có, kiểm tra cùng database registry; nối telemetry cho API/worker. Worker không nhận credential quản trị. Sau khi xác minh không có job đang chạy, đã restart đúng ba process của preview, giữ nguyên V4.12, fallback, jobs ledger, database và cổng. Không thay API key, quyền người dùng, quota hoặc registry.
+
+Kết quả lúc 14:53 UTC:
+
+- Python management snapshot HTTP 200, đọc được **5 nguồn Gemini**, quotaAvailable/usageEnabled đều true.
+- Hash cả năm bảng pools/accounts/labels/management/audit không đổi trước/sau.
+- Core/API thiếu đăng nhập/token vẫn HTTP 401; QA ID 14 là USER, vẫn HTTP 403 ở API admin. Không nâng quyền hoặc dùng tài khoản cá nhân để test.
+- Catalog của QA vẫn LOCAL_PREVIEW; pin V4.12 và fallback không đổi; bài TOEIC đã lưu vẫn COMPLETED. Phiên test riêng đã logout.
+- Ba `GeminiAdminControllerTest` đạt. Chưa xác nhận render bằng phiên admin trong browser; đã xác minh kết nối backend và các điều kiện cấu hình.
+
+Evidence riêng: `data/gemini-admin-v412-20261113/{runtime-before,restoration,verification}.json` cùng script phục hồi/kiểm tra không chứa credential. Receipt `runtime.json` được cập nhật PID mới; receipt/hash ban đầu trong mục 5 là lịch sử trước lần restart này. Bộ cấu hình quản trị được bảo vệ đã có sẵn và không bị sửa.
+
+**Khi khởi động lại preview, phải nạp cả cấu hình quản trị trên**, ghép token vào Core/API, DSN manager chỉ vào API, DSN telemetry vào API/worker; không dùng nguyên launcher evidence cũ như cấu hình hoàn chỉnh. Không cấp manager DSN hoặc provider key cho Core/worker. Thống kê đã bật cho lượt mới; các lượt chạy trước thiếu telemetry không được tự bịa hoặc backfill từ token ước tính. Langfuse của lần đánh giá vẫn được giữ riêng.
