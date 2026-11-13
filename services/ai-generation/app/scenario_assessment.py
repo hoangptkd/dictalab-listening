@@ -29,6 +29,7 @@ from . import scenario_prompts_meaning_v4_7 as independent_audit_candidate
 from . import scenario_prompts_meaning_v4_11 as evidence_audit_candidate
 from . import scenario_prompts_meaning_v4_12 as direct_audit_candidate
 from . import scenario_prompts_meaning_v4_13 as scoped_release
+from . import scenario_prompts_meaning_v4_14 as scoped_fewshot_candidate
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .observability import trace_gate
@@ -300,6 +301,9 @@ def prompt_hash(selected=release):
         manifest["structuralFindings"] = "all-localized-items.v1"
     if getattr(selected, "INPUT_PROJECTION", None):
         manifest["inputProjection"] = selected.INPUT_PROJECTION
+    if getattr(selected, "EXAMPLE_SET_HASH", None):
+        manifest["fewShotExamples"] = {"version": selected.EXAMPLE_SET_VERSION,
+            "hash": selected.EXAMPLE_SET_HASH, "idsByStage": selected.EXAMPLE_IDS}
     if parts:
         manifest["derivedGradeSchema"] = DerivedGrade.model_json_schema()
         manifest["aggregation"] = "all-captured;any-uncertain;any-correct-partial;any-incorrect;mode-omission.v1"
@@ -317,7 +321,7 @@ def prompt_hash(selected=release):
 
 
 def selected_release(requested_hash):
-    for selected in (scoped_release, direct_audit_candidate, evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
+    for selected in (scoped_fewshot_candidate, scoped_release, direct_audit_candidate, evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
         if requested_hash == prompt_hash(selected):
             return selected
     raise ValueError("scenario prompt mismatch")
@@ -364,7 +368,7 @@ def project_input(selected, purpose, data):
                 **{key: data[key] for key in ("repairContext", "formatFeedback") if key in data},
                 **({key: data[key] for key in ("meaningAudit", "questionAudit") if key in data}
                    if getattr(selected, "AUDIT_PROTOCOL", None) else {})}
-    if purpose == "REVIEW_QUESTIONS" and selected is scoped_release:
+    if purpose == "REVIEW_QUESTIONS" and selected in (scoped_release, scoped_fewshot_candidate):
         drafts = {activity["id"]: activity for activity in data["groundedQuestions"]["activities"]}
         # Keep draft speechAct/factEn for review; public content strips these fields.
         return {"content": {"activities": [{**activity, "questions": drafts[activity["id"]]["questions"]}
@@ -639,7 +643,9 @@ async def execute(event, settings):
                     event.jobId, purpose, type(error).__name__, getattr(error, "status", None), settings.selected_provider,
                     gateway.last_model, getattr(gateway, "last_source_id", None), len(calls))
                 raise
-            calls.append({"purpose": purpose, "provider": provider, "model": gateway.last_model})
+            calls.append({"purpose": purpose, "provider": provider, "model": gateway.last_model,
+                **({"exampleSetHash": selected.EXAMPLE_SET_HASH, "exampleIds": selected.EXAMPLE_IDS[purpose]}
+                   if getattr(selected, "EXAMPLE_SET_HASH", None) else {})})
             if getattr(gateway, "model_fallbacks", []):
                 chain = call_settings.gemini_fallback_models
                 pools = {p: dict(policy) for p, policy in call_settings.registry_pools.items()}

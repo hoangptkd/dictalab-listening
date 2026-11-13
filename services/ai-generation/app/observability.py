@@ -192,6 +192,12 @@ def trace_job(function):
                 release = selected_release(event.payload.promptHash)
                 metadata.update(assessmentPolicyVersion=release.POLICY_VERSION,
                                 harnessPolicyVersion=release.HARNESS_POLICY["version"])
+                if getattr(release, "EXAMPLE_SET_HASH", None):
+                    stages = (event.payload.phase,) if event.payload.phase != "GENERATE" else (
+                        "GENERATE", "QUESTIONS", "REVIEW_QUESTIONS", "TRANSLATE", "REVIEW", "REPAIR_QUESTIONS", "REPAIR_TRANSLATIONS")
+                    metadata.update(promptMode="few-shot", exampleSetVersion=release.EXAMPLE_SET_VERSION,
+                                    exampleSetHash=release.EXAMPLE_SET_HASH,
+                                    exampleIdsByStage={stage: release.EXAMPLE_IDS[stage] for stage in stages})
             else:
                 from .scenario_workflow import example_metadata
                 metadata.update(example_metadata(event.payload.promptHash, event.payload.phase))

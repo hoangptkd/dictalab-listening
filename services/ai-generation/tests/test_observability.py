@@ -285,6 +285,23 @@ def test_required_part_grade_trace_uses_its_pinned_policy_and_derivation_gate(tr
     assert any(s["name"] == "gate.derive_grade" and s["value"] == 1 for s in scores)
 
 
+def test_scoped_fewshot_trace_identifies_the_example_set_without_changing_job_fingerprint(tracing):
+    from test_scenario_assessment_fewshot import RELEASE, grade_payload
+    from test_scenario_assessment import execute
+    from app.jobs import capability_metadata
+    example = next(e for e in RELEASE.EXAMPLES if e["stage"] == "GRADE")
+    value = grade_payload(example)
+    settings = Settings(scenario_enabled=True)
+    before = capability_metadata(value, settings)
+    result, _ = execute(value, [example["expectedOutput"]], settings)
+    span = next(s for s in tracing[0].get_finished_spans() if s.name == "ai.scenario.grade")
+    assert json.loads(span.attributes["langfuse.trace.metadata.exampleSetHash"]) == RELEASE.EXAMPLE_SET_HASH
+    assert json.loads(span.attributes["langfuse.observation.metadata.exampleIdsByStage"]) == {"GRADE": RELEASE.EXAMPLE_IDS["GRADE"]}
+    assert result["calls"][0]["exampleIds"] == RELEASE.EXAMPLE_IDS["GRADE"]
+    assert capability_metadata(value, settings) == before
+    assert "exampleIdsByStage" not in before
+
+
 def test_repeated_gate_upserts_one_final_score(tracing):
     _, scores = tracing
     @obs.trace_gate

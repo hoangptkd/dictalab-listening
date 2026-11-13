@@ -8,15 +8,18 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
 class ScenarioHarnessTest {
-    @Test void scopedReleaseUsesFiveBaseCallsAndNineCallEnvelopeWithoutAudits() {
-        String pin=ScenarioAssessment.PARTS_V4_13_PROMPT_HASH;
-        assertThat(ScenarioAssessment.releaseMatches(pin,"SCENARIO_MEANING_ASSESSMENT_V4_13")).isTrue();
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+        ScenarioAssessment.PARTS_V4_13_PROMPT_HASH+",SCENARIO_MEANING_ASSESSMENT_V4_13",
+        ScenarioAssessment.PARTS_V4_14_PROMPT_HASH+",SCENARIO_MEANING_ASSESSMENT_V4_14"})
+    void scopedReleaseUsesFiveBaseCallsAndNineCallEnvelopeWithoutAudits(String pin,String version) {
+        assertThat(ScenarioAssessment.releaseMatches(pin,version)).isTrue();
         assertThat(ScenarioAssessment.releaseMatches(pin,"SCENARIO_MEANING_ASSESSMENT_V4_12")).isFalse();
         assertThat(ScenarioAssessment.policyFor(pin)).isEqualTo(ScenarioAssessment.PARTS_POLICY);
         assertThat(ScenarioAssessment.independentAudit(pin)).isFalse();
         assertThat(ScenarioOperations.callEnvelope("GENERATE",ScenarioData.object().put("contractVersion","scenario-job.v3").put("promptHash",pin))).isEqualTo(9);
         var result=transcript(0,"GENERATE","QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW")
-                .put("promptHash",pin).put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_13");
+                .put("promptHash",pin).put("promptVersion",version);
         ((ObjectNode)result.path("qualityHarness")).put("policyVersion","scenario-meaning-harness.v1")
                 .put("policyHash","56d0d6d5e826e1b46f20b5ab4a3868dada9537cca996cb35999d3886ee3d6fe2");
         assertThatCode(()->ScenarioEngine.validateHarnessCalls(result)).doesNotThrowAnyException();

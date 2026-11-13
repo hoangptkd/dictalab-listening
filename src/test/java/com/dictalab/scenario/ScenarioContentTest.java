@@ -122,6 +122,11 @@ class ScenarioContentTest {
         assertThat(scopedRelease.assessmentPromptHash()).isEqualTo(ScenarioAssessment.PARTS_V4_13_PROMPT_HASH);
         assertThat(scopedRelease.available(14,program)).isTrue();
         assertThat(scopedRelease.available(15,program)).isFalse();
+        var fewshot=new ScenarioEngineProperties(true,1,"",ScenarioAssessment.PARTS_V4_14_PROMPT_HASH,true,java.util.Set.of(14L),approvals);
+        var fewshotRelease=new ScenarioRelease(new ScenarioProperties(true),fewshot,registry,ai,env);
+        assertThat(fewshotRelease.assessmentPromptHash()).isEqualTo(ScenarioAssessment.PARTS_V4_14_PROMPT_HASH);
+        assertThat(fewshotRelease.available(14,program)).isTrue();
+        assertThat(fewshotRelease.available(15,program)).isFalse();
         var historical=registry.require("general-communication",3);
         assertThatCode(()->release.requireGrade(14,historical.code(),historical.version(),historical.definitionHash())).doesNotThrowAnyException();
         var defaultPin=new ScenarioEngineProperties(true,1,"",ScenarioAssessment.PROMPT_HASH,true,java.util.Set.of(14L),approvals);
@@ -134,6 +139,7 @@ class ScenarioContentTest {
             assertThat(blocked.assessmentPromptHash()).isEqualTo(ScenarioAssessment.PROMPT_HASH);
             assertThat(blocked.available(14,program)).isFalse();
             assertThat(new ScenarioRelease(new ScenarioProperties(true),scoped,registry,ai,env).available(14,program)).isFalse();
+            assertThat(new ScenarioRelease(new ScenarioProperties(true),fewshot,registry,ai,env).available(14,program)).isFalse();
         }
         env.setProperty("server.address","127.0.0.1");
         for (String profile : java.util.List.of("prod","production")) {
@@ -142,6 +148,7 @@ class ScenarioContentTest {
             assertThat(blocked.assessmentPromptHash()).isEqualTo(ScenarioAssessment.PROMPT_HASH);
             assertThat(blocked.available(14,program)).isFalse();
             assertThat(new ScenarioRelease(new ScenarioProperties(true),scoped,registry,ai,env).available(14,program)).isFalse();
+            assertThat(new ScenarioRelease(new ScenarioProperties(true),fewshot,registry,ai,env).available(14,program)).isFalse();
         }
     }
 
