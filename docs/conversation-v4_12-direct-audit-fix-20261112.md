@@ -2,6 +2,8 @@
 
 Ngày: 12/11/2026. **Code đã sửa và qua kiểm thử; chất lượng AI thật chưa xác nhận vì Gemini 503.** Candidate chưa được kích hoạt.
 
+Cập nhật 13/11/2026: đã lấy đủ kết quả kiểm tra lại sau một lần 503; F1/F2 được bắt đúng, F3–F5 bị bỏ sót và positive vẫn bị loại nhầm. **Có cải thiện một phần nhưng chưa đạt.** Xem [báo cáo kiểm tra lại](conversation-v4_12-quality-retest-20261113.md); phần bên dưới giữ nguyên kết quả lịch sử ngày 12/11.
+
 ## Thay đổi từ V4.11
 
 | Vấn đề có bằng chứng | Thay đổi V4.12 |
