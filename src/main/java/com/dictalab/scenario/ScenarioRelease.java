@@ -32,10 +32,17 @@ public class ScenarioRelease {
             personalizedPromptHash = new String(input.readNBytes(66), StandardCharsets.US_ASCII).trim();
         }
         if (!personalizedPromptHash.matches("[a-f0-9]{64}")) throw new IllegalStateException("Invalid personalized workflow pin");
+        String defaultAssessmentHash;
         try (var input = new ClassPathResource("scenario/workflow-v3.sha256").getInputStream()) {
-            assessmentPromptHash = new String(input.readNBytes(66), StandardCharsets.US_ASCII).trim();
+            defaultAssessmentHash = new String(input.readNBytes(66), StandardCharsets.US_ASCII).trim();
         }
-        if (!assessmentPromptHash.equals(ScenarioAssessment.PROMPT_HASH)) throw new IllegalStateException("Invalid assessment workflow pin");
+        if (!defaultAssessmentHash.equals(ScenarioAssessment.PROMPT_HASH)) throw new IllegalStateException("Invalid assessment workflow pin");
+        // Explicit local preview approval selects the candidate; saved lessons retain their own pins.
+        boolean directAuditPreview = engine.localPreviewEnabled()
+                && ScenarioAssessment.PARTS_V4_12_PROMPT_HASH.equals(engine.approvedPromptHash())
+                && environment.matchesProfiles("local") && !environment.matchesProfiles("prod", "production")
+                && Set.of("127.0.0.1", "::1").contains(environment.getProperty("server.address", ""));
+        assessmentPromptHash = directAuditPreview ? ScenarioAssessment.PARTS_V4_12_PROMPT_HASH : defaultAssessmentHash;
     }
 
     ScenarioRelease(ScenarioProperties rollout, ScenarioEngineProperties engine, ScenarioProgramRegistry programs,

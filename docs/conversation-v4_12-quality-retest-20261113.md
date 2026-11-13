@@ -2,6 +2,8 @@
 
 Ngày: 13/11/2026. **Có cải thiện một phần so với V4.11, nhưng chưa đạt điều kiện kích hoạt.**
 
+Cập nhật sau báo cáo này: theo yêu cầu chủ sở hữu, đã [kích hoạt V4.12 trong preview local và kiểm tra thêm luồng thật](conversation-v4_12-activation-and-system-audit-20261113.md). Các kết luận chất lượng và trạng thái chưa kích hoạt bên dưới phản ánh thời điểm phép đo cũ; default toàn cục vẫn V3.
+
 ## 1. Phạm vi và phương pháp
 
 - Candidate: `SCENARIO_MEANING_ASSESSMENT_V4_12`.

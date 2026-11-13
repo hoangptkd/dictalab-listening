@@ -107,6 +107,37 @@ class ScenarioContentTest {
         assertThat(new ScenarioRelease(new ScenarioProperties(true),wrongPin,registry,ai,env).available(3,program)).isFalse();
     }
 
+    @Test void directAuditPreviewUsesExplicitLocalPinAndPreservesDefaultAndHistoricalGrading() throws Exception {
+        var registry=new ScenarioProgramRegistry(); var program=registry.require("general-communication",4);
+        var ai=mock(com.dictalab.service.AiPlatformClient.class); when(ai.textConfigured()).thenReturn(true);
+        var approvals=java.util.Map.of("general-communication:4",program.definitionHash());
+        var properties=new ScenarioEngineProperties(true,1,"",ScenarioAssessment.PARTS_V4_12_PROMPT_HASH,true,java.util.Set.of(14L),approvals);
+        var env=new org.springframework.mock.env.MockEnvironment(); env.setActiveProfiles("local"); env.setProperty("server.address","127.0.0.1");
+        var release=new ScenarioRelease(new ScenarioProperties(true),properties,registry,ai,env);
+        assertThat(release.assessmentPromptHash()).isEqualTo(ScenarioAssessment.PARTS_V4_12_PROMPT_HASH);
+        assertThat(release.require(14,program.code(),program.version())).isEqualTo(program);
+        assertThat(release.available(15,program)).isFalse();
+        var historical=registry.require("general-communication",3);
+        assertThatCode(()->release.requireGrade(14,historical.code(),historical.version(),historical.definitionHash())).doesNotThrowAnyException();
+        var defaultPin=new ScenarioEngineProperties(true,1,"",ScenarioAssessment.PROMPT_HASH,true,java.util.Set.of(14L),approvals);
+        assertThat(new ScenarioRelease(new ScenarioProperties(true),defaultPin,registry,ai,env).assessmentPromptHash()).isEqualTo(ScenarioAssessment.PROMPT_HASH);
+        var disabled=new ScenarioEngineProperties(true,1,"",ScenarioAssessment.PARTS_V4_12_PROMPT_HASH,false,java.util.Set.of(14L),approvals);
+        assertThat(new ScenarioRelease(new ScenarioProperties(true),disabled,registry,ai,env).assessmentPromptHash()).isEqualTo(ScenarioAssessment.PROMPT_HASH);
+        for (String address : java.util.List.of("0.0.0.0","")) {
+            env.setProperty("server.address",address);
+            var blocked=new ScenarioRelease(new ScenarioProperties(true),properties,registry,ai,env);
+            assertThat(blocked.assessmentPromptHash()).isEqualTo(ScenarioAssessment.PROMPT_HASH);
+            assertThat(blocked.available(14,program)).isFalse();
+        }
+        env.setProperty("server.address","127.0.0.1");
+        for (String profile : java.util.List.of("prod","production")) {
+            env.setActiveProfiles("local",profile);
+            var blocked=new ScenarioRelease(new ScenarioProperties(true),properties,registry,ai,env);
+            assertThat(blocked.assessmentPromptHash()).isEqualTo(ScenarioAssessment.PROMPT_HASH);
+            assertThat(blocked.available(14,program)).isFalse();
+        }
+    }
+
     @Test void configurationBindsExactVersionedProgramMapKeys() {
         var env=new org.springframework.mock.env.MockEnvironment()
                 .withProperty("dictalab.scenario.engine.approved-programs.[toeic-listening:2]","a".repeat(64));
