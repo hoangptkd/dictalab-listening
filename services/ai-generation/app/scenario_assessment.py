@@ -28,6 +28,7 @@ from . import scenario_prompts_meaning_v4_6 as projected_parts_candidate
 from . import scenario_prompts_meaning_v4_7 as independent_audit_candidate
 from . import scenario_prompts_meaning_v4_11 as evidence_audit_candidate
 from . import scenario_prompts_meaning_v4_12 as direct_audit_candidate
+from . import scenario_prompts_meaning_v4_13 as scoped_release
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .observability import trace_gate
@@ -316,7 +317,7 @@ def prompt_hash(selected=release):
 
 
 def selected_release(requested_hash):
-    for selected in (direct_audit_candidate, evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
+    for selected in (scoped_release, direct_audit_candidate, evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
         if requested_hash == prompt_hash(selected):
             return selected
     raise ValueError("scenario prompt mismatch")
@@ -363,6 +364,12 @@ def project_input(selected, purpose, data):
                 **{key: data[key] for key in ("repairContext", "formatFeedback") if key in data},
                 **({key: data[key] for key in ("meaningAudit", "questionAudit") if key in data}
                    if getattr(selected, "AUDIT_PROTOCOL", None) else {})}
+    if purpose == "REVIEW_QUESTIONS" and selected is scoped_release:
+        drafts = {activity["id"]: activity for activity in data["groundedQuestions"]["activities"]}
+        # Keep draft speechAct/factEn for review; public content strips these fields.
+        return {"content": {"activities": [{**activity, "questions": drafts[activity["id"]]["questions"]}
+                    for activity in data["content"]["activities"]]},
+                **{key: data[key] for key in ("learningContext", "repairContext", "formatFeedback") if key in data}}
     return data
 
 

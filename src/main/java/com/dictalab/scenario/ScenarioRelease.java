@@ -38,11 +38,11 @@ public class ScenarioRelease {
         }
         if (!defaultAssessmentHash.equals(ScenarioAssessment.PROMPT_HASH)) throw new IllegalStateException("Invalid assessment workflow pin");
         // Explicit local preview approval selects the candidate; saved lessons retain their own pins.
-        boolean directAuditPreview = engine.localPreviewEnabled()
-                && ScenarioAssessment.PARTS_V4_12_PROMPT_HASH.equals(engine.approvedPromptHash())
+        boolean assessmentPreview = engine.localPreviewEnabled()
+                && Set.of(ScenarioAssessment.PARTS_V4_12_PROMPT_HASH,ScenarioAssessment.PARTS_V4_13_PROMPT_HASH).contains(engine.approvedPromptHash())
                 && environment.matchesProfiles("local") && !environment.matchesProfiles("prod", "production")
                 && Set.of("127.0.0.1", "::1").contains(environment.getProperty("server.address", ""));
-        assessmentPromptHash = directAuditPreview ? ScenarioAssessment.PARTS_V4_12_PROMPT_HASH : defaultAssessmentHash;
+        assessmentPromptHash = assessmentPreview ? engine.approvedPromptHash() : defaultAssessmentHash;
     }
 
     ScenarioRelease(ScenarioProperties rollout, ScenarioEngineProperties engine, ScenarioProgramRegistry programs,
