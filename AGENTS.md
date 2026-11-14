@@ -12,6 +12,15 @@ runnable check for non-trivial logic.
 Use professional, concise, complete sentences. Preserve technical meaning and use
 normal prose for irreversible actions, security warnings and multi-step instructions.
 
+## Project skill scope
+
+DictaLab uses plain HTML/CSS/JavaScript for the web and SwiftUI for iOS.
+The owner removed these six skills from this project:
+`react-vite-dashboard`, `stitch-react-components`, `stitch-react-native`,
+`shadcn-ui`, `remotion`, and `taste-design`.
+Do not automatically activate them from project, shared, or plugin installations.
+Use one only when the owner explicitly requests it for the current task.
+
 ## Automatic GitHub delivery after completed work
 
 After completing an independently reviewable feature, fix or milestone, run the
