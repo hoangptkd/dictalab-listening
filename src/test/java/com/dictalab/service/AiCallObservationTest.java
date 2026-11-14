@@ -30,4 +30,18 @@ class AiCallObservationTest {
         assertThat(calls.get(0).get("httpAttempts")).isNull();
         assertThat(calls.get(1)).containsEntry("prompt_tokens",9L).containsEntry("completion_tokens",3L).containsEntry("httpAttempts",1);
     }
+    @Test void retainsActualReturnedModelAfterCallForExactJudgeCacheIdentity() {
+        var calls = new ArrayList<Map<String,Object>>(); var json = new ObjectMapper();
+        try (var scope = new AiCallObservation(() -> {}, calls::add)) {
+            AiCallObservation.begin("primary");
+            AiCallObservation.remote(json.readTree("{\"model\":\"fallback\",\"fallbacks\":[{\"fromModel\":\"primary\",\"toModel\":\"fallback\",\"httpStatus\":503}]}"));
+            AiCallObservation.end("SUCCESS");
+            assertThat(AiCallObservation.returnedModel()).isEqualTo("fallback");
+            assertThat(calls.get(0)).containsEntry("model", "fallback").containsKey("fallbacks");
+            AiCallObservation.begin("next");
+            assertThat(AiCallObservation.returnedModel()).isNull();
+            AiCallObservation.end("AI_SERVICE");
+        }
+        assertThat(AiCallObservation.returnedModel()).isNull();
+    }
 }

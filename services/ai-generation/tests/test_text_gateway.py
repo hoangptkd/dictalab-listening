@@ -149,6 +149,34 @@ def test_optional_observation_reports_attempts_without_inventing_usage(api, miss
         assert observation["prompt_tokens"] == 17 and observation["completion_tokens"] == 9
 
 
+def test_text_server_rejection_uses_configured_fallback_and_reports_actual_model(api, monkeypatch):
+    from test_gemini_model_fallback import config, rejected, success, PRIMARY, FALLBACK
+    client, settings, main = api
+    selected = config()
+    selected.service_token = TOKEN
+    selected.text_gateway_enabled = True
+    selected.jobs_database = settings.jobs_database
+    monkeypatch.setattr(main, "settings", selected)
+    real_client = httpx.AsyncClient
+    calls = []
+    def handler(request):
+        calls.append(json.loads(request.content)["model"])
+        return rejected() if len(calls) == 1 else success()
+    with patch("app.text_gateway.httpx.AsyncClient", side_effect=lambda **kwargs:
+               real_client(transport=httpx.MockTransport(handler), **kwargs)):
+        body = request(provider="gemini", model=PRIMARY)
+        response = client.post("/v1/text/completions", json=body,
+            headers={"X-Service-Token": TOKEN, "X-AI-Observe": "usage"})
+        assert response.status_code == 200, response.text
+        envelope = response.json()
+        assert envelope["requestedModel"] == PRIMARY and envelope["model"] == FALLBACK
+        assert envelope["fallbacks"] == [{"fromModel": PRIMARY, "toModel": FALLBACK, "httpStatus": 503}]
+        assert envelope["observation"]["httpAttempts"] == 2
+        assert client.post("/v1/text/completions", json=body,
+            headers={"X-Service-Token": TOKEN}).status_code == 409
+    assert calls == [PRIMARY, FALLBACK]
+
+
 def test_queue_deadline_keeps_admission_and_releases_no_unacquired_permit(api):
     client, _, main = api
     main.semaphore = asyncio.Semaphore(0)

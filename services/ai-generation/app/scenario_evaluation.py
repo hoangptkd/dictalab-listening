@@ -143,6 +143,7 @@ async def submit(payload: EvaluationRequest, x_service_token: str | None = Heade
 async def run(request, settings, path, record):
     from .main import semaphore
     acquired = False
+    record["learningContext"] = request.payload.learningContext.model_dump(mode="json")
     def observe(event):
         record["events"].append(event)
         save(path, record)
@@ -186,7 +187,8 @@ def initial_artifact(record):
             first.setdefault(event["stage"], event["output"])
     try:
         dialogue = a.w.Dialogue.model_validate(first["GENERATE"])
-        context = a.AssessmentContext.model_validate({"currentValue": None, **next(e["input"]["learningContext"] for e in record["events"] if e["stage"] == "EXTRACT")})
+        context = a.AssessmentContext.model_validate(record.get("learningContext") or
+            {"currentValue": None, **next(e["input"]["learningContext"] for e in record["events"] if e["stage"] == "EXTRACT")})
         questions = a.PartsQuestions.model_validate(first["QUESTIONS"])
         content = a.attach_questions(dialogue, questions, context)
         translations = a.w.Translations.model_validate(first["TRANSLATE"])

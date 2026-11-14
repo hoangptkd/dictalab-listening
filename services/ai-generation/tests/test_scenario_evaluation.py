@@ -85,6 +85,11 @@ async def test_real_pipeline_observer_persists_six_stages_and_idempotency(config
     assert len(calls) == 6 and len(record["events"]) == 12
     assert record["events"][1]["output"] == raw_extract
     assert record["events"][1]["attempts"][0]["prompt_tokens"] == 10
+    for event in record["events"]:
+        if "learningContext" in event.get("input", {}):
+            for field in ("min", "max", "step"):
+                event["input"]["learningContext"]["targetScale"].pop(field, None)
+    assert e.initial_artifact(record)["hardPass"]
     assert (await call("POST", "/v1/evaluation/scenario", json=data, headers=headers)).json()["status"] == "COMPLETED"
     assert len(calls) == 6
     data["payload"]["inputVi"] += "!"

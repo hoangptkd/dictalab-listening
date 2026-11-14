@@ -91,13 +91,17 @@ async def complete(payload: TextRequest, x_service_token: str | None = Header(de
                     {"role": "system", "content": payload.instruction},
                     {"role": "user", "content": payload.input}], {"type": "object"},
                     time.monotonic() + max(0, payload.deadline.timestamp() - time.time()), "core_text",
-                    temperature=0, json_object=True)
+                    temperature=0, json_object=True, allow_model_fallback=True)
             expected_model = payload.model.removeprefix("models/") if provider in CLOUD_PROVIDERS else payload.model
             if (not isinstance(result, dict) or len(json.dumps(result, ensure_ascii=False)) > 12000
-                    or provider != payload.provider or gateway.last_model != expected_model):
+                    or provider != payload.provider or (gateway.last_model != expected_model and
+                        (provider != "gemini" or gateway.last_model not in selected.gemini_fallback_models
+                         or not gateway.model_fallbacks or gateway.model_fallbacks[-1]["toModel"] != gateway.last_model))):
                 raise ValueError("invalid text output or provenance")
             envelope = {"schemaVersion": "1", "requestId": str(payload.requestId), "provider": provider,
                         "model": gateway.last_model, "task": result}
+            if gateway.model_fallbacks:
+                envelope.update(requestedModel=expected_model, fallbacks=gateway.model_fallbacks)
             if x_ai_observe == "usage":
                 attempts = gateway.observed_attempts
                 observation = {"attempts": attempts, "httpAttempts": len(attempts)}

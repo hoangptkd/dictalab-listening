@@ -12,17 +12,22 @@ final class AiCallObservation implements AutoCloseable {
     private Map<String, Object> call;
     private final List<Map<String, Object>> attempts = new ArrayList<>();
     private long started;
+    private String returnedModel;
 
     AiCallObservation(Runnable admission, Consumer<Map<String, Object>> sink) {
         if (CURRENT.get() != null) throw new IllegalStateException("Nested AI observation");
         this.admission = admission; this.sink = sink; CURRENT.set(this);
     }
     static boolean active() { return CURRENT.get() != null; }
+    static String returnedModel() {
+        var scope = CURRENT.get(); return scope == null ? null : scope.returnedModel;
+    }
     static void begin(String model) {
         var scope = CURRENT.get();
         if (scope == null) return;
         scope.admission.run();
         scope.call = new LinkedHashMap<>();
+        scope.returnedModel = null;
         scope.attempts.clear();
         scope.call.put("model", model); scope.call.put("httpAttempts", 0);
         scope.started = System.nanoTime();
@@ -61,6 +66,11 @@ final class AiCallObservation implements AutoCloseable {
     static void remote(JsonNode envelope) {
         var scope = CURRENT.get();
         if (scope == null || scope.call == null) return;
+        if (envelope.path("model").isTextual()) {
+            scope.returnedModel = envelope.path("model").asText();
+            scope.call.put("model", scope.returnedModel);
+        }
+        if (envelope.path("fallbacks").isArray()) scope.call.put("fallbacks", envelope.path("fallbacks"));
         scope.call.put("transport", "python"); scope.call.put("httpAttempts", null);
         var observation = envelope.path("observation");
         if (observation.isObject()) {

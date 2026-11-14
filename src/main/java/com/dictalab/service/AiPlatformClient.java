@@ -93,9 +93,26 @@ public class AiPlatformClient {
             JsonNode result = json.reader().with(tools.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                     .readTree(response.body());
             String expectedModel = local() ? model : model.replaceFirst("^models/", "");
+            boolean modelVerified = expectedModel.equals(result.path("model").asText());
+            if (result.has("fallbacks")) {
+                var fallbacks = result.path("fallbacks");
+                modelVerified = config.textProvider().equals("gemini")
+                        && expectedModel.equals(result.path("requestedModel").asText())
+                        && fallbacks.isArray() && !fallbacks.isEmpty() && fallbacks.size() <= 3;
+                String previous = expectedModel;
+                var seen = new HashSet<String>(); seen.add(previous);
+                for (var fallback : fallbacks) {
+                    String next = fallback.path("toModel").asText();
+                    modelVerified &= previous.equals(fallback.path("fromModel").asText())
+                            && next.matches("[a-zA-Z0-9_.:/-]{1,128}") && seen.add(next)
+                            && Set.of(500, 503).contains(fallback.path("httpStatus").asInt());
+                    previous = next;
+                }
+                modelVerified &= previous.equals(result.path("model").asText());
+            }
             if (!"1".equals(result.path("schemaVersion").asText()) || !requestId.equals(result.path("requestId").asText())
                     || !config.textProvider().equals(result.path("provider").asText())
-                    || !expectedModel.equals(result.path("model").asText()) || !result.path("task").isObject()
+                    || !modelVerified || !result.path("task").isObject()
                     || result.path("task").toString().length() > 12000)
                 throw new IllegalStateException("Invalid AI text result or provenance");
             AiCallObservation.remote(result);

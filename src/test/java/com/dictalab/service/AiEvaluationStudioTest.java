@@ -113,6 +113,26 @@ class AiEvaluationStudioTest {
         assertThat(stopped.path("cases").size()).isEqualTo(1);
         verify(platform,times(7)).scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")));
     }
+    @Test void fallbackJudgeIsNeverCachedAsTheRequestedPrimaryModel() throws Exception {
+        fakeGeneration();
+        when(ai.completeJson(anyString(), anyString(), eq("gemini-test"), any(Duration.class))).thenAnswer(call -> {
+            AiCallObservation.begin("gemini-test");
+            AiCallObservation.remote(json.createObjectNode().put("model", "gemini-fallback"));
+            AiCallObservation.end("SUCCESS");
+            return verdict();
+        });
+        var version = version().path("id").asText();
+        for (int i = 0; i < 2; i++) {
+            var run = finished(studio.start(request(version, "smoke", true), 14).path("id").asText());
+            assertThat(run.path("metrics").path("afterPassed").asInt()).isEqualTo(3);
+            assertThat(run.path("cases").path(0).path("calls").path(1).path("model").asText()).isEqualTo("gemini-fallback");
+        }
+        verify(ai, times(6)).completeJson(anyString(), anyString(), eq("gemini-test"), any(Duration.class));
+        try (var files = Files.list(directory.resolve("judgments"))) {
+            for (var path : files.toList())
+                assertThat(json.readTree(Files.readString(path)).path("model").asText()).isEqualTo("gemini-fallback");
+        }
+    }
     @Test void definitiveContentRejectionRecordsFailureAndContinuesDistinctCases() throws Exception {
         when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload"))))
                 .thenAnswer(call -> {

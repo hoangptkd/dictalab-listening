@@ -48,6 +48,11 @@ and Core build. HTTP attempts, returned models and available usage are stored se
 Canonical request/generation UUIDs remain readable across the sanitized Python transport;
 credentials still redact. Usage accepts both provider token fields and scenario-observer token
 fields, and only counts nonnegative integer measurements.
+The initial artifact uses the complete admitted learning context, including nullable scale
+bounds; projected prompt input is not a complete reconstruction source.
+The independent text judge also uses the configured Gemini fallback policy for explicit server
+rejections. Its returned model and fallback chain remain visible. A fallback verdict is stored
+under the actual model identity and cannot satisfy a cache lookup for the requested primary.
 Changed configuration requires a new snapshot. Stored histories remain readable and exportable.
 No automatic activation follows a comparison result.
 

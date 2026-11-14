@@ -378,6 +378,11 @@ public class AiEvaluationStudio {
         else {
             budget.reserve(actor, false);
             verdict = checkedVerdict(ai.completeJson(SCENARIO_JUDGE, json.writeValueAsString(input), conversations.evaluationModel(), java.time.Duration.ofSeconds(55)), input);
+            String returnedModel = AiCallObservation.returnedModel();
+            if (returnedModel != null && !returnedModel.equals(conversations.evaluationModel())) {
+                cacheKey.put("model", returnedModel); key = hash(cacheKey);
+            }
+            verdict.put("model", returnedModel == null ? conversations.evaluationModel() : returnedModel);
             verdict.put("id", key).put("judgedAt", Instant.now().toString()); save("judgments", key, verdict);
         }
         result.set("checks", verdict.path("checks")); result.set("issues", verdict.path("issues"));

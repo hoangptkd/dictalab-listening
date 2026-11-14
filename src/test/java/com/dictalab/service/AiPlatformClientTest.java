@@ -100,6 +100,37 @@ class AiPlatformClientTest {
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("strong service token");
         assertThat(calls.get()).isZero();
     }
+    @Test void genericTextAcceptsOnlyVerifiedGeminiFallbackChain() {
+        var envelope = new java.util.concurrent.atomic.AtomicReference<>(json.createObjectNode());
+        server.createContext("/v1/text/completions", exchange -> {
+            calls.incrementAndGet();
+            var body = json.readTree(exchange.getRequestBody().readAllBytes());
+            var result = envelope.get().deepCopy().put("schemaVersion", "1")
+                    .put("requestId", body.path("requestId").asText()).put("provider", "gemini").put("model", "fallback");
+            result.putObject("task").put("ok", true);
+            byte[] bytes = json.writeValueAsBytes(result);
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (var output = exchange.getResponseBody()) { output.write(bytes); }
+        });
+        var remote = new AiPlatformClient(json, new AiPlatformProperties("http://127.0.0.1:" + server.getAddress().getPort(),
+                "t".repeat(40), "gemini", 5, "legacy", "legacy", "legacy", Set.of()), new SimpleMeterRegistry());
+        assertThatThrownBy(() -> remote.completeText("JSON", "Evidence", "primary", java.time.Duration.ofSeconds(2)))
+                .hasMessageContaining("provenance");
+        var valid = json.createObjectNode().put("requestedModel", "primary");
+        valid.putArray("fallbacks").addObject().put("fromModel", "primary").put("toModel", "fallback").put("httpStatus", 503);
+        envelope.set(valid);
+        assertThat(remote.completeText("JSON", "Evidence", "primary", java.time.Duration.ofSeconds(2)).path("ok").asBoolean()).isTrue();
+        var wrongStatus = valid.deepCopy();
+        ((tools.jackson.databind.node.ObjectNode) wrongStatus.path("fallbacks").path(0)).put("httpStatus", 504);
+        var wrongOrigin = valid.deepCopy();
+        ((tools.jackson.databind.node.ObjectNode) wrongOrigin.path("fallbacks").path(0)).put("fromModel", "other");
+        for (var invalid : List.of(valid.deepCopy().put("requestedModel", "other"), wrongStatus, wrongOrigin)) {
+            envelope.set(invalid);
+            assertThatThrownBy(() -> remote.completeText("JSON", "Evidence", "primary", java.time.Duration.ofSeconds(2)))
+                    .hasMessageContaining("provenance");
+        }
+        assertThat(calls.get()).isEqualTo(5);
+    }
     private AiPlatformProperties config(String mode, Set<Long> users) {
         return new AiPlatformProperties("http://127.0.0.1:" + server.getAddress().getPort(), "test-only", "ollama", 5,
                 mode, mode, mode, users);
