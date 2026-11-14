@@ -305,6 +305,24 @@ python scripts/run-service.py worker --env-file data/microservices/ai.env
 python scripts/run-service.py progress --env-file data/microservices/progress.env
 ```
 
+Trang `/admin/gemini` cần bộ cấu hình quản trị riêng đã chuẩn bị tại
+`data/microservices/gemini-admin-local`, gồm token quản trị khớp giữa Core và AI
+và DSN manager của cùng registry. Các file `data/microservices/core.env` và
+`ai.env` dùng cho luồng tạo nội dung không mặc nhiên bật quản trị Gemini.
+Không đổi về bộ cấu hình chung khi khởi động lại trang quản trị.
+
+Khi chạy cả stack quản trị, yêu cầu kiểm tra cấu hình trước khi mở dịch vụ:
+
+```powershell
+python scripts/run-service.py stack --config-dir data/microservices/gemini-admin-local --require-gemini-admin
+```
+
+Launcher từ chối token thiếu, không khớp, dùng chung với execution token hoặc
+DSN manager khác registry. Kiểm tra này không thay thế việc xác minh quyền DB
+và đọc dữ liệu thật. Với local QA cổng 18082, launcher riêng
+`data/ai-evaluation-qa/run_local.py` dùng cùng bộ cấu hình quản trị, giữ DB QA,
+profile `local` và tài khoản QA 14; không dùng DB của bộ cấu hình mẫu.
+
 Build JAR Core/Progress trước. Launcher không tự đọc `.env` chung, không thừa
 kế application secrets/proxy/JVM injection từ process cha và kiểm tra biến theo
 service. API/worker phải dùng cùng SQLite path tuyệt đối. `run-local.ps1` và
