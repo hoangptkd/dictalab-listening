@@ -13,7 +13,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.BDDMockito.*;
 
 @SpringBootTest(properties = {"dictalab.coach.enabled=true", "dictalab.coach.provider=ollama",
-        "dictalab.ai.budget.enabled=true", "dictalab.operational-limits-enabled=true"})
+        "dictalab.ai.budget.enabled=true", "dictalab.operational-limits-enabled=true",
+        "spring.datasource.url=jdbc:h2:mem:coachlocaltest;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"})
 class CoachLocalServiceIntegrationTest {
     @Autowired CoachService coach;
     @Autowired JdbcTemplate db;

@@ -22,7 +22,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties={"dictalab.model-demo.enabled=true","dictalab.model-demo.poll-delay-ms=600000",
-        "dictalab.ai.budget.enabled=true","dictalab.operational-limits-enabled=true"})
+        "dictalab.ai.budget.enabled=true","dictalab.operational-limits-enabled=true",
+        "spring.datasource.url=jdbc:h2:mem:modeldemotest;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"})
 @AutoConfigureMockMvc
 class ModelDemoIntegrationTest {
     @Autowired ModelDemoService demo;
