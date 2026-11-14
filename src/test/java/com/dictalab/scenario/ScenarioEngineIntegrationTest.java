@@ -661,6 +661,22 @@ class ScenarioEngineIntegrationTest {
         } finally { db.execute("ALTER TABLE scenario_operation_budget DROP CONSTRAINT "+constraint); }
     }
 
+    @Test void unrestrictedGenerationPreservesEnvelopeAndIdempotencyPastDailyAndPendingCaps() {
+        var environment=new org.springframework.mock.env.MockEnvironment().withProperty("dictalab.operational-limits-enabled","false");
+        var provider=new org.springframework.beans.factory.support.DefaultListableBeanFactory();
+        provider.registerSingleton("engine",engine);
+        var unlimitedOperations=new ScenarioOperations(data,ai,budget,provider.getBeanProvider(ScenarioEngine.class),environment);
+        var unlimitedEngine=new ScenarioEngine(data,unlimitedOperations,release,ai,media,null,environment,personalization,engineConfig);
+        var extract=dispatch(unlimitedEngine.createDraft(user,id(),input()));
+        var draft=unlimitedEngine.draft(user,extract.path("draftId").asText());
+        for(int i=0;i<20;i++) db.update("INSERT INTO ai_conversation_sessions(id,user_id,scenario,difficulty,state_json) VALUES (?,?,'cafe','A1','{}')",id(),user);
+        for(int i=0;i<4;i++) unlimitedEngine.createDraft(user,id(),input());
+        String key=id(); var request=new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong());
+        var op=unlimitedEngine.createSession(user,key,request);
+        assertThat(unlimitedEngine.createSession(user,key,request)).isEqualTo(op);
+        assertThat(db.queryForObject("SELECT calls_reserved FROM scenario_operation_budget WHERE operation_id=?",Integer.class,op.path("operationId").asText())).isEqualTo(5);
+    }
+
     @Test void generationReservesAllFiveCallsAndSharedLegacyQuotaCannotBeBypassed() {
         var extract=dispatch(engine.createDraft(user,id(),input())); var draft=engine.draft(user,extract.path("draftId").asText());
         for (int i=0;i<20;i++) db.update("INSERT INTO ai_conversation_sessions(id,user_id,scenario,difficulty,state_json) VALUES (?,?,'cafe','A1','{}')",id(),user);
