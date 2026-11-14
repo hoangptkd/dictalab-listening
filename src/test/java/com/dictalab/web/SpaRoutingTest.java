@@ -31,6 +31,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class SpaRoutingTest {
 
+    @Test void evaluationApiIsUnavailableWithoutLocalProfile() throws Exception {
+        mockMvc.perform(get("/api/admin/ai-evaluation").with(user(DictaLabPrincipal.from(adminUser))))
+                .andExpect(status().isNotFound());
+    }
+
     @Test
     void colabIngestionNeedsCsrfScopedKeyAndHttpsWhileAdminRemainsProtected() throws Exception {
         String registration = "{\"name\":\"Security fixture\",\"notebookUrl\":\"https://colab.research.google.com/drive/abcdefghijklm\"}";

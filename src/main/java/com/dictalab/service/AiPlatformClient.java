@@ -51,9 +51,12 @@ public class AiPlatformClient {
                 "deadline", Instant.now().plus(timeout).toString()));
         if (body.getBytes(StandardCharsets.UTF_8).length > 256000)
             throw new IllegalArgumentException("AI text input exceeds limit");
-        var request = HttpRequest.newBuilder(URI.create(config.baseUrl() + "/v1/text/completions"))
+        var builder = HttpRequest.newBuilder(URI.create(config.baseUrl() + "/v1/text/completions"))
                 .timeout(timeout).header("X-Service-Token", config.serviceToken())
-                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
+                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body));
+        if (AiCallObservation.active()) builder.header("X-AI-Observe", "usage");
+        var request = builder.build();
+        AiCallObservation.remoteStarted();
         var pending = http.sendAsync(request, ignored -> BoundedProviderBody.bytes(100000));
         try {
             var response = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
@@ -70,6 +73,7 @@ public class AiPlatformClient {
                     || !expectedModel.equals(result.path("model").asText()) || !result.path("task").isObject()
                     || result.path("task").toString().length() > 12000)
                 throw new IllegalStateException("Invalid AI text result or provenance");
+            AiCallObservation.remote(result);
             return result.path("task");
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();

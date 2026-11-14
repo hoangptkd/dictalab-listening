@@ -51,7 +51,8 @@ def select_model(settings, requested):
 
 
 @router.post("/v1/text/completions")
-async def complete(payload: TextRequest, x_service_token: str | None = Header(default=None)):
+async def complete(payload: TextRequest, x_service_token: str | None = Header(default=None),
+                   x_ai_observe: str | None = Header(default=None)):
     from .main import settings, _authorized, semaphore
     if not settings.service_token or not _authorized(x_service_token):
         raise HTTPException(401, "invalid service token")
@@ -84,6 +85,8 @@ async def complete(payload: TextRequest, x_service_token: str | None = Header(de
                 acquired = True
             async with httpx.AsyncClient(follow_redirects=False) as client:
                 gateway = ModelGateway(selected, client)
+                if x_ai_observe == "usage":
+                    gateway.observed_attempts = []
                 result, provider = await gateway.complete([
                     {"role": "system", "content": payload.instruction},
                     {"role": "user", "content": payload.input}], {"type": "object"},
@@ -93,8 +96,16 @@ async def complete(payload: TextRequest, x_service_token: str | None = Header(de
             if (not isinstance(result, dict) or len(json.dumps(result, ensure_ascii=False)) > 12000
                     or provider != payload.provider or gateway.last_model != expected_model):
                 raise ValueError("invalid text output or provenance")
-            return {"schemaVersion": "1", "requestId": str(payload.requestId), "provider": provider,
-                    "model": gateway.last_model, "task": result}
+            envelope = {"schemaVersion": "1", "requestId": str(payload.requestId), "provider": provider,
+                        "model": gateway.last_model, "task": result}
+            if x_ai_observe == "usage":
+                attempts = gateway.observed_attempts
+                observation = {"attempts": attempts, "httpAttempts": len(attempts)}
+                for target, field in (("prompt_tokens", "input_tokens"), ("completion_tokens", "output_tokens")):
+                    if attempts and all(type(row.get(field)) is int for row in attempts):
+                        observation[target] = sum(row[field] for row in attempts)
+                envelope["observation"] = observation
+            return envelope
     except Exception as error:
         from .gemini_pool import QuotaUnavailable, retry_seconds
         from .providers.base import ProviderHttpError

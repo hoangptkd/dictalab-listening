@@ -113,6 +113,9 @@ public class SpaController {
     @GetMapping({"/admin/training", "/admin/training/"})
     public String trainingStudio() { return "forward:/admin/training.html"; }
 
+    @GetMapping({"/admin/ai-evaluation", "/admin/ai-evaluation/"})
+    public String evaluationStudio() { return "forward:/admin/ai-evaluation.html"; }
+
     @GetMapping("/admin/lessons")
     public String adminLessons() {
         return ADMIN;
