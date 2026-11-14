@@ -331,8 +331,10 @@ public class AiEvaluationStudio {
             call.set("attempts", event.path("attempts")); call.set("fallbacks", event.path("fallbacks"));
             long input = 0, output = 0; boolean measured = false;
             for (var attempt : event.path("attempts")) {
-                if (attempt.has("prompt_tokens") && attempt.has("completion_tokens")) {
-                    measured = true; input += attempt.path("prompt_tokens").asLong(); output += attempt.path("completion_tokens").asLong();
+                var inputUsage = attempt.has("prompt_tokens") ? attempt.path("prompt_tokens") : attempt.path("input_tokens");
+                var outputUsage = attempt.has("completion_tokens") ? attempt.path("completion_tokens") : attempt.path("output_tokens");
+                if (inputUsage.isIntegralNumber() && outputUsage.isIntegralNumber() && inputUsage.asLong() >= 0 && outputUsage.asLong() >= 0) {
+                    measured = true; input += inputUsage.asLong(); output += outputUsage.asLong();
                 }
             }
             if (measured) call.put("prompt_tokens", input).put("completion_tokens", output);

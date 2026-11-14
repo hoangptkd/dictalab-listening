@@ -45,6 +45,9 @@ Inputs are synthetic fixed contexts, not human-approved gold lessons or calibrat
 
 Snapshots pin prompt/few-shot hashes, Python source/assets/dependencies, model/pool/fallback policy,
 and Core build. HTTP attempts, returned models and available usage are stored separately.
+Canonical request/generation UUIDs remain readable across the sanitized Python transport;
+credentials still redact. Usage accepts both provider token fields and scenario-observer token
+fields, and only counts nonnegative integer measurements.
 Changed configuration requires a new snapshot. Stored histories remain readable and exportable.
 No automatic activation follows a comparison result.
 

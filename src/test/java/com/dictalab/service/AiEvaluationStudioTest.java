@@ -208,7 +208,7 @@ class AiEvaluationStudioTest {
             remote.putObject("before").put("hardPass", true).set("raw", json.createObjectNode().set("activities", raw));
             remote.putObject("result").put("promptHash", "pin").set("task", json.createObjectNode().put("qualityPassed", true).set("activities", raw));
             var event = remote.putArray("events").addObject().put("stage", "GENERATE").put("status", "RETURNED").put("model", "fallback-model");
-            event.putArray("attempts").addObject().put("model", "fallback-model").put("prompt_tokens", 10).put("completion_tokens", 5);
+            event.putArray("attempts").addObject().put("model", "fallback-model").put("input_tokens", 10).put("output_tokens", 5);
             return remote;
         });
         var request = json.createObjectNode().put("pipeline", "scenario").put("release", "v4.13").put("label", "Personalized");
@@ -220,6 +220,8 @@ class AiEvaluationStudioTest {
         assertThat(run.path("pipeline").asText()).isEqualTo("scenario");
         assertThat(run.path("cases").size()).isEqualTo(3);
         assertThat(run.path("cases").path(0).path("calls").path(0).path("model").asText()).isEqualTo("fallback-model");
+        assertThat(run.path("metrics").path("inputTokens").asInt()).isEqualTo(30);
+        assertThat(run.path("metrics").path("outputTokens").asInt()).isEqualTo(15);
         assertThat(run.path("metrics").path("afterEvaluated").asInt()).isZero();
         assertThat(run.path("metrics").path("harnessAccepted").asInt()).isEqualTo(3);
         verify(conversation, atLeastOnce()).evaluationModel();

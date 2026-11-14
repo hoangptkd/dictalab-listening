@@ -87,6 +87,12 @@ def clean(value, key=""):
     if isinstance(value, list):
         return [clean(v) for v in value]
     if isinstance(value, str):
+        if key in {"requestId", "generationId"}:
+            try:
+                if str(UUID(value)) == value:
+                    return value
+            except ValueError:
+                pass
         if (key == "fingerprint" or key.endswith("Hash")) and re.fullmatch("[a-f0-9]{64}", value):
             return value
         return redact_string(value)

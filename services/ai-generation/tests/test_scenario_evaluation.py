@@ -78,6 +78,8 @@ async def test_real_pipeline_observer_persists_six_stages_and_idempotency(config
     result = await call("GET", "/v1/evaluation/scenario/" + data["requestId"], headers=headers)
     record = result.json()
     assert record["status"] == "COMPLETED", record
+    assert record["requestId"] == data["requestId"]
+    assert record["result"]["requestId"] == data["requestId"]
     assert record["before"]["hardPass"]
     assert len(record["result"]["task"]["activities"]) == 3
     assert len(calls) == 6 and len(record["events"]) == 12
@@ -95,6 +97,16 @@ async def test_other_historical_releases_are_not_admitted(config):
     assert (await call("POST", "/v1/evaluation/scenario", json=data,
                        headers={"X-Service-Token": config.service_token})).status_code == 400
     assert not list(e.directory(config).glob("*.json"))
+
+
+def test_clean_preserves_only_valid_provenance_uuids_and_keeps_redacting_credentials():
+    identifier = str(uuid4())
+    value = e.clean({"requestId": identifier, "result": {"generationId": identifier},
+                     "input": {"requestId": "Bearer " + "x" * 40}, "password": identifier,
+                     "api_key": "k" * 40, "source": "owner@example.com"})
+    assert value["requestId"] == value["result"]["generationId"] == identifier
+    assert value["input"]["requestId"] == "[REDACTED]"
+    assert value["password"] == value["api_key"] == value["source"] == "[REDACTED]"
 
 
 async def test_errors_keep_evidence_and_admitted_unknown_never_replays(config, monkeypatch):
