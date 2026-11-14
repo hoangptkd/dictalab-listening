@@ -38,6 +38,7 @@ class ModelGateway:
         self.last_model = settings.active_cloud_model if settings.selected_provider in CLOUD_PROVIDERS else settings.model
         self.last_source_id = None
         self.model_fallbacks = []
+        self.observed_attempts = None
         self._snapshot_loaded = False
         self._local = OllamaProvider(
             ollama_url=settings.ollama_url,
@@ -193,6 +194,11 @@ class ModelGateway:
                     await asyncio.to_thread(store.report, source, "failure")
                 raise
             finally:
+                if self.observed_attempts is not None:
+                    self.observed_attempts.append({"source": source.id if source else "configured",
+                        "model": self.last_model, "outcome": outcome,
+                        "seconds": time.monotonic() - attempt_started,
+                        **getattr(selected, "last_usage", {})})
                 if source:
                     await asyncio.to_thread(record_attempt, self._settings, request_id, source, outcome, done,
                         getattr(selected, "last_usage", {}), time.monotonic() - attempt_started)

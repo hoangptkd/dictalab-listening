@@ -38,6 +38,11 @@ class SpaRoutingTest {
         mockMvc.perform(get("/api/v2/scenarios/sessions")).andExpect(status().isUnauthorized());
     }
 
+    @Test void evaluationApiIsUnavailableWithoutLocalProfile() throws Exception {
+        mockMvc.perform(get("/api/admin/ai-evaluation").with(user(DictaLabPrincipal.from(adminUser))))
+                .andExpect(status().isNotFound());
+    }
+
     @Test
     void colabIngestionNeedsCsrfScopedKeyAndHttpsWhileAdminRemainsProtected() throws Exception {
         String registration = "{\"name\":\"Security fixture\",\"notebookUrl\":\"https://colab.research.google.com/drive/abcdefghijklm\"}";

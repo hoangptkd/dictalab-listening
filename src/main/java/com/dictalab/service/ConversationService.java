@@ -662,11 +662,27 @@ public class ConversationService {
     }
 
     private JsonNode generatePrompt(Row row, long deadline) {
+        return generatePrompt(row, deadline, null, null, generationRepairEnabled);
+    }
+
+    interface GenerationObserver {
+        void record(String step, int attempt, JsonNode value);
+    }
+    static final class EvaluationRejected extends IllegalStateException {
+        EvaluationRejected(IllegalStateException cause) { super(cause.getMessage(), cause); }
+    }
+
+    private JsonNode generatePrompt(Row row, long deadline, GenerationObserver observer,
+                                    String frozenInstruction, boolean repairEnabled) {
         var context = ConversationGenerationPrompt.context(json, json.valueToTree(promptContext(row)));
-        String instruction = ConversationGenerationPrompt.instruction(row.difficulty, turns(row).size() + 1);
+        String instruction = frozenInstruction == null
+                ? ConversationGenerationPrompt.instruction(row.difficulty, turns(row).size() + 1) : frozenInstruction;
         boolean python = pythonGeneration != null && (rollout == null ? pythonGeneration.enabled() : rollout.usePython(row.user, row.id));
         boolean local = !python && localGeneration != null && localGeneration.enabled();
         for (int attempt = 0; attempt < 2; attempt++) {
+            if (observer != null) observer.record("request", attempt + 1, json.valueToTree(Map.of(
+                    "instruction", instruction, "input", json.writeValueAsString(context) + ConversationGenerationPrompt.turnBrief(context),
+                    "model", config.generationModel())));
             if (local || python && platform != null && platform.local()) budget.reserveLocal(row.user);
             else budget.reserve(row.user,false);
             JsonNode raw = python
@@ -676,17 +692,26 @@ public class ConversationService {
                     : row.state.path("curatedStarter").asBoolean()
                         ? ai.completeJson(instruction, json.writeValueAsString(context) + ConversationGenerationPrompt.turnBrief(context), config.generationModel(), remaining(deadline))
                         : ai.completeJson(instruction, json.writeValueAsString(context) + ConversationGenerationPrompt.turnBrief(context), config.generationModel());
+            if (observer != null) observer.record("generated", attempt + 1, raw.deepCopy());
             try {
                 var slots = raw.path("slots"); var prompt = ConversationLocalClient.normalizeOutput(raw);
                 validateNextPrompt(row, prompt);
-                reviewPrompt(row, prompt, local || python || row.state.path("curatedStarter").asBoolean() ? deadline : 0);
+                if (observer != null) observer.record("validation", attempt + 1, json.valueToTree(Map.of("valid", true)));
+                final int observedAttempt = attempt + 1;
+                reviewPrompt(row, prompt, local || python || row.state.path("curatedStarter").asBoolean() ? deadline : 0,
+                        observer == null ? null : value -> observer.record("review", observedAttempt, value));
                 if (slots.isArray()) row.state.set("pendingGenerationSlots", slots.deepCopy());
                 else row.state.remove("pendingGenerationSlots");
-                if (!python && rollout != null) rollout.shadow(row.difficulty, json.writeValueAsString(context));
+                if (observer == null && !python && rollout != null) rollout.shadow(row.difficulty, json.writeValueAsString(context));
                 return prompt;
             } catch (AiUsageBudget.Rejected budgetFailure) { throw budgetFailure;
             } catch (IllegalStateException invalidPrompt) {
-                if (!generationRepairEnabled || attempt == 1) throw invalidPrompt;
+                if (observer != null) observer.record("rejected", attempt + 1,
+                        json.valueToTree(Map.of("valid", false, "reason", invalidPrompt.getMessage())));
+                if (!repairEnabled || attempt == 1) {
+                    if (observer != null) throw new EvaluationRejected(invalidPrompt);
+                    throw invalidPrompt;
+                }
                 // One bounded repair of rejected output; do not retry network failures.
                 context.put("validationError", invalidPrompt.getMessage());
                 context.set("previousInvalidPrompt", raw);
@@ -700,6 +725,10 @@ public class ConversationService {
     }
 
     private void reviewPrompt(Row row, JsonNode prompt, long deadline) {
+        reviewPrompt(row, prompt, deadline, null);
+    }
+
+    private void reviewPrompt(Row row, JsonNode prompt, long deadline, java.util.function.Consumer<JsonNode> observer) {
         JsonNode review;
         try {
             budget.reserve(row.user,false);
@@ -714,10 +743,57 @@ public class ConversationService {
         shape(review, "valid", "reason");
         if (!review.path("valid").isBoolean() || !review.path("reason").isTextual()
                 || review.path("reason").asText().length() > 300) throw new IllegalStateException("Invalid task review");
+        if (observer != null) observer.accept(review.deepCopy());
         if (!review.path("valid").asBoolean()) {
             throw new IllegalStateException("Task meaning mismatch: " + text(review, "reason", 300));
         }
     }
+
+    // Evaluation uses synthetic rows and the real generation/validation flow, without practice or audio writes.
+    ArrayNode evaluationFixtures() {
+        var result = json.createArrayNode();
+        for (String scenario : List.of("cafe", "directions", "hotel"))
+            for (String level : ConversationLevelProfile.SUPPORTED_LEVELS) for (int turn = 2; turn <= 4; turn++) {
+                var state = json.createObjectNode().put("curatedStarter", true).put("practiceFocus", "");
+                var history = state.putArray("turns");
+                var branches = ConversationContent.branches(scenario);
+                for (int i = 0; i < turn - 1; i++) {
+                    var previous = history.addObject();
+                    previous.set("prompt", ConversationContent.starter(json, branches.get(i % branches.size()).opening(), level));
+                    previous.put("speaker", ConversationContent.roles(scenario, "standard").get("partnerRole"));
+                    previous.putArray("attempts");
+                }
+                state.putArray("recentPractice");
+                var fixture = result.addObject().put("id", scenario + "-" + level + "-t" + turn)
+                        .put("scenario", scenario).put("level", level).put("turn", turn);
+                fixture.set("state", state);
+                fixture.set("context", json.valueToTree(promptContext(new Row("evaluation", 0, scenario, level, state, 0))));
+            }
+        return result;
+    }
+
+    boolean evaluationAvailable() {
+        return ai.configured() && (localGeneration == null || !localGeneration.enabled())
+                && (pythonGeneration == null || !pythonGeneration.enabled())
+                && (rollout == null || !rollout.mayUsePython()) && ai.evaluationGemini();
+    }
+
+    JsonNode evaluateFixture(long actor, JsonNode fixture, String instruction, boolean repair, GenerationObserver observer) {
+        if (!evaluationAvailable()) throw new IllegalStateException("Evaluation requires the configured Gemini text route");
+        return generatePrompt(evaluationRow(actor, fixture), System.nanoTime() + TimeUnit.SECONDS.toNanos(generationTimeoutSeconds()),
+                observer, instruction, repair);
+    }
+
+    void validateEvaluationFixture(JsonNode fixture, JsonNode raw) {
+        validateNextPrompt(evaluationRow(0, fixture), ConversationLocalClient.normalizeOutput(raw));
+    }
+
+    private Row evaluationRow(long actor, JsonNode fixture) {
+        return new Row("evaluation-" + UUID.randomUUID(), actor, fixture.path("scenario").asText(),
+                fixture.path("level").asText(), (ObjectNode) fixture.path("state").deepCopy(), 0);
+    }
+
+    String evaluationModel() { return config.generationModel(); }
 
     // Retain learning history; discard reproducible WAVs in bounded batches. Play regenerates missing audio.
     @org.springframework.scheduling.annotation.Scheduled(initialDelay = 3600000, fixedDelay = 3600000)

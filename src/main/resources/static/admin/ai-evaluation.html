@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#ffffff">
+    <title>AI Evaluation Studio · DictaLab</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/css/fonts.css">
+    <link rel="stylesheet" href="/css/ai-evaluation.css">
+    <script src="/js/ai-evaluation.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#evaluation-main">Bỏ qua điều hướng</a>
+<aside class="sidebar">
+    <a href="/admin" class="brand"><span aria-hidden="true">D</span><strong>DictaLab<small>ADMIN WORKSPACE</small></strong></a>
+    <p class="nav-caption">AI Evaluation Studio</p>
+    <nav id="evaluation-nav" aria-label="Đánh giá AI">
+        <a href="?view=overview" data-view="overview">Tổng quan</a>
+        <a href="?view=runs" data-view="runs">Các lần đánh giá</a>
+        <a href="?view=compare" data-view="compare">So sánh phiên bản</a>
+        <a href="?view=versions" data-view="versions">Phiên bản prompt</a>
+    </nav>
+    <div class="sidebar-bottom"><span class="local-marker">Môi trường local</span><a href="/admin/gemini">Nguồn & quota Gemini ↗</a><a href="/admin/lessons">← Trang quản trị</a></div>
+</aside>
+<div class="shell">
+    <header class="topbar"><p><a href="/admin">Quản trị</a><span>/</span> AI Evaluation Studio</p><span id="connection" role="status">Đang kết nối…</span></header>
+    <main id="evaluation-main" tabindex="-1" aria-busy="true"><h1>AI Evaluation Studio</h1><p role="status">Đang đọc các lần đánh giá…</p></main>
+    <footer><span>Prompt · Harness · Bằng chứng</span><span>Dữ liệu tổng hợp · UTC+7</span></footer>
+</div>
+<p id="evaluation-message" class="message" role="status" hidden></p>
+<dialog id="evaluation-dialog" aria-labelledby="dialog-title"></dialog>
+<noscript>Cần bật JavaScript để xem biểu đồ và đánh giá hội thoại.</noscript>
+</body>
+</html>

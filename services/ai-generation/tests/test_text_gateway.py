@@ -129,6 +129,26 @@ def test_model_selection_does_not_mutate_pool_and_requires_strong_token():
         Settings(text_gateway_enabled=True, service_token="short")
 
 
+@pytest.mark.parametrize("missing_usage", [True, False])
+def test_optional_observation_reports_attempts_without_inventing_usage(api, missing_usage):
+    client, _, _ = api
+    async def complete(gateway, *args, **kwargs):
+        gateway.observed_attempts.append({"source": "test-source", "model": "qwen3.5:9b",
+            "outcome": "success", **({} if missing_usage else {"input_tokens": 17, "output_tokens": 9})})
+        return {"ok": True}, "ollama"
+    with patch.object(ModelGateway, "complete", complete):
+        response = client.post("/v1/text/completions", json=request(),
+            headers={"X-Service-Token": TOKEN, "X-AI-Observe": "usage"})
+    assert response.status_code == 200
+    observation = response.json()["observation"]
+    assert observation["httpAttempts"] == 1
+    assert observation["attempts"][0]["source"] == "test-source"
+    if missing_usage:
+        assert "prompt_tokens" not in observation and "completion_tokens" not in observation
+    else:
+        assert observation["prompt_tokens"] == 17 and observation["completion_tokens"] == 9
+
+
 def test_queue_deadline_keeps_admission_and_releases_no_unacquired_permit(api):
     client, _, main = api
     main.semaphore = asyncio.Semaphore(0)

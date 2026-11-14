@@ -145,7 +145,20 @@ public class GeminiClient {
                 remaining.compareTo(generationTimeout) < 0 ? remaining : generationTimeout);
     }
 
+    boolean evaluationGemini() { return !local && cloudPlatform.equals("gemini"); }
+
     private JsonNode requestJson(String instruction, String input, String requestModel, Duration timeout) {
+        AiCallObservation.begin(requestModel);
+        String outcome = "UNKNOWN";
+        try {
+            JsonNode answer = sendJson(instruction, input, requestModel, timeout);
+            outcome = "SUCCESS";
+            return answer;
+        } catch (RuntimeException error) { outcome = reason(error); throw error;
+        } finally { AiCallObservation.end(outcome); }
+    }
+
+    private JsonNode sendJson(String instruction, String input, String requestModel, Duration timeout) {
         long deadline = System.nanoTime() + timeout.toNanos();
         var attempted = new java.util.HashSet<String>();
         if (!configured()) throw new IllegalStateException("Gemini chưa được cấu hình trên máy chủ.");
@@ -188,6 +201,7 @@ public class GeminiClient {
                     .POST(HttpRequest.BodyPublishers.ofString(body));
             if (!local) builder.header("Authorization", "Bearer " + targetKey);
             HttpRequest request = builder.build();
+            AiCallObservation.http(local ? "ollama" : selection.id(), targetModel, 0);
             var pending = http.sendAsync(request, info -> BoundedProviderBody.bytes(100_000));
             HttpResponse<byte[]> response;
             try {
@@ -199,6 +213,7 @@ public class GeminiClient {
                         || exception.getCause() instanceof java.net.http.HttpTimeoutException ? "TIMEOUT" : "TRANSPORT",
                         "Không thể đọc phản hồi Gemini trong thời hạn.");
             } finally { pending.cancel(true); }
+            AiCallObservation.status(response.statusCode());
             if (response.statusCode() != 200) {
                 if (routingEnabled() && (response.statusCode()==429 || response.statusCode()>=500)) {
                     int delay = cooldownSeconds(response.headers().firstValue("Retry-After").orElse(null));
@@ -214,6 +229,7 @@ public class GeminiClient {
                 throw new Failure("HTTP_"+response.statusCode(),"Gemini trả HTTP " + response.statusCode());
             }
             JsonNode envelope = json.readTree(response.body());
+            AiCallObservation.usage(envelope);
             if (local && (!envelope.path("done").asBoolean() || !"stop".equals(envelope.path("done_reason").asText())))
                 throw new Failure("OUTPUT_TRUNCATED", "Incomplete local AI response");
             JsonNode choice = envelope.path("choices").path(0);
