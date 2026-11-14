@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+from urllib.parse import urlsplit
 
 from dotenv import dotenv_values
 
@@ -79,7 +80,33 @@ def command(component):
     return ['java', '-Xmx384m' if component == 'core' else '-Xmx256m', '-jar', str(jar)], ROOT
 
 
-def stack_plan(directory, with_model=False):
+def validate_gemini_admin(core, ai, *, required=False):
+    """Reject incomplete management wiring before starting either service; never expose values."""
+    core_token = core.get('DICTALAB_AI_PROVIDER_ADMIN_TOKEN', '')
+    ai_token = ai.get('AI_PROVIDER_ADMIN_TOKEN', '')
+    manager_dsn = ai.get('AI_PROVIDER_ADMIN_DATABASE_URL', '')
+    if not required and not any((core_token, ai_token, manager_dsn)):
+        return
+    if (not core_token or core_token != ai_token or not 32 <= len(core_token) <= 256
+            or not all(33 <= ord(c) <= 126 for c in core_token)
+            or core_token in (core.get('DICTALAB_AI_SERVICE_TOKEN'), ai.get('DICTALAB_AI_SERVICE_TOKEN'))):
+        raise ValueError('Gemini management requires matching, strong, separate Core and AI admin tokens')
+    if core.get('DICTALAB_AI_TEXT_TRANSPORT') != 'python' or ai.get('AI_PROVIDER_CONFIG_SOURCE') != 'database':
+        raise ValueError('Gemini management requires Python transport and the database registry')
+    def target(dsn):
+        uri = urlsplit(dsn)
+        if uri.scheme not in ('postgres', 'postgresql') or not uri.hostname or not uri.path.strip('/'):
+            raise ValueError('Invalid registry target')
+        host = 'loopback' if uri.hostname in ('localhost', '127.0.0.1', '::1') else uri.hostname
+        return host, uri.port or 5432, uri.path
+    try:
+        if not manager_dsn or target(manager_dsn) != target(ai.get('AI_PROVIDER_DATABASE_URL', '')):
+            raise ValueError('Different registry targets')
+    except ValueError:
+        raise ValueError('Gemini management and runtime require the same registry database') from None
+
+
+def stack_plan(directory, with_model=False, require_gemini_admin=False):
     names = ['progress', 'ai', 'worker', 'core'] + (['model'] if with_model else [])
     plan = {}
     for name in names:
@@ -87,6 +114,7 @@ def stack_plan(directory, with_model=False):
         argv, cwd = command(name)
         plan[name] = (env, argv, cwd)
     core, ai, progress = (plan[name][0] for name in ('core', 'ai', 'progress'))
+    validate_gemini_admin(core, ai, required=require_gemini_admin)
     for left, right in ((core.get('DICTALAB_AI_SERVICE_TOKEN'), ai.get('DICTALAB_AI_SERVICE_TOKEN')),
                         (core.get('PROGRESS_SERVICE_TOKEN'), progress.get('PROGRESS_SERVICE_TOKEN'))):
         if not left or left != right or not 32 <= len(left) <= 256 or not all(33 <= ord(c) <= 126 for c in left):
@@ -152,8 +180,8 @@ def stop_stack(children):
         raise RuntimeError('Some owned processes could not be stopped; inspect service logs and processes')
 
 
-def run_stack(directory, *, with_model=False, check_only=False, startup_seconds=120):
-    plan, pending = stack_plan(directory.resolve(), with_model)
+def run_stack(directory, *, with_model=False, check_only=False, startup_seconds=120, require_gemini_admin=False):
+    plan, pending = stack_plan(directory.resolve(), with_model, require_gemini_admin)
     logs = directory.resolve() / 'logs'
     logs.mkdir(parents=True, exist_ok=True, mode=0o700)
     children = []
@@ -210,17 +238,19 @@ def main():
     parser.add_argument('--config-dir', type=Path, help='Stack only: directory with protected core/ai/progress/model.env')
     parser.add_argument('--with-model', action='store_true', help='Stack only: start the lazy-loading CPU model server')
     parser.add_argument('--check-only', action='store_true', help='Stack only: check startup, then stop owned processes')
+    parser.add_argument('--require-gemini-admin', action='store_true', help='Stack only: require complete Gemini management wiring')
     args = parser.parse_args()
     if args.component == 'stack':
         if args.config_dir is None or args.env_file is not None:
             parser.error('stack requires --config-dir and does not accept --env-file')
         try:
-            return run_stack(args.config_dir, with_model=args.with_model, check_only=args.check_only)
+            return run_stack(args.config_dir, with_model=args.with_model, check_only=args.check_only,
+                             require_gemini_admin=args.require_gemini_admin)
         except KeyboardInterrupt:
             return 130
         except Exception:
             raise SystemExit('Stack failed; check protected configs, ports and service logs. Values suppressed.') from None
-    if args.env_file is None or args.config_dir is not None or args.with_model or args.check_only:
+    if args.env_file is None or args.config_dir is not None or args.with_model or args.check_only or args.require_gemini_admin:
         parser.error('single service requires --env-file; stack options do not apply')
     try:
         env = child_environment(args.component, args.env_file)

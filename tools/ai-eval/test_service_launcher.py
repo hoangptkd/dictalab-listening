@@ -94,6 +94,62 @@ def test_stack_does_not_spawn_if_preflight_fails(tmp_path, monkeypatch):
         start.assert_not_called()
 
 
+def management_configs():
+    token = 'fixture-management-token-at-least-32-chars'
+    return ({'DICTALAB_AI_PROVIDER_ADMIN_TOKEN': token, 'DICTALAB_AI_TEXT_TRANSPORT': 'python'},
+            {'AI_PROVIDER_ADMIN_TOKEN': token, 'AI_PROVIDER_CONFIG_SOURCE': 'database',
+             'AI_PROVIDER_ADMIN_DATABASE_URL': 'postgresql://manager:fixture@localhost/registry',
+             'AI_PROVIDER_DATABASE_URL': 'postgresql://runtime:fixture@127.0.0.1:5432/registry'})
+
+
+def test_management_is_optional_but_required_flag_catches_the_missing_local_configuration():
+    launcher.validate_gemini_admin({}, {})
+    with pytest.raises(ValueError, match='admin tokens'):
+        launcher.validate_gemini_admin({}, {}, required=True)
+    core, ai = management_configs()
+    launcher.validate_gemini_admin(core, ai, required=True)
+
+
+@pytest.mark.parametrize('token', ['short', 'x' * 257, 'x' * 39 + ' ', 'x' * 39 + '\u00e9'])
+def test_matching_management_tokens_must_still_be_strong_printable_ascii(token):
+    core, ai = management_configs()
+    core['DICTALAB_AI_PROVIDER_ADMIN_TOKEN'] = ai['AI_PROVIDER_ADMIN_TOKEN'] = token
+    with pytest.raises(ValueError, match='admin tokens'):
+        launcher.validate_gemini_admin(core, ai)
+
+
+@pytest.mark.parametrize('service,key,value', [
+    ('core', 'DICTALAB_AI_PROVIDER_ADMIN_TOKEN', ''),
+    ('ai', 'AI_PROVIDER_ADMIN_TOKEN', 'different-fixture-token-at-least-32-chars'),
+    ('ai', 'AI_PROVIDER_ADMIN_TOKEN', ''),
+    ('core', 'DICTALAB_AI_SERVICE_TOKEN', 'fixture-management-token-at-least-32-chars'),
+    ('ai', 'DICTALAB_AI_SERVICE_TOKEN', 'fixture-management-token-at-least-32-chars'),
+    ('core', 'DICTALAB_AI_TEXT_TRANSPORT', 'legacy'),
+    ('ai', 'AI_PROVIDER_CONFIG_SOURCE', 'env'),
+    ('ai', 'AI_PROVIDER_ADMIN_DATABASE_URL', ''),
+    ('ai', 'AI_PROVIDER_ADMIN_DATABASE_URL', 'postgresql://manager:fixture@127.0.0.1/other'),
+    ('ai', 'AI_PROVIDER_ADMIN_DATABASE_URL', 'postgresql://manager:fixture@127.0.0.1:invalid/registry'),
+    ('ai', 'AI_PROVIDER_ADMIN_DATABASE_URL', 'postgresql://manager:fixture@elsewhere/registry'),
+    ('ai', 'AI_PROVIDER_DATABASE_URL', 'not-a-dsn'),
+])
+def test_partial_or_inconsistent_management_config_is_rejected_without_exposing_values(service, key, value):
+    core, ai = management_configs()
+    (core if service == 'core' else ai)[key] = value
+    with pytest.raises(ValueError) as error:
+        launcher.validate_gemini_admin(core, ai)
+    assert 'fixture' not in str(error.value)
+    assert 'postgresql://' not in str(error.value)
+
+
+def test_stack_requires_management_before_spawning_when_requested(tmp_path, monkeypatch):
+    stack_configs(tmp_path)
+    monkeypatch.setattr(launcher, 'command', lambda name: ([name], tmp_path))
+    with patch.object(launcher.subprocess, 'Popen') as start:
+        with pytest.raises(ValueError, match='admin tokens'):
+            launcher.run_stack(tmp_path, require_gemini_admin=True)
+        start.assert_not_called()
+
+
 def test_stack_accepts_the_applications_loopback_url_defaults(tmp_path, monkeypatch):
     stack_configs(tmp_path)
     monkeypatch.setattr(launcher, 'command', lambda name: ([name], tmp_path))
