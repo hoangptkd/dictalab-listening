@@ -54,6 +54,11 @@ struct Sentence: Decodable {
     let hasListened: Bool
     let requiresReplayAfterReveal: Bool
     let canComplete: Bool
+
+    func nextUnresolvedWord(after index: Int) -> Int? {
+        words.first(where: { !$0.resolved && $0.index > index })?.index
+            ?? words.first(where: { !$0.resolved })?.index
+    }
 }
 
 struct PracticeSession: Decodable {

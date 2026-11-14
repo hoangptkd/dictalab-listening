@@ -222,7 +222,6 @@ public class AiEvaluationStudio {
         }
         return selected;
     }
-
     public synchronized ObjectNode start(JsonNode request, long actor) {
         initialize();
         boundedRequest(request);
@@ -477,7 +476,6 @@ public class AiEvaluationStudio {
         result.put("status", verdict.path("status").asText()).put("critical", verdict.path("critical").asBoolean())
                 .put("judgeReused", reused).put("judgeReference", key); return result;
     }
-
     private void replayCase(ObjectNode run, ObjectNode row, JsonNode fixture, JsonNode source) {
         var original = source.path("cases").valueStream().filter(r -> r.path("key").equals(row.path("key"))).findFirst().orElse(null);
         if (original == null || !original.path("attempts").path(0).path("raw").isObject()) {
@@ -675,7 +673,6 @@ public class AiEvaluationStudio {
         return run.path("cases").valueStream().flatMap(row -> row.path("calls").valueStream()
                 .filter(call -> call.has("model")).map(call -> row.path("key").asText() + "/" + call.path("step").asText() + "/" + call.path("model").asText())).toList();
     }
-
     private synchronized void checkpoint(ObjectNode run) { run.set("metrics", metrics(json, run)); save("runs", run.path("id").asText(), run); }
 
     private List<ObjectNode> documents(String folder) {

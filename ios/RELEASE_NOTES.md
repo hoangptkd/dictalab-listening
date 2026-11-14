@@ -1,5 +1,12 @@
 # DictaLab cho iPhone — bản cá nhân SwiftUI
 
+## 1.2 — cải thiện nhịp học
+
+- Giữ trạng thái tab và trình độ đã chọn; sửa hiển thị bài cũ khi tải trình độ mới bị lỗi.
+- Chuyển ô sau khi chấm đúng, giữ ô khi chấm sai và cuộn đến từ đang nhập.
+- Thêm nhãn nghe/dừng và trạng thái chuẩn bị/ghi nhận lượt nghe, có thể hủy.
+- Tăng tương phản chữ và hỗ trợ cỡ chữ iOS ở các màn học.
+
 Yêu cầu iPhone chạy iOS 16 trở lên và kết nối Internet.
 
 Tải `DictaLab-unsigned.ipa`, ký/cài bằng AltStore với tài khoản Apple của bạn. Gói chưa ký không cài trực tiếp bằng thao tác chạm vào file.

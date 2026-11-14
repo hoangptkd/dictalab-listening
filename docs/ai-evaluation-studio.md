@@ -46,7 +46,6 @@ Exclusive durable admission and UUID idempotency prevent replay of interrupted/u
 Stop lets the submitted lesson finish, then prevents the next lesson. Stored outputs remain readable
 and exportable without regeneration. Replay rejudging is currently Java-only. Different actual returned
 models across paired stages make a comparison inconclusive. None of these actions activates V4.14.
-
 ## Workflow
 
 1. Create a baseline version from the current prompt. Optionally enable one Harness repair.

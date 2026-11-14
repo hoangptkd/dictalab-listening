@@ -309,7 +309,6 @@ kiểm tra readiness. Không xóa receipt hoặc repair Flyway để vượt gat
 GitHub Actions đã được bật lại nhưng hiện hết quota artifact và budget bằng 0.
 Thay đổi workflow không tự giải quyết quota, cấu hình role hoặc cập nhật secrets. Chỉ coi deploy
 thành công sau workflow xanh, receipt complete và smoke production đạt.
-
 ## 10. Gói phát triển tiếp cho model nhỏ hơn
 
 Làm từng gói riêng. Trước khi sửa, đọc file sở hữu, DTO và test liên quan.

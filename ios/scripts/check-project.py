@@ -19,11 +19,19 @@ project = (ROOT / 'DictaLab.xcodeproj/project.pbxproj').read_text(encoding='utf-
 assert 'IPHONEOS_DEPLOYMENT_TARGET = 16.0' in project
 assert 'com.apple.product-type.application' in project
 assert 'com.apple.product-type.bundle.unit-test' in project
+declarations = {}
+source_phase = re.search(r'isa = PBXSourcesBuildPhase;[^\n]*files = \(([^)]*)\)', project).group(1)
 for file in (ROOT / 'DictaLab').glob('*.swift'):
     assert f'path = {file.name};' in project, f'{file.name} is missing from the Xcode project'
+    reference = re.search(r'([A-F0-9]{24}) = \{isa = PBXFileReference;[^\n]*path = ' + re.escape(file.name) + r';', project).group(1)
+    build_file = re.search(r'([A-F0-9]{24}) = \{isa = PBXBuildFile; fileRef = ' + reference + r';', project)
+    assert build_file and build_file.group(1) in source_phase, f'{file.name} is not compiled by the app target'
     source = file.read_text(encoding='utf-8')
     assert 'WKWebView' not in source and 'import WebKit' not in source
     assert '\ufffd' not in source
+    for name in re.findall(r'^(?:final\s+)?(?:struct|class|enum|actor)\s+(\w+)', source, re.M):
+        assert name not in declarations, f'Duplicate type {name} in {declarations.get(name)} and {file.name}'
+        declarations[name] = file.name
 assert 'DictaLabTests.swift' in project
 ids = re.findall(r'^\s*([A-F0-9]{24}) = \{isa =', project, re.M)
 assert len(ids) == len(set(ids)), 'Duplicate Xcode object IDs'
