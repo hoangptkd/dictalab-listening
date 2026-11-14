@@ -19,6 +19,33 @@ def test_local_refuses_a_disposable_checkout_before_reading_credentials(tmp_path
     read.assert_not_called()
 
 
+def test_local_build_cleans_stale_classes_before_copying_and_recording_the_jar(tmp_path, monkeypatch):
+    import hashlib
+    import sys
+    from types import SimpleNamespace
+    monkeypatch.setattr(launcher, 'ROOT', tmp_path)
+    monkeypatch.setattr(launcher, 'LOCAL_DIRECTORY', tmp_path)
+    plan = {'core': ({'DICTALAB_SCENARIO_ENGINE_APPROVED_PROMPT_HASH': 'approved'}, [], tmp_path)}
+    monkeypatch.setattr(launcher, 'local_plan', lambda: (plan, {}))
+    monkeypatch.setitem(sys.modules, 'app.scenario_assessment',
+                        SimpleNamespace(prompt_hash=lambda _: 'approved', scoped_release=object()))
+    jar = tmp_path / 'target/english-dictation-0.1.0-SNAPSHOT.jar'
+    jar.parent.mkdir()
+    def build(args, **kwargs):
+        assert args[-2:] == ['clean', 'package'] and kwargs['check'] is True
+        jar.write_bytes(b'fresh source build')
+    monkeypatch.setattr(launcher.subprocess, 'run', build)
+    monkeypatch.setattr(launcher.subprocess, 'check_output',
+                        lambda args, **kwargs: 'a' * 40 if 'rev-parse' in args else b'')
+    supervise = Mock(return_value=0)
+    monkeypatch.setattr(launcher, 'supervise', supervise)
+    assert launcher.run_local(check_only=True) == 0
+    assert (tmp_path / 'app.jar').read_bytes() == b'fresh source build'
+    receipt = supervise.call_args.kwargs['receipt']
+    assert receipt['jarHash'] == hashlib.sha256(jar.read_bytes()).hexdigest()
+    assert receipt['commit'] == 'a' * 40 and receipt['promptHash'] == 'approved'
+
+
 @pytest.mark.parametrize('fault', [None, 'qa', 'database', 'port', 'schema', 'state'])
 def test_local_requires_one_source_identity_schema_and_state_directory(tmp_path, monkeypatch, fault):
     import psycopg

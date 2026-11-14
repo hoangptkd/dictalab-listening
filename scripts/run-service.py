@@ -318,7 +318,7 @@ def run_local(check_only=False):
         raise ValueError('Local prompt approval does not match the current source')
     build_log = LOCAL_DIRECTORY / 'build.log'
     with build_log.open('w', encoding='utf-8') as log:
-        subprocess.run(['mvn.cmd' if os.name == 'nt' else 'mvn', '-B', '-q', '-DskipTests', 'package'],
+        subprocess.run(['mvn.cmd' if os.name == 'nt' else 'mvn', '-B', '-q', '-DskipTests', 'clean', 'package'],
                        cwd=ROOT, stdout=log, stderr=log, check=True)
     jar = ROOT / 'target/english-dictation-0.1.0-SNAPSHOT.jar'
     shutil.copy2(jar, LOCAL_DIRECTORY / 'app.jar')
