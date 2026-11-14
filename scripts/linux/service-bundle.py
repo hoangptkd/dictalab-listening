@@ -50,7 +50,8 @@ def payload_name(name):
     if name.startswith('ai/app/'):
         return (path.suffix in ('.py', '.lua')
                 or name.startswith('ai/app/sql/') and path.suffix == '.sql'
-                or name in {'ai/app/scenario_fewshot_examples_v1.json',
+                or name in {'ai/app/scenario-prompts.json', 'ai/app/scenario-prompt-history.json.gz',
+                            'ai/app/scenario_fewshot_examples_v1.json',
                             'ai/app/scenario_personalized_fewshot_examples_v1.json',
                             'ai/app/scenario_personalized_fewshot_examples_v2.json'})
     return name.startswith('artifacts/prompts/') and path.suffix == '.json'

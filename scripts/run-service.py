@@ -224,7 +224,8 @@ def supervise(plan, pending, directory, *, check_only=False, startup_seconds=120
                         raise RuntimeError(f'{name}: exited; inspect its protected log')
                 for name, url in list(pending.items()):
                     try:
-                        with opener.open(url, timeout=1) as response:
+                        # AI readiness checks all provider sources; allow its bounded remote probes to finish.
+                        with opener.open(url, timeout=15) as response:
                             if response.status == 200:
                                 pending.pop(name)
                     except OSError:

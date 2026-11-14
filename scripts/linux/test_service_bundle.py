@@ -30,9 +30,9 @@ class ServiceBundleTest(unittest.TestCase):
                  'services/ai-generation/app/worker.py': 'def main(): pass',
                  'services/ai-generation/app/sql/001_provider_registry.sql': 'SELECT 1;',
                  'services/ai-generation/app/quota.lua': 'return 1',
-                 'services/ai-generation/app/scenario_fewshot_examples_v1.json': '{}',
-                 'services/ai-generation/app/scenario_personalized_fewshot_examples_v1.json': '{}',
-                 'services/ai-generation/app/scenario_personalized_fewshot_examples_v2.json': '{}',
+                 'services/ai-generation/app/scenario-prompts.json': '{}',
+                 'services/ai-generation/app/scenario-prompt-history.json.gz': 'frozen-history-fixture',
+                 'services/ai-generation/app/private-config.json.gz': 'PRIVATE_MUST_NOT_SHIP',
                  'services/ai-generation/app/private-config.json': 'PRIVATE_MUST_NOT_SHIP',
                  'services/ai-generation/requirements.lock': 'fixture==1.0.0',
                  'artifacts/prompts/conversation.json': '{}',
@@ -84,10 +84,10 @@ class ServiceBundleTest(unittest.TestCase):
         self.assertIn('ai/app/sql/001_provider_registry.sql', names)
         self.assertIn('ai/app/quota.lua', names)
         self.assertIn('artifacts/prompts/conversation.json', names)
-        for name in ('scenario_fewshot_examples_v1.json', 'scenario_personalized_fewshot_examples_v1.json',
-                     'scenario_personalized_fewshot_examples_v2.json'):
+        for name in ('scenario-prompts.json', 'scenario-prompt-history.json.gz'):
             self.assertIn('ai/app/' + name, names)
         self.assertNotIn('ai/app/private-config.json', names)
+        self.assertNotIn('ai/app/private-config.json.gz', names)
         self.assertTrue({'systemd/' + name for name in bundle.UNIT_FILES} <= names)
         with tarfile.open(self.output) as archive:
             self.assertFalse(any(b'PRIVATE_MUST_NOT_SHIP' in archive.extractfile(m).read() for m in archive.getmembers()))
@@ -331,7 +331,8 @@ class ServiceStageTest(unittest.TestCase):
             'registry.py': 'def load_artifact(settings): return {}\n',
             'conversation_demo.py': 'def artifact(settings): return {}\n',
             'scenario_workflow.py': 'from pathlib import Path\n'
-                                    'assert Path(__file__).with_name("scenario_personalized_fewshot_examples_v2.json").is_file()\n',
+                                    'assert Path(__file__).with_name("scenario-prompts.json").is_file()\n'
+                                    'assert Path(__file__).with_name("scenario-prompt-history.json.gz").is_file()\n',
             'registry_migration.py': 'def schema_checksum(): return "fixture"\n',
         }
         for name, content in files.items():

@@ -279,6 +279,7 @@ def test_stack_check_closes_logs_and_cleans_owned_children_on_every_exit(tmp_pat
             launcher.run_stack(tmp_path, check_only=True, startup_seconds=0)
     else:
         assert launcher.run_stack(tmp_path, check_only=True) == 0
+        assert opener.open.call_args.kwargs['timeout'] == 15
     assert stopped == processes
     assert logs and all(log.closed for log in logs)
 
