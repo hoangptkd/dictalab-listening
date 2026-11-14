@@ -10,13 +10,66 @@ on:
         type: boolean
         default: false
   workflow_dispatch:
+  push:
+    branches: ['codex/**']
+    paths:
+      - 'services/ai-generation/**'
+      - 'services/model-serving/**'
+      - 'training/generate_teacher_data.py'
+      - 'training/benchmark_teacher.py'
+      - 'training/semantic_rubric.py'
+      - 'training/freeze_candidate.py'
+      - 'training/prepare_dataset.py'
+      - 'training/tests/test_generate_teacher_data.py'
+      - 'training/tests/test_benchmark_teacher.py'
+      - 'training/tests/test_prepare_dataset.py'
+      - 'training/requirements-prepare.lock'
+      - 'tools/ai-eval/**'
+      - 'artifacts/prompts/**'
+      - 'artifacts/reports/ai-platform-*.json'
+      - 'src/**'
+      - '!src/main/resources/static/**'
+      - '!src/main/resources/templates/**'
+      - '!src/test/js/**'
+      - 'src/main/resources/static/js/conversation.js'
+      - 'src/main/resources/static/js/model-demo.js'
+      - 'compose.yaml'
+      - '.dockerignore'
+      - 'pom.xml'
+      - 'ops/observability/**'
+      - 'scripts/run-local.ps1'
+      - 'scripts/test-run-local-env.ps1'
+      - 'scripts/run-model-demo.ps1'
+      - 'scripts/run-service.py'
+      - 'scripts/linux/service-bundle.py'
+      - 'scripts/linux/test_service_bundle.py'
+      - 'scripts/linux/service-provision.py'
+      - 'scripts/linux/test_service_provision.py'
+      - 'scripts/linux/service-release.py'
+      - 'scripts/linux/test_service_release.py'
+      - 'scripts/linux/service-lifecycle.py'
+      - 'scripts/linux/test_service_lifecycle.py'
+      - 'scripts/linux/dictalab-production.service'
+      - 'scripts/linux/dictalab-maintenance.caddy'
+      - 'scripts/ec2-services.ps1'
+      - 'scripts/cloudflare/**'
+      - 'scripts/linux/release.py'
+      - 'scripts/linux/test_service_units.py'
+      - 'scripts/linux/cloud-backup.py'
+      - 'scripts/linux/test_cloud_backup.py'
+      - 'scripts/linux/test_aws_database_access.py'
+      - 'ops/aws/**'
+      - 'scripts/linux/dictalab-ai*.service'
+      - 'scripts/linux/dictalab-progress.service'
+      - '.env*.example'
+      - '.github/workflows/ai-platform.yml'
 
 permissions:
   contents: read
 
 concurrency:
   group: ai-platform-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/codex/')) }}
 
 jobs:
   contracts:

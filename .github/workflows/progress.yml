@@ -3,13 +3,27 @@ name: Progress service checks
 on:
   workflow_call:
   workflow_dispatch:
+  push:
+    branches: ['codex/**']
+    paths:
+      - 'services/progress/**'
+      - 'src/**'
+      - '!src/main/resources/static/**'
+      - '!src/main/resources/templates/**'
+      - '!src/test/js/**'
+      - 'docs/progress-*.json'
+      - 'docs/progress-*.yaml'
+      - 'compose.yaml'
+      - '.env.example'
+      - 'pom.xml'
+      - '.github/workflows/progress.yml'
 
 permissions:
   contents: read
 
 concurrency:
   group: progress-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/codex/')) }}
 
 jobs:
   contracts-and-recovery:

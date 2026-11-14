@@ -18,8 +18,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: dictalab-${{ github.event_name == 'pull_request' && github.ref || inputs.full_compatibility && 'compatibility' || github.ref == 'refs/heads/main' && 'production' || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
+  group: dictalab-${{ github.event_name == 'pull_request' && github.ref || (github.event_name == 'schedule' || inputs.full_compatibility) && 'compatibility' || 'production' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
