@@ -16,7 +16,9 @@ EXAMPLE = json.loads((quality.ROOT / "src/test/resources/scenario/workflow-examp
 
 @pytest.fixture
 def output():
-    with tempfile.TemporaryDirectory(prefix="scenario-quality-test-", dir=quality.ROOT / "data") as folder:
+    directory = quality.ROOT / "data"
+    directory.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="scenario-quality-test-", dir=directory) as folder:
         yield Path(folder) / "capture"
 
 
