@@ -4,14 +4,48 @@
 
 Open `/admin/ai-evaluation` as an ADMIN. APIs exist only with Spring profile `local`.
 The existing admin security, CSRF, account validation and AI emergency stop apply.
-The runner uses the Java conversation generator and its configured Gemini text transport,
-including Python text transport and the account pools managed at `/admin/gemini`.
-Local Ollama, Python conversation pipelines and canary routing are rejected by this runner.
+The version dialog selects the personalized Python pipeline **V4.13 / V4.14** or the
+historical **Java V8** generator. These are separate experiment cohorts. Creating a version
+does not activate a prompt for learners. V4.14 remains a candidate.
+Both reuse the provider/account pools managed at `/admin/gemini`.
 Existing provider quotas and user/application budgets still apply; Full can stop at a budget limit.
 
 No new database tables or frontend packages are needed. Experiment documents are stored
 atomically under ignored `data/ai-evaluation` (override with `dictalab.evaluation.directory`).
 Back up that directory to preserve versions, runs and cached judgments. Do not serve it as static files.
+
+### Personalized pipeline connection
+
+Python requires `DICTALAB_AI_EVALUATION_ENABLED=true`, `DICTALAB_AI_SCENARIO_ENABLED=true`,
+an existing strong service token and `production_mode=false`. The internal `/v1/evaluation/scenario`
+API is disabled by default, authenticates before reading bodies and caps input at 64 KB.
+Set `DICTALAB_AI_EVALUATION_DIRECTORY` to private local storage. Core still requires local profile,
+ADMIN and CSRF. No learner/session records are created.
+
+Execution reuses EXTRACT then GENERATE, QUESTIONS, REVIEW_QUESTIONS, TRANSLATE, REVIEW and
+their existing bounded repairs. No replacement prompt or validator is introduced.
+The runner reserves ten calls (extraction plus maximum generation envelope) before dispatch.
+Unused reservations are conservative admission, not actual spend. GRADE and TTS are outside scope.
+
+Personalized Smoke: three happy inputs at CEFR B1, TOEIC listening 255 and IELTS listening 5.5.
+Regression: nine inputs across three programs. Full: twelve profiles repeated three times (36 samples).
+Targets use the existing catalog; they are not recast as CEFR. These are synthetic inputs,
+not human-approved gold lessons or calibrated exam scores.
+
+Frozen versions include instructions, immutable prompt/few-shot hashes, Python source/assets/dependency
+fingerprint, pool/model/fallback policy and Java fingerprint. Changed source/configuration rejects new
+execution of an old snapshot. Python stores stage inputs, schemas, outputs and HTTP attempts; Core
+stores stage inputs/outputs and the remote request ID, with instructions in the frozen version.
+Credential-like content is redacted. Settings, service headers and API keys are never captured.
+
+The initial complete lesson is assembled from the **first** QUESTIONS and TRANSLATE outputs and
+checked by existing validators. Missing/invalid initial artifacts stay unresolved; a later repair cannot
+retroactively pass them. Harness acceptance and independent nine-criterion semantic judgment are separate.
+
+Exclusive durable admission and UUID idempotency prevent replay of interrupted/unknown work.
+Stop lets the submitted lesson finish, then prevents the next lesson. Stored outputs remain readable
+and exportable without regeneration. Replay rejudging is currently Java-only. Different actual returned
+models across paired stages make a comparison inconclusive. None of these actions activates V4.14.
 
 ## Workflow
 
@@ -22,7 +56,7 @@ Back up that directory to preserve versions, runs and cached judgments. Do not s
 5. Use Replay to validate stored first outputs without generating or repairing. Disable semantic
    judging for a provider-free replay. Replay is explicitly a narrower measurement than a live run.
 
-Smoke has 3 fixed inputs, Regression has 9, and Full has 27 inputs repeated 3 times (81 samples).
+For Java V8, Smoke has 3 inputs, Regression has 9, and Full has 27 inputs repeated 3 times (81 samples).
 The initial synthetic dataset covers A1/A2/B1, turns 2/3/4, and cafe/directions/hotel contexts.
 These are fixed context tests, not complete simulated learner journeys or a human-approved golden set.
 
@@ -52,7 +86,7 @@ Changes to prompt and backend/Harness together are reported as a combined experi
 
 Gemini output remains nondeterministic at temperature 0; repeat indices are not provider seeds.
 Actual source IDs/models are recorded when available. Source-pool edits, external provider
-revisions and the Python deployment are not fully pinned by the Java fingerprint. Review traces
+revisions are not pinned by the Java fingerprint alone; personalized runs additionally pin Python. Review traces
 before attributing changes. No run or comparison automatically approves a production release.
 
 One worker executes at a time. Start requests use UUID idempotency, calls are checkpointed,

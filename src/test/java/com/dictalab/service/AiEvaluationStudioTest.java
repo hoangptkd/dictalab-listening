@@ -163,6 +163,44 @@ class AiEvaluationStudioTest {
         assertThat(metric.path("afterRate").asDouble()).isZero();assertThat(metric.path("afterEvaluated").asInt()).isEqualTo(1);
         assertThat(AiEvaluationStudio.comparison(json,json.createObjectNode(),json.createObjectNode()).path("comparable").asBoolean()).isFalse();
     }
+    @Test void personalizedVersionsPinPythonAndUseRealPipelineWithoutLegacyGenerator() throws Exception {
+        var platform = mock(AiPlatformClient.class);
+        ReflectionTestUtils.setField(studio, "platform", platform);
+        ReflectionTestUtils.setField(studio, "programs", new com.dictalab.scenario.ScenarioProgramRegistry());
+        var catalog = json.createObjectNode().put("backendHash", "python-build");
+        catalog.putObject("runtime").put("provider", "gemini").put("model", "gemini-test");
+        var release = catalog.putArray("releases").addObject().put("id", "v4.13").put("promptVersion", "V4.13").put("promptHash", "pin");
+        release.putObject("instructions").put("GENERATE", "Original immutable prompt");
+        when(platform.scenarioEvaluation(isNull(), isNull())).thenReturn(catalog);
+        when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")))).thenAnswer(call -> {
+            JsonNode input = call.getArgument(1);
+            assertThat(input.path("payload").path("promptHash").asText()).isEqualTo("pin");
+            assertThat(input.path("payload").path("profile").size()).isEqualTo(4);
+            var remote = json.createObjectNode().put("requestId", input.path("requestId").asText()).put("status", "COMPLETED");
+            var raw = json.createObjectNode().putArray("activities"); raw.addObject().put("id", "a1");
+            remote.putObject("before").put("hardPass", true).set("raw", json.createObjectNode().set("activities", raw));
+            remote.putObject("result").put("promptHash", "pin").set("task", json.createObjectNode().put("qualityPassed", true).set("activities", raw));
+            var event = remote.putArray("events").addObject().put("stage", "GENERATE").put("status", "RETURNED").put("model", "fallback-model");
+            event.putArray("attempts").addObject().put("model", "fallback-model").put("prompt_tokens", 10).put("completion_tokens", 5);
+            return remote;
+        });
+        var request = json.createObjectNode().put("pipeline", "scenario").put("release", "v4.13").put("label", "Personalized");
+        var version = studio.createVersion(request, 14);
+        assertThat(version.path("pythonBackendHash").asText()).isEqualTo("python-build");
+        assertThat(studio.snapshot().path("scenarioPipeline").path("fixtures").asInt()).isEqualTo(12);
+        var run = finished(studio.start(request(version.path("id").asText(), "smoke", false), 14).path("id").asText());
+        assertThat(run.path("status").asText()).isEqualTo("COMPLETED");
+        assertThat(run.path("pipeline").asText()).isEqualTo("scenario");
+        assertThat(run.path("cases").size()).isEqualTo(3);
+        assertThat(run.path("cases").path(0).path("calls").path(0).path("model").asText()).isEqualTo("fallback-model");
+        assertThat(run.path("metrics").path("afterEvaluated").asInt()).isZero();
+        assertThat(run.path("metrics").path("harnessAccepted").asInt()).isEqualTo(3);
+        verify(conversation, never()).evaluateFixture(anyLong(), any(), anyString(), anyBoolean(), any());
+        catalog.put("backendHash", "changed");
+        assertThatThrownBy(() -> studio.start(request(version.path("id").asText(), "smoke", false), 14)).hasMessageContaining("409");
+        var other = run.deepCopy(); ((ObjectNode)other.path("cases").path(0).path("calls").path(0)).put("model", "different");
+        assertThat(AiEvaluationStudio.comparison(json, run, other).path("comparable").asBoolean()).isFalse();
+    }
     ObjectNode comparableRun() {
         var run=json.createObjectNode().put("status","COMPLETED").put("planned",1).put("repeats",1).put("judge",true).put("mode","live").put("repair",true);
         for(String field:List.of("datasetHash","rubric","judgeHash","promptHash","backendHash"))run.put(field,"same");

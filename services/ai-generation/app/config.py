@@ -113,6 +113,8 @@ class Settings(BaseSettings):
     http_max_connections: int = 10
     model_demo_enabled: bool = False
     scenario_enabled: bool = False
+    evaluation_enabled: bool = False
+    evaluation_directory: str = "data/scenario-evaluation"
     text_gateway_enabled: bool = False
     model_serving_url: str = "http://127.0.0.1:8093"
     model_serving_token: str = Field(default="", repr=False)

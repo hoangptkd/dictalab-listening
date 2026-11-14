@@ -38,6 +38,30 @@ public class AiPlatformClient {
 
     public boolean textConfigured() { return config.serviceToken().matches("[!-~]{32,256}"); }
 
+    /** Local Studio only. Durable admission belongs to Python; failed POSTs are never retried. */
+    public JsonNode scenarioEvaluation(String id, JsonNode payload) {
+        if (!textConfigured()) throw new IllegalStateException("Scenario transport is not configured");
+        if (id != null) UUID.fromString(id);
+        var builder = HttpRequest.newBuilder(URI.create(config.baseUrl() + "/v1/evaluation/scenario" + (id == null ? "" : "/" + id)))
+                .timeout(Duration.ofSeconds(10)).header("X-Service-Token", config.serviceToken());
+        if (payload == null) builder.GET();
+        else {
+            String body = json.writeValueAsString(payload);
+            if (body.getBytes(StandardCharsets.UTF_8).length > 64000) throw new IllegalArgumentException("Evaluation input exceeds limit");
+            builder.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body));
+        }
+        try {
+            var response = http.send(builder.build(), ignored -> BoundedProviderBody.bytes(8_000_000));
+            if (response.statusCode() != 200 && response.statusCode() != 202)
+                throw new IllegalStateException("Scenario evaluation unavailable (HTTP " + response.statusCode() + ")");
+            return json.readTree(response.body());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt(); throw new IllegalStateException("Evaluation interrupted; outcome unknown");
+        } catch (java.io.IOException unavailable) {
+            throw new IllegalStateException("Evaluation outcome unknown; automatic replay disabled");
+        }
+    }
+
     /** Synchronous execution only. Core keeps domain validation and caller budget reservations. */
     public JsonNode completeText(String instruction, String input, String model, Duration timeout) {
         if (!textConfigured()) throw new IllegalStateException("AI text transport requires a strong service token");

@@ -59,6 +59,31 @@ public class ScenarioPersonalization {
         // Only an explicit recommendation overrides the default, never a removed legacy preference field.
         return context(program,ScenarioJson.MAPPER.treeToValue(preference.path("target"),ScenarioGoalRequest.Target.class),null,focus==null || focus.isEmpty() ? "main-idea" : focus);
     }
+    /** Synthetic Studio fixtures use the same profile resolution as learner drafts; no preference writes. */
+    public static tools.jackson.databind.node.ArrayNode evaluationFixtures(ScenarioProgramRegistry registry) {
+        var rows = ScenarioJson.MAPPER.createArrayNode();
+        var inputs = java.util.List.of(
+                "Tôi muốn nghe hai người bạn thảo luận chọn một hoạt động cuối tuần phù hợp với cả hai.",
+                "Tôi muốn nghe hai đồng nghiệp trao đổi nguyên nhân công việc bị chậm và cách phối hợp giải quyết.",
+                "Tôi muốn nghe sinh viên và giảng viên thảo luận ý kiến về một dự án bảo vệ môi trường.");
+        for (var program : registry.definitions()) if (program.meaningAssessment()) {
+            int index = 0;
+            for (var profile : program.difficultyProfiles()) {
+                var scale = profile.targetRange() == null ? program.targetScales().get(0).scaleId() : profile.targetRange().scaleId();
+                String value = profile.targetRange() == null ? profile.id() : profile.targetRange().min();
+                var context = context(program, new ScenarioGoalRequest.Target(scale, "LISTENING", value), null, "main-idea");
+                var row = rows.addObject().put("id", program.code() + "-" + profile.id()).put("level", program.code() + "/" + value)
+                        .put("scenario", program.code()).put("turn", 0);
+                var payload = row.putObject("context").put("kind", "scenario").put("phase", "EXTRACT")
+                        .put("contractVersion", "scenario-job.v3").put("programHash", program.definitionHash()).put("inputVi", inputs.get(index++ % inputs.size()));
+                var bounds = payload.putObject("profile");
+                for (String field : java.util.List.of("id", "minWordsPerActivity", "maxWordsPerActivity", "maxWordsPerSession")) bounds.set(field, context.path("profile").path(field));
+                payload.set("learningContext", context);
+            }
+        }
+        return rows;
+    }
+
     static ObjectNode context(ScenarioProgram program,ScenarioGoalRequest.Target target,String currentValue,String focus) {
         try {
             if (currentValue!=null && currentValue.isEmpty()) currentValue=null;

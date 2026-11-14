@@ -38,6 +38,22 @@ class AiPlatformClientTest {
     }
     @AfterEach void cleanup() { client.stopShadows(); server.stop(0); }
 
+    @Test void scenarioEvaluationUsesAuthenticatedBoundedTransportAndNeverRetriesRejectedPost() {
+        var remote = new AiPlatformClient(json, new AiPlatformProperties("http://127.0.0.1:" + server.getAddress().getPort(),
+                "t".repeat(40), "gemini", 5, "legacy", "legacy", "legacy", Set.of()), new SimpleMeterRegistry());
+        server.createContext("/v1/evaluation/scenario", exchange -> {
+            calls.incrementAndGet();
+            assertThat(exchange.getRequestHeaders().getFirst("X-Service-Token")).isEqualTo("t".repeat(40));
+            exchange.getRequestBody().readAllBytes();
+            exchange.sendResponseHeaders(503, -1); exchange.close();
+        });
+        assertThatThrownBy(() -> remote.scenarioEvaluation(null, json.createObjectNode().put("requestId", UUID.randomUUID().toString())))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("503");
+        assertThat(calls.get()).isEqualTo(1);
+        assertThatThrownBy(() -> remote.scenarioEvaluation("../secrets", null)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(calls.get()).isEqualTo(1);
+    }
+
     @Test void genericTextAuthenticatesAndVerifiesProvenanceWithNoAutomaticRetry() {
         var actualProvider = new java.util.concurrent.atomic.AtomicReference<>("ollama");
         server.createContext("/v1/text/completions", exchange -> {

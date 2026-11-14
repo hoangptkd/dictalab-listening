@@ -66,6 +66,8 @@ from .text_gateway import router as text_router
 app.include_router(text_router)
 from .provider_admin import router as provider_admin_router
 app.include_router(provider_admin_router)
+from .scenario_evaluation import router as scenario_evaluation_router
+app.include_router(scenario_evaluation_router)
 logger = logging.getLogger("dictalab.ai_generation")
 logger.addFilter(RedactingFilter())
 
@@ -91,6 +93,19 @@ semaphore = asyncio.Semaphore(settings.effective_max_concurrency) if settings.ef
 
 @app.middleware("http")
 async def bound_job_requests(request: Request, call_next):
+    if request.url.path.startswith("/v1/evaluation/scenario"):
+        from .scenario_evaluation import authorize
+        try:
+            authorize(request.headers.get("X-Service-Token"))
+        except HTTPException as error:
+            return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
+        if request.method == "POST":
+            body = bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > 64000:
+                    return JSONResponse(status_code=413, content={"detail": "evaluation input exceeds limit"})
+            request._body = bytes(body)
     if request.url.path.startswith("/v1/admin/gemini"):
         from .provider_admin import authorize
         try:

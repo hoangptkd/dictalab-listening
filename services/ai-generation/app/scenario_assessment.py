@@ -609,7 +609,7 @@ def derive_grade(grade, payload):
     return DerivedGrade(meanings=results)
 
 
-async def execute(event, settings):
+async def execute(event, settings, *, observer=None):
     """Use the existing gateway and fallback rules; never replay completed stages."""
     if not settings.scenario_enabled:
         raise w.QualityRejected("scenario execution disabled")
@@ -628,10 +628,15 @@ async def execute(event, settings):
             data = project_input(selected, purpose, data)
             stage = {"REPAIR_QUESTIONS": "QUESTIONS", "REPAIR_TRANSLATIONS": "TRANSLATE"}.get(purpose, purpose)
             gateway = ModelGateway(call_settings.model_copy(update={"num_predict": selected.OUTPUT_TOKENS[stage]}), client)
+            if observer is not None:
+                gateway.observed_attempts = []
             schema = response_schema(model, legacy=selected is legacy_release,
                                      minimum_targets=getattr(selected, "MINIMUM_TARGETS", False))
             if purpose == "GENERATE":
                 schema["$defs"]["Segment"]["properties"]["speakerId"]["enum"] = [c.id for c in payload.specification.characters]
+            captured = {"stage": purpose, "input": data, "schema": schema, "instruction": selected.INSTRUCTIONS[purpose]}
+            if observer is not None:
+                observer({**captured, "status": "RUNNING"})
             try:
                 raw, provider = await asyncio.wait_for(gateway.complete(
                     [{"role": "system", "content": selected.INSTRUCTIONS[purpose]},
@@ -639,10 +644,16 @@ async def execute(event, settings):
                     "scenario_" + purpose.lower(), temperature=0,
                     **({"allow_model_fallback": True} if call_settings.gemini_fallback_models else {})), max(0.01, deadline - time.monotonic()))
             except Exception as error:
+                if observer is not None:
+                    observer({**captured, "status": "ERROR", "error": type(error).__name__,
+                              "httpStatus": getattr(error, "status", None), "attempts": gateway.observed_attempts})
                 logger.warning("scenario_call_failed job_id=%s phase=%s error_type=%s http_status=%s provider=%s model=%s source_id=%s completed_calls=%s",
                     event.jobId, purpose, type(error).__name__, getattr(error, "status", None), settings.selected_provider,
                     gateway.last_model, getattr(gateway, "last_source_id", None), len(calls))
                 raise
+            if observer is not None:
+                observer({**captured, "status": "RETURNED", "output": raw, "model": gateway.last_model,
+                          "attempts": gateway.observed_attempts, "fallbacks": gateway.model_fallbacks})
             calls.append({"purpose": purpose, "provider": provider, "model": gateway.last_model,
                 **({"exampleSetHash": selected.EXAMPLE_SET_HASH, "exampleIds": selected.EXAMPLE_IDS[purpose]}
                    if getattr(selected, "EXAMPLE_SET_HASH", None) else {})})

@@ -81,7 +81,8 @@
     let selected = params.get("run") || "", data, detail, comparison, offline = false, busy = false, csrf, poll;
     let filterVersion = "", filterSuite = "", filterStatus = "", filterRuntime = "", filterLevel = "", filterCase = "", filterStep = "";
     let left = params.get("left") || "", right = params.get("right") || "", sequence = 0;
-    const runtimeKey = r => JSON.stringify(r.runtime || {});
+    const runtimeKey = r => JSON.stringify({pipeline:r.pipeline || "java",runtime:r.runtime || {}});
+    const runSuites = versionId => data.versions.find(v=>v.id===versionId)?.pipeline === "scenario" ? (data.scenarioPipeline?.suites || []) : data.suites;
     const summaries = () => (data?.runs || []).filter(r => (!filterVersion || r.version === filterVersion) && (!filterSuite || r.suite === filterSuite) && (!filterStatus || r.status === filterStatus) && (!filterRuntime || runtimeKey(r) === filterRuntime));
     const suiteName = id => ({smoke:"Smoke",regression:"Regression",full:"Full evaluation"}[id] || id);
     const currentRows = () => (detail?.cases || []).filter(r => (!filterLevel || r.level === filterLevel) && (!filterCase || (r.after?.status || "MISSING") === filterCase)
@@ -161,7 +162,8 @@
         // One trend cohort must share dataset, judge and execution mode; counts are shown alongside it.
         const cohort=runs.filter(r => r.datasetHash === latest?.datasetHash && r.judgeHash === latest?.judgeHash
             && JSON.stringify(r.runtime) === JSON.stringify(latest?.runtime) && r.mode === latest?.mode && r.judge === latest?.judge).slice(0,14).reverse();
-        return `${heading("Chất lượng hội thoại AI", "Theo dõi chất lượng thực, hiệu quả Harness và những thay đổi cần xem xét.")}${filters()}
+        return `${heading("Chất lượng hội thoại AI", "Theo dõi chất lượng thực, hiệu quả Harness và những thay đổi cần xem xét.")}
+            <div class="banner">Pipeline cá nhân hóa: ${data.scenarioPipeline?.available ? `${data.scenarioPipeline.releases.map(r=>esc(r.id)).join(" / ")} · ${esc(data.scenarioPipeline.runtime.model)}` : esc(data.scenarioPipeline?.notice || "Chưa kết nối")}. Java V8 là luồng riêng; kết quả cũ được giữ. Tạo phiên bản đánh giá không kích hoạt prompt cho người học.</div>${filters()}
             <div class="stats"><div class="stat"><span class="stat-label">ĐẠT LẦN ĐẦU</span><strong class="rate-before">${pct(m.beforeRate)}</strong><small>${num(m.beforePassed)} / ${num(m.planned)} mẫu kế hoạch</small></div>
             <div class="stat"><span class="stat-label">ĐẠT SAU HARNESS</span><strong class="rate-after">${pct(m.afterRate)}</strong><small>Đã chấm ${num(m.afterEvaluated)} / ${num(m.planned)} mẫu</small></div>
             <div class="stat ${m.critical ? "attention" : ""}"><span class="stat-label">LỖI NGHIÊM TRỌNG</span><strong>${num(m.critical)}</strong><small>Không bù trừ bằng điểm trung bình</small></div>
@@ -181,7 +183,7 @@
     function versionsView() {
         return `${heading("Phiên bản prompt", "Mỗi phiên bản giữ nguyên prompt, chính sách sửa, cấu hình model và dấu vết backend.")}
             <div class="banner">Nguồn và quota được quản lý tại <a href="/admin/gemini">Nguồn Gemini</a>. Tạo phiên bản chỉ lưu cấu hình thí nghiệm.</div>
-            ${!data.versions.length ? empty("Tạo phiên bản đầu tiên", "Dùng prompt hiện tại làm baseline, hoặc thêm chỉ dẫn riêng để thử nghiệm.") : `<div class="version-grid">${data.versions.map(v=>`<article class="version-card"><div class="case-title"><h2>${esc(v.label)}</h2><span class="tag">${v.repair ? "Sửa tối đa 1 lần" : "Đo lần đầu"}</span></div>
+            ${!data.versions.length ? empty("Tạo phiên bản đầu tiên", "Chọn pipeline và phiên bản prompt để đóng băng thí nghiệm.") : `<div class="version-grid">${data.versions.map(v=>`<article class="version-card"><div class="case-title"><h2>${esc(v.label)}</h2><span class="tag">${v.pipeline === "scenario" ? "Harness gốc · tối đa 9 lượt sinh" : v.repair ? "Sửa tối đa 1 lần" : "Đo lần đầu"}</span></div>
                 <dl class="version-meta"><dt>Prompt</dt><dd>${esc(v.promptVersion)} · <span class="mono">${short(v.promptHash)}</span></dd><dt>Backend</dt><dd class="mono">${esc(v.backendHash)}</dd>
                 <dt>Model</dt><dd>${esc(v.runtime.model)} · temperature ${v.runtime.temperature}</dd><dt>Ngày tạo</dt><dd>${stamp(v.createdAt)}</dd></dl>
                 <details><summary>Chỉ dẫn bổ sung</summary><pre class="output">${esc(v.promptSuffix || "Dùng nguyên prompt hiện tại.")}</pre></details><button data-new-run data-version="${v.id}">Chạy phiên bản này</button></article>`).join("")}</div>`}`;
@@ -189,7 +191,8 @@
     function outputView(row, stage) {
         const attempts=row?.attempts || [], raw=attempts[stage === "before" ? 0 : attempts.length-1]?.raw, result=row?.[stage];
         if (!raw) return empty("Không có output", row?.error || "Lần chạy chưa tạo được nội dung cho test này.", true);
-        return `${badge(result?.status)} ${result?.critical ? '<span class="badge bad">Critical</span>' : ""}<p class="output utterance">${esc(raw.utteranceEn || JSON.stringify(raw))}</p>
+        const lesson = raw.activities?.map(a=>`<section><h4>${esc(a.id)} · ${esc(a.titleVi || a.titleEn || "")}</h4>${a.segments.map(s=>`<p><strong>${esc(s.speakerId)}:</strong> ${esc(s.textEn)}</p>`).join("")}${(a.questions || []).map(q=>`<p><strong>${esc(q.promptVi)}</strong><br>${esc(q.answerVi)}</p>`).join("")}</section>`).join("");
+        return `${badge(result?.status)} ${result?.critical ? '<span class="badge bad">Critical</span>' : ""}${lesson || `<p class="output utterance">${esc(raw.utteranceEn || JSON.stringify(raw))}</p>`}
             <p><strong>Câu hỏi:</strong> ${esc(raw.questionVi)}</p><p class="muted">${esc(raw.translationVi)}</p>
             ${(result?.issues || []).map(issue=>`<div class="issue ${issue.severity === "critical" ? "critical" : ""}"><strong>${esc(names[issue.criterion] || issue.criterion)} · ${esc(issue.severity)}</strong><p>${esc(issue.reason)}</p>${issue.evidence ? `<q>${esc(issue.evidence)}</q>` : ""}</div>`).join("")}
             ${result?.reason ? `<p class="banner error">${esc(result.reason)}</p>` : ""}
@@ -205,9 +208,9 @@
             <div class="stats"><div class="stat"><span class="stat-label">LẦN ĐẦU / SAU HARNESS</span><strong>${pct(m.beforeRate)} / ${pct(m.afterRate)}</strong><small>Mẫu số ${num(m.planned)} mẫu kế hoạch</small></div><div class="stat"><span class="stat-label">ĐỘ PHỦ CHẤM</span><strong>${num(m.afterEvaluated)} / ${num(m.planned)}</strong><small>${num(m.recorded)} mẫu có bản ghi</small></div><div class="stat"><span class="stat-label">HARNESS CHẤP NHẬN</span><strong>${num(m.harnessAccepted)}</strong><small>Khác với chấm ngữ nghĩa độc lập</small></div><div class="stat"><span class="stat-label">LƯỢT GỌI AI</span><strong>${num(m.logicalCalls)}</strong><small>HTTP attempt ${num(m.httpAttempts)} · sửa ${num(m.repairs)}</small></div></div>
             <section class="panel"><div class="panel-head"><h2>Tiêu chí trước & sau</h2>${legend()}</div><div class="panel-body">${criteriaChart(m)}</div></section>
             <details><summary>Phiên bản & cấu hình đã đóng băng</summary><pre class="output">${esc(JSON.stringify({backendHash:detail.backendHash,promptHash:detail.promptHash,datasetHash:detail.datasetHash,runtime:detail.runtime,rubric:detail.rubric,repair:detail.repair,judge:detail.judge},null,2))}</pre></details>
-            <div class="filters"><label>Level<select data-filter="level"><option value="">Tất cả level</option>${["A1","A2","B1"].map(l=>`<option ${filterLevel === l ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+            <div class="filters"><label>Trình độ / mục tiêu<select data-filter="level"><option value="">Tất cả mục tiêu</option>${[...new Set((detail.cases || []).map(r=>r.level))].map(l=>`<option value="${esc(l)}" ${filterLevel === l ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
             <label>Kết quả sau Harness<select data-filter="case"><option value="">Tất cả kết quả</option>${["PASS","FAIL","REVIEW_REQUIRED","MISSING"].map(s=>`<option value="${s}" ${filterCase === s ? "selected" : ""}>${labels[s][0]}</option>`).join("")}</select></label>
-            <label>Bước xử lý<select data-filter="step"><option value="">Tất cả bước</option>${["generated","validation","review","rejected","judge-before","judge-after","replay-validation"].map(s=>`<option value="${s}" ${filterStep === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label><span class="count">${rows.length} test</span></div>
+            <label>Bước xử lý<select data-filter="step"><option value="">Tất cả bước</option>${[...new Set((detail.cases || []).flatMap(r=>(r.steps || []).map(s=>s.step)))].map(s=>`<option value="${esc(s)}" ${filterStep === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label><span class="count">${rows.length} test</span></div>
             <section class="panel"><div class="panel-head"><h2>Bằng chứng từng test</h2></div>${!rows.length ? empty("Chưa có test phù hợp","Thay đổi bộ lọc hoặc chờ lần chạy ghi nhận kết quả.",true) : rows.map(row=>`<article class="case-card"><div class="case-title"><h3>${esc(row.key)} <span class="tag">${esc(row.level)} · lượt ${row.turn}</span></h3><span>${badge(row.status)} · ${num(row.seconds,1)} s</span></div>
                 <details><summary>Xem output đầu tiên và sau Harness</summary><div class="side-by-side"><div><h3>Lần đầu</h3>${outputView(row,"before")}</div><div><h3>Sau Harness</h3>${outputView(row,"after")}</div></div></details>
                 <details><summary>Các bước & lượt gọi API (${row.calls?.length || 0})</summary><pre class="output">${esc(JSON.stringify({steps:row.steps,calls:row.calls,error:row.error},null,2))}</pre></details>
@@ -253,20 +256,38 @@
     }
     dialog.addEventListener("close",()=>{dialog.returnFocus?.focus();});
     function versionDialog() {
-        openDialog(`<h2 id="dialog-title">Tạo phiên bản prompt</h2><p>Đóng băng prompt Java hiện tại và các chỉ dẫn bổ sung. Mỗi phiên bản có hash riêng.</p><form id="version-form"><label>Tên phiên bản<input name="label" maxlength="100" required placeholder="Ví dụ: Baseline hiện tại"></label>
-            <label>Chỉ dẫn bổ sung cho thí nghiệm<textarea name="promptSuffix" maxlength="8000" placeholder="Để trống để dùng nguyên prompt hiện tại."></textarea></label><label class="check"><input type="checkbox" name="repair">Cho Harness sửa tối đa một lần khi nội dung bị từ chối</label><p class="dialog-error" role="alert"></p><div class="dialog-actions"><button type="button" data-close>Hủy</button><button class="primary" type="submit">Lưu phiên bản</button></div></form>`);
+        openDialog(`<h2 id="dialog-title">Tạo phiên bản prompt</h2><p>Chỉ lưu thí nghiệm; không đổi prompt đang phục vụ người học.</p><form id="version-form"><label>Tên phiên bản<input name="label" maxlength="100" required placeholder="Ví dụ: V4.13 baseline"></label>
+            <label>Pipeline<select name="pipeline"><option value="scenario" ${!data.scenarioPipeline?.available ? "disabled" : "selected"}>Cá nhân hóa · V4.13 / V4.14</option><option value="java" ${!data.scenarioPipeline?.available ? "selected" : ""}>Java V8 · luồng cũ</option></select></label>
+            <label data-scenario-version>Prompt<select name="release">${(data.scenarioPipeline?.releases || []).map(r=>`<option value="${esc(r.id)}">${esc(r.id)} · ${short(r.promptHash)}</option>`).join("")}</select></label>
+            <div data-java-version><label>Chỉ dẫn bổ sung cho Java<textarea name="promptSuffix" maxlength="8000"></textarea></label><label class="check"><input type="checkbox" name="repair">Cho Harness Java sửa tối đa một lần</label></div><p class="dialog-error" role="alert"></p><div class="dialog-actions"><button type="button" data-close>Hủy</button><button class="primary" type="submit">Lưu phiên bản</button></div></form>`);
+        syncVersionDialog();
+    }
+    function syncVersionDialog() {
+        const scenario=dialog.querySelector('[name="pipeline"]').value === "scenario";
+        dialog.querySelector('[data-java-version]').hidden=scenario;
+        dialog.querySelector('[data-scenario-version]').hidden=!scenario;
     }
     function runDialog(versionId) {
         if (!data?.versions.length) { versionDialog(); return; }
         openDialog(`<h2 id="dialog-title">Chạy đánh giá</h2><p>Nguồn và quota Gemini dùng cấu hình trong <a href="/admin/gemini">trang quản trị hiện có</a>. Lần chạy được ghi riêng với dữ liệu tổng hợp.</p>
             <form id="run-form"><label>Phiên bản<select name="version">${data.versions.map(v=>`<option value="${v.id}" ${v.id === versionId ? "selected" : ""}>${esc(v.label)}</option>`).join("")}</select></label>
-            <label>Bộ kiểm thử<select name="suite">${data.suites.map(s=>`<option value="${s.id}">${esc(s.name)} · ${s.samples} mẫu</option>`).join("")}</select></label>
+            <label>Bộ kiểm thử<select name="suite"></select></label>
             <label>Cách thực hiện<select name="mode"><option value="live">Sinh mới bằng Gemini</option><option value="replay">Replay output cũ · không sinh lại</option></select></label>
             <label id="source-run-label" hidden>Lần chạy gốc<select name="sourceRun"><option value="">Chọn lần chạy</option>${data.runs.map(r=>`<option value="${r.id}">${esc(r.label)} · ${suiteName(r.suite)} · ${stamp(r.createdAt)}</option>`).join("")}</select></label>
             <label class="check"><input type="checkbox" name="judge" checked>Chấm ngữ nghĩa bằng AI (cùng model, ngữ cảnh chấm riêng; tái sử dụng verdict phù hợp)</label>
             <p id="run-cost" class="banner">Smoke: 3 mẫu. Mỗi mẫu thường cần tạo nội dung, Harness duyệt và chấm độc lập; sửa có thể phát sinh thêm lượt.</p><p class="dialog-error" role="alert"></p>
             <div class="dialog-actions"><button type="button" data-close>Hủy</button><button class="primary" type="submit">Bắt đầu đánh giá</button></div></form>`);
         dialog.querySelector("#run-form").requestId=crypto.randomUUID();
+        syncRunDialog();
+    }
+    function syncRunDialog() {
+        const id=dialog.querySelector('[name="version"]').value;
+        const scenario=data.versions.find(v=>v.id===id)?.pipeline === "scenario";
+        const suites=runSuites(id) || [];
+        dialog.querySelector('[name="suite"]').innerHTML=suites.map(s=>`<option value="${esc(s.id)}">${esc(s.name)} · ${s.samples} mẫu</option>`).join("");
+        const replay=dialog.querySelector('[name="mode"] option[value="replay"]'); replay.disabled=scenario;
+        if(scenario) {dialog.querySelector('[name="mode"]').value="live";$("#source-run-label").hidden=true;}
+        $("#run-cost").textContent=scenario ? "Smoke: 3 bài · mỗi bài EXTRACT + tối đa 9 lượt sinh/duyệt/sửa, thêm tối đa 2 lượt chấm độc lập. Không đo chất lượng GRADE hoặc TTS. Dừng sau bài đang chạy." : "Smoke: 3 mẫu Java V8; tạo, duyệt, sửa và chấm có thể phát sinh phí.";
     }
 
     document.addEventListener("click",async event=>{
@@ -289,6 +310,8 @@
     });
     document.addEventListener("change",event=>{
         const node=event.target;
+        if(node.name==="pipeline" && dialog.open) syncVersionDialog();
+        if(node.name==="version" && dialog.open) syncRunDialog();
         if (node.closest("#compare-form")) { comparison = null; main.querySelectorAll("#compare-form ~ *").forEach(n => n.remove()); }
         if (node.dataset.filter) {
             const key=node.dataset.filter;
@@ -299,7 +322,7 @@
         }
         if(node.name==="mode" && dialog.open) $("#source-run-label").hidden=node.value!=="replay";
         if(node.name==="suite" && dialog.open) {
-            const suite=data.suites.find(s=>s.id===node.value);$("#run-cost").textContent=`${suite.name}: ${suite.samples} mẫu. Quota từng nguồn vẫn áp dụng; mỗi mẫu có thể cần tạo, duyệt, chấm và sửa.`;
+            const suite=runSuites(dialog.querySelector('[name="version"]').value).find(s=>s.id===node.value);if(suite)$("#run-cost").textContent=`${suite.name}: ${suite.samples} mẫu. Quota từng nguồn vẫn áp dụng; mỗi mẫu có thể cần tạo, duyệt, chấm và sửa.`;
         }
     });
     document.addEventListener("submit",async event=>{
@@ -308,7 +331,7 @@
         try {
             const fields=new FormData(form);
             if(form.id==="version-form") {
-                await api("/versions",{method:"POST",body:JSON.stringify({label:fields.get("label"),promptSuffix:fields.get("promptSuffix"),repair:fields.has("repair")})});
+                await api("/versions",{method:"POST",body:JSON.stringify({label:fields.get("label"),pipeline:fields.get("pipeline"),release:fields.get("release"),promptSuffix:fields.get("pipeline")==="scenario" ? "" : fields.get("promptSuffix"),repair:fields.has("repair")})});
                 dialog.close();await refresh();navigate("versions");message("Đã lưu phiên bản bất biến.");
             } else if(form.id==="run-form") {
                 const payload={requestId:form.requestId,version:fields.get("version"),suite:fields.get("suite"),mode:fields.get("mode"),judge:fields.has("judge")};
