@@ -34,7 +34,10 @@ function PrivateFile([string]$Path,[string]$Content) {
     $null=& icacls.exe $Path /inheritance:r /grant:r "${identity}:(F)" 'SYSTEM:(F)'
     if($LASTEXITCODE -ne 0){throw 'Private evidence ACL failed'}
 }
-if(Test-Path $statePath){$state=Get-Content $statePath -Raw | ConvertFrom-Json -AsHashtable}
+if(Test-Path $statePath){
+    $json=Get-Content $statePath -Raw | ConvertFrom-Json
+    $state=@{prefix=$json.prefix;password=$json.password;accounts=@($json.accounts | ForEach-Object{@{email=$_.email;id=$_.id}})}
+}
 else {
     $state=@{prefix='prod-k6-'+[guid]::NewGuid().ToString('N');password='Probe9'+[guid]::NewGuid().ToString('N');accounts=@()}
     PrivateFile $statePath ($state | ConvertTo-Json -Depth 8)
