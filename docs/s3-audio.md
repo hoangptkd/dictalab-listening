@@ -1,7 +1,7 @@
 # Lưu audio quản trị trên Amazon S3
 
 **Cập nhật 15/10/2026:** production đã chuyển toàn bộ audio đang dùng, gồm static,
-nội dung cá nhân và hội thoại, sang S3. Xem [triển khai toàn bộ audio](all-audio-s3-2026-10-15.md).
+nội dung cá nhân và hội thoại, sang S3. Xem [triển khai toàn bộ audio](https://github.com/hoangptkd/dictalab-listening/blob/6228681915634c4ef7f307aaafccad6c25251a69/docs/all-audio-s3-2026-10-15.md).
 Phạm vi và cách phát 307 trong các phần lịch sử dưới đây mô tả luồng upload ban đầu;
 production hiện stream cùng tên miền để giữ quyền truy cập và hỗ trợ `workers.dev`.
 Đã dọn 57 file audio local và 79 audio trong JAR đang chạy; nguồn phát hiện là S3.
@@ -179,6 +179,6 @@ artifact vẫn chạy, nhưng xuất `RESTORE_EXTERNAL_S3_VERIFIED=FALSE` và kh
 minh phục hồi đầy đủ. Tombstone không còn tham chiếu được phép qua; object mồ côi
 ngoài catalog vẫn cần kiểm kê bucket trong kế hoạch recovery thật.
 
-Bằng chứng local: [báo cáo S3 gate](reliability-evidence-2026-10-09-s3-gate.md).
+Bằng chứng local: [báo cáo S3 gate](https://github.com/hoangptkd/dictalab-listening/blob/6228681915634c4ef7f307aaafccad6c25251a69/docs/reliability-evidence-2026-10-09-s3-gate.md).
 Các xác nhận production ngày 04/10 ở trên là lịch sử, không phải kiểm tra lại
 production trong batch 09/10 này.

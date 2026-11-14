@@ -12,11 +12,11 @@ Room routing/state và media vẫn cần thiết kế riêng khi chạy nhiều 
 
 ## Chạy local
 
-1. Thêm các biến mới từ `.env.example` vào `.env` hiện có; giữ nguyên các cấu hình và secret khác.
+1. Dùng cấu hình private theo [chạy local](local-development.md); không sửa `.env` ở worktree khác.
 2. Đặt `RABBITMQ_USER`, `RABBITMQ_PASSWORD` bằng tài khoản local riêng. Nếu đã tạo volume RabbitMQ,
    đổi biến môi trường không tự đổi mật khẩu trong volume; cập nhật tài khoản broker tương ứng.
 3. Mở Docker Desktop và dừng ứng dụng local trước khi bật cấu hình mới.
-4. Chạy `pwsh -File scripts/run-local.ps1 -WithMessaging` (thêm `-WithCoach` nếu muốn).
+4. Chạy `pwsh -File scripts/run-local.ps1`. Cấu hình queue lấy từ thư mục private, không dùng cờ launcher cũ.
 
 Cổng mặc định: Redis `16379`, AMQP `15672`, trang quản trị RabbitMQ `25672`; tất cả bind
 `127.0.0.1`. Redis và RabbitMQ dùng volume riêng, profile Compose `messaging`.
@@ -84,8 +84,8 @@ Không replay mù DLQ: xác minh trạng thái và revision hiện tại trướ
 
 ## RabbitMQ audio hội thoại và Coach
 
-Bật `DICTALAB_AI_QUEUE_ENABLED=true` sau khi broker hoạt động. `run-local.ps1 -WithMessaging`
-bật cả Listening và AI queue; không tự bật tính năng Coach/hội thoại nếu chưa có cấu hình provider.
+Bật `DICTALAB_AI_QUEUE_ENABLED=true` trong cấu hình Core riêng khi cần legacy AI queue sau khi broker hoạt động.
+Scenario worker dùng cấu hình AI jobs riêng; launcher chính không tự đổi các cờ legacy.
 Mặc định production vẫn tắt, không tự cài broker hoặc đổi cấu hình VPS.
 
 Migration V26 tạo bảng `ai_background_jobs` và `ai_job_limits`, không sửa điểm, history hay audio cũ.

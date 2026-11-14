@@ -146,7 +146,7 @@ inference artifact, not a training checkpoint. Training, merge, quantization and
 Ollama export are separate later steps.
 
 Architecture reference: [Transformers Qwen3.5 documentation](https://huggingface.co/docs/transformers/en/model_doc/qwen3_5).
-Full implementation plan: [SFT/LoRA plan](../docs/conversation-sft-lora-integration-plan-2026-10-21.md).
+Full implementation plan: [SFT/LoRA plan](https://github.com/hoangptkd/dictalab-listening/blob/6228681915634c4ef7f307aaafccad6c25251a69/docs/conversation-sft-lora-integration-plan-2026-10-21.md).
 
 Rollback for this stage: stop using the offline tools and retain run directories
 for audit. There is no serving model switch to undo.
@@ -429,7 +429,7 @@ normally does not prove its JSON or training targets are valid.
 ## ChatGPT Web judge for teacher benchmarks
 
 For the new **reviewed training dataset collection**, follow
-[`conversation-reviewed-dataset-500-plan.md`](../docs/conversation-reviewed-dataset-500-plan.md).
+[`conversation-reviewed-dataset-500-plan.md`](https://github.com/hoangptkd/dictalab-listening/blob/6228681915634c4ef7f307aaafccad6c25251a69/docs/conversation-reviewed-dataset-500-plan.md).
 The owner authorized 500 fresh approved training tasks (A1/A2/B1/B2), plus
 100 validation and 100 test tasks, with per-item Web review and independent
 delegated Codex approval. That collection does not require the teacher 28/30
@@ -467,10 +467,10 @@ The schema presents factAudit before global checks. B2 now has a grounded exampl
 and new encounters; examples remain excluded from collection through the existing prior-corpus scan.
 The rubric, hard validators and first-attempt/no-repair policy are unchanged. Changed prompt hashes
 require a fresh campaign; do not edit old manifests to resume them with new code.
-The v2 live run received 12/30 final approvals; see [the report](../docs/conversation-diagnostic-v2-30-20261023.md).
+The v2 live run received 12/30 final approvals; see [the report](https://github.com/hoangptkd/dictalab-listening/blob/6228681915634c4ef7f307aaafccad6c25251a69/docs/conversation-diagnostic-v2-30-20261023.md).
 The subsequent loop reached the owner's overall 80% target at round 7: 24/30 fresh tasks;
 A1/A2/B1/B2 approvals were 8/8, 7/8, 4/7 and 5/7. Individual B1/B2 rates remain below 80%.
-See [the live loop report](../docs/conversation-test-fix-loop-20261023.md) for evidence and resume commands.
+See [the live loop report](https://github.com/hoangptkd/dictalab-listening/blob/6228681915634c4ef7f307aaafccad6c25251a69/docs/conversation-test-fix-loop-20261023.md) for evidence and resume commands.
 V6 measured 16/30, V7 measured 23/30, and V8 is now the collection development default.
 V7 enables DeepSeek thinking only for teacher requests; V8 also retains exact prior-encounter
 source utterances with tested facts on turn 4, adds answer/role/UI guards, and uses the expanded

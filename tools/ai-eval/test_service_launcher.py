@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import subprocess
 from unittest.mock import Mock, patch
@@ -8,6 +9,59 @@ import pytest
 spec = importlib.util.spec_from_file_location('run_service', Path(__file__).resolve().parents[2] / 'scripts/run-service.py')
 launcher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launcher)
+
+
+def test_local_refuses_a_disposable_checkout_before_reading_credentials(tmp_path, monkeypatch):
+    monkeypatch.setattr(launcher, 'ROOT', tmp_path)
+    monkeypatch.setattr(launcher, 'LOCAL_ROOT', tmp_path / 'canonical')
+    with patch.object(launcher, 'child_environment') as read, pytest.raises(ValueError, match='canonical'):
+        launcher.local_plan()
+    read.assert_not_called()
+
+
+@pytest.mark.parametrize('fault', [None, 'qa', 'database', 'port', 'schema', 'state'])
+def test_local_requires_one_source_identity_schema_and_state_directory(tmp_path, monkeypatch, fault):
+    import psycopg
+    monkeypatch.setattr(launcher, 'ROOT', tmp_path)
+    monkeypatch.setattr(launcher, 'LOCAL_ROOT', tmp_path)
+    directory = tmp_path / 'private'
+    directory.mkdir()
+    monkeypatch.setattr(launcher, 'LOCAL_DIRECTORY', directory)
+    (directory / 'qa.json').write_text(json.dumps({'id': 14, 'email': 'qa@example.test'}))
+    migration = tmp_path / 'src/main/resources/db/migration'
+    migration.mkdir(parents=True)
+    (migration / 'V53__fixture.sql').touch()
+    core, ai = management_configs()
+    token = 'fixture-internal-service-token-at-least-32-chars'
+    core.update(SPRING_PROFILES_ACTIVE='local', DICTALAB_LOCAL_QA_USER_ID='14', PORT='18082',
+        MANAGEMENT_PORT='18184', SERVER_ADDRESS='127.0.0.1', DICTALAB_AI_PLATFORM_BASE_URL='http://127.0.0.1:8094',
+        DICTALAB_PUBLIC_URL='http://localhost:18082', DICTALAB_SCENARIO_ENABLED='true',
+        DICTALAB_SCENARIO_ENGINE_ENABLED='true', DICTALAB_AI_TEXT_PROVIDER='gemini',
+        DB_URL='jdbc:postgresql://127.0.0.1:5432/dictalab_personalized_local_20261102',
+        DB_USERNAME='fixture', DB_PASSWORD='fixture', DICTALAB_AI_SERVICE_TOKEN=token,
+        DICTALAB_EVALUATION_DIRECTORY=str(directory / 'studio'))
+    ai.update(DICTALAB_AI_SERVICE_TOKEN=token, DICTALAB_AI_EVALUATION_DIRECTORY=str(directory / 'python'),
+        DICTALAB_AI_JOBS_DATABASE=str(directory / 'jobs.sqlite3'), DICTALAB_AI_JOBS_ENABLED='true',
+        DICTALAB_AI_TEXT_GATEWAY_ENABLED='true', DICTALAB_AI_SCENARIO_ENABLED='true', DICTALAB_AI_EVALUATION_ENABLED='true')
+    if fault == 'database': core['DB_URL'] = 'jdbc:postgresql://127.0.0.1/other'
+    if fault == 'port': core['PORT'] = '18081'
+    if fault == 'state': ai['DICTALAB_AI_JOBS_DATABASE'] = str(tmp_path / 'outside.sqlite3')
+    monkeypatch.setattr(launcher, 'child_environment', lambda name, path: core if name == 'core' else ai)
+    monkeypatch.setattr(launcher, 'command', lambda name: ([name, '--port', '8091'], tmp_path))
+    with patch.object(psycopg, 'connect') as connection, patch.object(launcher.socket, 'socket') as sockets:
+        db = connection.return_value.__enter__.return_value
+        db.execute.return_value.fetchone.side_effect = [(14, 'other' if fault == 'qa' else 'qa@example.test', 'Scenario Local QA'),
+                                                      (52 if fault == 'schema' else 53,)]
+        if fault:
+            with pytest.raises(ValueError): launcher.local_plan()
+            sockets.assert_not_called()
+        else:
+            plan, urls = launcher.local_plan()
+            assert list(plan) == ['ai', 'worker', 'core']
+            assert plan['ai'][1][-1] == '8094'
+            assert plan['core'][1][-1] == str(directory / 'app.jar')
+            assert urls['core'] == 'http://127.0.0.1:18184/actuator/health'
+            assert sockets.return_value.__enter__.return_value.bind.call_count == 3
 
 
 def test_explicit_configuration_never_inherits_other_service_secrets(tmp_path):

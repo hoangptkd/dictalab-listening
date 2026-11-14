@@ -2,9 +2,12 @@
 import argparse
 from contextlib import ExitStack
 import getpass
+import hashlib
+import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import socket
 import subprocess
 import sys
@@ -14,6 +17,8 @@ import urllib.request
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
+LOCAL_DIRECTORY = Path.home() / '.dictalab/local'
+LOCAL_ROOT = Path.home() / 'Desktop/English_dictition'
 # Preserve platform/runtime discovery, never inherited application secrets or JVM injection flags.
 SYSTEM_ENV = frozenset(('PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'TEMP', 'TMP',
     'USERPROFILE', 'HOME', 'LOCALAPPDATA', 'APPDATA', 'PROGRAMDATA', 'PROGRAMFILES',
@@ -22,6 +27,8 @@ CORE_PROVIDER_SECRETS = frozenset(('AI_PROVIDER_DATABASE_URL', 'AI_PROVIDER_CONT
     'AI_PROVIDER_ENCRYPTION_KEY', 'GEMINI_API_KEY', 'GEMINI_PROVIDERS_JSON', 'CARTESIA_API_KEY',
     'DEEPSEEK_API_KEY', 'OPENAI_API_KEY', 'DICTALAB_AI_MODEL_SERVING_TOKEN', 'DICTALAB_MODEL_SERVICE_TOKEN'))
 AWS_PROFILE_SETTINGS = frozenset(('AWS_PROFILE', 'AWS_SHARED_CREDENTIALS_FILE', 'AWS_REGION'))
+LANGFUSE_SETTINGS = frozenset(('LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY', 'LANGFUSE_BASE_URL',
+    'LANGFUSE_TRACING_ENABLED', 'LANGFUSE_TRACING_ENVIRONMENT', 'LANGFUSE_RELEASE'))
 
 
 def validate_config(component, config):
@@ -38,7 +45,7 @@ def validate_config(component, config):
                     or upper.startswith('AI_PROVIDER_') and (upper != 'AI_PROVIDER_CONFIG_SOURCE' or value != 'env')):
                 raise ValueError('Core runtime must not receive provider or management credentials')
         elif component in ('ai', 'worker'):
-            if not upper.startswith(('DICTALAB_AI_', 'AI_PROVIDER_', 'GEMINI_')) and upper not in AWS_PROFILE_SETTINGS | {'DICTALAB_OPERATIONAL_LIMITS_ENABLED'}:
+            if not upper.startswith(('DICTALAB_AI_', 'AI_PROVIDER_', 'GEMINI_')) and upper not in AWS_PROFILE_SETTINGS | LANGFUSE_SETTINGS | {'DICTALAB_OPERATIONAL_LIMITS_ENABLED'}:
                 raise ValueError('AI runtime configuration contains another service setting')
         elif component == 'progress':
             if not upper.startswith(('PROGRESS_', 'RABBITMQ_')) and upper not in AWS_PROFILE_SETTINGS | {'AURORA_DB_HOST', 'SPRING_PROFILES_ACTIVE'}:
@@ -186,6 +193,10 @@ def stop_stack(children):
 
 def run_stack(directory, *, with_model=False, check_only=False, startup_seconds=120, require_gemini_admin=False):
     plan, pending = stack_plan(directory.resolve(), with_model, require_gemini_admin)
+    return supervise(plan, pending, directory, check_only=check_only, startup_seconds=startup_seconds)
+
+
+def supervise(plan, pending, directory, *, check_only=False, startup_seconds=120, receipt=None):
     logs = directory.resolve() / 'logs'
     logs.mkdir(parents=True, exist_ok=True, mode=0o700)
     children = []
@@ -202,6 +213,9 @@ def run_stack(directory, *, with_model=False, check_only=False, startup_seconds=
                     start_new_session=os.name != 'nt',
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
                 children.append(process)
+                if receipt is not None:
+                    receipt['processes'][name] = {'pid': process.pid, 'argv': argv, 'log': path}
+                    (directory / 'runtime.json').write_text(json.dumps(receipt, indent=2), encoding='utf-8')
                 print(f'{name}: started; protected log {Path(path).name}', flush=True)
             deadline = time.monotonic() + startup_seconds
             while True:
@@ -220,8 +234,8 @@ def run_stack(directory, *, with_model=False, check_only=False, startup_seconds=
                 if time.monotonic() >= deadline:
                     raise RuntimeError('Startup deadline exceeded; inspect protected service logs')
                 time.sleep(0.25)
-            print('Core, AI and Progress health checks passed; worker process is alive.', flush=True)
-            if with_model:
+            print('Service health checks passed; supervised worker process is alive.', flush=True)
+            if 'model' in plan:
                 print('Model server is live; weights load on first inference. Model readiness is not asserted.', flush=True)
             if check_only:
                 return 0
@@ -233,17 +247,106 @@ def run_stack(directory, *, with_model=False, check_only=False, startup_seconds=
                 time.sleep(0.5)
         finally:
             stop_stack(children)
+            if receipt is not None:
+                receipt['stoppedAt'] = time.time()
+                (directory / 'runtime.json').write_text(json.dumps(receipt, indent=2), encoding='utf-8')
+
+
+def local_plan():
+    if ROOT.resolve() != LOCAL_ROOT.resolve():
+        raise ValueError('Use the canonical Desktop checkout with scripts/run-local.ps1')
+    core = child_environment('core', LOCAL_DIRECTORY / 'core.env')
+    ai = child_environment('ai', LOCAL_DIRECTORY / 'ai.env')
+    required = {'SPRING_PROFILES_ACTIVE': 'local', 'DICTALAB_LOCAL_QA_USER_ID': '14',
+        'PORT': '18082', 'MANAGEMENT_PORT': '18184', 'SERVER_ADDRESS': '127.0.0.1',
+        'DICTALAB_AI_PLATFORM_BASE_URL': 'http://127.0.0.1:8094',
+        'DICTALAB_PUBLIC_URL': 'http://localhost:18082', 'DICTALAB_SCENARIO_ENABLED': 'true',
+        'DICTALAB_SCENARIO_ENGINE_ENABLED': 'true', 'DICTALAB_AI_TEXT_PROVIDER': 'gemini'}
+    if any(core.get(key) != value for key, value in required.items()):
+        raise ValueError('Canonical local ports, profile or routing changed; inspect protected configuration')
+    uri = urlsplit(core.get('DB_URL', '').removeprefix('jdbc:'))
+    if uri.hostname not in ('127.0.0.1', 'localhost') or uri.path != '/dictalab_personalized_local_20261102':
+        raise ValueError('Canonical local database does not match the QA account')
+    from psycopg import connect
+    qa = json.loads((LOCAL_DIRECTORY / 'qa.json').read_text(encoding='utf-8'))
+    with connect(host=uri.hostname, port=uri.port or 5432, dbname=uri.path[1:],
+                 user=core['DB_USERNAME'], password=core['DB_PASSWORD'], connect_timeout=5) as db:
+        db.execute('SET TRANSACTION READ ONLY')
+        row = db.execute('SELECT id,email,display_name FROM app_users WHERE id=14').fetchone()
+        if qa.get('id') != 14 or row != (14, qa.get('email'), 'Scenario Local QA'):
+            raise ValueError('Protected local QA identity mismatch')
+        versions = [int(p.name.split('__')[0][1:]) for folder in
+                    ('src/main/resources/db/migration', 'src/main/java/db/migration')
+                    for p in (ROOT / folder).glob('V*__*')]
+        if len(versions) != len(set(versions)):
+            raise ValueError('Duplicate migration versions in the canonical source')
+        latest = db.execute('SELECT max(version::int) FROM flyway_schema_history WHERE success').fetchone()[0]
+        if latest != max(versions):
+            raise ValueError('Local schema needs the owner migration flow; runtime cannot perform DDL')
+    validate_gemini_admin(core, ai, required=True)
+    token = core.get('DICTALAB_AI_SERVICE_TOKEN', '')
+    if token != ai.get('DICTALAB_AI_SERVICE_TOKEN') or len(token) < 32:
+        raise ValueError('Internal service authentication mismatch')
+    if any(ai.get(key) != 'true' for key in ('DICTALAB_AI_JOBS_ENABLED', 'DICTALAB_AI_TEXT_GATEWAY_ENABLED',
+                                            'DICTALAB_AI_SCENARIO_ENABLED', 'DICTALAB_AI_EVALUATION_ENABLED')):
+        raise ValueError('Current AI pipeline or worker routing is disabled')
+    for env, key in ((core, 'DICTALAB_EVALUATION_DIRECTORY'), (ai, 'DICTALAB_AI_EVALUATION_DIRECTORY'),
+                     (ai, 'DICTALAB_AI_JOBS_DATABASE')):
+        if not Path(env.get(key, '')).is_relative_to(LOCAL_DIRECTORY):
+            raise ValueError('Mutable local state must stay in the protected local directory')
+    for port in (18082, 18184, 8094):
+        with socket.socket() as probe:
+            probe.bind(('127.0.0.1', port))
+    plan = {}
+    for name, env in (('ai', ai), ('worker', ai), ('core', core)):
+        if name == 'worker':
+            env = {k: v for k, v in env.items() if k not in ('AI_PROVIDER_ADMIN_TOKEN', 'AI_PROVIDER_ADMIN_DATABASE_URL')}
+        argv, cwd = (['java', '-Xmx512m', '-jar', str(LOCAL_DIRECTORY / 'app.jar')], ROOT) if name == 'core' else command(name)
+        if name == 'ai':
+            argv[-1] = '8094'
+        plan[name] = env, argv, cwd
+    return plan, {'core': 'http://127.0.0.1:18184/actuator/health', 'ai': 'http://127.0.0.1:8094/health/ready'}
+
+
+def run_local(check_only=False):
+    plan, urls = local_plan()
+    sys.path.insert(0, str(ROOT / 'services/ai-generation'))
+    from app.scenario_assessment import prompt_hash, scoped_release
+    pin = prompt_hash(scoped_release)
+    if plan['core'][0].get('DICTALAB_SCENARIO_ENGINE_APPROVED_PROMPT_HASH') != pin:
+        raise ValueError('Local prompt approval does not match the current source')
+    build_log = LOCAL_DIRECTORY / 'build.log'
+    with build_log.open('w', encoding='utf-8') as log:
+        subprocess.run(['mvn.cmd' if os.name == 'nt' else 'mvn', '-B', '-q', '-DskipTests', 'package'],
+                       cwd=ROOT, stdout=log, stderr=log, check=True)
+    jar = ROOT / 'target/english-dictation-0.1.0-SNAPSHOT.jar'
+    shutil.copy2(jar, LOCAL_DIRECTORY / 'app.jar')
+    receipt = {'root': str(ROOT), 'url': 'http://localhost:18082', 'startedAt': time.time(),
+        'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+        'sourceDiffHash': hashlib.sha256(subprocess.check_output(['git', 'diff', 'HEAD'], cwd=ROOT)).hexdigest(),
+        'jarHash': hashlib.sha256(jar.read_bytes()).hexdigest(),
+        'promptHash': pin, 'processes': {}}
+    return supervise(plan, urls, LOCAL_DIRECTORY, check_only=check_only, receipt=receipt)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('component', choices=('core', 'ai', 'worker', 'progress', 'model', 'stack'))
+    parser.add_argument('component', choices=('core', 'ai', 'worker', 'progress', 'model', 'stack', 'local'))
     parser.add_argument('--env-file', type=Path)
     parser.add_argument('--config-dir', type=Path, help='Stack only: directory with protected core/ai/progress/model.env')
     parser.add_argument('--with-model', action='store_true', help='Stack only: start the lazy-loading CPU model server')
     parser.add_argument('--check-only', action='store_true', help='Stack only: check startup, then stop owned processes')
     parser.add_argument('--require-gemini-admin', action='store_true', help='Stack only: require complete Gemini management wiring')
     args = parser.parse_args()
+    if args.component == 'local':
+        if args.env_file or args.config_dir or args.with_model or args.require_gemini_admin:
+            parser.error('local uses its canonical protected configuration; only --check-only is accepted')
+        try:
+            return run_local(args.check_only)
+        except KeyboardInterrupt:
+            return 130
+        except Exception:
+            raise SystemExit('Local startup failed; inspect protected configs, ports, build.log and service logs. Values suppressed.') from None
     if args.component == 'stack':
         if args.config_dir is None or args.env_file is not None:
             parser.error('stack requires --config-dir and does not accept --env-file')

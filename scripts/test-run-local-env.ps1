@@ -1,6 +1,16 @@
 param([string]$LauncherName = 'run-local.ps1')
 $ErrorActionPreference = 'Stop'
 $launcher = Join-Path $PSScriptRoot $LauncherName
+if ($LauncherName -eq 'run-local.ps1') {
+    $text = [IO.File]::ReadAllText($launcher)
+    if (-not $text.Contains("'Desktop/English_dictition'") -or
+        -not $text.Contains("'scripts/run-service.py'") -or
+        -not $text.Contains("'local'") -or $text.Contains('Set-Item -Path')) {
+        throw 'Local launcher must delegate to the canonical isolated Python configuration reader.'
+    }
+    Write-Host 'Canonical local launcher contract passed.'
+    return
+}
 $tree = [System.Management.Automation.Language.Parser]::ParseFile($launcher, [ref]$null, [ref]$null)
 $import = $tree.Find({ param($node)
     $node -is [System.Management.Automation.Language.PipelineAst] -and

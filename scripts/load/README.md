@@ -2,7 +2,7 @@
 
 ## Practice UX: 50 VU preparation (2026-10-14)
 
-See [the practice UX plan](../../docs/practice-ux-test-plan-2026-10-14.md) for the 50-case matrix,
+See [the practice UX plan](https://github.com/hoangptkd/dictalab-listening/blob/6228681915634c4ef7f307aaafccad6c25251a69/docs/practice-ux-test-plan-2026-10-14.md) for the 50-case matrix,
 the input-race regressions, and the isolated `practice-ux.js` workload.
 The local runner supports `-PracticeUX -Seconds 30` (1-VU smoke) and `-PracticeUX -Seconds 930`
 (gradual ramp to 50 VUs, 10-minute plateau, recovery). It retains existing resource guards,

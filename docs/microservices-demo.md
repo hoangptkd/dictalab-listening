@@ -39,7 +39,11 @@ consistent; the response reports its source. Broker delivery is at least once.
 Consumers handle duplicates, revisions and deletion tombstones. A Progress outage
 can make the dashboard unavailable while Core still accepts completed practice.
 
-## Start the local application
+## Separate topology rehearsal
+
+The canonical daily application uses [local development](local-development.md) at port 18082.
+The commands below rehearse the separate Progress/model topology; stop the daily application first.
+Do not start a second development version or migrate its private state into these example paths.
 
 Prerequisites: Java 17, Maven, the pinned Python application dependencies,
 PostgreSQL, Redis and RabbitMQ. Follow

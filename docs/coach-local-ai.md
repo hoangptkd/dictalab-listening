@@ -10,26 +10,15 @@ Sau khi hoàn thành Dictation, màn hình hiển thị độ đúng lần nhậ
 
 Tiến bộ dùng tối đa năm bài mới, độc lập, cùng CEFR, hoàn thành trước bài đang xem; cần ít nhất hai bài. Chênh lệch được làm tròn một chữ số, ngưỡng tăng/giảm là ±3 điểm phần trăm. Dữ liệu trả về có số hiện tại, trung bình, chênh lệch, số bài so sánh, cấp độ và lý do không so sánh. Bài học chung và luyện lại được phân biệt. Report cũ vẫn đọc được, giữ nguyên câu tiến bộ đã lưu; không tái sinh lịch sử khi đổi model.
 
-## Chạy trên HP
+## Local hiện hành
 
-Cài Ollama và tải `qwen3.5:4b`. Đặt các biến sau trong `.env` (file được Git bỏ qua):
+Dùng [launcher và cấu hình private thống nhất](local-development.md). Không dùng các cờ `-WithCoach` hoặc
+`-WithMessaging` cũ. Các thông tin Ollama trong tài liệu này mô tả provider Coach tùy chọn, không phải
+pipeline sinh bài Conversation V4.13. Không tự tải model hoặc chuyển provider khi khởi động web.
 
-```dotenv
-DICTALAB_COACH_ENABLED=true
-DICTALAB_COACH_PROVIDER=ollama
-DICTALAB_COACH_LOCAL_BASE_URL=http://127.0.0.1:11434
-DICTALAB_COACH_LOCAL_MODEL=qwen3.5:4b
-DICTALAB_COACH_LOCAL_TIMEOUT_SECONDS=60
-```
-
-```powershell
-ollama list
-pwsh -File scripts/run-local.ps1 -WithCoach
-```
-
-Script kiểm tra model đã được tải. Ollama cần đang chạy. Nếu thêm `-WithMessaging`, Coach dùng hàng đợi hiện có; trường hợp còn lại gọi trực tiếp sau khi giao diện đã nhận baseline. Frontend chờ tối đa 105 giây cho POST, polling chỉ đọc tối đa 180 giây. HTTP local mặc định 60 giây, cho phép 1–90 giây; lease worker hiện có là 180 giây. Model lỗi, sai JSON, quá hạn hoặc quá tải đều giữ baseline, không tự gửi bằng chứng sang cloud.
-
-Provider mặc định trong mã và `.env.example` vẫn là `gemini`. Chỉ `.env` của máy HP được bật Ollama. `GEMINI_URL` và `GEMINI_MODEL` của Listening/Conversation không đổi. Quay lại cloud bằng `DICTALAB_COACH_PROVIDER=gemini`, cung cấp khóa theo cấu hình hiện có rồi khởi động lại app. Report đã cache không đổi theo provider.
+Nếu chọn Ollama cho Coach, owner cấu hình `DICTALAB_COACH_PROVIDER=ollama` cùng base URL/model/timeout
+trong cấu hình Core private, chuẩn bị model trước rồi restart bằng launcher chính. Provider lỗi giữ baseline;
+report đã cache không bị tái sinh. Không đưa khóa cloud vào Core để chữa một lỗi model local.
 
 ## Hợp đồng và vận hành
 

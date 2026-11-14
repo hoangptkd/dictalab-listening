@@ -5,9 +5,9 @@ dictalab:
     enabled: ${DICTALAB_VOCABULARY_ENABLED:true}
   ai:
     platform:
-      text-provider: ollama
+      text-provider: ${DICTALAB_AI_TEXT_PROVIDER:gemini}
   conversation:
     generation:
-      provider: ${DICTALAB_CONVERSATION_GENERATION_PROVIDER:ollama}
+      provider: ${DICTALAB_CONVERSATION_GENERATION_PROVIDER:python}
   coach:
     provider: ${DICTALAB_COACH_PROVIDER:ollama}

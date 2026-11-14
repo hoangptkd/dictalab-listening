@@ -30,9 +30,14 @@ saved dispatch commands. When true it validates the demo build without deploying
 it no longer starts PostgreSQL 17/18 matrices. A manual run from a feature branch
 never deploys. Obsolete PR runs cancel; production activation is not interrupted.
 
-AI and Progress workflow files remain available for explicit manual checks, with
-no push or PR triggers. The Maven integration/reliability profiles and their
-evidence validators remain available for local or future opt-in validation.
+AI and Progress workflows also run on affected `codex/**` branch pushes, with path filters.
+They remain callable/manual and have no duplicate direct PR trigger. The main release
+workflow and its required checks stay separate. Maven integration/reliability profiles
+and their evidence validators remain available for explicit validation.
+
+Lightweight training checks run on affected PRs/direct main pushes. Heavy CPU runtime
+training and iOS builds are manual (iOS also retains its tag trigger). Do not delete
+these tests or suppress release evidence to reduce CI costs.
 
 ## Release packaging and activation
 

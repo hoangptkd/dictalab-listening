@@ -86,12 +86,10 @@ Dừng bản ứng dụng cũ, mở Docker Desktop rồi chạy:
 
 ```powershell
 pwsh -File scripts/run-local.ps1
-# Bật thêm Redis rate limit và RabbitMQ Listening:
-pwsh -File scripts/run-local.ps1 -WithMessaging
 ```
 
 Redis là thành phần bắt buộc cho đăng nhập JWT, kể cả khi rate limit vẫn dùng RAM hoặc RabbitMQ tắt.
-Script tự khởi động Redis local khi dùng host localhost và không cung cấp REDIS_URL riêng.
+Launcher yêu cầu Redis hiện có sẵn sàng; cấu hình private và địa chỉ chuẩn xem [local development](local-development.md).
 Health Redis tham gia core health. Redis local vẫn bind loopback, AOF và noeviction; production
 cần kết nối có xác thực/TLS nếu qua mạng và theo dõi bộ nhớ, không công khai cổng Redis.
 

@@ -44,11 +44,11 @@ Verifier hiện yêu cầu **18 suite / ít nhất 170 ca**, đủ suite và kh�
 Maven BUILD SUCCESS không thay cho verifier. Lưu XML, race CSV, worker crash logs,
 restore evidence, source manifest và JAR SHA-256 cùng kết quả.
 
-[Lượt kiểm chứng mới nhất](reliability-evidence-2026-10-09-local-continuation.md):
+[Lượt kiểm chứng mới nhất](https://github.com/hoangptkd/dictalab-listening/blob/6228681915634c4ef7f307aaafccad6c25251a69/docs/reliability-evidence-2026-10-09-local-continuation.md):
 170/170 trên mỗi PG17/18, JS 123/123; smoke local 176/176 hành trình và SQL restore 27
 bảng. Đây là bằng chứng local trên snapshot cụ thể, không phải acceptance production.
 
-[Accounting gate bổ sung](reliability-evidence-2026-10-09-accounting.md) chặn sáu
+[Accounting gate bổ sung](https://github.com/hoangptkd/dictalab-listening/blob/6228681915634c4ef7f307aaafccad6c25251a69/docs/reliability-evidence-2026-10-09-accounting.md) chặn sáu
 trường hợp raw bị báo PASS sai; JavaScript 131/131 và replay smoke cũ đạt đối soát.
 Đây là kiểm chứng công cụ evidence, không phải lượt tải mới hay chạy lại Java gates.
 
@@ -60,9 +60,9 @@ worker lease fencing, publisher confirms và recovery sau worker/broker crash.�
 
 Khi phỏng vấn, chọn một lỗi đã tái hiện đỏ/xanh, chỉ ra transaction boundary,
 interleaving, invariant sau commit và trade-off. Xem các báo cáo
-[audit và F1/F2](reliability-evidence-2026-10-08.md),
-[fencing/S3/shutdown](reliability-evidence-2026-10-08-next.md),
-[worker/broker crash](reliability-evidence-2026-10-08-final-local.md) và
+[audit và F1/F2](https://github.com/hoangptkd/dictalab-listening/blob/6228681915634c4ef7f307aaafccad6c25251a69/docs/reliability-evidence-2026-10-08.md),
+[fencing/S3/shutdown](https://github.com/hoangptkd/dictalab-listening/blob/6228681915634c4ef7f307aaafccad6c25251a69/docs/reliability-evidence-2026-10-08-next.md),
+[worker/broker crash](https://github.com/hoangptkd/dictalab-listening/blob/6228681915634c4ef7f307aaafccad6c25251a69/docs/reliability-evidence-2026-10-08-final-local.md) và
 [runbook](reliability-evidence-runbook.md).
 
 ## Những điều chưa được khẳng định

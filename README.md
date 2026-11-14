@@ -6,7 +6,7 @@ backfill, shadow comparison and rollback: [Progress runbook](services/progress/R
 Architecture, runnable local stack, demo sequence and measured limits:
 [microservice demo guide](docs/microservices-demo.md).
 
-Tài liệu toàn bộ hệ thống cập nhật 08/10/2026: [Current system reference](docs/current-system-reference.md). Có thể tải riêng file này lên ChatGPT để cung cấp ngữ cảnh về chức năng, công nghệ, thuật toán, API, dữ liệu và vận hành hiện tại. Tài liệu phân biệt mã local với các mốc triển khai đã ghi nhận, kèm prompt và các câu hỏi để chọn hướng phát triển tiếp.
+Tài liệu hiện hành: [kiến trúc](docs/current-system-reference.md), [chạy local duy nhất](docs/local-development.md), [Conversation AI](docs/conversation-ai.md), [lịch sử và bằng chứng](docs/project-history.md).
 
 MVP web luyện nghe chép chính tả tiếng Anh theo CEFR A1–B2. Người học nghe từng câu, điền từng từ vào ô có độ dài tương ứng, nhận phản hồi ngay và theo dõi khả năng nghe thực tế qua chỉ số **first-attempt accuracy**.
 
@@ -45,50 +45,19 @@ Coach hỗ trợ Qwen3.5 4B qua Ollama local với provider riêng, tiến bộ 
 - HTML, CSS và JavaScript thuần
 - Audio người thật từ ELLLO; Web Speech API chỉ dùng làm phương án dự phòng
 
-## Chạy local với PostgreSQL
+## Chạy local thống nhất
 
-### Redis và RabbitMQ
-
-Đã tích hợp Redis cho phiên JWT access/refresh token, rate limit dùng chung và RabbitMQ cho chấm phần nhớ ý Listening.
-Hướng dẫn xác thực và cấu hình khóa: [JWT/Redis](docs/jwt-redis-auth.md).
-Hướng dẫn cấu hình, kiểm thử và quay lui: [Redis/RabbitMQ](docs/redis-rabbitmq.md).
-Sau khi thêm `RABBITMQ_USER`, `RABBITMQ_PASSWORD` và các cổng từ `.env.example` vào `.env`, chạy:
+Nguồn: `C:/Users/HP/Desktop/English_dictition`. Website: <http://localhost:18082>.
+Cấu hình và dữ liệu riêng nằm tại `C:/Users/HP/.dictalab/local/`.
 
 ```powershell
-pwsh -File .\scripts\run-local.ps1 -WithMessaging
-```
-
-Lệnh này bật `DICTALAB_RATE_LIMIT_BACKEND=redis` và `DICTALAB_LISTENING_QUEUE_ENABLED=true`
-cho ứng dụng local. Redis/RabbitMQ chạy trong Docker, cổng chỉ mở trên loopback. PostgreSQL vẫn lưu
-đáp án, trạng thái chấm và kết quả. Chạy không có `-WithMessaging` sử dụng cấu hình trong `.env`;
-mặc định là bộ đếm trong RAM và worker PostgreSQL hiện có. Redis vẫn bắt buộc cho xác thực JWT;
-script local tự khởi động Redis. Môi trường mới cần đặt `JWT_SIGNING_KEY`; session đăng nhập cũ cần đăng nhập lại.
-
-Yêu cầu Java 17+, Maven 3.9+, PowerShell 7 và Docker Desktop (hoặc cluster PostgreSQL native đã có). Lần đầu tiên, sao chép `.env.example`
-thành `.env` rồi đổi `POSTGRES_PASSWORD`. File `.env` đã được Git bỏ qua.
-
-```powershell
-Copy-Item .env.example .env
-# Sửa POSTGRES_PASSWORD trong .env, sau đó chạy bằng PowerShell 7:
 pwsh -File .\scripts\run-local.ps1
 ```
 
-Script khởi động PostgreSQL trong Docker ở cổng cố định `15433`, chờ database sẵn sàng rồi chạy
-Spring Boot ở [http://localhost:18081](http://localhost:18081). Health check ở
-[http://localhost:18081/actuator/health](http://localhost:18081/actuator/health).
-
-Nếu dùng cluster native tại `data/postgres-local`, đặt `DICTALAB_PG_CTL` trong `.env` tới
-file `pg_ctl.exe`. Script chỉ khởi động cluster sẵn có, không tạo lại hoặc xóa database.
-
-Hai cổng local được cố định trong `.env`: web `18081` và PostgreSQL `15433`. Script không tự đổi
-sang cổng khác; nếu một cổng bị chương trình khác chiếm, nó sẽ dừng và báo rõ cổng đang xung đột.
-
-Để dừng ứng dụng, nhấn `Ctrl+C`. PostgreSQL tiếp tục chạy để giữ dữ liệu; có thể dừng bằng
-`docker compose stop postgres` và chạy lại bằng script trên.
-
-Dữ liệu PostgreSQL được giữ trong Docker volume `dictalab_postgres_data`. Flyway tự động tạo schema,
-nạp 20 bài ELLLO và mốc phát cho 910 câu ở lần chạy đầu tiên. File H2 cũ trong `data/` không bị
-xóa, nhưng ứng dụng không còn dùng file đó khi chạy local.
+Launcher kiểm tra đúng database/QA14/prompt/schema/cổng, build JAR mới rồi chạy Core,
+AI API và worker. PostgreSQL, Redis và RabbitMQ hiện có phải sẵn sàng. Ctrl+C dừng
+các process do launcher tạo. Không chạy launcher có ngày tháng trong data hoặc
+khởi động một checkout khác trên cổng khác. [Chi tiết và kiểm tra](docs/local-development.md).
 
 79 MP3 hội thoại nằm trong `src/main/resources/static/audio/elllo`. Mỗi câu trong
 database trỏ tới một file hội thoại kèm `audio_start_seconds` và `audio_end_seconds`;
@@ -181,7 +150,7 @@ Giới hạn mặc định là 25 MB/file. Tên file trên máy chủ được s
 không được dùng làm đường dẫn. Backend kiểm tra phần mở rộng, MIME type và chữ ký file. Khi bài đã có
 lịch sử học, transcript/audio bị khóa để kết quả cũ không thay đổi; hãy tạo bài mới nếu cần thay nội dung.
 
-Khi chạy local, đặt email tài khoản của bạn trong `.env`:
+Với môi trường triển khai riêng, cấu hình email quản trị trong cấu hình dịch vụ:
 
 ```text
 DICTALAB_MEDIA_ROOT=./data/media
@@ -207,17 +176,11 @@ python scripts/enrich-preview-vocabulary.py `
   --apply
 ```
 
-### Kết nối tới PostgreSQL khác
+### Database phát triển
 
-```powershell
-$env:DB_URL = "jdbc:postgresql://localhost:5432/dictalab"
-$env:DB_USERNAME = "dictalab_app"
-$env:DB_PASSWORD = "your-password"
-$env:PORT = "18081"
-mvn spring-boot:run
-```
-
-Không lưu thông tin đăng nhập database vào source code.
+Local dùng database và cấu hình riêng đã xác minh trong
+[hướng dẫn local](docs/local-development.md). Không đổi database bằng một lệnh
+khởi động khác hoặc lưu thông tin đăng nhập vào source code.
 
 ## Luồng luyện tập
 
@@ -255,26 +218,14 @@ Coach, chấm/làm rõ Hội thoại AI và Listening Comprehension dùng model 
 Sinh câu Hội thoại AI dùng riêng `DICTALAB_CONVERSATION_MODEL=gemini-3.5-flash-lite`; giọng đọc vẫn dùng Cartesia.
 Khóa Gemini không gửi xuống trình duyệt hoặc ghi vào prompt/log. Ollama chỉ dùng cho phát triển local.
 
-Màn hình `/conversation` hiển thị **Nghe hiểu tình huống**: 24 tình huống trong 6 nhóm,
-nghe tiếng Anh và trả lời bằng tiếng Việt, không phải luyện nói. Phiên mới bắt đầu
-bằng một câu khởi động có sẵn cho mỗi tình huống (vẫn dùng TTS); các câu sau dùng AI
-với chuỗi tạo/kiểm tra/sửa giới hạn tổng 45 giây. Phiên cũ giữ phạm vi độ dài cũ.
-A1/A2/B1 có mô tả và câu nghe thử; đây không phải đánh giá CEFR được hiệu chuẩn.
-Lịch sử phân trang 12 phiên; thống kê tối đa 60 phiên gần nhất, không tính câu khởi động.
-Gợi ý giữ mức hiện tại và chuyển ngữ cảnh, gợi ý ôn lại sau 3 ngày; không tự nâng mức.
-Bản nháp lưu riêng theo người dùng trên thiết bị trong 24 giờ. Góp ý chấm điểm được
-lưu trong phiên, không tự thay đổi điểm và chưa có hàng đợi xử lý riêng cho quản trị.
-Migration V37 chỉ mở rộng CHECK tình huống; triển khai theo quy trình dừng ghi và sao lưu hiện có.
+Màn hình `/conversation` dùng mục đích học và mức mục tiêu CEFR/TOEIC/IELTS,
+nhập tình huống tự do, xác nhận spec rồi tạo bài ba activity. Người học nghe,
+trả lời bằng Việt/Anh/kết hợp, xem chữa bài và luyện tiếp. Nguồn prompt hiện hành
+là V4.13 trong `services/ai-generation/app/scenario-prompts.json`; các pin lịch sử
+được giữ riêng để đọc/chấm bài cũ. [Kiến trúc và hợp đồng](docs/conversation-ai.md).
 
-Chạy local với `.env` đã cấu hình Gemini (hoặc dùng Ollama qua biến local):
-
-```powershell
-pwsh -File .\scripts\run-local.ps1 -WithCoach
-```
-
-`-WithCoach` chỉ bật Coach và kiểm tra có khóa, không cài hoặc khởi chạy browser.
-`scripts/check-coach-local.ps1` có thể kiểm tra thật bằng tài khoản QA mới trong database local;
-không chạy lên production chỉ để thử tích hợp.
+Local dùng một lệnh ở trên; cấu hình Gemini/TTS/tracing lấy từ thư mục private.
+Không dùng các cờ launcher Ollama cũ `-WithCoach`, `-WithMessaging` hoặc `-WithConversationLocal`.
 
 Trên Windows VPS, cấu hình `GEMINI_API_KEY` trong môi trường dịch vụ rồi dùng
 `scripts/enable-coach-vps.ps1` sau khi deploy bản mới. Script thử API với dữ liệu tổng hợp trước
@@ -442,7 +393,7 @@ Dashboard dùng SQL aggregate và giới hạn tám điểm trend. Đã chạy 1
 126 đạt trên PostgreSQL 18.4 và 63 kiểm thử JavaScript đạt. Benchmark local với 10.000 phiên
 giảm p95 History khoảng 55%, Dashboard khoảng 34%; không phải phép đo tải đồng thời.
 
-Xem [báo cáo trước/sau và lệnh tái chạy](docs/backend-performance-2026-10-01.md) để kiểm tra phương pháp,
+Xem [báo cáo trước/sau và lệnh tái chạy](https://github.com/hoangptkd/dictalab-listening/blob/6228681915634c4ef7f307aaafccad6c25251a69/docs/backend-performance-2026-10-01.md) để kiểm tra phương pháp,
 dữ liệu gốc, giới hạn và câu mô tả CV phù hợp.
 
 ### History API phân trang
