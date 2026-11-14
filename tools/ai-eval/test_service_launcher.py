@@ -46,7 +46,9 @@ def test_local_build_cleans_stale_classes_before_copying_and_recording_the_jar(t
     assert receipt['commit'] == 'a' * 40 and receipt['promptHash'] == 'approved'
 
 
-@pytest.mark.parametrize('fault', [None, 'qa', 'database', 'port', 'schema', 'state'])
+@pytest.mark.parametrize('fault', [None, 'qa', 'database', 'port', 'schema', 'state',
+    'DICTALAB_OPERATIONAL_LIMITS_ENABLED', 'AI_BUDGET_ENABLED', 'RATE_LIMIT_ENABLED',
+    'AI_CONCURRENCY', 'TTS_CONCURRENCY', 'ai_limits', 'missing_limits'])
 def test_local_requires_one_source_identity_schema_and_state_directory(tmp_path, monkeypatch, fault):
     import psycopg
     monkeypatch.setattr(launcher, 'ROOT', tmp_path)
@@ -59,6 +61,9 @@ def test_local_requires_one_source_identity_schema_and_state_directory(tmp_path,
     migration.mkdir(parents=True)
     (migration / 'V53__fixture.sql').touch()
     core, ai = management_configs()
+    core.update(DICTALAB_OPERATIONAL_LIMITS_ENABLED='false', AI_BUDGET_ENABLED='false',
+                RATE_LIMIT_ENABLED='false', AI_CONCURRENCY='0', TTS_CONCURRENCY='0')
+    ai['DICTALAB_OPERATIONAL_LIMITS_ENABLED'] = 'false'
     token = 'fixture-internal-service-token-at-least-32-chars'
     core.update(SPRING_PROFILES_ACTIVE='local', DICTALAB_LOCAL_QA_USER_ID='14', PORT='18082',
         MANAGEMENT_PORT='18184', SERVER_ADDRESS='127.0.0.1', DICTALAB_AI_PLATFORM_BASE_URL='http://127.0.0.1:8094',
@@ -73,6 +78,11 @@ def test_local_requires_one_source_identity_schema_and_state_directory(tmp_path,
     if fault == 'database': core['DB_URL'] = 'jdbc:postgresql://127.0.0.1/other'
     if fault == 'port': core['PORT'] = '18081'
     if fault == 'state': ai['DICTALAB_AI_JOBS_DATABASE'] = str(tmp_path / 'outside.sqlite3')
+    if fault in ('DICTALAB_OPERATIONAL_LIMITS_ENABLED', 'AI_BUDGET_ENABLED', 'RATE_LIMIT_ENABLED'):
+        core[fault] = 'true'
+    if fault in ('AI_CONCURRENCY', 'TTS_CONCURRENCY'): core[fault] = '1'
+    if fault == 'ai_limits': ai['DICTALAB_OPERATIONAL_LIMITS_ENABLED'] = 'true'
+    if fault == 'missing_limits': core.pop('DICTALAB_OPERATIONAL_LIMITS_ENABLED')
     monkeypatch.setattr(launcher, 'child_environment', lambda name, path: core if name == 'core' else ai)
     monkeypatch.setattr(launcher, 'command', lambda name: ([name, '--port', '8091'], tmp_path))
     with patch.object(psycopg, 'connect') as connection, patch.object(launcher.socket, 'socket') as sockets:

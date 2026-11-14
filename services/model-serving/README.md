@@ -85,7 +85,8 @@ hoạt động theo cách khởi động hiện có. Progress có README riêng.
      Launcher mặc định dùng `data/ai-jobs.sqlite3` ở gốc repository.
    - `DICTALAB_AI_JOB_RETENTION_SECONDS=86400`. Core lưu bản kết quả sau khi
      nhận; Core ngừng quá retention có thể bỏ lỡ kết quả.
-   - `AI_BUDGET_ENABLED=true` để dùng kế toán quota/ngân sách hiện có ở Core.
+   - Giữ `DICTALAB_OPERATIONAL_LIMITS_ENABLED=false`, `AI_BUDGET_ENABLED=false`
+     theo chính sách không hạn mức của chủ dự án; không bật lại sau kiểm thử.
 2. Xác minh file mà chưa nạp trọng số:
 
    ```powershell

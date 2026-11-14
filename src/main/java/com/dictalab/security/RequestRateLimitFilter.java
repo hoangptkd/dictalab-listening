@@ -79,7 +79,7 @@ public class RequestRateLimitFilter extends OncePerRequestFilter {
     }
     @Override protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain)
             throws ServletException,IOException {
-        if(!enabled || request.getMethod().equals("GET")){chain.doFilter(request,response);return;}
+        if(request.getMethod().equals("GET")){chain.doFilter(request,response);return;}
         String path=request.getRequestURI().substring(request.getContextPath().length());
         int cost = 1;
         if (path.startsWith("/api/v1/practice-sessions/") && path.endsWith("/sync/batches")) {
@@ -100,6 +100,8 @@ public class RequestRateLimitFilter extends OncePerRequestFilter {
                 || path.startsWith("/api/v1/catalog/") || path.startsWith("/api/v1/listening-learning/")
                 || path.startsWith("/api/v1/listening/") || path.startsWith("/api/v1/vocabulary/")
                 || path.startsWith("/api/admin/vocabulary/"))) group="practice";
+        // Disabling application usage caps must preserve authentication abuse protection.
+        if(!enabled && !group.equals("auth")){chain.doFilter(request,response);return;}
         if(group.isEmpty()){chain.doFilter(request,response);return;}
         var auth=SecurityContextHolder.getContext().getAuthentication();
         String actor=auth!=null && auth.getPrincipal() instanceof DictaLabPrincipal user?"u:"+user.id():"ip:"+request.getRemoteAddr();

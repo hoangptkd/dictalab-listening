@@ -258,6 +258,12 @@ def local_plan():
         raise ValueError('Use the canonical Desktop checkout with scripts/run-local.ps1')
     core = child_environment('core', LOCAL_DIRECTORY / 'core.env')
     ai = child_environment('ai', LOCAL_DIRECTORY / 'ai.env')
+    # The owner keeps usage limits off until explicitly requested again, including after benchmarks.
+    unrestricted = {'DICTALAB_OPERATIONAL_LIMITS_ENABLED': 'false', 'AI_BUDGET_ENABLED': 'false',
+                    'RATE_LIMIT_ENABLED': 'false', 'AI_CONCURRENCY': '0', 'TTS_CONCURRENCY': '0'}
+    if (any(core.get(key) != value for key, value in unrestricted.items())
+            or ai.get('DICTALAB_OPERATIONAL_LIMITS_ENABLED') != 'false'):
+        raise ValueError('Owner policy requires application usage limits off in protected Core and AI configuration')
     required = {'SPRING_PROFILES_ACTIVE': 'local', 'DICTALAB_LOCAL_QA_USER_ID': '14',
         'PORT': '18082', 'MANAGEMENT_PORT': '18184', 'SERVER_ADDRESS': '127.0.0.1',
         'DICTALAB_AI_PLATFORM_BASE_URL': 'http://127.0.0.1:8094',

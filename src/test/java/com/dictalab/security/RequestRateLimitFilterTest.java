@@ -8,6 +8,24 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.BDDMockito.*;
 
 class RequestRateLimitFilterTest {
+    @Test void unrestrictedUsageBypassesApplicationBucketsButKeepsAuthenticationProtection() throws Exception {
+        var metrics = new SimpleMeterRegistry();
+        var filter = new RequestRateLimitFilter(false, 1, metrics, 1, 1, 10);
+        for (String path : java.util.List.of("/api/v1/conversation/sessions", "/api/v2/scenarios/operations",
+                "/api/v1/practice-sessions", "/api/admin/listening", "/api/billing/orders")) {
+            for (int i = 0; i < 101; i++) {
+                var response = new MockHttpServletResponse();
+                filter.doFilter(new MockHttpServletRequest("POST", path), response, (r,s)->s.getWriter().write("allowed"));
+                assertThat(response.getContentAsString()).isEqualTo("allowed");
+            }
+        }
+        assertThat(metrics.get("dictalab.rate_limit.entries").gauge().value()).isZero();
+        filter.doFilter(request(""), new MockHttpServletResponse(), (r,s)->{});
+        var blocked = new MockHttpServletResponse();
+        filter.doFilter(request(""), blocked, (r,s)->{throw new AssertionError("Login abuse bypassed protection");});
+        assertThat(blocked.getStatus()).isEqualTo(429);
+    }
+
     @Test void scenarioWritesShareConversationRateBucketAndDoNotBlockCatalogReads() throws Exception {
         var metrics = new SimpleMeterRegistry();
         var filter = new RequestRateLimitFilter(true, 1, metrics, 1, 1, 10);

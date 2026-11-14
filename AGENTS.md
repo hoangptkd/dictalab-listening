@@ -12,6 +12,19 @@ runnable check for non-trivial logic.
 Use professional, concise, complete sentences. Preserve technical meaning and use
 normal prose for irreversible actions, security warnings and multi-step instructions.
 
+## Owner policy: no application usage limits
+
+Application usage limits are disabled for every account on local and production.
+Do not enable or restore them after tests, benchmarks, restarts or deployments
+unless the owner explicitly orders limits again. Preserve existing usage history.
+Use `DICTALAB_OPERATIONAL_LIMITS_ENABLED=false`, `AI_BUDGET_ENABLED=false`,
+`RATE_LIMIT_ENABLED=false`, `AI_CONCURRENCY=0` and `TTS_CONCURRENCY=0` in Core;
+use `DICTALAB_OPERATIONAL_LIMITS_ENABLED=false` in AI API/worker.
+Provider quotas/cooldowns, authentication abuse controls, authorization, CSRF,
+ownership, validation, idempotency and the AI emergency stop remain effective.
+Do not claim production changed without verifying its actual runtime through the
+authorized release flow; deployment gates still apply.
+
 ## Project skill scope
 
 DictaLab uses plain HTML/CSS/JavaScript for the web and SwiftUI for iOS.

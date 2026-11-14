@@ -28,7 +28,25 @@ Thư mục `C:/Users/HP/.dictalab/local/` nằm ngoài Git và ngoài worktree:
 Không commit, chia sẻ hoặc đưa các file cấu hình/credential vào prompt hay báo cáo.
 Core không nhận khóa provider; AI worker không nhận credential quản trị Gemini.
 Langfuse dùng cấu hình riêng của AI. Giữ service tokens, CSRF, ownership, validation và emergency stop.
-Ngoại lệ QA14 chỉ áp dụng local; không bỏ quota của provider.
+Tài khoản QA14 vẫn dùng cho kiểm thử local; quota thực tế của provider vẫn áp dụng.
+
+### Chính sách không hạn mức
+
+Theo yêu cầu chủ dự án, mọi tài khoản không bị hạn mức sử dụng ứng dụng trên local
+và production. Chỉ bật lại khi chủ dự án ra lệnh rõ ràng; không khôi phục cấu hình
+hạn mức sau benchmark hoặc kiểm thử, không xóa bộ đếm lịch sử.
+
+Core phải có `DICTALAB_OPERATIONAL_LIMITS_ENABLED=false`, `AI_BUDGET_ENABLED=false`,
+`RATE_LIMIT_ENABLED=false`, `AI_CONCURRENCY=0`, `TTS_CONCURRENCY=0`.
+AI API và worker dùng `DICTALAB_OPERATIONAL_LIMITS_ENABLED=false`.
+Launcher local từ chối cấu hình khác để ngăn khởi động nhầm với hạn mức cũ.
+Các trần ngày về lượt AI/TTS, ngân sách, Premium, bài học và từ vựng cùng quota
+RPM/TPM/RPD nội bộ không chặn sử dụng. Giữ chống lạm dụng đăng nhập, xác thực,
+CSRF, quyền dữ liệu, validation, chống gọi trùng phí và emergency stop.
+HTTP 429 từ provider vẫn có thể xảy ra và được xử lý bằng cooldown/fallback hiện có.
+
+Đây là chính sách cấu hình, không phải bằng chứng production đã triển khai.
+Production phải được xác minh qua luồng release hiện có và các điều kiện triển khai.
 
 ## Khởi động và dừng
 
