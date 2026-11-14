@@ -14,22 +14,23 @@ import httpx
 from pydantic import Field, model_validator
 
 from . import scenario_workflow as w
-from . import scenario_prompts_meaning_v1 as legacy_release
-from . import scenario_prompts_meaning_v2 as previous_release
-from . import scenario_prompts_meaning_v3 as release
-from . import scenario_prompts_meaning_v3_1 as grader_candidate
-from . import scenario_prompts_meaning_v4 as parts_release
-from . import scenario_prompts_meaning_v4_1 as parts_v4_1
-from . import scenario_prompts_meaning_v4_3 as parts_v4_3
-from . import scenario_prompts_meaning_v4_4 as parts_candidate
-from . import scenario_prompts_meaning_v4_5 as parts_consistency_candidate
-from . import scenario_prompts_meaning_v3_2 as projected_grader_candidate
-from . import scenario_prompts_meaning_v4_6 as projected_parts_candidate
-from . import scenario_prompts_meaning_v4_7 as independent_audit_candidate
-from . import scenario_prompts_meaning_v4_11 as evidence_audit_candidate
-from . import scenario_prompts_meaning_v4_12 as direct_audit_candidate
-from . import scenario_prompts_meaning_v4_13 as scoped_release
-from . import scenario_prompts_meaning_v4_14 as scoped_fewshot_candidate
+from .scenario_prompts import historical_release
+legacy_release = historical_release('scenario_prompts_meaning_v1')
+previous_release = historical_release('scenario_prompts_meaning_v2')
+release = historical_release('scenario_prompts_meaning_v3')
+grader_candidate = historical_release('scenario_prompts_meaning_v3_1')
+parts_release = historical_release('scenario_prompts_meaning_v4')
+parts_v4_1 = historical_release('scenario_prompts_meaning_v4_1')
+parts_v4_3 = historical_release('scenario_prompts_meaning_v4_3')
+parts_candidate = historical_release('scenario_prompts_meaning_v4_4')
+parts_consistency_candidate = historical_release('scenario_prompts_meaning_v4_5')
+projected_grader_candidate = historical_release('scenario_prompts_meaning_v3_2')
+projected_parts_candidate = historical_release('scenario_prompts_meaning_v4_6')
+independent_audit_candidate = historical_release('scenario_prompts_meaning_v4_7')
+evidence_audit_candidate = historical_release('scenario_prompts_meaning_v4_11')
+direct_audit_candidate = historical_release('scenario_prompts_meaning_v4_12')
+scoped_release = historical_release('scenario_prompts_meaning_v4_13')
+scoped_fewshot_candidate = historical_release('scenario_prompts_meaning_v4_14')
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .observability import trace_gate

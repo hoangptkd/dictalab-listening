@@ -30,7 +30,7 @@ def digest(value):
 
 def build_hash():
     sources = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(Path(__file__).parent.iterdir())
-               if p.suffix in (".py", ".json", ".lua")}
+               if p.suffix in (".py", ".json", ".lua", ".gz")}
     sources["dependencies"] = {name: version(name) for name in ("pydantic", "httpx", "fastapi")}
     sources["python"] = list(sys.version_info[:3])
     return digest(sources)
@@ -61,7 +61,7 @@ def catalog(settings):
         {"id": name, "promptVersion": release.PROMPT_VERSION, "promptHash": a.prompt_hash(release),
          "instructions": release.INSTRUCTIONS, "outputTokens": release.OUTPUT_TOKENS,
          "exampleSetHash": getattr(release, "EXAMPLE_SET_HASH", None)}
-        for name, release in (("v4.13", a.scoped_release), ("v4.14", a.scoped_fewshot_candidate))]}
+        for name, release in (("v4.13", a.scoped_release),)]}
 
 
 def directory(settings):
@@ -109,8 +109,7 @@ async def versions(x_service_token: str | None = Header(default=None)):
 @router.post("/v1/evaluation/scenario", status_code=202)
 async def submit(payload: EvaluationRequest, x_service_token: str | None = Header(default=None)):
     settings = authorize(x_service_token)
-    if payload.payload.phase != "EXTRACT" or payload.payload.promptHash not in (
-            a.prompt_hash(a.scoped_release), a.prompt_hash(a.scoped_fewshot_candidate)):
+    if payload.payload.phase != "EXTRACT" or payload.payload.promptHash != a.prompt_hash(a.scoped_release):
         raise HTTPException(400, "evaluation requires a supported extraction input")
     selected = await asyncio.to_thread(settings.current_registry)
     current = await asyncio.to_thread(catalog, selected)

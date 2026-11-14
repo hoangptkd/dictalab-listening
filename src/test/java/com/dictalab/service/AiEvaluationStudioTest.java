@@ -18,23 +18,28 @@ class AiEvaluationStudioTest {
     final ConversationService conversation = mock(ConversationService.class);
     final GeminiClient ai = mock(GeminiClient.class);
     final AiUsageBudget budget = mock(AiUsageBudget.class);
+    final AiPlatformClient platform = mock(AiPlatformClient.class);
+    ObjectNode catalog;
     AiEvaluationStudio studio;
 
-    @BeforeEach void setup() {
-        var fixtureSource = mock(ConversationService.class, CALLS_REAL_METHODS);
-        ReflectionTestUtils.setField(fixtureSource, "json", json);
-        var fixtures = fixtureSource.evaluationFixtures();
-        when(conversation.evaluationFixtures()).thenReturn(fixtures);
+    @BeforeEach void setup() throws Exception {
         when(conversation.evaluationModel()).thenReturn("gemini-test");
-        when(conversation.evaluationAvailable()).thenReturn(true);
+        catalog = json.createObjectNode().put("backendHash", "python-build");
+        catalog.putObject("runtime").put("provider", "gemini").put("model", "gemini-test");
+        catalog.putArray("releases").addObject().put("id", "v4.13").put("promptVersion", "V4.13").put("promptHash", "pin")
+                .putObject("instructions").put("GENERATE", "Original immutable prompt");
+        when(platform.scenarioEvaluation(isNull(), isNull())).thenReturn(catalog);
         studio = create();
     }
-    AiEvaluationStudio create() {
-        return new AiEvaluationStudio(json, conversation, ai, budget,
-                new MockEnvironment().withProperty("spring.profiles.active", "local"), directory.toString(), "legacy");
+    AiEvaluationStudio create() throws Exception {
+        var instance = new AiEvaluationStudio(json, conversation, ai, budget,
+                new MockEnvironment().withProperty("spring.profiles.active", "local"), directory.toString());
+        ReflectionTestUtils.setField(instance, "platform", platform);
+        ReflectionTestUtils.setField(instance, "programs", new com.dictalab.scenario.ScenarioProgramRegistry());
+        return instance;
     }
     @AfterEach void close() { if (studio != null) studio.close(); }
-    ObjectNode version() { return studio.createVersion(json.createObjectNode().put("label", "Baseline").put("promptSuffix", "").put("repair", true), 14); }
+    ObjectNode version() { return studio.createVersion(json.createObjectNode().put("label", "Baseline").put("pipeline", "scenario").put("release", "v4.13"), 14); }
     ObjectNode request(String version, String suite, boolean judge) {
         return json.createObjectNode().put("requestId", UUID.randomUUID().toString()).put("version", version)
                 .put("suite", suite).put("mode", "live").put("judge", judge);
@@ -46,13 +51,20 @@ class AiEvaluationStudioTest {
         while (System.nanoTime() < deadline);
         throw new AssertionError("Evaluation did not finish");
     }
+    ObjectNode remote(JsonNode input) {
+        var result = json.createObjectNode().put("requestId", input.path("requestId").asText()).put("status", "COMPLETED");
+        var raw = json.createObjectNode();
+        raw.putArray("activities").addObject().put("id", "a1");
+        result.putObject("before").put("hardPass", true).set("raw", raw);
+        var task = raw.deepCopy().put("qualityPassed", true);
+        result.putObject("result").put("promptHash", "pin").set("task", task);
+        var event = result.putArray("events").addObject().put("stage", "GENERATE").put("status", "RETURNED").put("model", "fallback-model");
+        event.putArray("attempts").addObject().put("model", "fallback-model").put("prompt_tokens", 10).put("completion_tokens", 5);
+        return result;
+    }
     void fakeGeneration() {
-        when(conversation.evaluateFixture(anyLong(), any(), anyString(), anyBoolean(), any())).thenAnswer(call -> {
-            var raw = json.createObjectNode().put("utteranceEn", "Source evidence");
-            ConversationService.GenerationObserver observer = call.getArgument(4);
-            observer.record("generated", 1, raw); observer.record("validation", 1, json.createObjectNode().put("valid", true));
-            return raw;
-        });
+        when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload"))))
+                .thenAnswer(call -> remote(call.getArgument(1)));
     }
     ObjectNode verdict() {
         var value = json.createObjectNode(); var checks = value.putObject("checks");
@@ -63,11 +75,11 @@ class AiEvaluationStudioTest {
         var first = version(); var second = version();
         assertThat(json.writeValueAsString(second)).isEqualTo(json.writeValueAsString(first));
         assertThat(studio.hash(json.readTree("{\"b\":2,\"a\":1}"))).isEqualTo(studio.hash(json.readTree("{\"a\":1,\"b\":2}")));
-        assertThat(first.path("instructions").size()).isEqualTo(9);
-        assertThat(studio.snapshot().path("dataset").path("cases").asInt()).isEqualTo(27);
-        assertThat(studio.snapshot().path("suites").path(2).path("samples").asInt()).isEqualTo(81);
-        assertThatThrownBy(() -> studio.createVersion(json.readTree("{\"label\":\"x\",\"promptSuffix\":17,\"repair\":true}"),14))
-                .hasMessageContaining("400");
+        assertThat(first.path("instructions").path("GENERATE").asText()).isEqualTo("Original immutable prompt");
+        assertThat(studio.snapshot().path("dataset").path("cases").asInt()).isEqualTo(12);
+        assertThat(studio.snapshot().path("suites").path(2).path("samples").asInt()).isEqualTo(36);
+        assertThatThrownBy(() -> studio.createVersion(json.createObjectNode().put("label", "old").put("pipeline", "java"),14))
+                .hasMessageContaining("410");
         assertThatThrownBy(() -> studio.detail("../secrets")).hasMessageContaining("400");
     }
     @Test void smokeAndReplayUseSameInputsIdempotencyAndNoImplicitJudgeCalls() throws Exception {
@@ -78,14 +90,12 @@ class AiEvaluationStudioTest {
         assertThat(run.path("metrics").path("afterPassed").asInt()).isZero();
         assertThat(run.path("metrics").path("afterRate").isNull()).isTrue();
         assertThat(run.path("cases").path(0).path("after").path("status").asText()).isEqualTo("REVIEW_REQUIRED");
-        studio.start(request,14); verify(conversation,times(3)).evaluateFixture(eq(14L), any(), anyString(), eq(true), any());
+        studio.start(request,14); verify(platform,times(3)).scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")));
         request.put("judge",true); assertThatThrownBy(() -> studio.start(request,14)).hasMessageContaining("409");
         var replay = request(version().path("id").asText(),"smoke",false).put("mode","replay").put("sourceRun",run.path("id").asText());
-        var replayRun = finished(studio.start(replay,14).path("id").asText());
-        assertThat(replayRun.path("datasetHash")).isEqualTo(run.path("datasetHash"));
-        assertThat(replayRun.path("cases").path(0).path("harnessScope").asText()).isEqualTo("deterministic-only");
-        assertThat(replayRun.path("metrics").path("harnessAccepted").asInt()).isZero();
-        verifyNoInteractions(ai, budget);
+        assertThatThrownBy(() -> studio.start(replay,14)).hasMessageContaining("409");
+        verifyNoInteractions(ai);
+        verify(budget,times(30)).reserve(14L,false);
     }
     @Test void exactJudgeCacheIsReusedAndUnknownFailureStopsFurtherCases() throws Exception {
         fakeGeneration(); when(ai.completeJson(anyString(),anyString(),eq("gemini-test"),any(Duration.class))).thenReturn(verdict());
@@ -95,21 +105,13 @@ class AiEvaluationStudioTest {
             assertThat(run.path("metrics").path("afterPassed").asInt()).isEqualTo(3);
         }
         verify(ai,times(3)).completeJson(anyString(),anyString(),eq("gemini-test"),any(Duration.class));
-        verify(budget,times(3)).reserve(14L,false);
-        reset(conversation); when(conversation.evaluationModel()).thenReturn("gemini-test");
-        var fixtureSource=mock(ConversationService.class,CALLS_REAL_METHODS);ReflectionTestUtils.setField(fixtureSource,"json",json);
-        var fixtures = fixtureSource.evaluationFixtures();
-        when(conversation.evaluationFixtures()).thenReturn(fixtures);when(conversation.evaluationAvailable()).thenReturn(true);
-        when(conversation.evaluateFixture(anyLong(),any(),anyString(),anyBoolean(),any())).thenAnswer(call -> {
-            ConversationService.GenerationObserver observer=call.getArgument(4);
-            observer.record("generated",1,json.createObjectNode());
-            observer.record("rejected",1,json.createObjectNode().put("reason","invalid content"));
-            throw new GeminiClient.Failure("TIMEOUT","unknown");
-        });
+        verify(budget,times(63)).reserve(14L,false);
+        when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload"))))
+                .thenThrow(new GeminiClient.Failure("TIMEOUT","unknown"));
         var stopped=finished(studio.start(request(version,"regression",false),14).path("id").asText());
         assertThat(stopped.path("status").asText()).isEqualTo("STOPPED");
         assertThat(stopped.path("cases").size()).isEqualTo(1);
-        verify(conversation).evaluateFixture(anyLong(),any(),anyString(),anyBoolean(),any());
+        verify(platform,times(7)).scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")));
     }
     @Test void malformedOrUnsubstantiatedJudgeVerdictCanNeverPass() {
         var input=json.createObjectNode().put("task","Source evidence"); var answer=verdict();
@@ -124,8 +126,9 @@ class AiEvaluationStudioTest {
     }
     @Test void stopPreventsNextCaseAndActiveRunRejectsConcurrentStart() throws Exception {
         var entered=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);
-        when(conversation.evaluateFixture(anyLong(),any(),anyString(),anyBoolean(),any())).thenAnswer(call->{
-            entered.countDown();assertThat(release.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();return json.createObjectNode();
+        when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")))).thenAnswer(call->{
+            entered.countDown(); assertThat(release.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            return remote(call.getArgument(1));
         });
         var version=version().path("id").asText();var run=studio.start(request(version,"smoke",false),14);
         try {
@@ -136,7 +139,7 @@ class AiEvaluationStudioTest {
         var stopped=finished(run.path("id").asText());
         assertThat(stopped.path("status").asText()).isEqualTo("CANCELLED");
         assertThat(stopped.path("cases").size()).isEqualTo(1);
-        verify(conversation).evaluateFixture(anyLong(),any(),anyString(),anyBoolean(),any());
+        verify(platform).scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")));
     }
     @Test void interruptedRunIsRecoveredWithoutReplayAndProductionCannotInitialize() throws Exception {
         studio.snapshot(); var id=UUID.randomUUID().toString();
@@ -144,7 +147,7 @@ class AiEvaluationStudioTest {
         try(var ignored = new AiCallObservation(() -> {}, call -> {})) {
             var recovered=create(); try { assertThat(recovered.detail(id).path("status").asText()).isEqualTo("INTERRUPTED"); } finally {recovered.close();}
         }
-        var production=new AiEvaluationStudio(json,conversation,ai,budget,new MockEnvironment(),directory.toString(),"legacy");
+        var production=new AiEvaluationStudio(json,conversation,ai,budget,new MockEnvironment(),directory.toString());
         try { assertThatThrownBy(production::snapshot).hasMessageContaining("503"); } finally { production.close(); }
         verifyNoInteractions(ai,budget);
     }
@@ -164,14 +167,6 @@ class AiEvaluationStudioTest {
         assertThat(AiEvaluationStudio.comparison(json,json.createObjectNode(),json.createObjectNode()).path("comparable").asBoolean()).isFalse();
     }
     @Test void personalizedVersionsPinPythonAndUseRealPipelineWithoutLegacyGenerator() throws Exception {
-        var platform = mock(AiPlatformClient.class);
-        ReflectionTestUtils.setField(studio, "platform", platform);
-        ReflectionTestUtils.setField(studio, "programs", new com.dictalab.scenario.ScenarioProgramRegistry());
-        var catalog = json.createObjectNode().put("backendHash", "python-build");
-        catalog.putObject("runtime").put("provider", "gemini").put("model", "gemini-test");
-        var release = catalog.putArray("releases").addObject().put("id", "v4.13").put("promptVersion", "V4.13").put("promptHash", "pin");
-        release.putObject("instructions").put("GENERATE", "Original immutable prompt");
-        when(platform.scenarioEvaluation(isNull(), isNull())).thenReturn(catalog);
         when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")))).thenAnswer(call -> {
             JsonNode input = call.getArgument(1);
             assertThat(input.path("payload").path("promptHash").asText()).isEqualTo("pin");
@@ -195,11 +190,23 @@ class AiEvaluationStudioTest {
         assertThat(run.path("cases").path(0).path("calls").path(0).path("model").asText()).isEqualTo("fallback-model");
         assertThat(run.path("metrics").path("afterEvaluated").asInt()).isZero();
         assertThat(run.path("metrics").path("harnessAccepted").asInt()).isEqualTo(3);
-        verify(conversation, never()).evaluateFixture(anyLong(), any(), anyString(), anyBoolean(), any());
+        verify(conversation, atLeastOnce()).evaluationModel();
+        verifyNoMoreInteractions(conversation);
         catalog.put("backendHash", "changed");
         assertThatThrownBy(() -> studio.start(request(version.path("id").asText(), "smoke", false), 14)).hasMessageContaining("409");
         var other = run.deepCopy(); ((ObjectNode)other.path("cases").path(0).path("calls").path(0)).put("model", "different");
         assertThat(AiEvaluationStudio.comparison(json, run, other).path("comparable").asBoolean()).isFalse();
+    }
+    @Test void retiredVersionsStayReadableButCannotStartNewRuns() throws Exception {
+        studio.snapshot();
+        String id = "legacy-version";
+        Files.writeString(directory.resolve("versions").resolve(id + ".json"),
+                json.writeValueAsString(json.createObjectNode().put("id", id).put("pipeline", "java").put("label", "History")));
+        assertThat(studio.snapshot().path("versions").size()).isEqualTo(1);
+        assertThatThrownBy(() -> studio.start(request(id, "smoke", false),14)).hasMessageContaining("410");
+        when(platform.scenarioEvaluation(isNull(), isNull())).thenThrow(new IllegalStateException("offline"));
+        assertThat(studio.snapshot().path("liveAvailable").asBoolean()).isFalse();
+        verifyNoInteractions(ai,budget);
     }
     ObjectNode comparableRun() {
         var run=json.createObjectNode().put("status","COMPLETED").put("planned",1).put("repeats",1).put("judge",true).put("mode","live").put("repair",true);

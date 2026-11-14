@@ -4,7 +4,8 @@ import json
 import pytest
 
 import scenario_prompt_benchmark as benchmark
-from app import scenario_prompts_fewshot as candidate
+from app.scenario_prompts import historical_release
+candidate = historical_release('scenario_prompts_fewshot')
 
 
 def test_ten_demonstrations_are_schema_valid_and_separate_from_evaluation():

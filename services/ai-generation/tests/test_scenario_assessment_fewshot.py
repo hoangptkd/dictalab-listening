@@ -34,7 +34,7 @@ def test_candidate_is_pinned_stage_local_and_does_not_replace_baseline():
         assert [stage for stage, text in RELEASE.INSTRUCTIONS.items() if serialized in text] == [example["stage"]]
     root = Path(__file__).resolve().parents[3]
     packaging = tomllib.loads((root / "services/ai-generation/pyproject.toml").read_text(encoding="utf-8"))
-    assert "scenario_assessment_fewshot_v1.json" in packaging["tool"]["setuptools"]["package-data"]["app"]
+    assert "scenario-prompt-history.json.gz" in packaging["tool"]["setuptools"]["package-data"]["app"]
     assert f'PARTS_V4_14_PROMPT_HASH="{PIN}"' in (root / "src/main/java/com/dictalab/scenario/ScenarioAssessment.java").read_text(encoding="utf-8")
     assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == a.prompt_hash()
 

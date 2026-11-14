@@ -18,18 +18,19 @@ from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .redaction import redact_string
 from .observability import trace_gate, trace_job
-from .scenario_prompts_v5 import INSTRUCTIONS as V5_INSTRUCTIONS
+from .scenario_prompts import historical_release
+V5_INSTRUCTIONS = historical_release('scenario_prompts_v5').INSTRUCTIONS
 from .scenario_contract import LearningContext
-from . import scenario_prompts_personalized as personalized
-from . import scenario_prompts_personalized_fewshot as previous_personalized_fewshot
-from . import scenario_prompts_personalized_fewshot_v2 as previous_personalized_fewshot_v2
-from . import scenario_prompts_personalized_fewshot_v3 as previous_personalized_fewshot_v3
-from . import scenario_prompts_personalized_fewshot_v4 as previous_personalized_fewshot_v4
-from . import scenario_prompts_personalized_fewshot_v5 as previous_personalized_fewshot_v5
-from . import scenario_prompts_personalized_fewshot_v6 as previous_personalized_fewshot_v6
-from . import scenario_prompts_personalized_fewshot_v7 as personalized_fewshot
-from . import scenario_prompts_personalized_fewshot_v8 as harness_release
-from . import scenario_prompts_personalized_fewshot_v9 as harness_v9
+personalized = historical_release('scenario_prompts_personalized')
+previous_personalized_fewshot = historical_release('scenario_prompts_personalized_fewshot')
+previous_personalized_fewshot_v2 = historical_release('scenario_prompts_personalized_fewshot_v2')
+previous_personalized_fewshot_v3 = historical_release('scenario_prompts_personalized_fewshot_v3')
+previous_personalized_fewshot_v4 = historical_release('scenario_prompts_personalized_fewshot_v4')
+previous_personalized_fewshot_v5 = historical_release('scenario_prompts_personalized_fewshot_v5')
+previous_personalized_fewshot_v6 = historical_release('scenario_prompts_personalized_fewshot_v6')
+personalized_fewshot = historical_release('scenario_prompts_personalized_fewshot_v7')
+harness_release = historical_release('scenario_prompts_personalized_fewshot_v8')
+harness_v9 = historical_release('scenario_prompts_personalized_fewshot_v9')
 
 logger = logging.getLogger("dictalab.ai.scenario")
 

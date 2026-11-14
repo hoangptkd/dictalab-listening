@@ -266,7 +266,8 @@ def test_inference_contract_accepts_premise_explanation_after_mocked_review():
 
 
 def test_cross_language_prompt_pin_and_content_fixture():
-    from app.scenario_prompts_v5 import INSTRUCTIONS
+    from app.scenario_prompts import historical_release
+    INSTRUCTIONS = historical_release('scenario_prompts_v5').INSTRUCTIONS
     assert workflow.PROMPT_VERSION == 'SCENARIO_LISTENING_V5_GRADE_V4_1'
     assert workflow.INSTRUCTIONS['GRADE'] == workflow.V4_INSTRUCTIONS['GRADE']
     assert all(workflow.INSTRUCTIONS[k] == v for k, v in INSTRUCTIONS.items() if k != 'GRADE')

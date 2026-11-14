@@ -145,7 +145,6 @@ public class GeminiClient {
                 remaining.compareTo(generationTimeout) < 0 ? remaining : generationTimeout);
     }
 
-    boolean evaluationGemini() { return !local && cloudPlatform.equals("gemini"); }
 
     private JsonNode requestJson(String instruction, String input, String requestModel, Duration timeout) {
         AiCallObservation.begin(requestModel);

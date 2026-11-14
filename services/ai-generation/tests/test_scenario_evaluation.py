@@ -40,7 +40,7 @@ async def test_auth_disabled_production_bounds_and_catalog(config, monkeypatch):
     assert result.status_code == 200
     text = result.text
     assert config.service_token not in text
-    assert [r["id"] for r in result.json()["releases"]] == ["v4.13", "v4.14"]
+    assert [r["id"] for r in result.json()["releases"]] == ["v4.13"]
     assert (await call("POST", "/v1/evaluation/scenario", headers=headers, content="x" * 64001)).status_code == 413
     config.production_mode = True
     assert (await call("GET", "/v1/evaluation/scenario", headers=headers)).status_code == 503

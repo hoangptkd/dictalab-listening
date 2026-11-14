@@ -1,6 +1,17 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {esc,rate,trendChart,criteriaChart,regressionChart}=require('../../main/resources/static/js/ai-evaluation.js');
+const {esc,rate,trendChart,criteriaChart,regressionChart,runnableVersion}=require('../../main/resources/static/js/ai-evaluation.js');
+
+test('only current scenario snapshots can start a new evaluation; old evidence stays readable',()=>{
+    const catalog={available:true,backendHash:'build',releases:[{promptHash:'current'}]};
+    const version={pipeline:'scenario',pythonBackendHash:'build',promptHash:'current'};
+    assert.equal(runnableVersion(version,catalog),true);
+    for(const v of [{...version,pipeline:'java'},{...version,promptHash:'old'},{...version,pythonBackendHash:'old'}]) {
+        assert.equal(runnableVersion(v,catalog),false);
+    }
+    assert.equal(runnableVersion(version,{...catalog,available:false}),false);
+    assert.equal(runnableVersion(version,undefined),false);
+});
 
 test('chart labels escape untrusted text and missing rates stay unknown',()=>{
     assert.equal(esc('<img src=x onerror="x">'), '&lt;img src=x onerror=&quot;x&quot;&gt;');

@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from app import scenario_prompts_personalized_fewshot as fewshot
-from app import scenario_prompts_personalized_fewshot_v2 as corrected
+from app.scenario_prompts import historical_release
+fewshot = historical_release('scenario_prompts_personalized_fewshot')
+corrected = historical_release('scenario_prompts_personalized_fewshot_v2')
 from app import scenario_workflow as w
 from app.config import Settings
 from app.jobs import capability_metadata, execution_fingerprint, digest
@@ -85,23 +86,6 @@ def test_examples_are_stage_local_and_baseline_is_unchanged():
         assert len(after.encode()) < 32000  # Review schemas repeat content; keep growth bounded.
         for e in (e for e in fewshot.EXAMPLES if e["stage"] == stage):
             assert json.dumps(e["expectedOutput"], ensure_ascii=False, separators=(",", ":")) in after
-
-
-@pytest.mark.parametrize("fault", ["empty", "duplicate", "missing_stage", "grade"])
-def test_bad_reference_asset_cannot_silently_fall_back_to_zero_shot(fault):
-    examples = copy.deepcopy(fewshot.EXAMPLES)
-    if fault == "empty": examples = []
-    elif fault == "duplicate": examples.append(examples[0])
-    elif fault == "missing_stage": examples = [e for e in examples if e["stage"] != "TRANSLATE"]
-    else: examples[0]["stage"] = "GRADE"
-    with pytest.raises(ValueError):
-        fewshot.compile_instructions(examples)
-
-
-def test_missing_prompt_marker_fails_closed(monkeypatch):
-    monkeypatch.setitem(w.personalized.INSTRUCTIONS, "GENERATE", "no marker")
-    with pytest.raises(ValueError, match="examples marker"):
-        fewshot.compile_instructions(fewshot.EXAMPLES)
 
 
 @pytest.mark.parametrize("release", [w.personalized, fewshot, corrected, w.previous_personalized_fewshot_v3,

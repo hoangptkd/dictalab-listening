@@ -43,13 +43,19 @@ def variant(name, phase=None):
     if name == 'v4':
         INSTRUCTIONS, PROMPT_VERSION = workflow.V4_INSTRUCTIONS, workflow.V4_PROMPT_VERSION
     elif name == 'v5':
-        from app.scenario_prompts_v5 import INSTRUCTIONS, PROMPT_VERSION
+        from app.scenario_prompts import historical_release
+        INSTRUCTIONS = historical_release('scenario_prompts_v5').INSTRUCTIONS
+        PROMPT_VERSION = historical_release('scenario_prompts_v5').PROMPT_VERSION
     elif name == 'v6':
-        from app.scenario_prompts_v6 import INSTRUCTIONS, PROMPT_VERSION
+        from app.scenario_prompts import historical_release
+        INSTRUCTIONS = historical_release('scenario_prompts_v6').INSTRUCTIONS
+        PROMPT_VERSION = historical_release('scenario_prompts_v6').PROMPT_VERSION
     elif name == 'active':
         INSTRUCTIONS, PROMPT_VERSION = ACTIVE_INSTRUCTIONS, ACTIVE_PROMPT_VERSION
     elif name == 'fewshot':
-        from app.scenario_prompts_fewshot import INSTRUCTIONS, PROMPT_VERSION
+        from app.scenario_prompts import historical_release
+        INSTRUCTIONS = historical_release('scenario_prompts_fewshot').INSTRUCTIONS
+        PROMPT_VERSION = historical_release('scenario_prompts_fewshot').PROMPT_VERSION
     else:
         raise ValueError('unknown prompt variant: '+name)
     selected = dict(workflow.INSTRUCTIONS)

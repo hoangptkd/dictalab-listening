@@ -57,6 +57,7 @@ def tpatch(responses, index=0, **changes):
     return {"replacements": [{**responses[3]["segments"][index], **changes}]}
 
 
+from app.scenario_prompts import historical_release
 def test_good_lesson_has_five_calls_and_separate_historical_release():
     responses = personal_responses()
     result, calls = run(list(zip(BASE, responses)))

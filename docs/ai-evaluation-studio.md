@@ -1,105 +1,75 @@
 # AI Evaluation Studio
 
-## Access and runtime
+## Access and scope
 
-Open `/admin/ai-evaluation` as an ADMIN. APIs exist only with Spring profile `local`.
-The existing admin security, CSRF, account validation and AI emergency stop apply.
-The version dialog selects the personalized Python pipeline **V4.13 / V4.14** or the
-historical **Java V8** generator. These are separate experiment cohorts. Creating a version
-does not activate a prompt for learners. V4.14 remains a candidate.
-Both reuse the provider/account pools managed at `/admin/gemini`.
-Existing provider quotas and user/application budgets still apply; Full can stop at a budget limit.
+Open <http://localhost:18082/admin/ai-evaluation> as an existing ADMIN. API requires Spring profile
+`local`, authentication, ADMIN and CSRF. QA14 remains a learner; never elevate it to access this screen.
+Provider accounts and fallback policies come from `/admin/gemini`.
 
-No new database tables or frontend packages are needed. Experiment documents are stored
-atomically under ignored `data/ai-evaluation` (override with `dictalab.evaluation.directory`).
-Back up that directory to preserve versions, runs and cached judgments. Do not serve it as static files.
+New versions and runs use the current personalized Python pipeline, **V4.13**.
+Java V8 and historical prompt releases are read-only evidence. No new replay or generation uses them.
+Creating an experiment snapshot does not activate or approve a learner/production prompt.
 
-### Personalized pipeline connection
+## Durable evidence
 
-Python requires `DICTALAB_AI_EVALUATION_ENABLED=true`, `DICTALAB_AI_SCENARIO_ENABLED=true`,
-an existing strong service token and `production_mode=false`. The internal `/v1/evaluation/scenario`
-API is disabled by default, authenticates before reading bodies and caps input at 64 KB.
-Set `DICTALAB_AI_EVALUATION_DIRECTORY` to private local storage. Core still requires local profile,
-ADMIN and CSRF. No learner/session records are created.
+Canonical private state: `C:/Users/HP/.dictalab/local/studio/` and `python-records/`.
+See [local startup](local-development.md). Keep these outside static resources and Git.
+Back up snapshots, judgments and runs together; do not replace the ledger when restarting.
 
-Execution reuses EXTRACT then GENERATE, QUESTIONS, REVIEW_QUESTIONS, TRANSLATE, REVIEW and
-their existing bounded repairs. No replacement prompt or validator is introduced.
-The runner reserves ten calls (extraction plus maximum generation envelope) before dispatch.
-Unused reservations are conservative admission, not actual spend. GRADE and TTS are outside scope.
+Python evaluation requires `DICTALAB_AI_EVALUATION_ENABLED=true`, `DICTALAB_AI_SCENARIO_ENABLED=true`,
+the existing service token and `production_mode=false`. The internal `/v1/evaluation/scenario`
+endpoint authenticates before reading bodies and caps input at 64 KiB.
 
-Personalized Smoke: three happy inputs at CEFR B1, TOEIC listening 255 and IELTS listening 5.5.
-Regression: nine inputs across three programs. Full: twelve profiles repeated three times (36 samples).
-Targets use the existing catalog; they are not recast as CEFR. These are synthetic inputs,
-not human-approved gold lessons or calibrated exam scores.
+The runner executes EXTRACT, GENERATE, QUESTIONS, REVIEW_QUESTIONS, TRANSLATE and REVIEW,
+including their existing bounded repairs. It reserves ten logical calls before dispatch and at most
+two additional semantic judgments. Reservations are conservative admission, not measured cost.
+GRADE and TTS are outside this experiment; they need their own functional checks.
 
-Frozen versions include instructions, immutable prompt/few-shot hashes, Python source/assets/dependency
-fingerprint, pool/model/fallback policy and Java fingerprint. Changed source/configuration rejects new
-execution of an old snapshot. Python stores stage inputs, schemas, outputs and HTTP attempts; Core
-stores stage inputs/outputs and the remote request ID, with instructions in the frozen version.
-Credential-like content is redacted. Settings, service headers and API keys are never captured.
+| Suite | Samples |
+| --- | ---: |
+| Smoke | 3: CEFR B1, TOEIC listening 255, IELTS listening 5.5 |
+| Regression | 9 across the three programs |
+| Full | 12 profile inputs × 3 repeats = 36 |
 
-The initial complete lesson is assembled from the **first** QUESTIONS and TRANSLATE outputs and
-checked by existing validators. Missing/invalid initial artifacts stay unresolved; a later repair cannot
-retroactively pass them. Harness acceptance and independent nine-criterion semantic judgment are separate.
+Inputs are synthetic fixed contexts, not human-approved gold lessons or calibrated exam scores.
 
-Exclusive durable admission and UUID idempotency prevent replay of interrupted/unknown work.
-Stop lets the submitted lesson finish, then prevents the next lesson. Stored outputs remain readable
-and exportable without regeneration. Replay rejudging is currently Java-only. Different actual returned
-models across paired stages make a comparison inconclusive. None of these actions activates V4.14.
 ## Workflow
 
-1. Create a baseline version from the current prompt. Optionally enable one Harness repair.
-2. Run Smoke, inspect raw output, Harness steps, judgments and API observations.
-3. Create a candidate with additional prompt instructions and run the same suite.
-4. Compare two runs. Investigate critical failures and criterion regressions before aggregate rates.
-5. Use Replay to validate stored first outputs without generating or repairing. Disable semantic
-   judging for a provider-free replay. Replay is explicitly a narrower measurement than a live run.
+1. Create a snapshot from the current release.
+2. Run Smoke. Inspect raw outputs, stage events, evidence, Harness results and independent judgments.
+3. Change the single prompt source through the normal review/test flow, then restart the services.
+4. Create a fresh snapshot. Old snapshots cannot dispatch against changed Python/Core code or runtime.
+5. Compare compatible saved runs; inspect critical regressions before aggregate rates.
 
-For Java V8, Smoke has 3 inputs, Regression has 9, and Full has 27 inputs repeated 3 times (81 samples).
-The initial synthetic dataset covers A1/A2/B1, turns 2/3/4, and cafe/directions/hotel contexts.
-These are fixed context tests, not complete simulated learner journeys or a human-approved golden set.
+Snapshots pin prompt/few-shot hashes, Python source/assets/dependencies, model/pool/fallback policy,
+and Core build. HTTP attempts, returned models and available usage are stored separately.
+Changed configuration requires a new snapshot. Stored histories remain readable and exportable.
+No automatic activation follows a comparison result.
 
-## Reading the charts
+UUID idempotency and an exclusive process lock prevent replay of admitted/UNKNOWN/interrupted work.
+Stop lets the submitted lesson finish, then prevents the next lesson. Provider/transport failures stop
+further paid cases. Do not reset counters, replay an unknown call or rotate accounts to disguise failure.
 
-- Blue: first output. Green: last output after the configured Harness policy.
-- Semantic PASS requires structural validation and all nine independent checks.
-- Disabling semantic judging leaves structurally valid outputs `REVIEW_REQUIRED`.
-- Run rates use all planned samples; coverage is shown separately. Zero judged samples show no rate.
-- Per-criterion bars use the samples actually judged on that criterion.
-- Trend lines break at incomplete runs and use a cohort with the same dataset, runtime, mode and judge.
-- Harness acceptance is separate from independent semantic quality. A rejected task can still have
-  individually passing criteria; the dashboard does not treat Harness acceptance as proof of quality.
-- Logical AI calls, provider HTTP attempts and measured tokens are different quantities.
-  Missing usage is unknown, never a zero-cost claim. These are not provider invoices.
+## Reading results
 
-The judge uses the configured model in a separate context, with evidence checks. This reduces
-some bias but does not make it independent human ground truth. Invalid or unsupported judgments
-cannot pass. Matching judgments may be reused only for the same input, output, rubric and model.
+- Blue is the first output; green is the final output after Harness.
+- Initial output is assembled from the first QUESTIONS and TRANSLATE artifacts; repairs cannot retroactively pass it.
+- Semantic PASS requires structural validation and nine independent checks.
+- Without semantic judgment, structurally valid output remains `REVIEW_REQUIRED`.
+- Planned samples stay in the denominator; missing judgments show missing coverage, never a perfect score.
+- Harness acceptance and independent semantic quality are separate measurements.
+- HTTP attempts, logical calls, measured tokens and actual invoices are different quantities.
+- Different actual returned models can make a paired comparison inconclusive.
 
-## Comparison limits
-
-Versions store prompts, repair policy, runtime settings and a Java backend fingerprint.
-Running a frozen version against a different current Java backend/configuration is rejected;
-create a new version. Historical runs remain comparable as evidence across backend updates.
-Changes to prompt and backend/Harness together are reported as a combined experiment.
-
-Gemini output remains nondeterministic at temperature 0; repeat indices are not provider seeds.
-Actual source IDs/models are recorded when available. Source-pool edits, external provider
-revisions are not pinned by the Java fingerprint alone; personalized runs additionally pin Python. Review traces
-before attributing changes. No run or comparison automatically approves a production release.
-
-One worker executes at a time. Start requests use UUID idempotency, calls are checkpointed,
-and an interrupted run is never silently replayed. Stop prevents the next model admission;
-an in-flight call may finish. Transport/quota failures stop further cases. Do not reset quotas
-or switch accounts to conceal a failure.
+The judge runs in a separate model context with source evidence checks. It can still be wrong.
+Cached judgments require exact input, output, rubric and model identity. Code tests do not prove AI content quality.
 
 ## Checks
 
 ```text
-mvn test -Dtest=AiEvaluationStudioTest,AiCallObservationTest,ConversationEvaluationTest,AiEvaluationSecurityTest,SpaRoutingTest,GeminiClientTest,AiPlatformClientTest,ConversationIntegrationTest
+mvn test -Dtest=AiEvaluationStudioTest,AiCallObservationTest,AiEvaluationSecurityTest,SpaRoutingTest,GeminiClientTest,AiPlatformClientTest,ConversationIntegrationTest
 node --test src/test/js/ai-evaluation.test.cjs
-python -m pytest services/ai-generation/tests/test_text_gateway.py
+python -m pytest services/ai-generation/tests/test_scenario_prompt_consolidation.py services/ai-generation/tests/test_scenario_evaluation.py
 ```
 
-`src/test/fixtures/ai-evaluation-preview.cjs` contains UI-only synthetic results for visual QA.
-It is never imported by production resources or written into the experiment ledger.
+The UI preview fixture under `src/test/fixtures/` is synthetic. It never writes the experiment ledger.

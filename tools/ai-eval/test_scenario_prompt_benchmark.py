@@ -147,7 +147,8 @@ def test_three_way_round_balances_execution_positions_without_touching_active_pr
 
 def test_v6_examples_use_the_deployed_output_contract():
     import re
-    from app.scenario_prompts_v6 import INSTRUCTIONS
+    from app.scenario_prompts import historical_release
+    INSTRUCTIONS = historical_release('scenario_prompts_v6').INSTRUCTIONS
     for phase,prompt in INSTRUCTIONS.items():
         for raw in re.findall(r'<output>\s*(.*?)\s*</output>',prompt,re.S):
             item=json.loads(raw)
