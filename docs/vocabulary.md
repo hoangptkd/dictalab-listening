@@ -10,6 +10,83 @@ xem lời giải, ôn theo lịch và dịch câu ngắn kết hợp các nghĩa
 quản trị viên biên tập; không lấy nội dung từ website bên ngoài khi người học
 bấm học. Chưa có nhập file `.apkg`, đồng bộ với Anki, tải media hoặc AI.
 
+### Học bộ có sẵn và phân loại mở rộng
+
+**Luồng người học:** Bộ có sẵn → mở bộ → **Học bộ này** → chọn chế độ.
+Không yêu cầu tự tạo bộ hay chọn bộ đích. Quản trị viên cũng có thể học bộ đã
+xuất bản qua cùng luồng, tách khỏi công việc biên tập. Bộ nháp không có nút học.
+
+Backend `POST /api/v1/vocabulary/catalog/decks/{id}/enroll` (có CSRF và
+`Idempotency-Key`) tự tạo bộ cá nhân từ nguồn công khai. Trả về deck có `id`
+cá nhân; frontend dùng ID này cho cả SRS, luyện thêm, trắc nghiệm và ngữ cảnh.
+Không đưa ID bộ hệ thống vào API học cá nhân. Chế độ trắc nghiệm và chọn nghĩa
+ngữ cảnh hiện chỉ luyện trên trình duyệt; chưa ghi kết quả vào lịch SRS.
+
+Hợp đồng dữ liệu:
+
+- `vocab_decks.source_deck_id` ghi nguồn đăng ký học. Unique
+  `(owner_user_id,source_deck_id)` và khóa user trong transaction bảo vệ nhiều
+  tab/instance. Bấm lại với key mới vẫn trả bộ đã có; không sao chép lại hoặc
+  đặt lại lịch. Cùng key dùng receipt. Bộ đã lưu trữ trả 409, không hồi sinh
+  dữ liệu ngầm. Người học vẫn có thể chép từ sang bộ khác qua thao tác riêng.
+- Tái sử dụng copy theo `source_note_id`: từ đã học ở bộ khác dùng cùng note
+  và card cá nhân, giữ nguyên lịch, lượt ôn, nội dung tự sửa và trạng thái ngưng.
+  Tạo bộ, chép từ và receipt commit cùng transaction. Vượt quota hoặc lỗi copy
+  rollback toàn bộ, không để lại bộ trống do thất bại.
+- Đây là bản học tại lúc đăng ký. Admin sửa/ẩn bộ gốc không ghi đè bản riêng;
+  bộ cá nhân vẫn học được. Đăng ký mới cần nguồn còn công khai. Việc tiếp tục
+  bản đã có qua Bộ của tôi không phụ thuộc trạng thái xuất bản của nguồn.
+- `level` là chuỗi tùy chọn, tối đa 80 ký tự; có thể là C2, thang điểm, mức
+  tự đặt hoặc rỗng. Không còn enum A1–B2 và không suy ra loại kỳ thi từ mức độ.
+- `tags` là danh sách nhãn tùy chọn, tối đa 20 nhãn/bộ, 80 ký tự/nhãn. Người
+  dùng và admin nhập bất kỳ nhãn nào, mỗi dòng một nhãn. Ví dụ một bộ có thể
+  đồng thời mang nhãn IELTS, Y khoa, Đọc hiểu; không cần đổi code cho nhãn mới.
+  Lưu trong `vocab_deck_tags`, chuẩn hóa NFC và so khớp không phân biệt hoa
+  thường. Từ chối nhãn rỗng/ký tự điều khiển; bỏ nhãn trùng. Không dùng nhãn
+  để quyết định quyền truy cập, thuật toán ôn hay gọi nhà cung cấp AI.
+- Client cũ không gửi `tags` thì giữ nhãn khi sửa; gửi `[]` để xóa nhãn. API
+  cũ gửi A1–B2 vẫn hoạt động. `level` không gửi hoặc null được hiểu là rỗng;
+  `revision` vẫn bắt buộc theo hợp đồng cập nhật hiện có.
+
+Danh sách bộ cá nhân, catalog và admin đều hỗ trợ `q` (tối đa 120 ký tự) và
+`tag` (tối đa 80 ký tự), phân trang 20 bộ. Tìm trên tên, mô tả, mức và nhãn;
+`%`/`_` trong từ khóa được hiểu là ký tự thường, SQL dùng tham số. Endpoint
+`/tags`, `/catalog/tags` và `/api/admin/vocabulary/tags` trả tối đa 200 gợi ý
+từ dữ liệu trong đúng phạm vi quyền; có thể nhập nhãn không nằm trong gợi ý.
+Nhãn của bộ riêng hoặc bộ nháp không lọt vào gợi ý catalog. Lấy nhãn cho cả
+trang bằng một truy vấn, tránh một truy vấn riêng trên mỗi bộ.
+
+**Hướng mở rộng cho người phát triển tiếp:** Giữ nội dung, metadata, tiến độ
+và provider AI độc lập. Thêm kiểu bộ, nhãn hoặc thang mức không cần nhánh
+`if TOEIC/IELTS` trong service học. Nếu sản phẩm cần lọc có cấu trúc theo nhiều
+chiều (kỳ thi, chương trình, chuyên ngành), thêm bảng taxonomy có ID ổn định,
+tên hiển thị, loại và bảng liên kết nhiều-nhiều; chuyển nhãn cũ qua migration
+bổ sung, không đổi ý nghĩa `level` hoặc lịch ôn. Nếu cần cập nhật nguồn, thêm
+preview diff theo revision và lựa chọn giữ bản tự sửa trước khi áp dụng; không
+đồng bộ đè tự động. Nếu tích hợp AI, provider nhận note/nghĩa, metadata và
+loại bài qua hợp đồng hiện có, kiểm tra đầu ra trước khi lưu; nhãn không phải
+chỉ thị thực thi. Không cần xây taxonomy engine hay AI ngay để thêm bộ mới.
+
+### Migration V48
+
+V48 mở rộng `level` của deck và câu ngữ cảnh từ 10 lên 80 ký tự, đổi default
+của deck sang rỗng, thêm nguồn đăng ký học, unique index và bảng nhãn có index.
+Giữ nguyên nội dung A1/A2 đang có, note/card/session/review và V46/V47.
+
+Đánh giá phát hành: **an toàn có điều kiện** cho PostgreSQL 17/18 sau kiểm tra
+trên dữ liệu và quyền thật. DDL `ALTER TABLE` và tạo index vẫn cần khóa; không
+cam kết không chặn ghi. Chưa triển khai production trong thay đổi này. Trước
+release cần xác nhận số dòng/kích thước bảng, giao dịch đang mở, backup và
+thời gian bảo trì; dùng cơ chế migration/maintenance hiện có, hủy nếu chờ khóa
+quá ngưỡng vận hành. Không sửa checksum hoặc drop cột để rollback. Bản cũ vẫn
+đọc được schema mở rộng, nhưng không nên phục vụ form metadata cũ sau khi có
+mức tùy chọn; giữ maintenance khi rollback để tránh ghi sai mức mới.
+
+Sau migration kiểm tra schema version 48, quyền CRUD của core runtime và quyền
+chỉ đọc của backup trên `vocab_deck_tags`, thử enroll/lọc/ôn với tài khoản thật.
+`scripts/linux/test_service_schema.py` diễn tập nâng từ V45 lên V48, chạy lại
+không đổi checksum cũ và kiểm tra quyền; không tạo job CI/CD mới.
+
 Ba chế độ có mục tiêu và ảnh hưởng khác nhau:
 
 | Chế độ | Câu hỏi | Ảnh hưởng lịch |
@@ -52,7 +129,8 @@ không đọc trực tiếp field trên proxy.
 
 ## 3. Mô hình dữ liệu và bất biến
 
-Flyway V46 tạo bảng mới; V47 thêm nội dung mẫu. V44/V45 thuộc Progress outbox
+Flyway V46 tạo bảng mới; V47 thêm nội dung mẫu; V48 thêm đăng ký học và nhãn.
+V44/V45 thuộc Progress outbox
 và model demo của production EC2. Không sửa bảng điểm nghe.
 
 ```mermaid
@@ -259,7 +337,7 @@ Rollout:
 3. Flag `DICTALAB_VOCABULARY_ENABLED` mặc định false ngoài profile `aurora`.
    Profile Aurora mặc định true cho bản phát hành này; giá trị trong env luôn
    có ưu tiên cao hơn. Muốn kiểm tra schema trước khi mở tính năng, đặt false
-   trong env được bảo vệ trước deploy và kiểm tra health/schema V47.
+   trong env được bảo vệ trước deploy và kiểm tra health/schema V48.
 4. Bật flag trong cấu hình runtime được bảo vệ nếu đã chọn rollout hai bước,
    restart theo release flow.
    Hai biến còn lại: `DICTALAB_VOCABULARY_NEW_CARDS_PER_DAY` (1–100),

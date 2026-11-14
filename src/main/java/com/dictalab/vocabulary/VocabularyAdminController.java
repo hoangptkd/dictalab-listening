@@ -15,7 +15,8 @@ public class VocabularyAdminController {
     private final ContextExerciseService contexts;
     public VocabularyAdminController(VocabularyContentService content,VocabularyStudyService study,ContextExerciseService contexts) { this.content=content; this.study=study; this.contexts=contexts; }
     @ModelAttribute public void enabled() { study.requireEnabled(); }
-    @GetMapping("/decks") public Page<Map<String,Object>> list(@AuthenticationPrincipal DictaLabPrincipal user,@RequestParam(defaultValue="1") int page) { return content.decks(user.id(),false,true,page); }
+    @GetMapping("/decks") public Page<Map<String,Object>> list(@AuthenticationPrincipal DictaLabPrincipal user,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="") String q,@RequestParam(defaultValue="") String tag) { return content.decks(user.id(),false,true,page,q,tag); }
+    @GetMapping("/tags") public List<String> tags(@AuthenticationPrincipal DictaLabPrincipal user) { return content.tags(user.id(),false,true); }
     @GetMapping("/decks/{id}") public Map<String,Object> detail(@AuthenticationPrincipal DictaLabPrincipal user,@PathVariable String id,@RequestParam(defaultValue="1") int page) { return content.detail(user.id(),id,false,true,page); }
     @PostMapping("/decks") public Map<String,Object> create(@AuthenticationPrincipal DictaLabPrincipal user,@RequestHeader("Idempotency-Key") String key,@Valid @RequestBody DeckEdit value) { return content.createDeck(user.id(),key,value,true); }
     @PatchMapping("/decks/{id}") public Map<String,Object> edit(@AuthenticationPrincipal DictaLabPrincipal user,@RequestHeader("Idempotency-Key") String key,@PathVariable String id,@Valid @RequestBody DeckEdit value) { return content.updateDeck(user.id(),key,id,value,true); }
