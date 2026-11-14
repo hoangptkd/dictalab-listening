@@ -86,6 +86,11 @@ jobs:
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
         run: mvn --batch-mode --no-transfer-progress -Dtest=ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,ConversationIntegrationTest,ConversationUxIntegrationTest,ModelDemoIntegrationTest,AiPlatformClientTest,GeminiAdminControllerTest,SpaRoutingTest,AiBackgroundJobsIntegrationTest,AiUsageBudgetIntegrationTest,CoachServiceIntegrationTest,CoachLocalServiceIntegrationTest,CoachLocalQueueIntegrationTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,GeminiQuotaRedisIntegrationTest,AiProviderRegistryTest,ListeningComprehensionIntegrationTest test
+      - name: Evaluation Studio contracts
+        run: |
+          mvn --batch-mode --no-transfer-progress -Dtest=AiEvaluationStudioTest,AiCallObservationTest,ConversationEvaluationTest,AiEvaluationSecurityTest test
+          node --check src/main/resources/static/js/ai-evaluation.js
+          node --test src/test/js/ai-evaluation.test.cjs
       - name: Java to Python to fake Ollama smoke
         run: python tools/ai-eval/smoke.py
       - name: Private registry migration, backup restore and database isolation
