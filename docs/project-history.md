@@ -16,7 +16,15 @@ Bản sao ngoài Git: `C:/Users/HP/.dictalab/cleanup-20261114/`:
 - SHA-256 archive tài liệu: `e4447298026478a02cb65ce257666a88dc78a6a1c5b2a538347886e1094579c4`.
 - `personalized-verified-before.dump`: backup PostgreSQL trước migration vocabulary mới.
 - Patch và file chưa track của Desktop được lưu riêng; có thể chứa dữ liệu riêng tư, không đưa vào Git.
-- Manifest dọn file và bản sao worktree được bổ sung trong cùng thư mục khi hoàn tất.
+- `retired-worktrees/` giữ nguyên 12 checkout cũ, cả dữ liệu bị Git ignore và chỉnh sửa chưa commit.
+- `retire-worktrees.json`, `retired-branches.json`, `desktop-reconciliation.json` ghi nơi lưu, commit và các quyết định hợp nhất.
+- `repository-consolidated.bundle` giữ refs sau hợp nhất; `repository-before.bundle` giữ refs trước đó.
+
+Đã xóa 19 nhánh cũ ở local và origin sau khi xác minh tất cả đều là tổ tiên của nhánh hợp nhất.
+Giữ `main` và `codex/fix-scenario-provider-503-20261106`; không merge vào `main` hoặc deploy trong đợt này.
+Desktop là nguồn local duy nhất. Checkout của chat hiện tại được giữ detached vì công cụ đang sử dụng,
+không khởi động dịch vụ từ đó. Credential QA tại đường dẫn được chỉ định trước đây vẫn giữ lại riêng;
+thư mục đó không còn là Git worktree hay bản chạy local.
 
 ## Quyết định prompt còn hiệu lực
 
