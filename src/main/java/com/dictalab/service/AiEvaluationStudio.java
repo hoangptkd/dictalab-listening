@@ -272,7 +272,8 @@ public class AiEvaluationStudio {
                     row.put("seconds", (System.nanoTime() - started) / 1e9);
                     checkpoint(run);
                 }
-                if (row.path("status").asText().equals("ERROR")) {
+                if (row.path("status").asText().equals("ERROR")
+                        && !row.path("definitiveContentRejection").asBoolean()) {
                     // Quota, transport and unknown outcomes stop further paid admission.
                     run.put("status", "STOPPED").put("notice", "Đã dừng sau lỗi. Xem bằng chứng trước khi tạo lần chạy mới.");
                     return;
@@ -352,7 +353,11 @@ public class AiEvaluationStudio {
         row.set("after", completed && first.equals(last) ? row.path("before").deepCopy()
                 : assessScenario(fixture, last, completed, run.path("judge").asBoolean(), actor));
         checkpoint(run);
-        if (!completed) throw new IllegalStateException("Scenario evaluation " + remote.path("status").asText() + ": " + remote.path("error").asText());
+        if (!completed) {
+            // Set only after judgments finish, so a judge transport failure still stops admission.
+            row.put("definitiveContentRejection", "QualityRejected".equals(remote.path("error").asText()));
+            throw new IllegalStateException("Scenario evaluation " + remote.path("status").asText() + ": " + remote.path("error").asText());
+        }
     }
 
     private ObjectNode scenarioHard(boolean valid, String reason) {

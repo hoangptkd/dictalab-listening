@@ -6,8 +6,10 @@ Open <http://localhost:18082/admin/ai-evaluation> as an existing ADMIN. API requ
 `local`, authentication, ADMIN and CSRF. QA14 remains a learner; never elevate it to access this screen.
 Provider accounts and fallback policies come from `/admin/gemini`.
 
-New versions and runs use the current personalized Python pipeline, **V4.13**.
-Java V8 and historical prompt releases are read-only evidence. No new replay or generation uses them.
+New versions and runs use the personalized Python pipeline: current **V4.13** and the
+frozen **V4.14 few-shot candidate**, available only for explicit local comparison.
+The V4.14 prompt is loaded from the checked historical artifact; there is still one editable prompt source.
+Java V8 and other historical prompt releases are read-only evidence. No new replay or generation uses them.
 Creating an experiment snapshot does not activate or approve a learner/production prompt.
 
 ## Durable evidence
@@ -49,6 +51,8 @@ No automatic activation follows a comparison result.
 UUID idempotency and an exclusive process lock prevent replay of admitted/UNKNOWN/interrupted work.
 Stop lets the submitted lesson finish, then prevents the next lesson. Provider/transport failures stop
 further paid cases. Do not reset counters, replay an unknown call or rotate accounts to disguise failure.
+Definitive `QualityRejected` content failures remain failed samples and allow the next distinct
+sample to run. They are not replayed or counted as passing; provider/transport/unknown failures still stop the run.
 
 ## Reading results
 

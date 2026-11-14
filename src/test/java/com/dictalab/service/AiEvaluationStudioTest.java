@@ -113,6 +113,38 @@ class AiEvaluationStudioTest {
         assertThat(stopped.path("cases").size()).isEqualTo(1);
         verify(platform,times(7)).scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")));
     }
+    @Test void definitiveContentRejectionRecordsFailureAndContinuesDistinctCases() throws Exception {
+        when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload"))))
+                .thenAnswer(call -> {
+                    var result = remote(call.getArgument(1));
+                    result.put("status", "ERROR").put("error", "QualityRejected");
+                    result.remove("result");
+                    ((ObjectNode) result.path("before")).put("hardPass", false);
+                    return result;
+                });
+        var run = finished(studio.start(request(version().path("id").asText(), "smoke", true),14).path("id").asText());
+        assertThat(run.path("status").asText()).isEqualTo("COMPLETED");
+        assertThat(run.path("cases").size()).isEqualTo(3);
+        assertThat(run.path("metrics").path("errors").asInt()).isEqualTo(3);
+        assertThat(run.path("metrics").path("afterPassed").asInt()).isZero();
+        verify(platform,times(3)).scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")));
+        verifyNoInteractions(ai);
+    }
+    @Test void contentRejectionCannotMaskUnknownJudgeFailure() throws Exception {
+        when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload"))))
+                .thenAnswer(call -> {
+                    var result = remote(call.getArgument(1));
+                    result.put("status", "ERROR").put("error", "QualityRejected");
+                    result.remove("result");
+                    return result;
+                });
+        when(ai.completeJson(anyString(),anyString(),eq("gemini-test"),any(Duration.class)))
+                .thenThrow(new GeminiClient.Failure("TIMEOUT", "unknown"));
+        var run = finished(studio.start(request(version().path("id").asText(), "smoke", true),14).path("id").asText());
+        assertThat(run.path("status").asText()).isEqualTo("STOPPED");
+        assertThat(run.path("cases").size()).isEqualTo(1);
+        assertThat(run.path("cases").path(0).path("definitiveContentRejection").asBoolean()).isFalse();
+    }
     @Test void malformedOrUnsubstantiatedJudgeVerdictCanNeverPass() {
         var input=json.createObjectNode().put("task","Source evidence"); var answer=verdict();
         assertThat(studio.checkedVerdict(answer,input).path("status").asText()).isEqualTo("PASS");
