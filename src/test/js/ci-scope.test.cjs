@@ -125,12 +125,13 @@ test('deployment revision validation rejects a different source revision, even w
     assert.notEqual(run(undefined).status, 0);
 });
 
-test('demo releases package in test-build while service checks remain manual', () => {
+test('demo releases package in test-build and branch service checks stay scoped', () => {
     const read = name => fs.readFileSync(path.join(root, '.github/workflows', name), 'utf8');
     const ai = read('ai-platform.yml'), progress = read('progress.yml'), deploy = read('deploy.yml');
     for (const workflow of [ai, progress]) {
         assert.match(workflow, /  workflow_call:/);
-        assert.doesNotMatch(workflow, /^  (push|pull_request):/m);
+        assert.match(workflow, /  push:\r?\n    branches: \['codex\/\*\*'\]/);
+        assert.doesNotMatch(workflow, /^  pull_request:/m);
     }
     assert.doesNotMatch(deploy, /uses: \.\/\.github\/workflows\/(ai-platform|progress)\.yml/);
     assert.doesNotMatch(deploy, /^  (postgres-tests|reliability|ai-platform|progress|schedule):/m);

@@ -135,11 +135,7 @@ class AiUsageBudgetIntegrationTest {
         org.springframework.test.util.ReflectionTestUtils.setField(premium,"usageLimitsEnabled",false);
         var budget=budget(1,1,1);
         org.springframework.test.util.ReflectionTestUtils.setField(budget,"usageLimitsEnabled",false);
-<<<<<<< HEAD
         budget.configurePremium(premium,new LocalQaAccount(new org.springframework.mock.env.MockEnvironment(),0));
-=======
-        budget.configurePremium(premium);
->>>>>>> origin/main
         for(int i=0;i<5;i++) { premium.takePractice(actor); budget.reserve(actor,false); budget.reserve(actor,true); }
         assertThat(premium.status(actor)).containsEntry("premium",false).containsEntry("administrator",false).containsEntry("usageLimitsEnabled",false);
         assertThat(premium.aiAllowed(actor)).isTrue();

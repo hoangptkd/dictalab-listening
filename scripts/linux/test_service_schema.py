@@ -78,13 +78,13 @@ class SchemaTest(unittest.TestCase):
                     return directory, [shutil.which('java'), '--class-path', str(directory / 'lib/*') + os.pathsep
                                        + str(directory / 'classes'), str(source)]
                 baseline, command = program('baseline45')
-                for migration in (baseline / 'classes/db/migration').glob('V*__*.sql'):
+                for migration in (baseline / 'classes/db/migration').glob('V*__*'):
                     if int(migration.name.split('__')[0][1:]) > 45:
                         migration.unlink()
                 self.assertIn('CORE_SCHEMA_READY', run(command, env=environment))
                 checksum_sql = "SELECT version,checksum FROM flyway_schema_history WHERE version::int <= 45 ORDER BY installed_rank;"
                 before = sql(checksum_sql, 'dictalab_core')
-                _, command = program('candidate52')
+                _, command = program('candidate53')
                 for _ in range(2):
                     self.assertIn('CORE_SCHEMA_READY', run(command, env=environment))
                 self.assertEqual(before, sql(checksum_sql, 'dictalab_core'))
@@ -99,7 +99,7 @@ class SchemaTest(unittest.TestCase):
                 "has_table_privilege('dictalab_core_runtime','flyway_schema_history','UPDATE'),"
                 "has_table_privilege('dictalab_core_runtime','ai_provider_accounts','SELECT'),"
                 "has_schema_privilege('dictalab_core_runtime','public','CREATE');", 'dictalab_core')
-            self.assertEqual(['52', 't|t|f', 't|t|f', 't|f|f|f'], checks.splitlines())
+            self.assertEqual(['53', 't|t|f', 't|t|f', 't|f|f|f'], checks.splitlines())
         finally:
             run(['docker', 'rm', '--force', name])
 

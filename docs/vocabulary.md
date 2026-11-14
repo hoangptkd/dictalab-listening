@@ -67,9 +67,9 @@ preview diff theo revision và lựa chọn giữ bản tự sửa trước khi 
 loại bài qua hợp đồng hiện có, kiểm tra đầu ra trước khi lưu; nhãn không phải
 chỉ thị thực thi. Không cần xây taxonomy engine hay AI ngay để thêm bộ mới.
 
-### Migration V48
+### Migration V53
 
-V48 mở rộng `level` của deck và câu ngữ cảnh từ 10 lên 80 ký tự, đổi default
+V53 mở rộng `level` của deck và câu ngữ cảnh từ 10 lên 80 ký tự, đổi default
 của deck sang rỗng, thêm nguồn đăng ký học, unique index và bảng nhãn có index.
 Giữ nguyên nội dung A1/A2 đang có, note/card/session/review và V46/V47.
 
@@ -82,9 +82,9 @@ quá ngưỡng vận hành. Không sửa checksum hoặc drop cột để rollba
 đọc được schema mở rộng, nhưng không nên phục vụ form metadata cũ sau khi có
 mức tùy chọn; giữ maintenance khi rollback để tránh ghi sai mức mới.
 
-Sau migration kiểm tra schema version 48, quyền CRUD của core runtime và quyền
+Sau migration kiểm tra schema version 53, quyền CRUD của core runtime và quyền
 chỉ đọc của backup trên `vocab_deck_tags`, thử enroll/lọc/ôn với tài khoản thật.
-`scripts/linux/test_service_schema.py` diễn tập nâng từ V45 lên V48, chạy lại
+`scripts/linux/test_service_schema.py` diễn tập nâng từ V45 lên V53, chạy lại
 không đổi checksum cũ và kiểm tra quyền; không tạo job CI/CD mới.
 
 Ba chế độ có mục tiêu và ảnh hưởng khác nhau:
@@ -129,7 +129,7 @@ không đọc trực tiếp field trên proxy.
 
 ## 3. Mô hình dữ liệu và bất biến
 
-Flyway V46 tạo bảng mới; V47 thêm nội dung mẫu; V48 thêm đăng ký học và nhãn.
+Flyway V46 tạo bảng mới; V47 thêm nội dung mẫu; V53 thêm đăng ký học và nhãn.
 V44/V45 thuộc Progress outbox
 và model demo của production EC2. Không sửa bảng điểm nghe.
 
@@ -337,7 +337,7 @@ Rollout:
 3. Flag `DICTALAB_VOCABULARY_ENABLED` mặc định false ngoài profile `aurora`.
    Profile Aurora mặc định true cho bản phát hành này; giá trị trong env luôn
    có ưu tiên cao hơn. Muốn kiểm tra schema trước khi mở tính năng, đặt false
-   trong env được bảo vệ trước deploy và kiểm tra health/schema V48.
+   trong env được bảo vệ trước deploy và kiểm tra health/schema V53.
 4. Bật flag trong cấu hình runtime được bảo vệ nếu đã chọn rollout hai bước,
    restart theo release flow.
    Hai biến còn lại: `DICTALAB_VOCABULARY_NEW_CARDS_PER_DAY` (1–100),

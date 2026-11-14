@@ -194,6 +194,7 @@
                                 <exclude>**/*IntegrationTest.java</exclude>
                                 <exclude>**/ProductionReliabilityTest.java</exclude>
                                 <exclude>**/SpaRoutingTest.java</exclude>
+                                <exclude>**/AiEvaluationSecurityTest.java</exclude>
                                 <exclude>**/EmailOutboxRecoveryTest.java</exclude>
                                 <exclude>**/ConcurrencyMatrixTest.java</exclude>
                                 <exclude>**/BackendBenchmarkTest.java</exclude>
@@ -216,6 +217,7 @@
                                 <include>**/*IntegrationTest.java</include>
                                 <include>**/ProductionReliabilityTest.java</include>
                                 <include>**/SpaRoutingTest.java</include>
+                                <include>**/AiEvaluationSecurityTest.java</include>
                                 <include>**/EmailOutboxRecoveryTest.java</include>
                                 <include>**/ConcurrencyMatrixTest.java</include>
                                 <include>**/BackendBenchmarkTest.java</include>
