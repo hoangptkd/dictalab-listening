@@ -133,6 +133,89 @@ class AiEvaluationStudioTest {
                 assertThat(json.readTree(Files.readString(path)).path("model").asText()).isEqualTo("gemini-fallback");
         }
     }
+    @Test void continuationReadsAdmittedCaseAndSubmitsOnlyMissingInputs() throws Exception {
+        var version = version().path("id").asText();
+        when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload"))))
+                .thenThrow(new GeminiClient.Failure("TIMEOUT", "POST result unknown"));
+        var parent = finished(studio.start(request(version, "smoke", false), 14).path("id").asText());
+        String parentId = parent.path("id").asText(), remoteId = parent.path("cases").path(0).path("remoteRequestId").asText();
+        byte[] original = Files.readAllBytes(directory.resolve("runs").resolve(parentId + ".json"));
+        clearInvocations(platform, budget);
+        when(platform.scenarioEvaluation(eq(remoteId), isNull())).thenReturn(remote(json.createObjectNode().put("requestId", remoteId)));
+        fakeGeneration();
+        var request = request(version, "smoke", false).put("continueFrom", parentId);
+        var child = finished(studio.start(request, 14).path("id").asText());
+        assertThat(child.path("status").asText()).isEqualTo("COMPLETED");
+        assertThat(child.path("continuedFrom").asText()).isEqualTo(parentId);
+        assertThat(child.path("inheritedCases").asInt()).isEqualTo(1);
+        assertThat(child.path("cases").size()).isEqualTo(3);
+        assertThat(child.path("cases").path(0).path("remoteRequestId").asText()).isEqualTo(remoteId);
+        assertThat(child.path("cases").path(0).path("error").isMissingNode()).isTrue();
+        assertThat(Files.readAllBytes(directory.resolve("runs").resolve(parentId + ".json"))).isEqualTo(original);
+        verify(platform).scenarioEvaluation(eq(remoteId), isNull());
+        verify(platform, times(2)).scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")));
+        verify(budget, times(20)).reserve(14L, false);
+        studio.start(request, 14);
+        assertThatThrownBy(() -> studio.start(request(version, "smoke", false).put("continueFrom", parentId), 14))
+                .hasMessageContaining("409");
+        verify(platform, times(2)).scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")));
+    }
+    @Test void continuationPreservesCompletedAndRejectedCasesWithoutReplay() throws Exception {
+        var count = new java.util.concurrent.atomic.AtomicInteger();
+        when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")))).thenAnswer(call -> {
+            int index = count.incrementAndGet();
+            if (index == 3) throw new GeminiClient.Failure("TIMEOUT", "unknown");
+            var result = remote(call.getArgument(1));
+            if (index == 2) { result.put("status", "ERROR").put("error", "QualityRejected"); result.remove("result"); }
+            return result;
+        });
+        var version = version().path("id").asText();
+        var parent = finished(studio.start(request(version, "smoke", false), 14).path("id").asText());
+        String parentId = parent.path("id").asText(), remoteId = parent.path("cases").path(2).path("remoteRequestId").asText();
+        clearInvocations(platform, budget);
+        when(platform.scenarioEvaluation(eq(remoteId), isNull())).thenReturn(remote(json.createObjectNode().put("requestId", remoteId)));
+        var child = finished(studio.start(request(version, "smoke", false).put("continueFrom", parentId), 14).path("id").asText());
+        assertThat(child.path("status").asText()).isEqualTo("COMPLETED");
+        assertThat(child.path("cases").path(0)).isEqualTo(parent.path("cases").path(0));
+        assertThat(child.path("cases").path(1)).isEqualTo(parent.path("cases").path(1));
+        assertThat(child.path("metrics").path("errors").asInt()).isEqualTo(1);
+        assertThat(child.path("metrics").path("logicalCalls").asInt()).isEqualTo(3);
+        verify(platform, never()).scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")));
+        verifyNoInteractions(budget);
+    }
+    @Test void continuationRejectsChangedSettingsAndStopsOnUnresolvedAdmission() throws Exception {
+        var version = version().path("id").asText();
+        when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload"))))
+                .thenThrow(new GeminiClient.Failure("TIMEOUT", "unknown"));
+        var parent = finished(studio.start(request(version, "smoke", false), 14).path("id").asText());
+        String parentId = parent.path("id").asText(), remoteId = parent.path("cases").path(0).path("remoteRequestId").asText();
+        assertThatThrownBy(() -> studio.start(request(version, "smoke", true).put("continueFrom", parentId), 14))
+                .hasMessageContaining("409");
+        clearInvocations(platform, budget);
+        var unknown = json.createObjectNode().put("requestId", remoteId).put("status", "UNKNOWN");
+        unknown.putArray("events");
+        when(platform.scenarioEvaluation(eq(remoteId), isNull())).thenReturn(unknown);
+        var child = finished(studio.start(request(version, "smoke", false).put("continueFrom", parentId), 14).path("id").asText());
+        assertThat(child.path("status").asText()).isEqualTo("STOPPED");
+        assertThat(child.path("cases").size()).isEqualTo(1);
+        assertThatThrownBy(() -> studio.start(request(version, "smoke", false).put("continueFrom", child.path("id").asText()), 14))
+                .hasMessageContaining("400");
+        verify(platform, never()).scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")));
+        verifyNoInteractions(budget);
+    }
+    @Test void transientStatusReadFailureRetriesGetWithoutResubmittingGeneration() throws Exception {
+        when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")))).thenAnswer(call -> {
+            JsonNode request = call.getArgument(1);
+            return json.createObjectNode().put("requestId", request.path("requestId").asText()).put("status", "RUNNING");
+        });
+        when(platform.scenarioEvaluation(anyString(), isNull())).thenThrow(new IllegalStateException("temporary read"))
+                .thenAnswer(call -> remote(json.createObjectNode().put("requestId", (String)call.getArgument(0))));
+        var run = finished(studio.start(request(version().path("id").asText(), "smoke", false), 14).path("id").asText());
+        assertThat(run.path("status").asText()).isEqualTo("COMPLETED");
+        assertThat(run.path("cases").path(0).path("snapshotReadFailures").asInt()).isEqualTo(1);
+        verify(platform, times(3)).scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")));
+        verify(platform, times(4)).scenarioEvaluation(anyString(), isNull());
+    }
     @Test void definitiveContentRejectionRecordsFailureAndContinuesDistinctCases() throws Exception {
         when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload"))))
                 .thenAnswer(call -> {

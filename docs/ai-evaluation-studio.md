@@ -66,6 +66,21 @@ further paid cases. Do not reset counters, replay an unknown call or rotate acco
 Definitive `QualityRejected` content failures remain failed samples and allow the next distinct
 sample to run. They are not replayed or counted as passing; provider/transport/unknown failures still stop the run.
 
+### Continue an interrupted Full evaluation
+
+An ADMIN may submit a new `/api/admin/ai-evaluation/runs` request with the usual fields and
+`continueFrom: <stopped-run-id>`. Use a fresh snapshot of the same release if Core was rebuilt.
+Prompt, Python backend, runtime/model policy, judge, fixtures, suite and repeat count must match.
+The new run links to its parent and inherits recorded cases; the parent remains unchanged.
+Only one continuation may consume a parent. Continue its latest stopped child if another interruption occurs.
+
+Completed cases and definitive content failures are retained without regeneration. An admitted case
+whose generation response was lost is recovered by status GET with its original request ID; it is
+never submitted again. Unknown outcomes stop admission, and failed judge calls are not automatically replayed.
+Transient status GET failures have three read attempts; generation POSTs remain single-attempt.
+The combined run keeps all planned samples in its denominator and stores inherited/new evidence together.
+`sourceBackendHash` records the parent's Core build; the new run records the current build.
+
 ## Reading results
 
 - Blue is the first output; green is the final output after Harness.

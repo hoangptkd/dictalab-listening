@@ -216,12 +216,14 @@ public class AiEvaluationStudio {
             run.set("pythonBackendHash", version.path("pythonBackendHash"));
         }
         FileChannel channel = null; FileLock lock = null;
-        var response = run.deepCopy();
+        ObjectNode response;
         try {
             channel = FileChannel.open(root.resolve("runner.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             lock = channel.tryLock();
             if (lock == null) throw failure(HttpStatus.CONFLICT, "Một tiến trình khác đang chạy đánh giá.");
+            if (request.has("continueFrom")) continueFrom(run, text(request, "continueFrom", 64));
             save("runs", id, run); active = id; cancel = false;
+            response = run.deepCopy();
             var ownedChannel = channel; var ownedLock = lock;
             worker.execute(() -> execute(run, version, actor, ownedChannel, ownedLock));
         } catch (Exception error) {
@@ -231,6 +233,35 @@ public class AiEvaluationStudio {
             throw failure(HttpStatus.SERVICE_UNAVAILABLE, "Không khởi động được bộ đánh giá.");
         }
         return response;
+    }
+
+    private void continueFrom(ObjectNode run, String parentId) {
+        var parent = read("runs", parentId);
+        if (!Set.of("STOPPED", "INTERRUPTED", "CANCELLED").contains(parent.path("status").asText())
+                || documents("runs").stream().anyMatch(r -> parentId.equals(r.path("continuedFrom").asText())))
+            throw failure(HttpStatus.CONFLICT, "Chỉ tiếp tục lượt đã dừng và chưa có lượt nối tiếp.");
+        for (String field : List.of("pipeline", "promptHash", "pythonBackendHash", "runtime", "rubric", "judgeHash",
+                "datasetHash", "suite", "mode", "judge", "repair", "repeats", "planned"))
+            if (!run.path(field).equals(parent.path(field)))
+                throw failure(HttpStatus.CONFLICT, "Cấu hình hoặc dữ liệu đã đổi; không thể nối kết quả cũ.");
+        var expected = new HashMap<String, JsonNode>();
+        for (var fixture : run.path("fixtures")) for (int repeat = 1; repeat <= run.path("repeats").asInt(); repeat++)
+            expected.put(fixture.path("id").asText() + ":" + repeat, fixture.path("context"));
+        var seen = new HashSet<String>();
+        for (var value : parent.path("cases")) {
+            String key = value.path("key").asText();
+            if (!seen.add(key) || !value.path("input").equals(expected.get(key))
+                    || "UNKNOWN".equals(value.path("pipelineStatus").asText())) throw invalid();
+            var row = (ObjectNode)value.deepCopy();
+            if (!row.path("status").asText().equals("DONE") && !row.has("pipelineStatus") && row.path("calls").isEmpty()) {
+                // An admitted generation is recovered by GET only, even if its POST response was lost.
+                UUID.fromString(row.path("remoteRequestId").asText());
+                row.put("needsReadRecovery", true).put("recoveredFromRun", parentId);
+            }
+            ((ArrayNode)run.path("cases")).add(row);
+        }
+        run.put("continuedFrom", parentId).put("sourceBackendHash", parent.path("backendHash").asText())
+                .put("inheritedCases", seen.size()).put("logicalCalls", parent.path("logicalCalls").asInt());
     }
 
     public synchronized ObjectNode detail(String id) { initialize(); return read("runs", id); }
@@ -245,11 +276,15 @@ public class AiEvaluationStudio {
         try {
             for (var fixture : run.path("fixtures")) for (int repeat = 1; repeat <= run.path("repeats").asInt(); repeat++) {
                 if (cancel) throw new Halted();
-                var row = ((ArrayNode)run.path("cases")).addObject().put("key", fixture.path("id").asText() + ":" + repeat)
+                String key = fixture.path("id").asText() + ":" + repeat;
+                var previous = run.path("cases").valueStream().filter(r -> key.equals(r.path("key").asText())).findFirst();
+                if (previous.isPresent() && !previous.get().path("needsReadRecovery").asBoolean()) continue;
+                var row = previous.isPresent() ? (ObjectNode)previous.get() : ((ArrayNode)run.path("cases")).addObject();
+                row.put("key", key)
                         .put("level", fixture.path("level").asText()).put("scenario", fixture.path("scenario").asText())
                         .put("turn", fixture.path("turn").asInt()).put("repeat", repeat).put("status", "RUNNING");
                 row.set("input", fixture.path("context")); row.put("currentStep", "generation");
-                row.putArray("steps"); row.putArray("calls"); row.putArray("attempts");
+                if (previous.isEmpty()) { row.putArray("steps"); row.putArray("calls"); row.putArray("attempts"); }
                 checkpoint(run);
                 long started = System.nanoTime();
                 try (var observation = new AiCallObservation(() -> {
@@ -262,9 +297,12 @@ public class AiEvaluationStudio {
                 })) {
                     scenarioCase(run, row, fixture, version, actor);
                     row.put("status", "DONE");
+                    row.remove("error");
                 } catch (Halted stop) { row.put("status", "CANCELLED"); throw stop;
                 } catch (Exception error) {
                     row.put("status", "ERROR").put("error", error instanceof RuntimeException runtime ? GeminiClient.reason(runtime) : "STORAGE");
+                    row.put("failureType", error.getClass().getSimpleName());
+                    if (error.getCause() != null) row.put("causeType", error.getCause().getClass().getSimpleName());
                     // Capture available first evidence even if generation/review failed; no implicit retry.
                     if (!row.has("before")) row.set("before", scenarioHard(false, "Chưa có bài hoàn chỉnh để đánh giá."));
                     if (!row.has("after")) row.set("after", row.path("before").deepCopy());
@@ -294,20 +332,22 @@ public class AiEvaluationStudio {
 
     private void scenarioCase(ObjectNode run, ObjectNode row, JsonNode fixture, JsonNode version, long actor) throws InterruptedException {
         var payload = (ObjectNode)fixture.path("context").deepCopy(); payload.put("promptHash", version.path("promptHash").asText());
-        String requestId = UUID.randomUUID().toString(); row.put("remoteRequestId", requestId);
+        boolean recovery = row.path("needsReadRecovery").asBoolean();
+        String requestId = recovery ? row.path("remoteRequestId").asText() : UUID.randomUUID().toString();
+        row.put("remoteRequestId", requestId);
         var request = json.createObjectNode().put("requestId", requestId).put("backendHash", version.path("pythonBackendHash").asText())
                 .put("runtimeHash", hash(version.path("pythonRuntime"))); request.set("payload", payload);
         // Reserve the extraction plus the existing nine-call bounded generation envelope before dispatch.
-        for (int call = 0; call < 10; call++) budget.reserve(actor, false);
+        if (!recovery) for (int call = 0; call < 10; call++) budget.reserve(actor, false);
         row.put("currentStep", "EXTRACT"); checkpoint(run);
-        JsonNode remote = platform.scenarioEvaluation(null, request);
+        JsonNode remote = recovery ? evaluationStatus(row, requestId) : platform.scenarioEvaluation(null, request);
         if (!requestId.equals(remote.path("requestId").asText())) throw new IllegalStateException("Evaluation response ID mismatch");
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(515);
         while ("RUNNING".equals(remote.path("status").asText())) {
             if (System.nanoTime() > deadline) throw new IllegalStateException("Evaluation outcome unknown; no replay");
             // A submitted paid case is allowed to finish; stop prevents the next case.
             Thread.sleep(1000);
-            remote = platform.scenarioEvaluation(requestId, null);
+            remote = evaluationStatus(row, requestId);
             if (!requestId.equals(remote.path("requestId").asText())) throw new IllegalStateException("Evaluation response ID mismatch");
             var events = remote.path("events").deepCopy();
             for (var event : events) if (event.isObject()) {
@@ -323,6 +363,7 @@ public class AiEvaluationStudio {
             ((ObjectNode)event).remove(List.of("instruction", "schema")); ((ObjectNode)event).put("step", event.path("stage").asText());
         }
         row.set("steps", events); row.put("pipelineStatus", remote.path("status").asText()).put("pipelineError", remote.path("error").asText());
+        row.remove("needsReadRecovery");
         row.set("pipelineResult", remote.path("result")); row.set("extraction", remote.path("extraction"));
         var calls = (ArrayNode)row.path("calls");
         for (var event : remote.path("events")) if (!"RUNNING".equals(event.path("status").asText())) {
@@ -359,6 +400,18 @@ public class AiEvaluationStudio {
             // Set only after judgments finish, so a judge transport failure still stops admission.
             row.put("definitiveContentRejection", "QualityRejected".equals(remote.path("error").asText()));
             throw new IllegalStateException("Scenario evaluation " + remote.path("status").asText() + ": " + remote.path("error").asText());
+        }
+    }
+
+    private JsonNode evaluationStatus(ObjectNode row, String requestId) throws InterruptedException {
+        for (int attempt = 1; ; attempt++) {
+            try { return platform.scenarioEvaluation(requestId, null); }
+            catch (RuntimeException error) {
+                row.put("snapshotReadFailures", row.path("snapshotReadFailures").asInt() + 1)
+                        .put("lastReadFailureType", error.getClass().getSimpleName());
+                if (attempt == 3 || Thread.currentThread().isInterrupted()) throw error;
+                Thread.sleep(1000); // Retrying a status GET cannot repeat paid generation.
+            }
         }
     }
 
