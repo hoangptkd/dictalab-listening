@@ -31,6 +31,18 @@ Preflight production của phiên này: SSH `54.254.221.170:22` timeout; chưa �
 năng lực máy chủ hoặc runtime approvals. Không bật `PRODUCTION_DEPLOY_ENABLED` hoặc tự deploy ngoài main flow.
 Source chuẩn bị phát hành không phải bằng chứng website đã dùng V4.15.
 
+Local đã khởi động lại từ code `e97eb9fea353b04537110e3bee2e2c7b05d1b0bc` và xác minh:
+Core health UP, AI ready, pin trong JAR/receipt đúng V4.15, catalog QA14 trả `APPROVED`
+và chỉ ba chương trình mới được mở để tạo bài. Phiên API QA tự tạo đã logout. Không gọi AI mất phí.
+Cấu hình/JAR/receipt trước đổi được backup riêng trong `C:/Users/HP/.dictalab/local/`;
+bằng chứng không chứa credential nằm ở `v415-activation.json`. Chính sách không hạn mức giữ nguyên.
+
+CI activation đầu thất bại ở integration. Chạy cùng nhóm tại local: 279 tests, hai assertion cũ
+về trạng thái DRAFT và 10 định nghĩa không còn đúng; 4 Redis tests bỏ qua vì không bật fixture Redis.
+Đã cập nhật kỳ vọng catalog 13 định nghĩa/phiên bản giao tiếp 5, giữ kiểm tra không tạo bài khi
+thiếu runtime approval và phát hiện dữ liệu definition bị sửa. File ScenarioIntegrationTest chạy lại 9/9 đạt.
+Không dùng việc sửa test để thay đổi các lỗi ngữ nghĩa đã lưu trong benchmark.
+
 - Ngày 15/11/2026. Đây là đợt phòng lỗi đầu nguồn, chưa phải kết luận đã tăng chất lượng.
 - Source: `C:/Users/HP/Desktop/English_dictition`.
 - Branch: `codex/scenario-prevention-v415-20261115`.
