@@ -25,6 +25,7 @@ final class ScenarioAssessment {
     static final String PARTS_V4_14_PROMPT_HASH="66f97b88e087e528f71b6e1f7bcec1224361b2edea94623ce93e4b5c1cf1189b";
     static final String PARTS_V4_15_PROMPT_HASH="f03dd35a2443d8a2ad69e9d3995de3638116b3749261f666b6f8c19f5b73ff89";
     static final String PARTS_V4_16_PROMPT_HASH="ce9b6398767cd1cdc927e0f0e442984373a05d058470e616a7d9a3a758669ab8";
+    static final String PARTS_V4_17_PROMPT_HASH="6f81dd0f465c452696b0caf8df466c8603780a9db15ee3fafa47e7bdda4bd41e";
     static final String PREVENTION_HARNESS_POLICY_HASH="5525e16ed488b6a1fc1277c024ba33781a5a4b90fbe2095a2f44a60169256d83";
     static final String AUDIT_HARNESS_POLICY_HASH="6feb75d68b466277e3bc3a9b1c636716569a0b21b55b3aa44a143b18f06d817d";
     static final String LEGACY_PROMPT_HASH="ff50fd266eb277d973b8daed92dbf5b7ccb1beb17c28ad6c353fcaaf86c58630";
@@ -49,11 +50,12 @@ final class ScenarioAssessment {
                 || PARTS_V4_13_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V4_13".equals(version)
                 || PARTS_V4_14_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V4_14".equals(version)
                 || PARTS_V4_15_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V4_15".equals(version)
-                || PARTS_V4_16_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V4_16".equals(version);
+                || PARTS_V4_16_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V4_16".equals(version)
+                || PARTS_V4_17_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V4_17".equals(version);
     }
     static boolean independentAudit(String hash) { return Set.of(PARTS_V4_7_PROMPT_HASH,PARTS_V4_11_PROMPT_HASH,PARTS_V4_12_PROMPT_HASH).contains(hash); }
-    static String policyFor(String hash) { return Set.of(PARTS_PROMPT_HASH,PARTS_V4_1_PROMPT_HASH,PARTS_V4_3_PROMPT_HASH,PARTS_V4_4_PROMPT_HASH,PARTS_V4_5_PROMPT_HASH,PARTS_V4_6_PROMPT_HASH,PARTS_V4_7_PROMPT_HASH,PARTS_V4_11_PROMPT_HASH,PARTS_V4_12_PROMPT_HASH,PARTS_V4_13_PROMPT_HASH,PARTS_V4_14_PROMPT_HASH,PARTS_V4_15_PROMPT_HASH,PARTS_V4_16_PROMPT_HASH).contains(hash) ? PARTS_POLICY : POLICY; }
-    static boolean flexibleBank(String hash) { return Set.of(PARTS_V4_15_PROMPT_HASH,PARTS_V4_16_PROMPT_HASH).contains(hash); }
+    static String policyFor(String hash) { return Set.of(PARTS_PROMPT_HASH,PARTS_V4_1_PROMPT_HASH,PARTS_V4_3_PROMPT_HASH,PARTS_V4_4_PROMPT_HASH,PARTS_V4_5_PROMPT_HASH,PARTS_V4_6_PROMPT_HASH,PARTS_V4_7_PROMPT_HASH,PARTS_V4_11_PROMPT_HASH,PARTS_V4_12_PROMPT_HASH,PARTS_V4_13_PROMPT_HASH,PARTS_V4_14_PROMPT_HASH,PARTS_V4_15_PROMPT_HASH,PARTS_V4_16_PROMPT_HASH,PARTS_V4_17_PROMPT_HASH).contains(hash) ? PARTS_POLICY : POLICY; }
+    static boolean flexibleBank(String hash) { return Set.of(PARTS_V4_15_PROMPT_HASH,PARTS_V4_16_PROMPT_HASH,PARTS_V4_17_PROMPT_HASH).contains(hash); }
     static boolean enabled(JsonNode activity) { return activity.has("assessment"); }
     static ObjectNode initial() {
         var state=object().put("recapSkipped",false).put("checksRound",0); state.putArray("pendingQuestionIds"); return state;

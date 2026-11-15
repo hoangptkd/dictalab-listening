@@ -4,7 +4,7 @@ from . import scenario_harness as h
 from . import scenario_workflow as w
 from .observability import observation, _safe, content as trace_content
 
-IMPLEMENTATION_VERSION = "assessment-part-scope-review.v2"
+IMPLEMENTATION_VERSION = "assessment-part-scope-review.v3"
 
 
 def items(artifact, stage):
@@ -189,7 +189,7 @@ def reconcile(previous, current, changed, stage):
 
 async def generate(dialogue, payload, call, deadline):
     selected = a.selected_release(payload.promptHash)
-    flexible = selected in (a.prevention_candidate, a.alignment_candidate)
+    flexible = selected in (a.prevention_candidate, a.alignment_candidate, a.scope_candidate)
     parts = selected.POLICY_VERSION == a.parts_release.POLICY_VERSION
     independent = bool(getattr(selected, "AUDIT_PROTOCOL", None))
     evidenced = bool(getattr(selected, "EVIDENCE_AUDIT", False))
@@ -261,7 +261,7 @@ async def generate(dialogue, payload, call, deadline):
             status, issues = review_status(verdict, artifact, stage)
             return verdict, status, issues
         purpose = "REVIEW_QUESTIONS" if stage == "QUESTIONS" else "REVIEW"
-        model = (a.AlignedQuestionReview if selected is a.alignment_candidate else
+        model = (a.AlignedQuestionReview if selected in (a.alignment_candidate, a.scope_candidate) else
                  a.FlexibleQuestionReview if flexible else a.QuestionReview) if stage == "QUESTIONS" else w.PersonalizedReview
         data = review_data(stage, artifact)
         if repair_context is not None:
@@ -312,6 +312,10 @@ async def generate(dialogue, payload, call, deadline):
                 data = {"dialogue": dialogue.model_dump(),
                     "specification": payload.specification.model_dump(), "failedOutput": original.model_dump(),
                     "issues": repair_feedback(issues) if flexible else issues, "allowedTargets": targets, **context}
+                if selected is a.scope_candidate and stage == "QUESTIONS" and previous is not None:
+                    # Pass the independent answer/scope diagnosis, not just a lossy summary flag.
+                    data["questionReviews"] = [row.model_dump() for row in previous.questionChecks
+                        if ("question", row.activityId, row.questionId) in allowed]
                 patch_model = (a.PartsQuestionPatch if parts else a.QuestionPatch) if stage == "QUESTIONS" else w.TranslationPatch
                 before = items(original, stage)
                 while True:

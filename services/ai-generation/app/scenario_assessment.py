@@ -33,6 +33,7 @@ scoped_release = historical_release('scenario_prompts_meaning_v4_13')
 scoped_fewshot_candidate = historical_release('scenario_prompts_meaning_v4_14')
 prevention_candidate = historical_release('scenario_prompts_meaning_v4_15')
 alignment_candidate = historical_release('scenario_prompts_meaning_v4_16')
+scope_candidate = historical_release('scenario_prompts_meaning_v4_17')
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .observability import trace_gate
@@ -301,14 +302,14 @@ class ScenarioAssessmentInput(StrictModel):
                 raise ValueError("invalid grade input")
             if (selected.POLICY_VERSION == parts_release.POLICY_VERSION) != isinstance(self.activity, PartsActivity):
                 raise ValueError("assessment policy does not match pinned release")
-            if selected not in (prevention_candidate, alignment_candidate) and (len(self.activity.questions) < 3 or len(self.activity.assessment.meanings) < 3):
+            if selected not in (prevention_candidate, alignment_candidate, scope_candidate) and (len(self.activity.questions) < 3 or len(self.activity.assessment.meanings) < 3):
                 raise ValueError("historical assessment requires at least three items")
             validate_submission(self.activity, self.assessmentSubmission)
         self.inputVi = redact_string(self.inputVi)
         return self
 
 
-def response_schema(model, *, legacy=False, minimum_targets=False):
+def response_schema(model, *, legacy=False, minimum_targets=False, answer_first=False):
     if model in (QuestionReview, FlexibleQuestionReview, AlignedQuestionReview):
         schema = model.model_json_schema()
         # Same Gemini audit-array limitation as historical reviews; counts remain locally enforced.
@@ -338,22 +339,40 @@ def response_schema(model, *, legacy=False, minimum_targets=False):
         for name, field in ((("FlexibleAssessment", "meanings"), ("FlexibleActivityDraft", "questions")) if flexible
                             else (("PartsAssessment", "meanings"), ("PartsActivityDraft", "questions"))):
             schema["$defs"][name]["properties"][field]["minItems"] = 2 if flexible else 3
+    if answer_first:
+        # Match the requested generation sequence without changing persisted contracts or bounds.
+        orders = {
+            "FlexibleActivityDraft": ("id", "questions", "assessment"),
+            "QuestionDraft": ("id", "promptVi", "answerVi", "factEn", "evidence", "skill", "speechAct", "supportKind", "inferenceReasonEn", "meaningIds"),
+            "AlignedQuestionReview": ("questionChecks", "meaningChecks", "valid", "issues"),
+            "AlignedQuestionCheck": ("activityId", "questionId", "requestedMeaningEn", "answerUnitsVi", "partChecks", "reasonVi"),
+            "PartScopeCheck": ("meaningId", "partId", "reasonVi", "requiredByQuestion"),
+            "PartsQuestionPatch": ("questionReplacements", "meaningReplacements"),
+        }
+        for node in (schema, *schema.get("$defs", {}).values()):
+            order = orders.get(node.get("title"))
+            if order:
+                props = node["properties"]
+                node["properties"] = {key: props[key] for key in (*order, *props) if key in props}
+                node["required"] = [key for key in node["properties"] if key in node.get("required", [])]
     return schema
 
 
 @cache
 def prompt_hash(selected=release):
     parts = selected.POLICY_VERSION == parts_release.POLICY_VERSION
-    flexible = selected in (prevention_candidate, alignment_candidate)
+    flexible = selected in (prevention_candidate, alignment_candidate, scope_candidate)
     questions_model = FlexibleQuestions if flexible else PartsQuestions if parts else Questions
     content_model = FlexibleContent if flexible else PartsContent if parts else Content
-    review_model = AlignedQuestionReview if selected is alignment_candidate else FlexibleQuestionReview if flexible else QuestionReview
-    grade_model = AlignedPartsGrade if selected is alignment_candidate else PartsGrade if parts else Grade
+    review_model = AlignedQuestionReview if selected in (alignment_candidate, scope_candidate) else FlexibleQuestionReview if flexible else QuestionReview
+    grade_model = AlignedPartsGrade if selected in (alignment_candidate, scope_candidate) else PartsGrade if parts else Grade
     models = (AssessmentContext, w.PersonalizedSpecification, w.PersonalizedExtraction, w.Dialogue,
               questions_model, content_model, w.Translations,
               review_model, w.PersonalizedReview, Submission, grade_model)
     legacy = selected is legacy_release
     wire = {"legacy": legacy, "minimum_targets": getattr(selected, "MINIMUM_TARGETS", False)}
+    if selected is scope_candidate:
+        wire["answer_first"] = True
     manifest = {"version": selected.PROMPT_VERSION, "assessmentPolicyVersion": selected.POLICY_VERSION,
                 "instructions": selected.INSTRUCTIONS, "outputTokens": selected.OUTPUT_TOKENS,
                 "schemas": {m.__name__: m.model_json_schema() for m in models},
@@ -365,6 +384,9 @@ def prompt_hash(selected=release):
         manifest["responseSchemas"] = {m.__name__: response_schema(m, **wire) for m in
             (w.PersonalizedExtraction, w.Dialogue, questions_model, review_model,
              w.Translations, w.PersonalizedReview, grade_model)}
+    if selected is scope_candidate:
+        # Canonical hash sorting otherwise hides property order from the release fingerprint.
+        manifest["responseOrder"] = "question-answer-before-targets.v1"
     if getattr(selected, "COLLECT_ITEM_ERRORS", False):
         manifest["structuralFindings"] = "all-localized-items.v1"
     if getattr(selected, "INPUT_PROJECTION", None):
@@ -389,7 +411,7 @@ def prompt_hash(selected=release):
 
 
 def selected_release(requested_hash):
-    for selected in (alignment_candidate, prevention_candidate, scoped_fewshot_candidate, scoped_release, direct_audit_candidate, evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
+    for selected in (scope_candidate, alignment_candidate, prevention_candidate, scoped_fewshot_candidate, scoped_release, direct_audit_candidate, evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
         if requested_hash == prompt_hash(selected):
             return selected
     raise ValueError("scenario prompt mismatch")
@@ -418,7 +440,7 @@ def project_input(selected, purpose, data):
                 meanings.append(target)
         questions = [{key: question[key] for key in ("id", "meaningIds", "promptVi")}
                      for question in data["activity"]["questions"] if question["id"] in question_ids]
-        if selected is alignment_candidate:
+        if selected in (alignment_candidate, scope_candidate):
             # Source is needed to detect an invalid key, never to fabricate learner evidence.
             return {"activity": {"id": data["activity"]["id"], "segments": data["activity"]["segments"],
                                   "assessment": {"meanings": meanings}, "questions": questions},
@@ -441,7 +463,7 @@ def project_input(selected, purpose, data):
                 **{key: data[key] for key in ("repairContext", "formatFeedback") if key in data},
                 **({key: data[key] for key in ("meaningAudit", "questionAudit") if key in data}
                    if getattr(selected, "AUDIT_PROTOCOL", None) else {})}
-    if purpose == "REVIEW_QUESTIONS" and selected in (scoped_release, scoped_fewshot_candidate, prevention_candidate, alignment_candidate):
+    if purpose == "REVIEW_QUESTIONS" and selected in (scoped_release, scoped_fewshot_candidate, prevention_candidate, alignment_candidate, scope_candidate):
         drafts = {activity["id"]: activity for activity in data["groundedQuestions"]["activities"]}
         # Keep draft speechAct/factEn for review; public content strips these fields.
         return {"content": {"activities": [{**activity, "questions": drafts[activity["id"]]["questions"]}
@@ -712,7 +734,8 @@ async def execute(event, settings, *, observer=None):
             if observer is not None:
                 gateway.observed_attempts = []
             schema = response_schema(model, legacy=selected is legacy_release,
-                                     minimum_targets=getattr(selected, "MINIMUM_TARGETS", False))
+                                     minimum_targets=getattr(selected, "MINIMUM_TARGETS", False),
+                                     answer_first=selected is scope_candidate)
             if purpose == "GENERATE":
                 schema["$defs"]["Segment"]["properties"]["speakerId"]["enum"] = [c.id for c in payload.specification.characters]
             captured = {"stage": purpose, "input": data, "schema": schema, "instruction": selected.INSTRUCTIONS[purpose]}
@@ -765,7 +788,7 @@ async def execute(event, settings, *, observer=None):
         elif payload.phase == "GRADE":
             grade = await call("GRADE", {"activity": payload.activity.model_dump(),
                 "assessmentSubmission": payload.assessmentSubmission.model_dump(), **context},
-                AlignedPartsGrade if selected is alignment_candidate else PartsGrade if isinstance(payload.activity, PartsActivity) else Grade)
+                AlignedPartsGrade if selected in (alignment_candidate, scope_candidate) else PartsGrade if isinstance(payload.activity, PartsActivity) else Grade)
             try:
                 if isinstance(payload.activity, PartsActivity):
                     grade = derive_grade(grade, payload)

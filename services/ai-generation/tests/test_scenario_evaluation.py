@@ -10,6 +10,7 @@ import pytest
 from app import main, scenario_evaluation as e, scenario_assessment as a
 from app.config import Settings
 from test_scenario_assessment_parts import parts_payload, parts_fixtures
+from test_scenario_assessment_alignment import aligned_rows
 from test_scenario_workflow import extraction_response
 
 
@@ -40,7 +41,7 @@ async def test_auth_disabled_production_bounds_and_catalog(config, monkeypatch):
     assert result.status_code == 200
     text = result.text
     assert config.service_token not in text
-    assert [r["id"] for r in result.json()["releases"]] == ["v4.13", "v4.14", "v4.15", "v4.16"]
+    assert [r["id"] for r in result.json()["releases"]] == ["v4.13", "v4.14", "v4.15", "v4.16", "v4.17"]
     assert (await call("POST", "/v1/evaluation/scenario", headers=headers, content="x" * 64001)).status_code == 413
     config.production_mode = True
     assert (await call("GET", "/v1/evaluation/scenario", headers=headers)).status_code == 503
@@ -55,13 +56,13 @@ async def test_changed_sources_require_restart_before_new_admission(config, monk
     assert result.status_code == 503 and "restart" in result.text
 
 
-@pytest.mark.parametrize("release", [a.scoped_release, a.scoped_fewshot_candidate, a.prevention_candidate])
+@pytest.mark.parametrize("release", [a.scoped_release, a.scoped_fewshot_candidate, a.prevention_candidate, a.scope_candidate])
 async def test_real_pipeline_observer_persists_six_stages_and_idempotency(config, monkeypatch, release):
     data = request(config)
     data["payload"]["promptHash"] = a.prompt_hash(release)
     raw_extract = extraction_response()
     raw_extract.update(learnerMode="listener", learnerCharacterId=None, genre="information-exchange")
-    responses = [raw_extract, *parts_fixtures()]
+    responses = [raw_extract, *(aligned_rows() if release is a.scope_candidate else parts_fixtures())]
     calls = []
     class Gateway:
         def __init__(self, settings, client):
