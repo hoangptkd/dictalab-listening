@@ -504,6 +504,64 @@ def _evidence(item, segments, activity, kind):
             raise _invalid("unanchored evidence", activity, item.id, kind)
 
 
+_QUESTION_SCOPE_MARKERS = {
+    "person": re.compile(r"\b(?:ai|những ai|người nào|bộ phận nào|phòng ban nào|đội nào|nhóm nào|who|whom|which people|which team|which department)\b", re.I),
+    "place": re.compile(r"\b(?:ở đâu|nơi nào|địa điểm nào|phòng nào|where|which place|which room|which location)\b", re.I),
+    "time": re.compile(r"\b(?:khi nào|lúc mấy giờ|mấy giờ|ngày nào|bao giờ|when|what time|which day|what date)\b", re.I),
+    "reason": re.compile(r"\b(?:vì sao|tại sao|nhằm mục đích gì|mục đích gì|lý do gì|why|what reason|what purpose|for what purpose)\b", re.I),
+    "amount": re.compile(r"\b(?:bao nhiêu|giá bao nhiêu|mức nào|how much|how many|what amount|what price|cost)\b", re.I),
+    "certainty": re.compile(r"\b(?:có chắc|đã xác nhận|có thể|liệu|chắc chắn|certain|confirmed|possible|likely|uncertain)\b", re.I),
+    "action": re.compile(r"\b(?:làm gì|đề xuất gì|chọn gì|yêu cầu gì|what did|what will|what does|what is .* going to|what .* request|what .* recommend)\b", re.I),
+}
+
+_PART_SCOPE_MARKERS = {
+    # Match a requested dimension only when the wording makes it an answer
+    # unit.  Bare nouns such as ``staff`` or ``time`` are often context for
+    # another answer and must not become a false scope violation.
+    "person": re.compile(r"\b(?:with|from|by|among|với|bởi)\s+(?:the\s+)?(?:[a-z][\w-]*\s+){0,3}(?:people|team|department|group|leads?|manager|staff|customer|client|recipient|colleagues?|bạn bè|đồng nghiệp)\b", re.I),
+    "place": re.compile(r"\b(?:at|in|on|from|to|near|ở|tại|đến)\s+(?:the\s+)?(?:[a-z][\w-]*\s+){0,3}(?:place|room|venue|location|site|cafe|café|office|station|airport|restaurant|shelf|window|địa điểm|phòng)\b", re.I),
+    "time": re.compile(r"\b(?:at|on|by|before|after|during|around|next|this|last|vào|trước|sau|trong)\s+(?:[a-z][\w-]*\s+){0,2}(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month|morning|afternoon|evening|noon|o'clock|am|pm|today|tomorrow|yesterday|giờ|ngày|tuần|tháng|sáng|chiều|tối)\b", re.I),
+    "reason": re.compile(r"\b(?:why|reason|purpose|because|so that|to ensure|in order to|goal|aim|lý do|mục đích|vì|để)\b", re.I),
+    "amount": re.compile(r"\b(?:price|cost|amount|number|quantity|pounds?|dollars?|euros?|percent|how much|how many|giá|số lượng|bao nhiêu)\b", re.I),
+    "certainty": re.compile(r"\b(?:certain|confirmed|possible|likely|unlikely|uncertain|may|might|could|must|definitely|nghi ngờ|có thể|chắc chắn|xác nhận)\b", re.I),
+    "action": re.compile(r"\b(?:will|plans? to|proposes? to|suggests?\s+\w+ing|offers? to|agrees? to|decides? to|establish|set up|recommend|request|ask for|change|send|buy|meet|sync with|work with|thực hiện|làm việc với|đề xuất|thiết lập|kiểm tra)\b", re.I),
+}
+
+
+def question_scope_findings(questions, dialogue):
+    """Return generic source-output scope defects before reviewer or repair runs.
+
+    This is deliberately conservative: it checks only explicit scope dimensions. It
+    never compares names, topics or individual scenarios and does not infer a gold
+    answer from a keyword list.
+    """
+    findings = []
+    by_source = {activity.id for activity in dialogue.activities}
+    for activity in questions.activities:
+        if activity.id not in by_source:
+            continue
+        meaning_by_id = {meaning.id: meaning for meaning in activity.assessment.meanings}
+        for question in activity.questions:
+            asked = {name for name, marker in _QUESTION_SCOPE_MARKERS.items() if marker.search(question.promptVi)}
+            if not asked:
+                continue
+            for meaning_id in question.meaningIds:
+                meaning = meaning_by_id[meaning_id]
+                if not isinstance(meaning, PartsMeaning):
+                    continue
+                for part in meaning.requiredParts:
+                    part_scope = {name for name, marker in _PART_SCOPE_MARKERS.items() if marker.search(part.meaningEn)}
+                    extra = part_scope - asked
+                    if extra:
+                        error = _invalid(
+                            "required part includes information outside question scope: " + ",".join(sorted(extra)),
+                            activity.id, meaning.id, "meaning")
+                        error.question_id = question.id
+                        error.part_id = part.id
+                        findings.append(error)
+    return findings
+
+
 @trace_gate
 def validate_questions(questions, dialogue, context, *, collect_errors=False):
     item_errors = []

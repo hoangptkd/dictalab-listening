@@ -27,6 +27,62 @@ def test_candidate_pin_keeps_active_release_and_unrelated_stages():
     assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == a.prompt_hash(a.prevention_candidate)
 
 
+def test_source_scope_gate_detects_extra_reason_and_action_without_case_specific_rules():
+    rows = aligned_rows()
+    activity = rows[1]["activities"][0]
+    meaning = activity["assessment"]["meanings"][0]
+    question = activity["questions"][0]
+    question["promptVi"] = "Bình sẽ làm việc với bộ phận nào?"
+    meaning["requiredParts"] = [dict(id="p1", meaningEn="Binh will sync with the marketing leads.",
+                                     evidence=copy.deepcopy(meaning["evidence"])),
+                                dict(id="p2", meaningEn="To ensure marketing understands the new boundaries.",
+                                     evidence=copy.deepcopy(meaning["evidence"]))]
+    findings = a.question_scope_findings(a.FlexibleQuestions.model_validate(rows[1]), w.Dialogue.model_validate(rows[0]))
+    assert {(f.activity_id, f.question_id, f.part_id) for f in findings} == {("a1", "q1", "p1"), ("a1", "q1", "p2")}
+
+
+def test_source_scope_gate_accepts_a_place_answer_with_no_extra_dimension():
+    rows = aligned_rows()
+    activity = rows[1]["activities"][0]
+    activity["questions"][0]["promptVi"] = "Mira đã chọn địa điểm nào?"
+    activity["assessment"]["meanings"][0]["requiredParts"] = [dict(
+        id="p1", meaningEn="Mira chose the riverside cafe.", evidence=copy.deepcopy(activity["assessment"]["meanings"][0]["evidence"]))]
+    assert a.question_scope_findings(a.FlexibleQuestions.model_validate(rows[1]), w.Dialogue.model_validate(rows[0])) == []
+
+
+def test_source_scope_gate_ignores_context_words_inside_an_answer_unit():
+    rows = aligned_rows()
+    activity = rows[1]["activities"][0]
+    activity["questions"][0]["promptVi"] = "Vì sao việc dùng bộ lọc nâng cao lại hữu ích?"
+    activity["assessment"]["meanings"][0]["requiredParts"] = [dict(
+        id="p1", meaningEn="Learning to use advanced filters saves time because students find exact topics.",
+        evidence=copy.deepcopy(activity["assessment"]["meanings"][0]["evidence"]))]
+    assert a.question_scope_findings(a.FlexibleQuestions.model_validate(rows[1]), w.Dialogue.model_validate(rows[0])) == []
+
+
+def test_source_scope_gate_does_not_treat_action_target_as_an_extra_person():
+    rows = aligned_rows()
+    activity = rows[1]["activities"][0]
+    activity["questions"][0]["promptVi"] = "Linh đề xuất thay đổi cách phân công như thế nào?"
+    activity["assessment"]["meanings"][0]["requiredParts"] = [dict(
+        id="p1", meaningEn="Assign inquiries by product category to specialized staff.",
+        evidence=copy.deepcopy(activity["assessment"]["meanings"][0]["evidence"]))]
+    assert a.question_scope_findings(a.FlexibleQuestions.model_validate(rows[1]), w.Dialogue.model_validate(rows[0])) == []
+
+
+def test_v417_structural_gate_runs_before_review_and_localizes_the_question():
+    rows = aligned_rows()
+    activity = rows[1]["activities"][0]
+    activity["questions"][0]["promptVi"] = "Bình sẽ làm việc với bộ phận nào?"
+    activity["assessment"]["meanings"][0]["requiredParts"][0]["meaningEn"] = "Binh will sync with the marketing leads."
+    questions = a.FlexibleQuestions.model_validate(rows[1])
+    payload = parts_payload(promptHash=a.prompt_hash(a.scope_candidate))
+    findings = h.structural(questions, w.Dialogue.model_validate(rows[0]), payload, "QUESTIONS")
+    assert len(findings) == 1
+    assert findings[0]["code"] == "required_part_includes_information_outside_question_scope:_action"
+    assert findings[0]["questionId"] == "q1"
+
+
 @pytest.mark.parametrize("model", [a.FlexibleQuestions, a.AlignedQuestionReview, a.PartsQuestionPatch, a.AlignedPartsGrade])
 def test_wire_order_does_not_remove_fields_bounds_or_validation(model):
     old = a.response_schema(model, minimum_targets=True)

@@ -21,6 +21,7 @@ Trạng thái: candidate để kiểm thử, chưa kích hoạt. V4.15 vẫn m�
 | REVIEW_QUESTIONS | Đặt câu trả lời suy ra và nhận xét từng part trước các cờ kết luận; yêu cầu kiểm tra xem câu trả lời đủ có bị part bắt thêm thông tin không. Cờ tổng hợp phải nhất quán với partChecks. Backend vẫn bắt part false dù các cờ khác true. |
 | REPAIR_QUESTIONS | Giữ ID activity/question/meaning; cho phép thêm, bỏ, sửa và đánh lại p1..pN bên trong meaning được phép. Truyền các questionReviews thuộc nhóm được phép sửa, gồm requestedMeaningEn, answerUnitsVi và partChecks. Transcript vẫn là nguồn quyết định. |
 | GRADE | Làm rõ hai kết quả loại trừ nhau, bổ sung hai ví dụ chung về key thừa/thiếu mục tiêu và sửa nguồn của ví dụ hợp lệ. Giữ nguyên validator từ chối việc vừa báo key lỗi vừa chấm; không tự bỏ phần chấm để cho PASS. |
+| Source scope gate | V4.17 kiểm tra trước reviewer các chiều hỏi rõ ràng (người, nơi, thời gian, lý do, số lượng, mức chắc chắn, hành động). Marker chỉ nhận quan hệ trả lời rõ; từ ngữ ngữ cảnh như `staff`, `time` hoặc `use` không tự tạo lỗi. |
 | Phiên bản | Lưu V4.16 nguyên trạng trong kho lịch sử, thêm V4.17 vào Python evaluation và nhận diện pin của Core. Một tệp prompt được chỉnh sửa; không nhân bản prompt theo chủ đề. |
 
 Không thêm schema dữ liệu bài học, migration, lượt AI, bộ phân loại theo từ khóa/tên nhân vật, nhánh cho Bình/marketing, cơ chế retry mới hay thư viện. Cùng prompt và schema được dùng cho mọi chủ đề/profile. Few-shot minh họa hợp đồng chung; không định tuyến theo ví dụ.
@@ -41,6 +42,8 @@ Giữ validation bằng chứng/ID, giới hạn phạm vi sửa, re-review đ�
 Các check mới kiểm tra schema truyền thực tế, không mất trường/constraint, số lượt gọi không tăng, repair nhận đúng chẩn đoán trong scope, xóa part thừa và đánh lại ID, giữ mục ngoài scope và từ chối patch vượt quyền. GRADE có issue hoặc output mâu thuẫn không tạo điểm cho người học. Tests lịch sử giữ nguyên pin cũ.
 
 Đã đạt 84 test Python tập trung và 42 test Java; UTF-8 và `git diff --check` đạt. Python được chạy một lượt 82 test, sau đó chạy lại 22 test ở hai module có bổ sung hai kiểm tra; tổng số test khác nhau là 84. Không gọi nhà cung cấp AI trong các test này.
+
+Đo raw QUESTIONS ngoại tuyến từ 64 bản ghi cũ (không gọi AI) có 43 bản ghi đủ output để kiểm tra: 24 PASS, 14 scope findings, 5 lỗi cấu trúc; 21 bản ghi còn lại không có QUESTIONS thô hoặc là metadata. V4.15 và V4.16 đều có 12 PASS, 7 scope findings; đây là bằng chứng chẩn đoán trên output cũ, chưa phải phép đo V4.17 và chưa đủ để kích hoạt candidate. Script ghi thêm thống kê theo phiên bản và chiều lỗi tại `tools/ai-eval/measure_question_source_alignment.py`.
 
 Lệnh chạy lại offline:
 

@@ -29,19 +29,40 @@ def finding(code, stage, key=None, *, semantic=False, reason=None):
 def structural(artifact, dialogue, payload, stage, merged=None):
     try:
         if stage == "QUESTIONS":
+            scope_errors = []
+            selected = a.selected_release(payload.promptHash)
+            if selected is a.scope_candidate:
+                scope_errors = a.question_scope_findings(artifact, dialogue)
             if getattr(a.selected_release(payload.promptHash), "COLLECT_ITEM_ERRORS", False):
                 a.validate_questions(artifact, dialogue, payload.learningContext, collect_errors=True)
             content = a.attach_questions(dialogue, artifact, payload.learningContext)
             a.validate_content(content, payload.specification, payload.profile, payload.learningContext)
+            if scope_errors:
+                result = []
+                for invalid in scope_errors:
+                    item = finding(str(invalid).replace(" ", "_"), stage,
+                                   ("meaning", invalid.activity_id, invalid.item_id), semantic=True,
+                                   reason=f"{invalid.question_id}/{invalid.part_id}: {invalid}")
+                    item.update(questionId=invalid.question_id, partId=invalid.part_id)
+                    result.append(item)
+                return result
         else:
             a.validate_content(merged, payload.specification, payload.profile, payload.learningContext, artifact)
         return []
     except ValueError as error:
         issues = []
+        scope_errors = a.question_scope_findings(artifact, dialogue) if stage == "QUESTIONS" and a.selected_release(payload.promptHash) is a.scope_candidate else []
         for invalid in getattr(error, "item_errors", [error]):
             activity, item = getattr(invalid, "activity_id", None), getattr(invalid, "item_id", None)
             key = (getattr(invalid, "item_kind", "question"), activity, item) if activity and item else None
             issues.append(finding(str(invalid).replace(" ", "_"), stage, key))
+        for invalid in scope_errors:
+            key = ("meaning", invalid.activity_id, invalid.item_id)
+            item = finding(str(invalid).replace(" ", "_"), stage, key, semantic=True,
+                           reason=f"{invalid.question_id}/{invalid.part_id}: {invalid}")
+            item["questionId"] = invalid.question_id
+            item["partId"] = invalid.part_id
+            issues.append(item)
         return issues
 
 
