@@ -49,6 +49,10 @@ final class ScenarioContent {
         content(task,spec,profile,context,flexible,false);
     }
     static void content(JsonNode task, JsonNode spec, JsonNode profile,JsonNode context,boolean flexible,boolean advisory) {
+        content(task,spec,profile,context,flexible,advisory,3);
+    }
+    static void content(JsonNode task, JsonNode spec, JsonNode profile,JsonNode context,boolean flexible,boolean advisory,int minimumAssessmentItems) {
+        check(minimumAssessmentItems==2 || minimumAssessmentItems==3);
         boolean meaning=context!=null && context.path("contractVersion").asText().equals("scenario-learning-context.v2");
         fields(task,"activities","translations","qualityPassed"); check(task.path("qualityPassed").isBoolean() && (advisory || task.path("qualityPassed").asBoolean()));
         list(task.path("activities"),3,3); list(task.path("translations"),6,18);
@@ -57,7 +61,7 @@ final class ScenarioContent {
         for (var a : task.path("activities")) {
             if (meaning) fields(a,"id","segments","questions","assessment"); else fields(a,"id","segments","questions");
             check(text(a,"id",2).equals("a" + ++ordinal));
-            list(a.path("segments"),2,6); list(a.path("questions"),meaning ? 3 : 2,meaning ? 6 : 2);
+            list(a.path("segments"),2,6); list(a.path("questions"),meaning ? minimumAssessmentItems : 2,meaning ? 6 : 2);
             var segments = new HashMap<String,String>(); var heardSpeakers = new HashSet<String>(); int words = 0;
             for (var segment : a.path("segments")) {
                 fields(segment,"id","speakerId","textEn"); String sid = id(segment,"id");
@@ -69,7 +73,7 @@ final class ScenarioContent {
             check(heardSpeakers.equals(speakers));
             if (!flexible) check(words >= profile.path("minWordsPerActivity").asInt() && words <= profile.path("maxWordsPerActivity").asInt()); total += words;
             if (meaning) {
-                meanings(a,segments,context); questionCount+=a.path("questions").size();
+                meanings(a,segments,context,minimumAssessmentItems); questionCount+=a.path("questions").size();
                 for (var m : a.path("assessment").path("meanings")) focusMeaningCovered |= m.path("skill").asText().equals(context.path("focusSkill").asText());
             }
             var ids = new HashSet<String>(); var prompts=new HashSet<String>(); int questionOrdinal=0;
@@ -113,10 +117,10 @@ final class ScenarioContent {
         }
         check(actual.equals(expected));
     }
-    private static void meanings(JsonNode activity,Map<String,String> segments,JsonNode context) {
+    private static void meanings(JsonNode activity,Map<String,String> segments,JsonNode context,int minimumItems) {
         var assessment=activity.path("assessment"); fields(assessment,"policyVersion","meanings");
         String policy=text(assessment,"policyVersion",40); check(Set.of(ScenarioAssessment.POLICY,ScenarioAssessment.PARTS_POLICY).contains(policy));
-        boolean parts=policy.equals(ScenarioAssessment.PARTS_POLICY); list(assessment.path("meanings"),3,6);
+        boolean parts=policy.equals(ScenarioAssessment.PARTS_POLICY); list(assessment.path("meanings"),minimumItems,6);
         var meanings=new LinkedHashMap<String,JsonNode>(); var labels=new HashSet<String>(); int ordinal=0;
         for (var meaning : assessment.path("meanings")) {
             if (parts) fields(meaning,"id","meaningEn","skill","supportKind","inferenceReasonEn","evidence","requiredParts");

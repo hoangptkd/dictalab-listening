@@ -31,6 +31,7 @@ evidence_audit_candidate = historical_release('scenario_prompts_meaning_v4_11')
 direct_audit_candidate = historical_release('scenario_prompts_meaning_v4_12')
 scoped_release = historical_release('scenario_prompts_meaning_v4_13')
 scoped_fewshot_candidate = historical_release('scenario_prompts_meaning_v4_14')
+prevention_candidate = historical_release('scenario_prompts_meaning_v4_15')
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .observability import trace_gate
@@ -188,6 +189,33 @@ class PartsQuestionPatch(QuestionPatch):
     meaningReplacements: list[PartsMeaningReplacement] = Field(max_length=18)
 
 
+class FlexibleAssessment(PartsAssessment):
+    meanings: list[PartsMeaning] = Field(min_length=2, max_length=6)
+
+
+class FlexibleActivityDraft(PartsActivityDraft):
+    assessment: FlexibleAssessment
+    questions: list[QuestionDraft] = Field(min_length=2, max_length=6)
+
+
+class FlexibleQuestions(PartsQuestions):
+    activities: list[FlexibleActivityDraft] = Field(min_length=3, max_length=3)
+
+
+class FlexibleActivity(PartsActivity):
+    assessment: FlexibleAssessment
+    questions: list[Question] = Field(min_length=2, max_length=6)
+
+
+class FlexibleContent(PartsContent):
+    activities: list[FlexibleActivity] = Field(min_length=3, max_length=3)
+
+
+class FlexibleQuestionReview(QuestionReview):
+    meaningChecks: list[MeaningCheck] = Field(min_length=6, max_length=18)
+    questionChecks: list[w.QuestionEvidenceCheck] = Field(min_length=6, max_length=18)
+
+
 class PartGrade(StrictModel):
     partId: Annotated[str, Field(pattern=r"^p[1-4]$")]
     status: Literal["CAPTURED", "PARTIAL", "INCORRECT", "UNCERTAIN", "ABSENT"]
@@ -221,7 +249,7 @@ class ScenarioAssessmentInput(StrictModel):
     profile: w.PersonalizedProfile
     inputVi: str = Field(default="", max_length=2000)
     specification: w.PersonalizedSpecification | None = None
-    activity: Activity | PartsActivity | None = None
+    activity: Activity | PartsActivity | FlexibleActivity | None = None
     learningContext: AssessmentContext
     assessmentSubmission: Submission | None = None
 
@@ -243,13 +271,15 @@ class ScenarioAssessmentInput(StrictModel):
                 raise ValueError("invalid grade input")
             if (selected.POLICY_VERSION == parts_release.POLICY_VERSION) != isinstance(self.activity, PartsActivity):
                 raise ValueError("assessment policy does not match pinned release")
+            if selected is not prevention_candidate and (len(self.activity.questions) < 3 or len(self.activity.assessment.meanings) < 3):
+                raise ValueError("historical assessment requires at least three items")
             validate_submission(self.activity, self.assessmentSubmission)
         self.inputVi = redact_string(self.inputVi)
         return self
 
 
 def response_schema(model, *, legacy=False, minimum_targets=False):
-    if model is QuestionReview:
+    if model in (QuestionReview, FlexibleQuestionReview):
         schema = model.model_json_schema()
         # Same Gemini audit-array limitation as historical reviews; counts remain locally enforced.
         for value in schema["properties"].values():
@@ -272,31 +302,37 @@ def response_schema(model, *, legacy=False, minimum_targets=False):
                 for child in value:
                     remove_array_bounds(child)
         remove_array_bounds(schema)
-    if minimum_targets and model is PartsQuestions:
+    if minimum_targets and model in (PartsQuestions, FlexibleQuestions):
         # These two lower bounds compile on Gemini; nested upper bounds did not.
-        for name, field in (("PartsAssessment", "meanings"), ("PartsActivityDraft", "questions")):
-            schema["$defs"][name]["properties"][field]["minItems"] = 3
+        flexible = model is FlexibleQuestions
+        for name, field in ((("FlexibleAssessment", "meanings"), ("FlexibleActivityDraft", "questions")) if flexible
+                            else (("PartsAssessment", "meanings"), ("PartsActivityDraft", "questions"))):
+            schema["$defs"][name]["properties"][field]["minItems"] = 2 if flexible else 3
     return schema
 
 
 @cache
 def prompt_hash(selected=release):
     parts = selected.POLICY_VERSION == parts_release.POLICY_VERSION
+    flexible = selected is prevention_candidate
+    questions_model = FlexibleQuestions if flexible else PartsQuestions if parts else Questions
+    content_model = FlexibleContent if flexible else PartsContent if parts else Content
+    review_model = FlexibleQuestionReview if flexible else QuestionReview
     models = (AssessmentContext, w.PersonalizedSpecification, w.PersonalizedExtraction, w.Dialogue,
-              PartsQuestions if parts else Questions, PartsContent if parts else Content, w.Translations,
-              QuestionReview, w.PersonalizedReview, Submission, PartsGrade if parts else Grade)
+              questions_model, content_model, w.Translations,
+              review_model, w.PersonalizedReview, Submission, PartsGrade if parts else Grade)
     legacy = selected is legacy_release
     wire = {"legacy": legacy, "minimum_targets": getattr(selected, "MINIMUM_TARGETS", False)}
     manifest = {"version": selected.PROMPT_VERSION, "assessmentPolicyVersion": selected.POLICY_VERSION,
                 "instructions": selected.INSTRUCTIONS, "outputTokens": selected.OUTPUT_TOKENS,
                 "schemas": {m.__name__: m.model_json_schema() for m in models},
-                "reviewResponseSchemas": {m.__name__: response_schema(m, **wire) for m in (QuestionReview, w.PersonalizedReview)},
+                "reviewResponseSchemas": {m.__name__: response_schema(m, **wire) for m in (review_model, w.PersonalizedReview)},
                 "harness": {"policy": selected.HARNESS_POLICY,
                             "schemas": {m.__name__: response_schema(m, **wire) for m in
                                         (PartsQuestionPatch if parts else QuestionPatch, w.TranslationPatch)}}}
     if not legacy:
         manifest["responseSchemas"] = {m.__name__: response_schema(m, **wire) for m in
-            (w.PersonalizedExtraction, w.Dialogue, PartsQuestions if parts else Questions, QuestionReview,
+            (w.PersonalizedExtraction, w.Dialogue, questions_model, review_model,
              w.Translations, w.PersonalizedReview, PartsGrade if parts else Grade)}
     if getattr(selected, "COLLECT_ITEM_ERRORS", False):
         manifest["structuralFindings"] = "all-localized-items.v1"
@@ -322,7 +358,7 @@ def prompt_hash(selected=release):
 
 
 def selected_release(requested_hash):
-    for selected in (scoped_fewshot_candidate, scoped_release, direct_audit_candidate, evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
+    for selected in (prevention_candidate, scoped_fewshot_candidate, scoped_release, direct_audit_candidate, evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
         if requested_hash == prompt_hash(selected):
             return selected
     raise ValueError("scenario prompt mismatch")
@@ -369,7 +405,7 @@ def project_input(selected, purpose, data):
                 **{key: data[key] for key in ("repairContext", "formatFeedback") if key in data},
                 **({key: data[key] for key in ("meaningAudit", "questionAudit") if key in data}
                    if getattr(selected, "AUDIT_PROTOCOL", None) else {})}
-    if purpose == "REVIEW_QUESTIONS" and selected in (scoped_release, scoped_fewshot_candidate):
+    if purpose == "REVIEW_QUESTIONS" and selected in (scoped_release, scoped_fewshot_candidate, prevention_candidate):
         drafts = {activity["id"]: activity for activity in data["groundedQuestions"]["activities"]}
         # Keep draft speechAct/factEn for review; public content strips these fields.
         return {"content": {"activities": [{**activity, "questions": drafts[activity["id"]]["questions"]}
@@ -505,7 +541,8 @@ def validate_questions(questions, dialogue, context, *, collect_errors=False):
 
 def attach_questions(dialogue, questions, context):
     validate_questions(questions, dialogue, context)
-    content_model, activity_model = (PartsContent, PartsActivity) if isinstance(questions, PartsQuestions) else (Content, Activity)
+    content_model, activity_model = ((FlexibleContent, FlexibleActivity) if isinstance(questions, FlexibleQuestions)
+        else (PartsContent, PartsActivity) if isinstance(questions, PartsQuestions) else (Content, Activity))
     return content_model(activities=[activity_model(**source.model_dump(), assessment=draft.assessment,
         questions=[Question(**q.model_dump(exclude={"factEn", "speechAct"}), type="MEANING_RECALL_VI")
                    for q in draft.questions]) for source, draft in zip(dialogue.activities, questions.activities)])

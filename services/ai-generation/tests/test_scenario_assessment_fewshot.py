@@ -30,8 +30,10 @@ def test_candidate_is_pinned_stage_local_and_does_not_replace_baseline():
         assert ids and RELEASE.INSTRUCTIONS[stage].startswith(a.scoped_release.INSTRUCTIONS[stage])
         assert len(RELEASE.INSTRUCTIONS[stage].encode()) < 20000
     for example in RELEASE.ASSET["examples"]:
-        serialized = json.dumps(example, ensure_ascii=False, separators=(",", ":"))
-        assert [stage for stage, text in RELEASE.INSTRUCTIONS.items() if serialized in text] == [example["stage"]]
+        # Frozen JSON preserves values, not object-key insertion order.
+        assert [stage for stage, text in RELEASE.INSTRUCTIONS.items()
+                if example in [json.loads(line) for line in text.splitlines()
+                               if line.startswith("{")]] == [example["stage"]]
     root = Path(__file__).resolve().parents[3]
     packaging = tomllib.loads((root / "services/ai-generation/pyproject.toml").read_text(encoding="utf-8"))
     assert "scenario-prompt-history.json.gz" in packaging["tool"]["setuptools"]["package-data"]["app"]

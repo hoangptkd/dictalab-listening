@@ -6,9 +6,11 @@ Open <http://localhost:18082/admin/ai-evaluation> as an existing ADMIN. API requ
 `local`, authentication, ADMIN and CSRF. QA14 remains a learner; never elevate it to access this screen.
 Provider accounts and fallback policies come from `/admin/gemini`.
 
-New versions and runs use the personalized Python pipeline: current **V4.13** and the
-frozen **V4.14 few-shot candidate**, available only for explicit local comparison.
-The V4.14 prompt is loaded from the checked historical artifact; there is still one editable prompt source.
+New versions and runs use the personalized Python pipeline: frozen **V4.13**, frozen **V4.14**
+and the **V4.15 prevention candidate**, available only for explicit local comparison.
+V4.15 is the one editable prompt source; earlier prompts load from the checked historical artifact.
+The owner approved testing on 2026-11-15. Offline checks passed; the partial live comparison found
+scoring-scope defects and did not approve activation. See the [results and handoff](scenario-v415-verification-handoff.md).
 Java V8 and other historical prompt releases are read-only evidence. No new replay or generation uses them.
 Creating an experiment snapshot does not activate or approve a learner/production prompt.
 

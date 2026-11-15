@@ -7,8 +7,8 @@ from pathlib import Path
 from types import ModuleType
 
 ROOT = Path(__file__).parent
-CURRENT_NAME = "scenario_prompts_meaning_v4_13"
-_HISTORY_HASH = "d8c7a52d04c47b445a52e8a679ed447986c40d98dd09902e1562eae3ed1f3bc8"
+CURRENT_NAME = "scenario_prompts_meaning_v4_15"
+_HISTORY_HASH = "8eddc0adf8c65a5725c09551f1ac5d29ae450a2f3499cf7f4af4be63c9009ca6"
 
 
 def _release(name, values):

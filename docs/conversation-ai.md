@@ -3,12 +3,14 @@
 ## Bản đang chỉnh sửa
 
 Một nguồn prompt: `services/ai-generation/app/scenario-prompts.json`.
-V4.13, hash `b1f627bce2367904664a68ca2460e5ffd96868e1eb7fa93b244762673d6d3087`.
-Không thay nội dung hoặc hash prompt trong đợt dọn dự án này.
+Candidate V4.15, hash `f03dd35a2443d8a2ad69e9d3995de3638116b3749261f666b6f8c19f5b73ff89`.
+Chưa kích hoạt. Kiểm thử ngày 15/11/2026 phát hiện lỗi phạm vi chấm còn gây chấm thiếu điểm;
+chưa chứng minh chất lượng tăng. V4.13/V4.14 được giữ nguyên trong kho lịch sử.
+Xem [kết quả và bàn giao V4.15](scenario-v415-verification-handoff.md).
 
 `scenario_prompts.py` nạp bản hiện hành. `scenario-prompt-history.json.gz` giữ giá trị đã biên dịch của
-28 bản cũ, được kiểm tra SHA-256 khi đọc. Kho này chỉ phục vụ tương thích bài đã lưu, pin cũ và benchmark;
-không phải 28 bộ prompt đang cùng được phát triển. Tests đối chiếu hash prompt/schema trước và sau khi gộp.
+các bản cũ, được kiểm tra SHA-256 khi đọc. Kho này chỉ phục vụ tương thích bài đã lưu, pin cũ và benchmark;
+không phải nhiều bộ prompt đang cùng được phát triển. Tests đối chiếu hash prompt/schema trước và sau khi gộp.
 Không xóa kho lịch sử hoặc sửa hash bài cũ để làm chúng khớp prompt mới.
 
 ## Luồng thực tế
@@ -44,6 +46,7 @@ Luồng không sửa cần 6 lượt cho EXTRACT + sinh bài, giảm 2 so với 
 ## Hợp đồng cần giữ
 
 - Ba activity; cấu trúc, ID, references, bằng chứng và provenance được validation bằng code.
+- Riêng candidate V4.15 cho phép 2–6 câu hỏi và mục tiêu chấm mỗi activity; các pin trước giữ tối thiểu 3.
 - Hội thoại giữ dữ kiện/vai đã xác nhận và phân biệt đề xuất, đồng ý, giả định, điều chưa chắc chắn.
 - Câu hỏi/đáp án/targets cùng phạm vi; thông tin có sẵn trong câu hỏi không thành yêu cầu chấm.
 - Câu hỏi nhiều ý hợp lệ. Đúng địa điểm nhưng sai giờ trong câu hỏi hỏi cả hai → `PARTIAL`.
@@ -68,3 +71,8 @@ Local preview chỉ mở qua cấu hình đã xác minh, xem [chạy local](loca
 [AI Evaluation Studio](ai-evaluation-studio.md) chỉ mở pipeline/prompt hiện hành cho lần chạy mới.
 [Lịch sử và quyết định benchmark](project-history.md) ghi vì sao giữ V4.13 thay vì kích hoạt candidate V4.14.
 Tests code đạt không đồng nghĩa chất lượng ngữ nghĩa AI đã tăng. Giữ nguyên raw output trước khi thử sửa prompt tiếp.
+
+V4.15 ưu tiên phòng lỗi bằng prompt, few-shot và ngữ cảnh nguồn. Chỉ sửa hai đường dispatch cuối:
+dịch có lỗi cục bộ không bị cờ tổng chặn; câu hỏi và mục tiêu chấm được sửa trong cùng phạm vi phụ thuộc.
+Policy riêng `scenario-meaning-harness.v3` giữ advisory và số lượt gọi cũ.
+Không có tự sửa hội thoại/specification, không tăng retry, không đổi fallback hoặc kích hoạt production.

@@ -85,7 +85,8 @@ def test_examples_are_stage_local_and_baseline_is_unchanged():
         assert after.count("Example input JSON:") == len(fewshot.EXAMPLE_IDS[stage])
         assert len(after.encode()) < 32000  # Review schemas repeat content; keep growth bounded.
         for e in (e for e in fewshot.EXAMPLES if e["stage"] == stage):
-            assert json.dumps(e["expectedOutput"], ensure_ascii=False, separators=(",", ":")) in after
+            assert e["expectedOutput"] in [json.loads(block.splitlines()[0]) for block in
+                                           after.split("Expected output JSON:\n")[1:]]
 
 
 @pytest.mark.parametrize("release", [w.personalized, fewshot, corrected, w.previous_personalized_fewshot_v3,

@@ -8,6 +8,19 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
 class ScenarioHarnessTest {
+    @Test void preventionPolicyIsPinnedWithoutIncreasingCallsOrAllowingDialogueReplay() {
+        var result=transcript(2,"GENERATE","QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW","REPAIR_TRANSLATIONS","REVIEW")
+                .put("promptHash",ScenarioAssessment.PARTS_V4_15_PROMPT_HASH)
+                .put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_15");
+        ((ObjectNode)result.path("qualityHarness")).put("policyVersion","scenario-meaning-harness.v3")
+                .put("policyHash",ScenarioAssessment.PREVENTION_HARNESS_POLICY_HASH);
+        assertThatCode(() -> ScenarioEngine.validateHarnessCalls(result)).doesNotThrowAnyException();
+        ((ObjectNode)result.path("qualityHarness")).put("policyHash","56d0d6d5e826e1b46f20b5ab4a3868dada9537cca996cb35999d3886ee3d6fe2");
+        assertThatThrownBy(() -> ScenarioEngine.validateHarnessCalls(result)).isInstanceOf(IllegalArgumentException.class);
+        ((ObjectNode)result.path("qualityHarness")).put("policyHash",ScenarioAssessment.PREVENTION_HARNESS_POLICY_HASH);
+        result.withArray("calls").addObject().put("purpose","GENERATE");
+        assertThatThrownBy(() -> ScenarioEngine.validateHarnessCalls(result)).isInstanceOf(IllegalArgumentException.class);
+    }
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.CsvSource({
         ScenarioAssessment.PARTS_V4_13_PROMPT_HASH+",SCENARIO_MEANING_ASSESSMENT_V4_13",

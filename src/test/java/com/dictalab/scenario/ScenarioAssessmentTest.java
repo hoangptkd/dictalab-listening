@@ -8,6 +8,29 @@ import static com.dictalab.scenario.ScenarioData.*;
 import static org.assertj.core.api.Assertions.*;
 
 class ScenarioAssessmentTest {
+    @Test void preventionCandidateAcceptsTwoItemsWithoutRelaxingHistoricalMinimums() throws Exception {
+        var f=partsFixture(); var program=new ScenarioProgramRegistry().require("general-communication",4);
+        var context=ScenarioPersonalization.context(program,new ScenarioGoalRequest.Target("cefr-listening","LISTENING","a1"),null,"detail");
+        for (var activity : f.path("content").path("activities")) {
+            ((tools.jackson.databind.node.ArrayNode)activity.path("questions")).remove(2);
+            ((tools.jackson.databind.node.ArrayNode)activity.path("assessment").path("meanings")).remove(2);
+        }
+        ScenarioContent.content(f.path("content"),f.path("specification"),f.path("profile"),context,true,true,2);
+        assertThatThrownBy(() -> ScenarioContent.content(f.path("content"),f.path("specification"),f.path("profile"),context,true,true))
+                .isInstanceOf(IllegalArgumentException.class);
+        var activity=f.path("content").path("activities").get(0);
+        ((ObjectNode)activity.path("questions").get(0).path("evidence").get(0)).put("quoteEn","Invented evidence.");
+        assertThatThrownBy(() -> ScenarioContent.content(f.path("content"),f.path("specification"),f.path("profile"),context,true,true,2))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+    @Test void preventionCandidateKeepsAdvisoryPolicyAndExistingCallEnvelope() {
+        String pin=ScenarioAssessment.PARTS_V4_15_PROMPT_HASH;
+        assertThat(ScenarioAssessment.releaseMatches(pin,"SCENARIO_MEANING_ASSESSMENT_V4_15")).isTrue();
+        assertThat(ScenarioAssessment.releaseMatches(pin,"SCENARIO_MEANING_ASSESSMENT_V4_14")).isFalse();
+        assertThat(ScenarioAssessment.policyFor(pin)).isEqualTo(ScenarioAssessment.PARTS_POLICY);
+        assertThat(ScenarioAssessment.independentAudit(pin)).isFalse();
+        assertThat(ScenarioOperations.callEnvelope("GENERATE",object().put("promptHash",pin).put("contractVersion","scenario-job.v3"))).isEqualTo(9);
+    }
     @Test void directAuditCandidateKeepsExactVersionAndExistingCallEnvelope() {
         String pin=ScenarioAssessment.PARTS_V4_12_PROMPT_HASH;
         assertThat(ScenarioAssessment.releaseMatches(pin,"SCENARIO_MEANING_ASSESSMENT_V4_12")).isTrue();

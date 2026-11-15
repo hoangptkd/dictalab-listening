@@ -127,6 +127,7 @@ def reconcile(previous, current, changed, stage):
 
 async def generate(dialogue, payload, call, deadline):
     selected = a.selected_release(payload.promptHash)
+    flexible = selected is a.prevention_candidate
     parts = selected.POLICY_VERSION == a.parts_release.POLICY_VERSION
     independent = bool(getattr(selected, "AUDIT_PROTOCOL", None))
     evidenced = bool(getattr(selected, "EVIDENCE_AUDIT", False))
@@ -195,7 +196,7 @@ async def generate(dialogue, payload, call, deadline):
             status, issues = review_status(verdict, artifact, stage)
             return verdict, status, issues
         purpose = "REVIEW_QUESTIONS" if stage == "QUESTIONS" else "REVIEW"
-        model = a.QuestionReview if stage == "QUESTIONS" else w.PersonalizedReview
+        model = (a.FlexibleQuestionReview if flexible else a.QuestionReview) if stage == "QUESTIONS" else w.PersonalizedReview
         data = review_data(stage, artifact)
         if repair_context is not None:
             data["repairContext"] = repair_context
@@ -223,15 +224,32 @@ async def generate(dialogue, payload, call, deadline):
 
     async def repair(stage, original, issues, previous=None):
         allowed = {(i["itemType"], i["activityId"], i["itemId"]) for i in issues if i["repairable"]}
+        if flexible and stage == "QUESTIONS":
+            # A question and its scoring targets form one repair dependency, not separate truths.
+            while True:
+                before = set(allowed)
+                for act in original.activities:
+                    for question in act.questions:
+                        key = ("question", act.id, question.id)
+                        targets = {("meaning", act.id, mid) for mid in question.meaningIds}
+                        if key in allowed or targets & allowed:
+                            allowed |= {key} | targets
+                if allowed == before:
+                    break
         if independent and stage == "QUESTIONS":
             meanings = {(activity, item) for kind, activity, item in allowed if kind == "meaning"}
             allowed |= {("question", act.id, q.id) for act in original.activities for q in act.questions
                         if any((act.id, mid) in meanings for mid in q.meaningIds)}
         attempt = {"stage": stage, "accepted": False, "attempted": False, "originalHash": h.digest(original)}
         state.attempts.append(attempt)
-        if not allowed or any(not i["repairable"] for i in issues) or not state.available(4 if independent and stage == "QUESTIONS" else 2):
-            attempt["reason"] = "unlocalized_issue" if not allowed or any(not i["repairable"] for i in issues) else "budget_or_deadline"
+        unlocalized = [i for i in issues if not i["repairable"]]
+        blocks_patch = bool(unlocalized) and not (flexible and stage == "TRANSLATE"
+            and all(i["code"].startswith("semantic_") for i in unlocalized))
+        if not allowed or blocks_patch or not state.available(4 if independent and stage == "QUESTIONS" else 2):
+            attempt["reason"] = "unlocalized_issue" if not allowed or blocks_patch else "budget_or_deadline"
             return original, previous, None
+        if unlocalized:
+            attempt["unlocalizedFindings"] = unlocalized
         purpose = "REPAIR_QUESTIONS" if stage == "QUESTIONS" else "REPAIR_TRANSLATIONS"
         targets = [{"itemType": kind, "activityId": activity, "itemId": item,
                     "meaningId" if kind == "meaning" else "questionId" if kind == "question" else "segmentId": item}
@@ -253,6 +271,8 @@ async def generate(dialogue, payload, call, deadline):
                 state.record(purpose, "FAIL" if errors else "PASS", errors)
                 if errors:
                     attempt["reason"] = "deterministic_validation"
+                    if flexible:
+                        attempt["issues"] = errors
                     return original, previous, None
                 repair_context = {"priorFindings": issues, "changedTargets": [t for t in targets if (t["itemType"], t["activityId"], t["itemId"]) in changed],
                     "originalItems": [{"itemType": kind, "activityId": activity, "itemId": item, "value": before[(kind, activity, item)].model_dump()}
@@ -269,6 +289,9 @@ async def generate(dialogue, payload, call, deadline):
             except ValueError as error:
                 if getattr(error, "audit_contract", False):
                     raise
+                if flexible:
+                    attempt["reason"] = "review_regression" if str(error) == "review regressed" else attempt["reason"]
+                    attempt["errorType"] = type(error).__name__
                 return original, previous, None
             finally:
                 _safe(span, "update", output=trace_content(attempt))
@@ -276,7 +299,9 @@ async def generate(dialogue, payload, call, deadline):
     with observation("scenario.quality_harness", metadata={"harnessPolicyVersion": state.policy["version"],
                      "harnessPolicyHash": h.digest(state.policy)}) as span:
         try:
-            questions = await call("QUESTIONS", {"dialogue": dialogue.model_dump(), **context}, a.PartsQuestions if parts else a.Questions)
+            source_context = {"specification": payload.specification.model_dump()} if flexible else {}
+            questions = await call("QUESTIONS", {"dialogue": dialogue.model_dump(), **source_context, **context},
+                                   a.FlexibleQuestions if flexible else a.PartsQuestions if parts else a.Questions)
             errors = structural(questions, dialogue, payload, "QUESTIONS")
             state.record("QUESTIONS", "FAIL" if errors else "PASS", errors)
             question_review = question_status = None
@@ -292,7 +317,7 @@ async def generate(dialogue, payload, call, deadline):
                     if candidate_status is not None:
                         question_review, question_status = candidate_review, candidate_status
                         merged = a.attach_questions(dialogue, questions, payload.learningContext)
-            translations = await call("TRANSLATE", {**dialogue.model_dump(), **context}, w.Translations)
+            translations = await call("TRANSLATE", {**dialogue.model_dump(), **source_context, **context}, w.Translations)
             errors = structural(translations, dialogue, payload, "TRANSLATE", merged)
             state.record("TRANSLATE", "FAIL" if errors else "PASS", errors)
             translation_review = translation_status = None

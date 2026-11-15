@@ -19,8 +19,9 @@ def test_effective_prompt_and_schema_hashes_are_unchanged_for_saved_jobs():
         else:
             actual = w.personalized_prompt_hash(prompts.historical_release(name))
         assert actual == value, name
-    assert a.scoped_release is prompts.CURRENT
-    assert a.prompt_hash(prompts.CURRENT) == 'b1f627bce2367904664a68ca2460e5ffd96868e1eb7fa93b244762673d6d3087'
+    assert a.prevention_candidate is prompts.CURRENT
+    assert a.prompt_hash(prompts.CURRENT) == 'f03dd35a2443d8a2ad69e9d3995de3638116b3749261f666b6f8c19f5b73ff89'
+    assert a.prompt_hash(a.scoped_release) == 'b1f627bce2367904664a68ca2460e5ffd96868e1eb7fa93b244762673d6d3087'
 
 
 def test_unknown_or_corrupt_historical_prompt_never_falls_back_to_current(tmp_path, monkeypatch):
