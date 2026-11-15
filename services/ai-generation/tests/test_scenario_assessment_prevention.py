@@ -254,3 +254,151 @@ def test_question_patch_includes_linked_scoring_target_without_opening_unrelated
     assert result["qualityHarness"]["attempts"][0]["accepted"]
     assert result["task"]["activities"][0]["assessment"]["meanings"][0]["meaningEn"] == meaning["meaningEn"]
     assert result["task"]["activities"][0]["assessment"]["meanings"][1] == activity["assessment"]["meanings"][1]
+
+
+def question_patch(bank, activity_id=None):
+    return dict(
+        meaningReplacements=[dict(activityId=act["id"], meaning=copy.deepcopy(m))
+            for act in bank["activities"] for m in act["assessment"]["meanings"]
+            if activity_id is None or act["id"] == activity_id and m["id"] == "m1"],
+        questionReplacements=[dict(activityId=act["id"], question=copy.deepcopy(q))
+            for act in bank["activities"] for q in act["questions"]
+            if activity_id is None or act["id"] == activity_id and q["id"] == "q1"])
+
+
+@pytest.mark.parametrize("bad_quote", [False, True])
+def test_missing_focus_is_repaired_with_linked_content_not_a_code_relabel(bad_quote):
+    rows = flexible_fixtures()
+    value = parts_payload(promptHash=PIN)
+    value.learningContext.focusSkill = "main-idea"
+    fixed = copy.deepcopy(rows[1])
+    act = fixed["activities"][0]
+    meaning, question = act["assessment"]["meanings"][0], act["questions"][0]
+    meaning.update(skill="main-idea", meaningEn="The speaker explains when to collect an order.")
+    meaning["evidence"][0]["quoteEn"] = rows[0]["activities"][0]["segments"][0]["textEn"]
+    meaning["requiredParts"] = [dict(id="p1", meaningEn=meaning["meaningEn"], evidence=copy.deepcopy(meaning["evidence"]))]
+    question.update(skill="main-idea", factEn=meaning["meaningEn"], promptVi="What is the speaker mainly explaining?",
+                    answerVi="When to collect an order.", evidence=copy.deepcopy(meaning["evidence"]))
+    if bad_quote:
+        rows[1]["activities"][0]["questions"][0]["evidence"][0]["quoteEn"] = "Not spoken."
+    original = copy.deepcopy(rows[1])
+    result, calls = execute(value, [*rows[:2], question_patch(fixed), *rows[2:]])
+    data = json.loads(calls[2][1][1]["content"])
+    assert "missing_learning_focus_coverage" in {i["code"] for i in data["issues"]}
+    if bad_quote:
+        assert "unanchored_evidence" in {i["code"] for i in data["issues"]}
+    assert len(data["allowedTargets"]) == 12
+    assert "not only the skill label" in next(i["constraint"] for i in data["issues"] if i["code"] == "missing_learning_focus_coverage")
+    assert result["task"]["qualityPassed"]
+    assert result["task"]["activities"][0]["questions"][0]["promptVi"] == question["promptVi"]
+    expected = a.attach_questions(w.Dialogue.model_validate(rows[0]), a.FlexibleQuestions.model_validate(fixed), value.learningContext)
+    assert result["task"]["activities"][1] == expected.activities[1].model_dump()
+    assert result["qualityHarness"]["extraCalls"] == 2
+    assert result["qualityHarness"]["implementationVersion"] == h.IMPLEMENTATION_VERSION
+    assert rows[1] == original
+
+
+@pytest.mark.parametrize("draft_kind", ["unchanged", "schema", "scope"])
+def test_one_rejected_draft_can_be_corrected_with_same_scope_and_independent_review(draft_kind):
+    rows = flexible_fixtures()
+    fixed = question_patch(rows[1], "a1")
+    rows[1]["activities"][0]["questions"][0]["evidence"][0]["quoteEn"] = "Not spoken."
+    draft = question_patch(rows[1], "a1") if draft_kind == "unchanged" else ({ } if draft_kind == "schema" else question_patch(rows[1]))
+    result, calls = execute(parts_payload(promptHash=PIN), [*rows[:2], draft, fixed, *rows[2:]])
+    repair_calls = [json.loads(c[1][1]["content"]) for c in calls if c[0] == "scenario_repair_questions"]
+    assert len(repair_calls) == 2
+    first, second = repair_calls
+    assert first["failedOutput"] == second["failedOutput"] == rows[1]
+    assert first["allowedTargets"] == second["allowedTargets"]
+    assert len(second["allowedTargets"]) == 2
+    assert second["formatFeedback"]["failedOutput"] == draft
+    assert second["formatFeedback"]["schemaIssues"]
+    assert calls[4][0] == "scenario_review_questions"
+    assert result["qualityHarness"]["extraCalls"] == 3
+    assert result["qualityHarness"]["attempts"][0]["accepted"]
+    assert result["qualityHarness"]["attempts"][0]["draftIssues"]
+    assert result["task"]["qualityPassed"]
+
+
+def test_repeated_invalid_patch_is_rejected_and_keeps_diagnostics():
+    rows = flexible_fixtures()
+    rows[1]["activities"][0]["questions"][0]["evidence"][0]["quoteEn"] = "Not spoken."
+    invalid = question_patch(rows[1], "a1")
+    with pytest.raises(w.QualityRejected) as caught:
+        execute(parts_payload(promptHash=PIN), [*rows[:2], invalid, invalid])
+    report = caught.value.quality_harness
+    assert report["extraCalls"] == 2
+    assert not report["attempts"][0]["accepted"]
+    assert report["attempts"][0]["issues"][0]["code"] == "unanchored_evidence"
+    assert [v["status"] for v in report["validations"]] == ["FAIL", "FAIL", "FAIL"]
+
+
+@pytest.mark.parametrize("boundary", ["budget", "deadline", "retry_disabled"])
+def test_correction_never_uses_reserved_review_budget_or_expired_deadline(monkeypatch, boundary):
+    rows = flexible_fixtures()
+    rows[1]["activities"][0]["questions"][0]["evidence"][0]["quoteEn"] = "Not spoken."
+    invalid = question_patch(rows[1], "a1")
+    if boundary == "budget":
+        monkeypatch.setitem(RELEASE.HARNESS_POLICY, "maxExtraCalls", 2)
+    elif boundary == "retry_disabled":
+        monkeypatch.setitem(RELEASE.HARNESS_POLICY, "maxFormatRetriesPerStage", 0)
+    else:
+        available = h.h.State.available
+        monkeypatch.setattr(h.h.State, "available", lambda self, count: self.extra_calls == 0 and available(self, count))
+    with pytest.raises(w.QualityRejected) as caught:
+        execute(parts_payload(promptHash=PIN), [*rows[:2], invalid])
+    assert caught.value.quality_harness["extraCalls"] == 1
+    assert not caught.value.quality_harness["attempts"][0]["accepted"]
+
+
+def test_new_global_failure_cannot_expand_original_patch_scope():
+    rows = flexible_fixtures()
+    for act in rows[1]["activities"][1:]:
+        for item in [*act["assessment"]["meanings"], *act["questions"]]:
+            item["skill"] = "main-idea"
+    for item in [rows[1]["activities"][0]["assessment"]["meanings"][1], rows[1]["activities"][0]["questions"][1]]:
+        item["skill"] = "main-idea"
+    patch = question_patch(rows[1], "a1")
+    for row in patch["meaningReplacements"]:
+        row["meaning"]["skill"] = "main-idea"
+    for row in patch["questionReplacements"]:
+        row["question"]["skill"] = "main-idea"
+    rows[1]["activities"][0]["questions"][0]["evidence"][0]["quoteEn"] = "Not spoken."
+    with pytest.raises(w.QualityRejected) as caught:
+        execute(parts_payload(promptHash=PIN), [*rows[:2], patch])
+    assert caught.value.quality_harness["extraCalls"] == 1
+    assert caught.value.quality_harness["attempts"][0]["issues"][0]["code"] == "missing_learning_focus_coverage"
+
+
+@pytest.mark.parametrize("error", [TimeoutError(), RuntimeError("provider unavailable")])
+def test_provider_failure_is_not_a_correctable_draft(error):
+    rows = flexible_fixtures()
+    rows[1]["activities"][0]["questions"][0]["evidence"][0]["quoteEn"] = "Not spoken."
+    with pytest.raises(type(error)):
+        execute(parts_payload(promptHash=PIN), [*rows[:2], error])
+
+
+def test_structurally_valid_repair_is_discarded_when_changed_target_fails_review():
+    rows = flexible_fixtures()
+    patch = question_patch(rows[1], "a1")
+    rows[1]["activities"][0]["questions"][0]["evidence"][0]["quoteEn"] = "Not spoken."
+    rows[2]["valid"] = False
+    rows[2]["questionChecks"][0].update(answerSupported=False, reasonVi="Wrong answer.")
+    with pytest.raises(w.QualityRejected) as caught:
+        execute(parts_payload(promptHash=PIN), [*rows[:2], patch, rows[2]])
+    attempt = caught.value.quality_harness["attempts"][0]
+    assert not attempt["accepted"]
+    assert attempt["reason"] == "review_unknown_or_regression"
+
+
+def test_repeated_out_of_scope_patch_never_changes_original():
+    rows = flexible_fixtures()
+    malicious = question_patch(rows[1])
+    malicious["questionReplacements"][-1]["question"]["answerVi"] = "Unrelated overwrite."
+    rows[1]["activities"][0]["questions"][0]["evidence"][0]["quoteEn"] = "Not spoken."
+    original = copy.deepcopy(rows[1])
+    with pytest.raises(w.QualityRejected) as caught:
+        execute(parts_payload(promptHash=PIN), [*rows[:2], malicious, malicious])
+    assert rows[1] == original
+    assert caught.value.quality_harness["extraCalls"] == 2
+    assert not caught.value.quality_harness["attempts"][0]["accepted"]

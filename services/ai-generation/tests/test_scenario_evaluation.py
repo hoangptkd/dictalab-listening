@@ -133,3 +133,20 @@ async def test_errors_keep_evidence_and_admitted_unknown_never_replays(config, m
     record["status"] = "RUNNING"
     e.save(path, record)
     assert (await call("POST", "/v1/evaluation/scenario", json=data, headers=headers)).json()["status"] == "RUNNING"
+
+
+async def test_quality_rejection_persists_harness_report_without_success(config, monkeypatch):
+    data = request(config)
+    async def fail(event, settings, *, observer):
+        error = a.w.QualityRejected("invalid assessment after bounded repair")
+        error.quality_harness = {"implementationVersion": "assessment-repair-feedback.v1", "extraCalls": 2,
+                                 "attempts": [{"accepted": False, "reason": "deterministic_validation"}]}
+        raise error
+    monkeypatch.setattr(a, "execute", fail)
+    headers = {"X-Service-Token": config.service_token}
+    await call("POST", "/v1/evaluation/scenario", json=data, headers=headers)
+    await asyncio.gather(*list(e._tasks))
+    record = (await call("GET", "/v1/evaluation/scenario/" + data["requestId"], headers=headers)).json()
+    assert record["status"] == "ERROR" and "result" not in record
+    assert record["qualityHarness"]["extraCalls"] == 2
+    assert record["qualityHarness"]["attempts"][0]["accepted"] is False

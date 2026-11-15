@@ -529,6 +529,11 @@ def validate_questions(questions, dialogue, context, *, collect_errors=False):
         if not item_errors and covered != by_id.keys():
             raise _invalid("meaning coverage mismatch", activity.id)
         total_questions += len(activity.questions)
+    if collect_errors:
+        # Report missing coverage alongside item faults, so a repair sees both in one pass.
+        if not any(m.skill == context.focusSkill for act in questions.activities for m in act.assessment.meanings) or not any(
+                q.skill == context.focusSkill for act in questions.activities for q in act.questions):
+            item_errors.append(_invalid("missing learning focus coverage"))
     if item_errors:
         error = ValueError("invalid question items")
         error.item_errors = item_errors

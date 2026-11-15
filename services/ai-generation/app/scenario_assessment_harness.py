@@ -4,6 +4,8 @@ from . import scenario_harness as h
 from . import scenario_workflow as w
 from .observability import observation, _safe, content as trace_content
 
+IMPLEMENTATION_VERSION = "assessment-repair-feedback.v1"
+
 
 def items(artifact, stage):
     if stage == "TRANSLATE":
@@ -41,6 +43,43 @@ def structural(artifact, dialogue, payload, stage, merged=None):
             key = (getattr(invalid, "item_kind", "question"), activity, item) if activity and item else None
             issues.append(finding(str(invalid).replace(" ", "_"), stage, key))
         return issues
+
+
+def repair_scope(original, issues, stage, *, flexible=False):
+    allowed = {(i["itemType"], i["activityId"], i["itemId"]) for i in issues if i["repairable"]}
+    unlocalized = [i for i in issues if not i["repairable"]]
+    if flexible and stage == "QUESTIONS":
+        # Coverage belongs to the bank. Let the model choose a grounded pair; never relabel it in code.
+        if any(i["code"] == "missing_learning_focus_coverage" for i in unlocalized):
+            allowed |= items(original, stage).keys()
+        unlocalized = [i for i in unlocalized if i["code"] != "missing_learning_focus_coverage"]
+        while True:
+            before = set(allowed)
+            for act in original.activities:
+                for question in act.questions:
+                    key = ("question", act.id, question.id)
+                    targets = {("meaning", act.id, mid) for mid in question.meaningIds}
+                    if key in allowed or targets & allowed:
+                        allowed |= {key} | targets
+            if allowed == before:
+                break
+    blocks = bool(unlocalized) and not (flexible and stage == "TRANSLATE"
+        and all(i["code"].startswith("semantic_") for i in unlocalized))
+    return allowed, blocks
+
+
+def repair_feedback(issues):
+    """Explain deterministic contracts without asking the model to infer them from code names."""
+    constraints = {
+        "missing_learning_focus_coverage": "Use the requested focusSkill in both a meaningful question and its linked scoring target. Choose a suitable activity from the transcript; rewrite the actual question, answer and requiredParts, not only the skill label. Keep other items unchanged.",
+        "unanchored_evidence": "Every quoteEn must be an exact substring of its segmentId in this activity. Do not paraphrase quotes or borrow a segment from another activity.",
+        "agreement_requires_ordered_evidence_from_both_speakers": "If testing a mutual agreement, cite the proposal and acceptance from both speakers in transcript order. If testing only one speaker's statement or intention, use that speech act consistently; do not invent acceptance.",
+        "question_omits_referenced_meaning_evidence": "Question evidence must contain all the evidence of each referenced meaning, with matching segment IDs and exact quotes.",
+        "required_part_outside_meaning_evidence": "Each requiredPart quote must be contained in its parent meaning evidence with the same segment ID. Keep only parts actually asked by the question.",
+        "inference_support_mismatch": "Keep skill, supportKind and inferenceReasonEn consistent: supported-inference requires grounded premises; direct support uses an empty inference explanation.",
+    }
+    return [{**issue, **({"constraint": constraints[issue["code"]]} if issue["code"] in constraints else {})}
+            for issue in issues]
 
 
 def review_items(verdict, stage):
@@ -138,6 +177,9 @@ async def generate(dialogue, payload, call, deadline):
     state.artifacts.update(frozen)
     merged = None
 
+    def report():
+        return {**state.report(), "implementationVersion": IMPLEMENTATION_VERSION}
+
     def review_data(stage, artifact):
         if stage == "QUESTIONS":
             return {"content": a.attach_questions(dialogue, artifact, payload.learningContext).model_dump(),
@@ -223,19 +265,7 @@ async def generate(dialogue, payload, call, deadline):
         return verdict, status, issues
 
     async def repair(stage, original, issues, previous=None):
-        allowed = {(i["itemType"], i["activityId"], i["itemId"]) for i in issues if i["repairable"]}
-        if flexible and stage == "QUESTIONS":
-            # A question and its scoring targets form one repair dependency, not separate truths.
-            while True:
-                before = set(allowed)
-                for act in original.activities:
-                    for question in act.questions:
-                        key = ("question", act.id, question.id)
-                        targets = {("meaning", act.id, mid) for mid in question.meaningIds}
-                        if key in allowed or targets & allowed:
-                            allowed |= {key} | targets
-                if allowed == before:
-                    break
+        allowed, blocks_patch = repair_scope(original, issues, stage, flexible=flexible)
         if independent and stage == "QUESTIONS":
             meanings = {(activity, item) for kind, activity, item in allowed if kind == "meaning"}
             allowed |= {("question", act.id, q.id) for act in original.activities for q in act.questions
@@ -243,8 +273,6 @@ async def generate(dialogue, payload, call, deadline):
         attempt = {"stage": stage, "accepted": False, "attempted": False, "originalHash": h.digest(original)}
         state.attempts.append(attempt)
         unlocalized = [i for i in issues if not i["repairable"]]
-        blocks_patch = bool(unlocalized) and not (flexible and stage == "TRANSLATE"
-            and all(i["code"].startswith("semantic_") for i in unlocalized))
         if not allowed or blocks_patch or not state.available(4 if independent and stage == "QUESTIONS" else 2):
             attempt["reason"] = "unlocalized_issue" if not allowed or blocks_patch else "budget_or_deadline"
             return original, previous, None
@@ -257,23 +285,50 @@ async def generate(dialogue, payload, call, deadline):
         attempt.update(attempted=True, targets=targets, reason="invalid_patch")
         with observation("scenario.repair." + stage.lower(), metadata={"attempt": 1, "originalHash": attempt["originalHash"]}) as span:
             try:
-                patch = await state.extra(call, purpose, {"dialogue": dialogue.model_dump(),
+                data = {"dialogue": dialogue.model_dump(),
                     "specification": payload.specification.model_dump(), "failedOutput": original.model_dump(),
-                    "issues": issues, "allowedTargets": targets, **context}, (a.PartsQuestionPatch if parts else a.QuestionPatch) if stage == "QUESTIONS" else w.TranslationPatch)
-                candidate = merge_patch(original, patch, allowed, stage)
-                attempt["candidateHash"] = h.digest(candidate)
-                before, after = items(original, stage), items(candidate, stage)
+                    "issues": repair_feedback(issues) if flexible else issues, "allowedTargets": targets, **context}
+                patch_model = (a.PartsQuestionPatch if parts else a.QuestionPatch) if stage == "QUESTIONS" else w.TranslationPatch
+                before = items(original, stage)
+                while True:
+                    patch = candidate = None
+                    try:
+                        patch = await state.extra(call, purpose, data, patch_model)
+                        candidate = merge_patch(original, patch, allowed, stage)
+                        attempt["candidateHash"] = h.digest(candidate)
+                        errors = structural(candidate, dialogue, payload, stage, merged)
+                        feedback = repair_feedback(errors)
+                        failed_output = patch.model_dump()
+                        retry_allowed, retry_blocked = repair_scope(candidate, errors, stage, flexible=flexible)
+                        retryable = not retry_blocked and retry_allowed <= allowed
+                    except ValueError as error:
+                        # Only a returned draft is correctable; never replay an unknown provider outcome.
+                        if patch is None and not hasattr(error, "failed_output"):
+                            raise
+                        errors = [finding("patch_contract", stage)]
+                        failed_output = patch.model_dump() if patch is not None else error.failed_output
+                        feedback = getattr(error, "schema_issues", [{"type": str(error), "loc": []}])
+                        retryable = True
+                    state.record(purpose, "FAIL" if errors else "PASS", errors)
+                    if not errors:
+                        break
+                    attempt["reason"] = "deterministic_validation" if candidate is not None else "invalid_patch"
+                    attempt["issues"] = errors
+                    if not (flexible and retryable and purpose not in state.format_retries
+                            and state.policy.get("maxFormatRetriesPerStage", 0) > 0 and state.available(2)):
+                        return original, previous, None
+                    # One correction of a rejected draft, reserving a call for independent review.
+                    state.format_retries.add(purpose)
+                    attempt["rejectedDraftHash"] = h.digest(failed_output)
+                    attempt["draftIssues"] = errors
+                    data["formatFeedback"] = {"failedOutput": failed_output, "schemaIssues": feedback,
+                        "instruction": "Correct this rejected patch against the original failedOutput and same allowedTargets. Return the complete patch; keep every previously correct item unchanged."}
+                after = items(candidate, stage)
                 changed = {k for k in allowed if h.digest(before[k]) != h.digest(after[k])}
                 if not changed:
                     attempt["reason"] = "unchanged_patch"
                     return original, previous, None
-                errors = structural(candidate, dialogue, payload, stage, merged)
-                state.record(purpose, "FAIL" if errors else "PASS", errors)
-                if errors:
-                    attempt["reason"] = "deterministic_validation"
-                    if flexible:
-                        attempt["issues"] = errors
-                    return original, previous, None
+                attempt.pop("issues", None)
                 repair_context = {"priorFindings": issues, "changedTargets": [t for t in targets if (t["itemType"], t["activityId"], t["itemId"]) in changed],
                     "originalItems": [{"itemType": kind, "activityId": activity, "itemId": item, "value": before[(kind, activity, item)].model_dump()}
                                       for kind, activity, item in sorted(allowed)]}
@@ -338,10 +393,13 @@ async def generate(dialogue, payload, call, deadline):
             state.artifacts.update(questions=h.digest(questions), translations=h.digest(translations))
             result = {**merged.model_dump(), "translations": translations.model_dump()["segments"],
                       "qualityPassed": question_status == translation_status == "PASS"}
-            return result, {"qualityHarness": state.report(), "reviewAdvisory": {
+            return result, {"qualityHarness": report(), "reviewAdvisory": {
                 "questionsPassed": question_status == "PASS", "reviewPassed": translation_status == "PASS",
                 "questionsStatus": question_status, "reviewStatus": translation_status,
                 "questions": question_review.model_dump() if question_review else None,
                 "review": translation_review.model_dump() if translation_review else None}}
+        except w.QualityRejected as error:
+            error.quality_harness = report()
+            raise
         finally:
-            _safe(span, "update", output=trace_content(state.report()))
+            _safe(span, "update", output=trace_content(report()))

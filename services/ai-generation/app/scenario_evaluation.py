@@ -171,6 +171,8 @@ async def run(request, settings, path, record):
                     record["status"] = "COMPLETED"
     except (Exception, asyncio.CancelledError) as error:
         record.update(status="ERROR", error=type(error).__name__, httpStatus=getattr(error, "status", None))
+        if isinstance(error, a.w.QualityRejected) and hasattr(error, "quality_harness"):
+            record["qualityHarness"] = error.quality_harness
         if isinstance(error, asyncio.CancelledError):
             record["status"] = "UNKNOWN"
     finally:

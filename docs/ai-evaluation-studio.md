@@ -81,6 +81,36 @@ Transient status GET failures have three read attempts; generation POSTs remain 
 The combined run keeps all planned samples in its denominator and stores inherited/new evidence together.
 `sourceBackendHash` records the parent's Core build; the new run records the current build.
 
+## V4.15 bounded repair feedback (2026-11-15)
+
+Harness implementation `assessment-repair-feedback.v1` fixes repair routing, not the frozen V4.15
+prompt release. Source/build fingerprints distinguish the implementation; existing snapshots need
+re-registration after restarting local services. Historical prompt hashes and saved evaluations stay intact.
+
+- Missing focus-skill coverage is a bank-level repairable problem. The model receives all existing
+  question/meaning IDs so it can choose a grounded pair, rewrite the actual content and echo unrelated
+  items unchanged. Code never relabels skills to manufacture coverage.
+- Validation reports absent focus coverage alongside local evidence faults, rather than revealing it
+  only after another error is fixed.
+- A returned patch with schema, scope or deterministic validation errors may receive one correction
+  with its rejected draft and exact feedback. The original artifact and target allowlist stay fixed.
+  Newly required targets outside that allowlist stop correction. Unchanged invalid drafts are handled too.
+- The correction uses the existing one-format-feedback allowance and four-extra-call budget, reserving
+  a call for independent review. There is still one adopted patch pass per stage, no loop until success.
+  Provider failures/unknown outcomes are not patch feedback and are not replayed by this mechanism.
+- The complete candidate must pass structural validation and changed-target review before adoption.
+  Failed repairs preserve the original; unresolved advisory findings are not converted to PASS.
+  Definitive quality failures now retain the Harness report in the Python evaluation record.
+
+Offline replay of the eight recorded V4.15 rejected cases confirms all eight now have an eligible
+repair scope; two expose missing focus together with another fault. This is routing evidence only,
+not eight successful AI repairs. The old benchmark outputs and verdicts have not been rewritten.
+Malformed initial QUESTIONS that cannot be parsed into a bank, immutable dialogue errors, and
+semantically rejected patches still fail closed or retain warnings under the existing policy.
+
+Verification: 327 assessment/Harness/evaluation/prompt-consolidation tests passed locally;
+UTF-8 checks passed. These tests use mocked providers and do not measure live model quality.
+
 ## Reading results
 
 - Blue is the first output; green is the final output after Harness.
