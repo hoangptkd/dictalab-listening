@@ -23,6 +23,8 @@
 | Python, 7 file test trong bước 1 | 172/172 đạt |
 | Python toàn dịch vụ, chạy từ thư mục service | 883 đạt, 27 bỏ qua, 3 lỗi test được xử lý bên dưới |
 | Chạy lại file few-shot lịch sử và 2 test import từ root | 75/75 đạt |
+| Lệnh Python như CI tại root, gồm tools/model-serving/training | 1.137 đạt, 27 bỏ qua; 1 lỗi assertion few-shot lịch sử |
+| Chạy lại file tools few-shot sau sửa assertion | 3/3 đạt |
 | Java: ScenarioAssessment, Harness, EngineIntegration, EvaluationStudio | 131/131 đạt |
 | Giao diện Evaluation Studio | 4/4 đạt |
 | AI thật | Đã chạy 6/30 đầu vào mới × 2 bản = 12/60 bài |
@@ -36,7 +38,11 @@ Chạy toàn dịch vụ sau đó phát hiện thêm một assertion few-shot c�
 và hai test teacher không import được `training` khi chạy từ thư mục service. Đã sửa assertion;
 chạy lại cả file few-shot và hai test teacher từ repository root như CI: 75/75 đạt.
 Không sửa code training, cài thêm dependency hoặc đổi prompt/schema/pin lịch sử để qua test.
-Chưa chạy lại toàn bộ suite sau các sửa test; không gọi kết quả 883 đạt là một lượt full-suite xanh.
+Lệnh Python như CI tại root bao phủ thêm tools/model-serving/training: 1.137 đạt, 27 bỏ qua,
+còn một assertion few-shot trong tools cũng phụ thuộc thứ tự khóa. Đã sửa so sánh giá trị JSON;
+file đó chạy lại 3/3 đạt. Chưa chạy lại toàn bộ suite sau sửa cuối; các lượt full-suite ban đầu
+không được gọi là xanh. GitHub run 43680666329 thất bại ở bước Python; log tải qua API trả 403,
+nên lỗi assertion đã tái hiện ở local chưa được khẳng định là lỗi duy nhất trên runner GitHub.
 Các cảnh báo deprecated asyncio và Java hiện có không làm test thất bại.
 
 Corpus mới có 30 happy cases, chia 10 CEFR, 10 TOEIC, 10 IELTS. Hash:

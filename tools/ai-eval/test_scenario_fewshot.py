@@ -39,7 +39,8 @@ def test_fewshot_only_adds_demonstrations_to_six_v5_stages_and_keeps_grade_v4():
         assert before.rsplit('\nINPUT\n', 1)[1] == after.rsplit('\nINPUT\n', 1)[1]
         assert 'None: this candidate is evaluated zero-shot.' not in after
         for example in (e for e in candidate.EXAMPLES if e['stage'] == stage):
-            assert json.dumps(example['expectedOutput'], ensure_ascii=False, separators=(',', ':')) in after
+            assert example['expectedOutput'] in [json.loads(block.splitlines()[0]) for block in
+                                                 after.split('Expected output JSON:\n')[1:]]
 
 
 def test_selecting_fewshot_never_changes_the_active_pin_or_frozen_variants():
