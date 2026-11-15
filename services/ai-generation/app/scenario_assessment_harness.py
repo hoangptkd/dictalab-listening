@@ -4,7 +4,7 @@ from . import scenario_harness as h
 from . import scenario_workflow as w
 from .observability import observation, _safe, content as trace_content
 
-IMPLEMENTATION_VERSION = "assessment-repair-feedback.v1"
+IMPLEMENTATION_VERSION = "assessment-part-scope-review.v2"
 
 
 def items(artifact, stage):
@@ -101,6 +101,22 @@ def review_status(verdict, artifact, stage):
         if len(categories) != 5 or set(categories) != {"SOURCE_ROLES", "DIALOGUE", "TRANSLATIONS", "PROFILE", "LEARNING_GOAL"}:
             return "UNKNOWN", [finding("review_coverage", stage)]
     issues = []
+    if stage == "QUESTIONS" and isinstance(verdict, a.AlignedQuestionReview):
+        bank = items(artifact, stage)
+        for row in verdict.questionChecks:
+            key = ("question", row.activityId, row.questionId)
+            question = bank[key]
+            expected = {(mid, part.id) for mid in question.meaningIds
+                        for part in bank[("meaning", row.activityId, mid)].requiredParts}
+            actual = {(check.meaningId, check.partId) for check in row.partChecks}
+            if actual != expected or len(actual) != len(row.partChecks):
+                return "UNKNOWN", [finding("review_part_coverage", stage)]
+            for check in row.partChecks:
+                if not check.reasonVi.strip():
+                    return "UNKNOWN", [finding("review_reason", stage)]
+                if not check.requiredByQuestion:
+                    issues.append(finding("semantic_questionMatchesFact", stage, key, semantic=True,
+                        reason=f"{check.meaningId}/{check.partId}: {check.reasonVi}"))
     for key, row in rows.items():
         for flag, value in row.model_dump().items():
             if value is False:
@@ -149,6 +165,13 @@ def reconcile(previous, current, changed, stage):
     for key, row in review_items(verdict, stage).items():
         if key in changed:
             continue
+        if isinstance(row, a.AlignedQuestionCheck):
+            prior_parts = {(p.meaningId, p.partId): p for p in before[key].partChecks}
+            row.partChecks = [prior_parts[(p.meaningId, p.partId)].model_copy(deep=True)
+                              if not prior_parts[(p.meaningId, p.partId)].requiredByQuestion else p
+                              for p in row.partChecks]
+            if any(not p.requiredByQuestion for p in row.partChecks):
+                verdict.valid = False
         for flag, value in before[key].model_dump().items():
             if value is False:
                 setattr(row, flag, False)
@@ -166,7 +189,7 @@ def reconcile(previous, current, changed, stage):
 
 async def generate(dialogue, payload, call, deadline):
     selected = a.selected_release(payload.promptHash)
-    flexible = selected is a.prevention_candidate
+    flexible = selected in (a.prevention_candidate, a.alignment_candidate)
     parts = selected.POLICY_VERSION == a.parts_release.POLICY_VERSION
     independent = bool(getattr(selected, "AUDIT_PROTOCOL", None))
     evidenced = bool(getattr(selected, "EVIDENCE_AUDIT", False))
@@ -238,7 +261,8 @@ async def generate(dialogue, payload, call, deadline):
             status, issues = review_status(verdict, artifact, stage)
             return verdict, status, issues
         purpose = "REVIEW_QUESTIONS" if stage == "QUESTIONS" else "REVIEW"
-        model = (a.FlexibleQuestionReview if flexible else a.QuestionReview) if stage == "QUESTIONS" else w.PersonalizedReview
+        model = (a.AlignedQuestionReview if selected is a.alignment_candidate else
+                 a.FlexibleQuestionReview if flexible else a.QuestionReview) if stage == "QUESTIONS" else w.PersonalizedReview
         data = review_data(stage, artifact)
         if repair_context is not None:
             data["repairContext"] = repair_context
@@ -328,15 +352,20 @@ async def generate(dialogue, payload, call, deadline):
                 if not changed:
                     attempt["reason"] = "unchanged_patch"
                     return original, previous, None
+                reviewed = changed
+                if flexible and stage == "QUESTIONS":
+                    # A changed target also changes the grading contract of its untouched question.
+                    reviewed, _ = repair_scope(original, [finding("changed_target", stage, key) for key in changed],
+                                               stage, flexible=True)
                 attempt.pop("issues", None)
-                repair_context = {"priorFindings": issues, "changedTargets": [t for t in targets if (t["itemType"], t["activityId"], t["itemId"]) in changed],
+                repair_context = {"priorFindings": issues, "changedTargets": [t for t in targets if (t["itemType"], t["activityId"], t["itemId"]) in reviewed],
                     "originalItems": [{"itemType": kind, "activityId": activity, "itemId": item, "value": before[(kind, activity, item)].model_dump()}
                                       for kind, activity, item in sorted(allowed)]}
                 verdict, status, semantic = await review(stage, candidate, extra=True, retry_format=False, repair_context=repair_context)
-                if status == "UNKNOWN" or any(i["repairable"] and (i["itemType"], i["activityId"], i["itemId"]) in changed for i in semantic):
+                if status == "UNKNOWN" or any(i["repairable"] and (i["itemType"], i["activityId"], i["itemId"]) in reviewed for i in semantic):
                     attempt["reason"] = "review_unknown_or_regression"
                     return original, previous, None
-                verdict = reconcile(previous, verdict, changed, stage)
+                verdict = reconcile(previous, verdict, reviewed, stage)
                 status, semantic = review_status(verdict, candidate, stage)
                 state.record("REPAIR_REVIEW", status, semantic)
                 attempt.update(accepted=True, reason="accepted" if status == "PASS" else "accepted_with_warnings")

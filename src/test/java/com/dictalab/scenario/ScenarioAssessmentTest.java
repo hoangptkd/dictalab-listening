@@ -8,6 +8,18 @@ import static com.dictalab.scenario.ScenarioData.*;
 import static org.assertj.core.api.Assertions.*;
 
 class ScenarioAssessmentTest {
+    @Test void alignmentCandidateDoesNotActivateItselfOrChangeScoringPolicy() {
+        String pin=ScenarioAssessment.PARTS_V4_16_PROMPT_HASH;
+        assertThat(ScenarioAssessment.releaseMatches(pin,"SCENARIO_MEANING_ASSESSMENT_V4_16")).isTrue();
+        assertThat(ScenarioAssessment.releaseMatches(pin,"SCENARIO_MEANING_ASSESSMENT_V4_15")).isFalse();
+        assertThat(ScenarioAssessment.policyFor(pin)).isEqualTo(ScenarioAssessment.PARTS_POLICY);
+        assertThat(ScenarioAssessment.flexibleBank(pin)).isTrue();
+        assertThat(ScenarioAssessment.flexibleBank(ScenarioAssessment.PARTS_V4_14_PROMPT_HASH)).isFalse();
+        assertThat(ScenarioAssessment.independentAudit(pin)).isFalse();
+        assertThat(ScenarioAssessment.ACTIVE_PROMPT_HASH).isEqualTo(ScenarioAssessment.PARTS_V4_15_PROMPT_HASH);
+        assertThat(ScenarioOperations.callEnvelope("GENERATE",object().put("promptHash",pin).put("contractVersion","scenario-job.v3"))).isEqualTo(9);
+        assertThat(ScenarioOperations.callEnvelope("GRADE",object().put("promptHash",pin))).isEqualTo(1);
+    }
     @Test void preventionCandidateAcceptsTwoItemsWithoutRelaxingHistoricalMinimums() throws Exception {
         var f=partsFixture(); var program=new ScenarioProgramRegistry().require("general-communication",4);
         var context=ScenarioPersonalization.context(program,new ScenarioGoalRequest.Target("cefr-listening","LISTENING","a1"),null,"detail");

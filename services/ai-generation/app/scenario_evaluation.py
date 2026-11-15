@@ -62,7 +62,7 @@ def catalog(settings):
          "instructions": release.INSTRUCTIONS, "outputTokens": release.OUTPUT_TOKENS,
          "exampleSetHash": getattr(release, "EXAMPLE_SET_HASH", None)}
         for name, release in (("v4.13", a.scoped_release), ("v4.14", a.scoped_fewshot_candidate),
-                              ("v4.15", a.prevention_candidate))]}
+                              ("v4.15", a.prevention_candidate), ("v4.16", a.alignment_candidate))]}
 
 
 def directory(settings):
@@ -117,7 +117,8 @@ async def versions(x_service_token: str | None = Header(default=None)):
 async def submit(payload: EvaluationRequest, x_service_token: str | None = Header(default=None)):
     settings = authorize(x_service_token)
     if payload.payload.phase != "EXTRACT" or payload.payload.promptHash not in {
-            a.prompt_hash(a.scoped_release), a.prompt_hash(a.scoped_fewshot_candidate), a.prompt_hash(a.prevention_candidate)}:
+            a.prompt_hash(a.scoped_release), a.prompt_hash(a.scoped_fewshot_candidate), a.prompt_hash(a.prevention_candidate),
+            a.prompt_hash(a.alignment_candidate)}:
         raise HTTPException(400, "evaluation requires a supported extraction input")
     selected = await asyncio.to_thread(settings.current_registry)
     current = await asyncio.to_thread(catalog, selected)
@@ -193,7 +194,7 @@ def initial_artifact(record):
         context = a.AssessmentContext.model_validate(record.get("learningContext") or
             {"currentValue": None, **next(e["input"]["learningContext"] for e in record["events"] if e["stage"] == "EXTRACT")})
         selected = a.selected_release(record["extraction"]["promptHash"])
-        model = a.FlexibleQuestions if selected is a.prevention_candidate else a.PartsQuestions
+        model = a.FlexibleQuestions if selected in (a.prevention_candidate, a.alignment_candidate) else a.PartsQuestions
         questions = model.model_validate(first["QUESTIONS"])
         content = a.attach_questions(dialogue, questions, context)
         translations = a.w.Translations.model_validate(first["TRANSLATE"])

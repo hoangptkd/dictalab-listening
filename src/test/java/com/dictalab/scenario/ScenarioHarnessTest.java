@@ -8,6 +8,14 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
 class ScenarioHarnessTest {
+    @Test void alignmentCandidateKeepsExistingRepairCallEnvelope() {
+        var result=transcript(2,"GENERATE","QUESTIONS","REVIEW_QUESTIONS","REPAIR_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW")
+                .put("promptHash",ScenarioAssessment.PARTS_V4_16_PROMPT_HASH)
+                .put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_16");
+        ((ObjectNode)result.path("qualityHarness")).put("policyVersion","scenario-meaning-harness.v3")
+                .put("policyHash",ScenarioAssessment.PREVENTION_HARNESS_POLICY_HASH);
+        assertThatCode(() -> ScenarioEngine.validateHarnessCalls(result)).doesNotThrowAnyException();
+    }
     @Test void preventionPolicyIsPinnedWithoutIncreasingCallsOrAllowingDialogueReplay() {
         var result=transcript(2,"GENERATE","QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW","REPAIR_TRANSLATIONS","REVIEW")
                 .put("promptHash",ScenarioAssessment.PARTS_V4_15_PROMPT_HASH)
