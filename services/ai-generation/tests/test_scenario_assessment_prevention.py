@@ -25,7 +25,7 @@ def flexible_fixtures(count=2):
     return rows
 
 
-def test_candidate_is_versioned_without_activation_or_historical_schema_changes():
+def test_approved_release_is_versioned_without_historical_schema_changes():
     assert a.prompt_hash(RELEASE) == PIN
     assert a.selected_release(PIN) is RELEASE
     assert a.prompt_hash(a.scoped_release) == "b1f627bce2367904664a68ca2460e5ffd96868e1eb7fa93b244762673d6d3087"
@@ -36,7 +36,7 @@ def test_candidate_is_versioned_without_activation_or_historical_schema_changes(
     assert RELEASE.OUTPUT_TOKENS == a.scoped_release.OUTPUT_TOKENS
     root = Path(__file__).resolve().parents[3]
     assert f'PARTS_V4_15_PROMPT_HASH="{PIN}"' in (root / "src/main/java/com/dictalab/scenario/ScenarioAssessment.java").read_text(encoding="utf-8")
-    assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == a.prompt_hash()
+    assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == PIN
 
 
 @pytest.mark.parametrize("counts", [(2, 2, 2), (2, 3, 6), (6, 6, 6)])

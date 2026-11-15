@@ -66,7 +66,9 @@ public class ScenarioPersonalization {
                 "Tôi muốn nghe hai người bạn thảo luận chọn một hoạt động cuối tuần phù hợp với cả hai.",
                 "Tôi muốn nghe hai đồng nghiệp trao đổi nguyên nhân công việc bị chậm và cách phối hợp giải quyết.",
                 "Tôi muốn nghe sinh viên và giảng viên thảo luận ý kiến về một dự án bảo vệ môi trường.");
-        for (var program : registry.definitions()) if (program.meaningAssessment()) {
+        for (var program : registry.definitions()) if (program.meaningAssessment()
+                && registry.definitions().stream().noneMatch(other -> other.code().equals(program.code())
+                    && other.version()>program.version() && other.status()!=ScenarioProgram.Status.RETIRED)) {
             int index = 0;
             for (var profile : program.difficultyProfiles()) {
                 var scale = profile.targetRange() == null ? program.targetScales().get(0).scaleId() : profile.targetRange().scaleId();

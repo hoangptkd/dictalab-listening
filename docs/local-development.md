@@ -66,7 +66,10 @@ không sửa checksum hay đánh số lại migration đã áp dụng. Migration
 
 ## Phạm vi
 
-Local hiện dùng Conversation AI V4.13 cho QA14 qua cơ chế preview có pin. Đây không phải phê duyệt production.
+Local dùng Conversation AI V4.15 theo phê duyệt ngày 15/11/2026, với pin và program approvals chính xác.
+Launcher đọc cùng pin mặc định với Core từ `scenario/workflow-v3.sha256`, không khóa cứng V4.13.
+Chương trình giao tiếp phiên bản 5, TOEIC/IELTS phiên bản 4 đã duyệt; phiên bản cũ giữ nguyên.
+Việc đổi source/local không xác nhận website production đã phát hành.
 Progress đang dùng read path legacy trong cấu hình local này. Model Serving/SFT không được launcher tự khởi động.
 Các lệnh `run-service.py stack` trong [hướng dẫn microservice](microservices-demo.md) dành cho kiểm thử topology riêng,
 không thay thế địa chỉ phát triển chính.

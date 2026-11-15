@@ -65,7 +65,7 @@ class ScenarioEngineIntegrationTest {
         when(release.available()).thenReturn(true);
         when(release.available(anyLong())).thenReturn(true);
         when(release.personalizedPromptHash()).thenReturn(new String(getClass().getResourceAsStream("/scenario/workflow-v2.sha256").readAllBytes()).trim());
-        when(release.assessmentPromptHash()).thenReturn(new String(getClass().getResourceAsStream("/scenario/workflow-v3.sha256").readAllBytes()).trim());
+        when(release.assessmentPromptHash()).thenReturn(ScenarioAssessment.PROMPT_HASH);
         when(release.require(anyLong(),anyString(),anyInt())).thenAnswer(call -> registry.require(call.getArgument(1),call.getArgument(2)));
         when(ai.local()).thenReturn(true); when(ai.scenarioProvider()).thenReturn("ollama");
         when(ai.audio(any())).thenCallRealMethod();
@@ -122,6 +122,8 @@ class ScenarioEngineIntegrationTest {
                 if (ScenarioAssessment.PARTS_V4_6_PROMPT_HASH.equals(input.path("promptHash").asText())) result.put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_6");
                 if (ScenarioAssessment.PARTS_V4_13_PROMPT_HASH.equals(input.path("promptHash").asText())) result.put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_13");
                 if (ScenarioAssessment.PARTS_V4_14_PROMPT_HASH.equals(input.path("promptHash").asText())) result.put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_14");
+                boolean prevention=ScenarioAssessment.PARTS_V4_15_PROMPT_HASH.equals(input.path("promptHash").asText());
+                if (prevention) result.put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_15");
                 boolean independentAudit=ScenarioAssessment.independentAudit(input.path("promptHash").asText());
                 if (independentAudit) result.put("promptVersion",ScenarioAssessment.PARTS_V4_11_PROMPT_HASH.equals(input.path("promptHash").asText())
                         ? "SCENARIO_MEANING_ASSESSMENT_V4_11" : ScenarioAssessment.PARTS_V4_12_PROMPT_HASH.equals(input.path("promptHash").asText())
@@ -129,6 +131,8 @@ class ScenarioEngineIntegrationTest {
                 if (phase.equals("GENERATE")) {
                     result.set("task",(parts ? ScenarioAssessmentTest.partsFixture() : ScenarioAssessmentTest.fixture()).path("content"));
                     result.putObject("qualityHarness").put("extraCalls",0).put("policyVersion","scenario-meaning-harness.v1").put("policyHash","56d0d6d5e826e1b46f20b5ab4a3868dada9537cca996cb35999d3886ee3d6fe2");
+                    if (prevention) ((ObjectNode)result.path("qualityHarness")).put("policyVersion","scenario-meaning-harness.v3")
+                            .put("policyHash",ScenarioAssessment.PREVENTION_HARNESS_POLICY_HASH);
                     if (independentAudit) {
                         calls.removeAll();
                         for (String purpose : List.of("GENERATE","QUESTIONS","AUDIT_MEANINGS","AUDIT_QUESTIONS","REVIEW_QUESTIONS","TRANSLATE","REVIEW"))
@@ -210,7 +214,7 @@ class ScenarioEngineIntegrationTest {
         meaningGradeStatus="CAPTURED"; dispatch(engine.assessment(user,other,a,id(),new ScenarioEngine.AssessmentRequest(another.path("version").asLong(),"RECAP","nine, six pounds, tomorrow",List.of())));
         another=engine.session(user,other); assertThat(another.path("activities").get(0).path("assessment").path("canComplete").asBoolean()).isTrue(); assertThat(another.path("activities").get(0).path("questions")).isEmpty();
     }
-    @ParameterizedTest @ValueSource(strings={ScenarioAssessment.PARTS_PROMPT_HASH,ScenarioAssessment.PARTS_V4_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_3_PROMPT_HASH,ScenarioAssessment.PARTS_V4_4_PROMPT_HASH,ScenarioAssessment.PARTS_V4_6_PROMPT_HASH,ScenarioAssessment.PARTS_V4_7_PROMPT_HASH,ScenarioAssessment.PARTS_V4_11_PROMPT_HASH,ScenarioAssessment.PARTS_V4_12_PROMPT_HASH,ScenarioAssessment.PARTS_V4_13_PROMPT_HASH,ScenarioAssessment.PARTS_V4_14_PROMPT_HASH})
+    @ParameterizedTest @ValueSource(strings={ScenarioAssessment.PARTS_PROMPT_HASH,ScenarioAssessment.PARTS_V4_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_3_PROMPT_HASH,ScenarioAssessment.PARTS_V4_4_PROMPT_HASH,ScenarioAssessment.PARTS_V4_6_PROMPT_HASH,ScenarioAssessment.PARTS_V4_7_PROMPT_HASH,ScenarioAssessment.PARTS_V4_11_PROMPT_HASH,ScenarioAssessment.PARTS_V4_12_PROMPT_HASH,ScenarioAssessment.PARTS_V4_13_PROMPT_HASH,ScenarioAssessment.PARTS_V4_14_PROMPT_HASH,ScenarioAssessment.PARTS_V4_15_PROMPT_HASH})
     void requiredPartLessonKeepsItsPolicyAndPinThroughChecksCompletionAndAdmissionChanges(String pin) {
         when(release.assessmentPromptHash()).thenReturn(pin);
         var session=activeMeaning(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();

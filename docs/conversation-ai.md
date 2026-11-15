@@ -3,9 +3,13 @@
 ## Bản đang chỉnh sửa
 
 Một nguồn prompt: `services/ai-generation/app/scenario-prompts.json`.
-Candidate V4.15, hash `f03dd35a2443d8a2ad69e9d3995de3638116b3749261f666b6f8c19f5b73ff89`.
-Chưa kích hoạt. Kiểm thử ngày 15/11/2026 phát hiện lỗi phạm vi chấm còn gây chấm thiếu điểm;
+V4.15 được chủ dự án duyệt làm bản chính thức ngày 15/11/2026,
+hash `f03dd35a2443d8a2ad69e9d3995de3638116b3749261f666b6f8c19f5b73ff89`.
+Phê duyệt này không thay kết luận kiểm thử: vẫn có lỗi phạm vi chấm gây chấm thiếu điểm;
 chưa chứng minh chất lượng tăng. V4.13/V4.14 được giữ nguyên trong kho lịch sử.
+Pin mặc định Core nằm ở `scenario/workflow-v3.sha256`. Các chương trình được duyệt mới:
+giao tiếp phiên bản 5, TOEIC/IELTS phiên bản 4; định nghĩa cũ giữ nguyên để đọc/chấm bài đã lưu.
+Production chỉ được coi là cập nhật khi release và runtime đã xác minh, không chỉ vì đổi pin source.
 Xem [kết quả và bàn giao V4.15](scenario-v415-verification-handoff.md).
 
 `scenario_prompts.py` nạp bản hiện hành. `scenario-prompt-history.json.gz` giữ giá trị đã biên dịch của
@@ -38,7 +42,7 @@ flowchart TD
 - AI API/worker: `services/ai-generation/app`; job ledger giữ idempotency và kết quả chưa rõ.
 - Hợp đồng API: [Scenario engine](scenario-engine-openapi.yaml), [foundation](scenario-foundation-openapi.yaml).
 
-V4.13 sinh bài qua năm bước, không gọi `AUDIT_MEANINGS` hoặc `AUDIT_QUESTIONS`.
+V4.15 sinh bài qua năm bước, không gọi `AUDIT_MEANINGS` hoặc `AUDIT_QUESTIONS`.
 EXTRACT trước đó là một lượt riêng; GRADE chạy khi người học trả lời.
 Luồng không sửa cần 6 lượt cho EXTRACT + sinh bài, giảm 2 so với V4.12. Envelope sinh bài tối đa 9 lượt;
 đây là số lời gọi logic, không phải số HTTP attempts hoặc hóa đơn.
@@ -46,7 +50,7 @@ Luồng không sửa cần 6 lượt cho EXTRACT + sinh bài, giảm 2 so với 
 ## Hợp đồng cần giữ
 
 - Ba activity; cấu trúc, ID, references, bằng chứng và provenance được validation bằng code.
-- Riêng candidate V4.15 cho phép 2–6 câu hỏi và mục tiêu chấm mỗi activity; các pin trước giữ tối thiểu 3.
+- V4.15 cho phép 2–6 câu hỏi và mục tiêu chấm mỗi activity; các pin trước giữ tối thiểu 3.
 - Hội thoại giữ dữ kiện/vai đã xác nhận và phân biệt đề xuất, đồng ý, giả định, điều chưa chắc chắn.
 - Câu hỏi/đáp án/targets cùng phạm vi; thông tin có sẵn trong câu hỏi không thành yêu cầu chấm.
 - Câu hỏi nhiều ý hợp lệ. Đúng địa điểm nhưng sai giờ trong câu hỏi hỏi cả hai → `PARTIAL`.
@@ -63,8 +67,8 @@ Luồng không sửa cần 6 lượt cho EXTRACT + sinh bài, giảm 2 so với 
 Không dùng chúng làm pipeline đánh giá mới. Java V8 trong Evaluation Studio đã nghỉ tạo/chạy mới;
 phiên bản và kết quả cũ vẫn đọc, so sánh và xuất được. Không xóa bảng legacy hoặc sửa nội dung lesson.
 
-Production defaults và approval gates không được chuyển sang V4.13 bởi đợt cleanup này.
-Local preview chỉ mở qua cấu hình đã xác minh, xem [chạy local](local-development.md).
+Mặc định Core là V4.15; approval gates vẫn yêu cầu đúng hash prompt và chương trình trong runtime.
+Local dùng cấu hình đã xác minh, xem [chạy local](local-development.md).
 
 ## Đánh giá chất lượng
 

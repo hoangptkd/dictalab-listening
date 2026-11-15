@@ -36,7 +36,7 @@ public class ScenarioRelease {
         try (var input = new ClassPathResource("scenario/workflow-v3.sha256").getInputStream()) {
             defaultAssessmentHash = new String(input.readNBytes(66), StandardCharsets.US_ASCII).trim();
         }
-        if (!defaultAssessmentHash.equals(ScenarioAssessment.PROMPT_HASH)) throw new IllegalStateException("Invalid assessment workflow pin");
+        if (!defaultAssessmentHash.equals(ScenarioAssessment.ACTIVE_PROMPT_HASH)) throw new IllegalStateException("Invalid assessment workflow pin");
         // Explicit local preview approval selects the candidate; saved lessons retain their own pins.
         boolean assessmentPreview = engine.localPreviewEnabled()
                 && Set.of(ScenarioAssessment.PARTS_V4_12_PROMPT_HASH,ScenarioAssessment.PARTS_V4_13_PROMPT_HASH,ScenarioAssessment.PARTS_V4_14_PROMPT_HASH,ScenarioAssessment.PARTS_V4_15_PROMPT_HASH).contains(engine.approvedPromptHash())

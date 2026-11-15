@@ -2,6 +2,35 @@
 
 ## Trạng thái và phạm vi
 
+**Cập nhật sau benchmark:** chủ dự án duyệt V4.15 chính thức cho local và production ngày 15/11/2026.
+Các kết quả và quyết định không kích hoạt trong phần kiểm thử dưới đây là lịch sử của đợt đo.
+Source chuyển pin mặc định Core sang V4.15 và thêm chương trình APPROVED giao tiếp:5, TOEIC:4,
+IELTS:4. Phiên bản cũ không thay đổi. Phê duyệt không chứng minh sửa được ba lỗi chấm đã ghi nhận.
+Production vẫn phải qua main CI, backup/restore, kiểm tra máy chủ và xác minh runtime trước khi báo đã deploy.
+
+### Kích hoạt theo phê duyệt sau benchmark
+
+- Không đổi prompt/hash hoặc raw benchmark. Core mặc định V4.15; Python vẫn nhận pin lịch sử
+  tường minh để chấm bài cũ. `PROMPT_HASH` V3 trong code compatibility không phải pin runtime mới.
+- Kiểm tra activation: Python 129/129, Java 194/194, giao diện Studio 4/4 đạt; UTF-8/diff đạt.
+- Định nghĩa APPROVED mới, không sửa hash của định nghĩa cũ:
+
+| Program | Version | Definition hash |
+|---|---:|---|
+| general-communication | 5 | `0ce4e16e2a22457b381aa7eac35554f912d7e5a970515ad7b9a8aeafe76e4c8b` |
+| toeic-listening | 4 | `b22979ffb15043862bb0082b76489ad7e9b0d2862f33537c36a7954cfe0f1530` |
+| ielts-listening | 4 | `e5574d4011ddcc22a95c55ff1ff8805af001837c8c6f2998c58962cd8c835735` |
+
+Runtime cần `DICTALAB_SCENARIO_ENABLED=true`, `DICTALAB_SCENARIO_ENGINE_ENABLED=true`,
+`DICTALAB_SCENARIO_ENGINE_APPROVED_PROMPT_HASH=f03dd35a2443d8a2ad69e9d3995de3638116b3749261f666b6f8c19f5b73ff89`
+và map `dictalab.scenario.engine.approved-programs` đúng ba khóa `general-communication:5`,
+`toeic-listening:4`, `ielts-listening:4` với các hash trên. Không cần bật local preview cho chương trình APPROVED.
+Giữ các cấu hình bảo mật, fallback, tracing, TTS và chính sách không hạn mức hiện có.
+
+Preflight production của phiên này: SSH `54.254.221.170:22` timeout; chưa đọc được backup/restore,
+năng lực máy chủ hoặc runtime approvals. Không bật `PRODUCTION_DEPLOY_ENABLED` hoặc tự deploy ngoài main flow.
+Source chuẩn bị phát hành không phải bằng chứng website đã dùng V4.15.
+
 - Ngày 15/11/2026. Đây là đợt phòng lỗi đầu nguồn, chưa phải kết luận đã tăng chất lượng.
 - Source: `C:/Users/HP/Desktop/English_dictition`.
 - Branch: `codex/scenario-prevention-v415-20261115`.

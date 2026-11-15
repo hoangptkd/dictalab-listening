@@ -28,7 +28,10 @@ def test_local_build_cleans_stale_classes_before_copying_and_recording_the_jar(t
     plan = {'core': ({'DICTALAB_SCENARIO_ENGINE_APPROVED_PROMPT_HASH': 'approved'}, [], tmp_path)}
     monkeypatch.setattr(launcher, 'local_plan', lambda: (plan, {}))
     monkeypatch.setitem(sys.modules, 'app.scenario_assessment',
-                        SimpleNamespace(prompt_hash=lambda _: 'approved', scoped_release=object()))
+                        SimpleNamespace(selected_release=lambda pin: object() if pin == 'approved' else pytest.fail('unexpected pin')))
+    resource = tmp_path / 'src/main/resources/scenario/workflow-v3.sha256'
+    resource.parent.mkdir(parents=True)
+    resource.write_text('approved', encoding='ascii')
     jar = tmp_path / 'target/english-dictation-0.1.0-SNAPSHOT.jar'
     jar.parent.mkdir()
     def build(args, **kwargs):

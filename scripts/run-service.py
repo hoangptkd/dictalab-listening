@@ -318,8 +318,9 @@ def local_plan():
 def run_local(check_only=False):
     plan, urls = local_plan()
     sys.path.insert(0, str(ROOT / 'services/ai-generation'))
-    from app.scenario_assessment import prompt_hash, scoped_release
-    pin = prompt_hash(scoped_release)
+    pin = (ROOT / 'src/main/resources/scenario/workflow-v3.sha256').read_text(encoding='ascii').strip()
+    from app.scenario_assessment import selected_release
+    selected_release(pin)
     if plan['core'][0].get('DICTALAB_SCENARIO_ENGINE_APPROVED_PROMPT_HASH') != pin:
         raise ValueError('Local prompt approval does not match the current source')
     build_log = LOCAL_DIRECTORY / 'build.log'

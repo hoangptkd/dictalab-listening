@@ -7,10 +7,12 @@ Open <http://localhost:18082/admin/ai-evaluation> as an existing ADMIN. API requ
 Provider accounts and fallback policies come from `/admin/gemini`.
 
 New versions and runs use the personalized Python pipeline: frozen **V4.13**, frozen **V4.14**
-and the **V4.15 prevention candidate**, available only for explicit local comparison.
+and **V4.15**, approved by the owner as the default release on 2026-11-15.
 V4.15 is the one editable prompt source; earlier prompts load from the checked historical artifact.
 The owner approved testing on 2026-11-15. Offline checks passed; the partial live comparison found
-scoring-scope defects and did not approve activation. See the [results and handoff](scenario-v415-verification-handoff.md).
+scoring-scope defects; the owner subsequently approved activation despite those known defects.
+This decision is not evidence of improved semantic quality or a verified production deployment.
+See the [results and handoff](scenario-v415-verification-handoff.md).
 Java V8 and other historical prompt releases are read-only evidence. No new replay or generation uses them.
 Creating an experiment snapshot does not activate or approve a learner/production prompt.
 

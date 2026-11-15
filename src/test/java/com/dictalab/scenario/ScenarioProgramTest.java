@@ -33,15 +33,34 @@ class ScenarioProgramTest {
         assertThat(accepted).as(fixture.path("name").asText()).isEqualTo(fixture.path("valid").asBoolean());
     }
 
-    @Test void registryDefinitionsAreDeeplyImmutableAndNotApprovedForGeneration() throws Exception {
+    @Test void registryDefinitionsAreDeeplyImmutableAndKeepHistoricalDrafts() throws Exception {
         var registry = new ScenarioProgramRegistry();
-        assertThat(registry.definitions()).hasSize(10).allMatch(p -> p.status() == ScenarioProgram.Status.DRAFT);
+        assertThat(registry.definitions()).hasSize(13);
+        assertThat(registry.definitions().stream().filter(p -> p.status() == ScenarioProgram.Status.DRAFT)).hasSize(10);
         var general = registry.require("general-communication", 1);
         assertThat(general.difficultyProfiles()).hasSize(3);
         assertThatThrownBy(() -> general.targetScales().get(0).labels().add("A1")).isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> general.difficultyProfiles().get(0).skills().clear()).isInstanceOf(UnsupportedOperationException.class);
         assertThat(registry.definitions().stream().filter(p -> p.version()==1)).allMatch(p -> p.supportedPracticeModes().isEmpty() && p.promptArtifactRefs().isEmpty());
-        assertThat(registry.definitions()).allMatch(p -> p.promptArtifactRefs().isEmpty());
+        assertThat(registry.definitions().stream().filter(p -> p.status() == ScenarioProgram.Status.DRAFT)).allMatch(p -> p.promptArtifactRefs().isEmpty());
+        var approved=registry.definitions().stream().filter(p -> p.status() == ScenarioProgram.Status.APPROVED).toList();
+        assertThat(approved).hasSize(3).allMatch(ScenarioProgram::meaningAssessment);
+        for (var program : approved) {
+            var previous=registry.require(program.code(),program.version()-1);
+            assertThat(previous.status()).isEqualTo(ScenarioProgram.Status.DRAFT);
+            assertThat(program.difficultyProfiles()).isEqualTo(previous.difficultyProfiles());
+            assertThat(program.promptArtifactRefs()).allMatch(ref -> ref.sha256().equals(ScenarioAssessment.ACTIVE_PROMPT_HASH)
+                    && ref.artifactId().equals("scenario-listening-v3"));
+        }
+        var fixtures=ScenarioPersonalization.evaluationFixtures(registry);
+        var ids=new java.util.HashSet<String>();
+        for (var fixture : fixtures) {
+            assertThat(ids.add(fixture.path("id").asText())).isTrue();
+            var context=fixture.path("context").path("learningContext");
+            assertThat(registry.require(context.path("programCode").asText(),context.path("programVersion").asInt()).status())
+                    .isEqualTo(ScenarioProgram.Status.APPROVED);
+        }
+        assertThat(fixtures.size()).isEqualTo(12);
     }
 
     @Test void refusesHashDriftAndMissingApprovalEvidence() throws Exception {

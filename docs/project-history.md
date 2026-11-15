@@ -32,8 +32,9 @@ thư mục đó không còn là Git worktree hay bản chạy local.
 | --- | --- |
 | V3 và các bản trước V4.13 | Giữ pin/compiled values để đọc/chấm bài cũ; không mở thí nghiệm mới trong Studio |
 | V4.12 | Hai audit đã được thay bằng hợp đồng QUESTIONS → REVIEW_QUESTIONS → GRADE của V4.13 |
-| V4.13 | Nguồn hiện hành; giữ few-shot đang có, năm bước sinh bài và chính sách review advisory |
+| V4.13 | Bản trước khi chủ dự án duyệt V4.15; giữ pin và kết quả đối chứng |
 | V4.14 few-shot candidate | Không kích hoạt: chưa có bằng chứng tăng chất lượng so với V4.13 |
+| V4.15 | Chủ dự án duyệt làm mặc định cho local và production ngày 15/11/2026; lỗi chấm đã biết vẫn còn, production cần xác minh release thực tế |
 
 Phép đo V4.13/V4.14 ngày 14/11 giữ cùng input/model/config ở các cặp so được:
 
