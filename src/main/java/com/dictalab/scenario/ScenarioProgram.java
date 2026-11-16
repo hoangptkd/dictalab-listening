@@ -76,11 +76,11 @@ public record ScenarioProgram(String schemaVersion, String code, int version, St
         }
         require(generationPolicy != null && generationPolicy.deadlineSeconds() > 0
                 && generationPolicy.deadlineSeconds() <= 300 && generationPolicy.maxCalls() > 0
-                && generationPolicy.maxCalls() <= 7 && generationPolicy.maxInputChars() > 0
+                && generationPolicy.maxCalls() <= 17 && generationPolicy.maxInputChars() > 0
                 && generationPolicy.maxInputChars() <= 2000 && generationPolicy.maxOutputTokens() > 0
                 && generationPolicy.maxOutputTokens() <= 16000 && generationPolicy.maxResultBytes() > 0
                 && generationPolicy.maxResultBytes() <= 262144 && generationPolicy.repairLimit() >= 0
-                && generationPolicy.repairLimit() <= 1, "Invalid generation bounds");
+                && generationPolicy.repairLimit() <= 2, "Invalid generation bounds");
         require(gradingPolicy != null && gradingPolicy.maxAttempts() > 0 && gradingPolicy.maxAttempts() <= 3
                 && "KEEP_UNCERTAIN".equals(gradingPolicy.uncertaintyPolicy()) && supportPolicy != null, "Invalid grading policy");
         require(supportedPracticeModes.stream().allMatch(Set.of("guided-listening", "exam-practice")::contains)

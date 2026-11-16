@@ -1,0 +1,708 @@
+{
+  "payload": {
+    "kind": "scenario",
+    "phase": "GENERATE",
+    "contractVersion": "scenario-job.v3",
+    "promptHash": "7c7172b2bbb04423c5ddb3a5e525dcae1d93189279afb22da1fe74184dea440e",
+    "programHash": "bb2ec5cd120373be1384cea529187c0bb289f6d99064ed3c85a2c346c7c33b87",
+    "profile": {
+      "id": "standard",
+      "minWordsPerActivity": 30,
+      "maxWordsPerActivity": 100,
+      "maxWordsPerSession": 300
+    },
+    "inputVi": "",
+    "specification": {
+      "allowed": true,
+      "titleVi": "Đặt bánh để nhận ngày mai",
+      "settingVi": "Một cửa hàng bánh nhỏ.",
+      "goalVi": "Đặt và nhận bánh không có hạt.",
+      "characters": [
+        {
+          "id": "customer",
+          "name": "Alex",
+          "roleVi": "Khách hàng"
+        },
+        {
+          "id": "baker",
+          "name": "Sam",
+          "roleVi": "Người bán bánh"
+        }
+      ],
+      "assumptionsVi": [
+        "Cửa hàng nhận đặt trước"
+      ],
+      "topicIds": [
+        "food"
+      ],
+      "learnerRoleVi": "Người nghe",
+      "constraintsVi": [
+        "Không có hạt"
+      ],
+      "learnerMode": "listener",
+      "genre": "information-exchange"
+    },
+    "activity": null,
+    "learningContext": {
+      "contractVersion": "scenario-learning-context.v2",
+      "programCode": "ielts-listening",
+      "programVersion": 2,
+      "programHash": "bb2ec5cd120373be1384cea529187c0bb289f6d99064ed3c85a2c346c7c33b87",
+      "practiceMode": "guided-listening",
+      "layoutVersion": "three-activities.v1",
+      "focusSkill": "detail",
+      "targetProvenance": "USER_DECLARED_GOAL",
+      "currentProvenance": "UNKNOWN",
+      "calibrationStatus": "INTERNAL_PRACTICE_UNCALIBRATED",
+      "qualityPolicyVersion": "scenario-quality.v2-draft",
+      "skillTaxonomyVersion": "scenario-skills.v2",
+      "target": {
+        "scaleId": "ielts-listening-band",
+        "component": "LISTENING",
+        "value": "6.5"
+      },
+      "targetScale": {
+        "scaleId": "ielts-listening-band",
+        "component": "LISTENING",
+        "min": "0",
+        "max": "9",
+        "step": "0.5",
+        "labels": [],
+        "sourceUrl": "https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail",
+        "reviewedOn": "2026-10-31"
+      },
+      "currentValue": null,
+      "profile": {
+        "id": "standard",
+        "version": 2,
+        "minWordsPerActivity": 30,
+        "maxWordsPerActivity": 100,
+        "maxWordsPerSession": 300,
+        "maxActivities": 3,
+        "maxSpeakers": 2,
+        "maxSegmentsPerActivity": 6,
+        "maxQuestionsPerSession": 18,
+        "maxFactsPerActivity": 3,
+        "maxDistractors": 1,
+        "maxCorrections": 0,
+        "inferencePolicy": "SUPPORTED_INFERENCE",
+        "speechRateWpm": 125,
+        "pauseMillis": 500,
+        "vocabularyGuidance": "Social, education and training discussions, explanations and academic topics. Explain specialist terms without assuming outside knowledge. Use varied paraphrases and topic vocabulary with clear context.",
+        "syntaxGuidance": "Varied compound and subordinate clauses, unambiguous references.",
+        "informationDensity": "Linked details and reasons; occasional contrast or correction.",
+        "skills": [
+          "detail",
+          "main-idea",
+          "reason",
+          "purpose",
+          "speaker-attitude",
+          "supported-inference"
+        ],
+        "allowedVoiceProfiles": [],
+        "targetRange": {
+          "scaleId": "ielts-listening-band",
+          "min": "5.5",
+          "max": "6.5"
+        }
+      },
+      "answerLanguages": [
+        "vi",
+        "en"
+      ]
+    },
+    "assessmentSubmission": null
+  },
+  "result": {
+    "schemaVersion": "1",
+    "provider": "ollama",
+    "model": "qwen3.5:9b",
+    "modelDigest": "unknown",
+    "promptVersion": "SCENARIO_MEANING_ASSESSMENT_V5_1",
+    "promptHash": "7c7172b2bbb04423c5ddb3a5e525dcae1d93189279afb22da1fe74184dea440e",
+    "assessmentPolicyVersion": "scenario-meaning-assessment.v2",
+    "qualityHarness": {
+      "policyVersion": "scenario-meaning-harness.v4",
+      "policyHash": "69337a5eead07193b9a1744a6703b8150a860b7f5c21879de761838dc30ec529",
+      "decision": "ACCEPTED",
+      "callPlan": [
+        {
+          "purpose": "GENERATE",
+          "sourceHash": null
+        },
+        {
+          "purpose": "REVIEW",
+          "sourceHash": "156c49db81fc6f373770d070d856556efba80c8489fc2c00402e547d24d7b391"
+        },
+        {
+          "purpose": "QUESTIONS",
+          "sourceHash": "156c49db81fc6f373770d070d856556efba80c8489fc2c00402e547d24d7b391"
+        },
+        {
+          "purpose": "REVIEW_QUESTIONS",
+          "sourceHash": "156c49db81fc6f373770d070d856556efba80c8489fc2c00402e547d24d7b391"
+        },
+        {
+          "purpose": "REVIEW_QUESTIONS",
+          "sourceHash": "156c49db81fc6f373770d070d856556efba80c8489fc2c00402e547d24d7b391"
+        },
+        {
+          "purpose": "REPAIR_QUESTIONS",
+          "sourceHash": "156c49db81fc6f373770d070d856556efba80c8489fc2c00402e547d24d7b391"
+        },
+        {
+          "purpose": "REVIEW_QUESTIONS",
+          "sourceHash": "156c49db81fc6f373770d070d856556efba80c8489fc2c00402e547d24d7b391"
+        },
+        {
+          "purpose": "TRANSLATE",
+          "sourceHash": "156c49db81fc6f373770d070d856556efba80c8489fc2c00402e547d24d7b391"
+        },
+        {
+          "purpose": "REVIEW",
+          "sourceHash": "156c49db81fc6f373770d070d856556efba80c8489fc2c00402e547d24d7b391"
+        }
+      ],
+      "extraCalls": 3,
+      "validations": [
+        {
+          "stage": "REVIEW",
+          "status": "PASS",
+          "issues": [],
+          "reviewerErrors": []
+        },
+        {
+          "stage": "REVIEW_QUESTIONS",
+          "status": "FAIL",
+          "issues": [
+            {
+              "code": "scope",
+              "stage": "QUESTIONS",
+              "path": "QUESTIONS/a1/question/q1",
+              "severity": "warning",
+              "repairable": true,
+              "activityId": "a1",
+              "itemType": "question",
+              "itemId": "q1",
+              "questionId": "q1",
+              "reasonVi": "Khóa yêu cầu thêm ý ngoài điều được hỏi.",
+              "artifactQuote": "Ý tham chiếu 1",
+              "sourceEvidence": [
+                {
+                  "activityId": "a1",
+                  "segmentId": "s1",
+                  "quoteEn": "The shop opens at nine."
+                }
+              ],
+              "requestQuote": "",
+              "derivedAnswerVi": "Đáp án từ nguồn.",
+              "answerSupport": "direct",
+              "answerMatchesDerived": true,
+              "declaredSkill": "detail",
+              "partChecks": [
+                {
+                  "meaningId": "m1",
+                  "partId": "p1",
+                  "requiredByQuestion": true,
+                  "sourceSupportsPart": true,
+                  "reasonVi": "Phù hợp phạm vi."
+                }
+              ]
+            }
+          ],
+          "reviewerErrors": []
+        },
+        {
+          "stage": "REVIEW_QUESTIONS",
+          "status": "FAIL",
+          "issues": [
+            {
+              "code": "scope",
+              "stage": "QUESTIONS",
+              "path": "QUESTIONS/a1/question/q1",
+              "severity": "warning",
+              "repairable": true,
+              "activityId": "a1",
+              "itemType": "question",
+              "itemId": "q1",
+              "questionId": "q1",
+              "reasonVi": "Khóa yêu cầu thêm ý ngoài điều được hỏi.",
+              "artifactQuote": "Ý tham chiếu 1",
+              "sourceEvidence": [
+                {
+                  "activityId": "a1",
+                  "segmentId": "s1",
+                  "quoteEn": "The shop opens at nine."
+                }
+              ],
+              "requestQuote": "",
+              "derivedAnswerVi": "Đáp án từ nguồn.",
+              "answerSupport": "direct",
+              "answerMatchesDerived": true,
+              "declaredSkill": "detail",
+              "partChecks": [
+                {
+                  "meaningId": "m1",
+                  "partId": "p1",
+                  "requiredByQuestion": true,
+                  "sourceSupportsPart": true,
+                  "reasonVi": "Phù hợp phạm vi."
+                }
+              ]
+            }
+          ],
+          "reviewerErrors": []
+        },
+        {
+          "stage": "REVIEW_QUESTIONS",
+          "status": "PASS",
+          "issues": [],
+          "reviewerErrors": []
+        },
+        {
+          "stage": "REVIEW",
+          "status": "PASS",
+          "issues": [],
+          "reviewerErrors": []
+        }
+      ],
+      "attempts": [
+        {
+          "stage": "QUESTIONS",
+          "attempted": true,
+          "accepted": true,
+          "originalHash": "6ad95a53a76bf08121a725b08f64d61cdf92de46f14240cf1de924a6bf62ce2b",
+          "targets": [
+            {
+              "itemType": "meaning",
+              "activityId": "a1",
+              "itemId": "m1"
+            },
+            {
+              "itemType": "question",
+              "activityId": "a1",
+              "itemId": "q1"
+            }
+          ],
+          "candidateHash": "3c9d8eb96401ee976ebf1ffcefbf0505056cf658459b4aa1940ba2d07960ef64",
+          "reason": "resolved"
+        }
+      ],
+      "disputedFindings": [],
+      "originalSourceHash": "156c49db81fc6f373770d070d856556efba80c8489fc2c00402e547d24d7b391",
+      "sourceHash": "156c49db81fc6f373770d070d856556efba80c8489fc2c00402e547d24d7b391",
+      "contentHash": "8bccbf8649d1d1019ee22850bd9feae1a462f1ba8272263cc2c81ecb5c37c447"
+    },
+    "generationId": "1e5eeba2-4729-452a-8e09-da201aefda3f",
+    "requestId": "1e5eeba2-4729-452a-8e09-da201aefda3f",
+    "programHash": "bb2ec5cd120373be1384cea529187c0bb289f6d99064ed3c85a2c346c7c33b87",
+    "calls": [
+      {
+        "purpose": "GENERATE",
+        "provider": "ollama",
+        "model": "qwen3.5:9b"
+      },
+      {
+        "purpose": "REVIEW",
+        "provider": "ollama",
+        "model": "qwen3.5:9b"
+      },
+      {
+        "purpose": "QUESTIONS",
+        "provider": "ollama",
+        "model": "qwen3.5:9b"
+      },
+      {
+        "purpose": "REVIEW_QUESTIONS",
+        "provider": "ollama",
+        "model": "qwen3.5:9b"
+      },
+      {
+        "purpose": "REVIEW_QUESTIONS",
+        "provider": "ollama",
+        "model": "qwen3.5:9b"
+      },
+      {
+        "purpose": "REPAIR_QUESTIONS",
+        "provider": "ollama",
+        "model": "qwen3.5:9b"
+      },
+      {
+        "purpose": "REVIEW_QUESTIONS",
+        "provider": "ollama",
+        "model": "qwen3.5:9b"
+      },
+      {
+        "purpose": "TRANSLATE",
+        "provider": "ollama",
+        "model": "qwen3.5:9b"
+      },
+      {
+        "purpose": "REVIEW",
+        "provider": "ollama",
+        "model": "qwen3.5:9b"
+      }
+    ],
+    "task": {
+      "activities": [
+        {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "customer",
+              "textEn": "The shop opens at nine. The bread costs six pounds. Please collect it tomorrow."
+            },
+            {
+              "id": "s2",
+              "speakerId": "baker",
+              "textEn": "We accept cards. Bring your receipt. The order has no nuts."
+            }
+          ],
+          "questions": [
+            {
+              "id": "q1",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Thông tin số 1 trong đoạn này là gì?",
+              "answerVi": "Ý tham chiếu 1",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "The shop opens at nine."
+                }
+              ],
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m1"
+              ]
+            },
+            {
+              "id": "q2",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Thông tin số 2 trong đoạn này là gì?",
+              "answerVi": "Ý tham chiếu 2",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "The bread costs six pounds."
+                }
+              ],
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m2"
+              ]
+            }
+          ],
+          "assessment": {
+            "policyVersion": "scenario-meaning-assessment.v2",
+            "meanings": [
+              {
+                "id": "m1",
+                "meaningEn": "The shop opens at nine. corrected",
+                "skill": "detail",
+                "supportKind": "direct",
+                "inferenceReasonEn": "",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "The shop opens at nine."
+                  }
+                ],
+                "requiredParts": [
+                  {
+                    "id": "p1",
+                    "meaningEn": "The shop opens at nine.",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "The shop opens at nine."
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "m2",
+                "meaningEn": "The bread costs six pounds.",
+                "skill": "detail",
+                "supportKind": "direct",
+                "inferenceReasonEn": "",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "The bread costs six pounds."
+                  }
+                ],
+                "requiredParts": [
+                  {
+                    "id": "p1",
+                    "meaningEn": "The bread costs six pounds.",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "The bread costs six pounds."
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "a2",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "customer",
+              "textEn": "The shop opens at nine. The bread costs six pounds. Please collect it tomorrow."
+            },
+            {
+              "id": "s2",
+              "speakerId": "baker",
+              "textEn": "We accept cards. Bring your receipt. The order has no nuts."
+            }
+          ],
+          "questions": [
+            {
+              "id": "q1",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Thông tin số 1 trong đoạn này là gì?",
+              "answerVi": "Ý tham chiếu 1",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "The shop opens at nine."
+                }
+              ],
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m1"
+              ]
+            },
+            {
+              "id": "q2",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Thông tin số 2 trong đoạn này là gì?",
+              "answerVi": "Ý tham chiếu 2",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "The bread costs six pounds."
+                }
+              ],
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m2"
+              ]
+            }
+          ],
+          "assessment": {
+            "policyVersion": "scenario-meaning-assessment.v2",
+            "meanings": [
+              {
+                "id": "m1",
+                "meaningEn": "The shop opens at nine.",
+                "skill": "detail",
+                "supportKind": "direct",
+                "inferenceReasonEn": "",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "The shop opens at nine."
+                  }
+                ],
+                "requiredParts": [
+                  {
+                    "id": "p1",
+                    "meaningEn": "The shop opens at nine.",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "The shop opens at nine."
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "m2",
+                "meaningEn": "The bread costs six pounds.",
+                "skill": "detail",
+                "supportKind": "direct",
+                "inferenceReasonEn": "",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "The bread costs six pounds."
+                  }
+                ],
+                "requiredParts": [
+                  {
+                    "id": "p1",
+                    "meaningEn": "The bread costs six pounds.",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "The bread costs six pounds."
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "a3",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "customer",
+              "textEn": "The shop opens at nine. The bread costs six pounds. Please collect it tomorrow."
+            },
+            {
+              "id": "s2",
+              "speakerId": "baker",
+              "textEn": "We accept cards. Bring your receipt. The order has no nuts."
+            }
+          ],
+          "questions": [
+            {
+              "id": "q1",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Thông tin số 1 trong đoạn này là gì?",
+              "answerVi": "Ý tham chiếu 1",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "The shop opens at nine."
+                }
+              ],
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m1"
+              ]
+            },
+            {
+              "id": "q2",
+              "type": "MEANING_RECALL_VI",
+              "skill": "detail",
+              "promptVi": "Thông tin số 2 trong đoạn này là gì?",
+              "answerVi": "Ý tham chiếu 2",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "The bread costs six pounds."
+                }
+              ],
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m2"
+              ]
+            }
+          ],
+          "assessment": {
+            "policyVersion": "scenario-meaning-assessment.v2",
+            "meanings": [
+              {
+                "id": "m1",
+                "meaningEn": "The shop opens at nine.",
+                "skill": "detail",
+                "supportKind": "direct",
+                "inferenceReasonEn": "",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "The shop opens at nine."
+                  }
+                ],
+                "requiredParts": [
+                  {
+                    "id": "p1",
+                    "meaningEn": "The shop opens at nine.",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "The shop opens at nine."
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "m2",
+                "meaningEn": "The bread costs six pounds.",
+                "skill": "detail",
+                "supportKind": "direct",
+                "inferenceReasonEn": "",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "The bread costs six pounds."
+                  }
+                ],
+                "requiredParts": [
+                  {
+                    "id": "p1",
+                    "meaningEn": "The bread costs six pounds.",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "The bread costs six pounds."
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "translations": [
+        {
+          "activityId": "a1",
+          "segmentId": "s1",
+          "textVi": "Bản dịch a1/s1"
+        },
+        {
+          "activityId": "a1",
+          "segmentId": "s2",
+          "textVi": "Bản dịch a1/s2"
+        },
+        {
+          "activityId": "a2",
+          "segmentId": "s1",
+          "textVi": "Bản dịch a2/s1"
+        },
+        {
+          "activityId": "a2",
+          "segmentId": "s2",
+          "textVi": "Bản dịch a2/s2"
+        },
+        {
+          "activityId": "a3",
+          "segmentId": "s1",
+          "textVi": "Bản dịch a3/s1"
+        },
+        {
+          "activityId": "a3",
+          "segmentId": "s2",
+          "textVi": "Bản dịch a3/s2"
+        }
+      ],
+      "qualityPassed": true
+    }
+  }
+}

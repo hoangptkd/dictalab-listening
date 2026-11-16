@@ -117,7 +117,7 @@ final class ScenarioContent {
         }
         check(actual.equals(expected));
     }
-    private static void meanings(JsonNode activity,Map<String,String> segments,JsonNode context,int minimumItems) {
+    static void meanings(JsonNode activity,Map<String,String> segments,JsonNode context,int minimumItems) {
         var assessment=activity.path("assessment"); fields(assessment,"policyVersion","meanings");
         String policy=text(assessment,"policyVersion",40); check(Set.of(ScenarioAssessment.POLICY,ScenarioAssessment.PARTS_POLICY).contains(policy));
         boolean parts=policy.equals(ScenarioAssessment.PARTS_POLICY); list(assessment.path("meanings"),minimumItems,6);

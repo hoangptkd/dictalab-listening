@@ -35,7 +35,7 @@ class ScenarioProgramTest {
 
     @Test void registryDefinitionsAreDeeplyImmutableAndKeepHistoricalDrafts() throws Exception {
         var registry = new ScenarioProgramRegistry();
-        assertThat(registry.definitions()).hasSize(16);
+        assertThat(registry.definitions()).hasSize(19);
         assertThat(registry.definitions().stream().filter(p -> p.status() == ScenarioProgram.Status.DRAFT)).hasSize(10);
         var general = registry.require("general-communication", 1);
         assertThat(general.difficultyProfiles()).hasSize(3);
@@ -44,12 +44,12 @@ class ScenarioProgramTest {
         assertThat(registry.definitions().stream().filter(p -> p.version()==1)).allMatch(p -> p.supportedPracticeModes().isEmpty() && p.promptArtifactRefs().isEmpty());
         assertThat(registry.definitions().stream().filter(p -> p.status() == ScenarioProgram.Status.DRAFT)).allMatch(p -> p.promptArtifactRefs().isEmpty());
         var approved=registry.definitions().stream().filter(p -> p.status() == ScenarioProgram.Status.APPROVED).toList();
-        assertThat(approved).hasSize(6).allMatch(ScenarioProgram::meaningAssessment);
+        assertThat(approved).hasSize(9).allMatch(ScenarioProgram::meaningAssessment);
         for (var program : approved) {
             var previous=registry.require(program.code(),program.version()-1);
             assertThat(previous.status()).isIn(ScenarioProgram.Status.DRAFT,ScenarioProgram.Status.APPROVED);
             assertThat(program.difficultyProfiles()).isEqualTo(previous.difficultyProfiles());
-            assertThat(program.promptArtifactRefs()).allMatch(ref -> ref.sha256().equals(previous.status()==ScenarioProgram.Status.APPROVED ? ScenarioAssessment.ACTIVE_PROMPT_HASH : ScenarioAssessment.PARTS_V4_15_PROMPT_HASH)
+            assertThat(program.promptArtifactRefs()).allMatch(ref -> ref.sha256().equals(previous.status()!=ScenarioProgram.Status.APPROVED ? ScenarioAssessment.PARTS_V4_15_PROMPT_HASH : program.version()==(program.code().equals("general-communication") ? 6 : 5) ? ScenarioAssessment.FRESH_V5_0_PROMPT_HASH : ScenarioAssessment.ACTIVE_PROMPT_HASH)
                     && ref.artifactId().equals("scenario-listening-v3"));
         }
         var fixtures=ScenarioPersonalization.evaluationFixtures(registry);

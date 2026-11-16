@@ -35,6 +35,7 @@ prevention_candidate = historical_release('scenario_prompts_meaning_v4_15')
 alignment_candidate = historical_release('scenario_prompts_meaning_v4_16')
 scope_candidate = historical_release('scenario_prompts_meaning_v4_17')
 fresh_candidate = historical_release('scenario_prompts_meaning_v5_0')
+recovery_candidate = historical_release('scenario_prompts_meaning_v5_1')
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .observability import trace_gate
@@ -303,7 +304,7 @@ class ScenarioAssessmentInput(StrictModel):
                 raise ValueError("invalid grade input")
             if (selected.POLICY_VERSION == parts_release.POLICY_VERSION) != isinstance(self.activity, PartsActivity):
                 raise ValueError("assessment policy does not match pinned release")
-            if selected not in (prevention_candidate, alignment_candidate, scope_candidate, fresh_candidate) and (len(self.activity.questions) < 3 or len(self.activity.assessment.meanings) < 3):
+            if selected not in (prevention_candidate, alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate) and (len(self.activity.questions) < 3 or len(self.activity.assessment.meanings) < 3):
                 raise ValueError("historical assessment requires at least three items")
             validate_submission(self.activity, self.assessmentSubmission)
         self.inputVi = redact_string(self.inputVi)
@@ -362,17 +363,17 @@ def response_schema(model, *, legacy=False, minimum_targets=False, answer_first=
 @cache
 def prompt_hash(selected=release):
     parts = selected.POLICY_VERSION == parts_release.POLICY_VERSION
-    flexible = selected in (prevention_candidate, alignment_candidate, scope_candidate, fresh_candidate)
+    flexible = selected in (prevention_candidate, alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate)
     questions_model = FlexibleQuestions if flexible else PartsQuestions if parts else Questions
     content_model = FlexibleContent if flexible else PartsContent if parts else Content
-    review_model = AlignedQuestionReview if selected in (alignment_candidate, scope_candidate, fresh_candidate) else FlexibleQuestionReview if flexible else QuestionReview
-    grade_model = AlignedPartsGrade if selected in (alignment_candidate, scope_candidate, fresh_candidate) else PartsGrade if parts else Grade
+    review_model = AlignedQuestionReview if selected in (alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate) else FlexibleQuestionReview if flexible else QuestionReview
+    grade_model = AlignedPartsGrade if selected in (alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate) else PartsGrade if parts else Grade
     models = (AssessmentContext, w.PersonalizedSpecification, w.PersonalizedExtraction, w.Dialogue,
               questions_model, content_model, w.Translations,
               review_model, w.PersonalizedReview, Submission, grade_model)
     legacy = selected is legacy_release
     wire = {"legacy": legacy, "minimum_targets": getattr(selected, "MINIMUM_TARGETS", False)}
-    if selected in (scope_candidate, fresh_candidate):
+    if selected in (scope_candidate, fresh_candidate, recovery_candidate):
         wire["answer_first"] = True
     manifest = {"version": selected.PROMPT_VERSION, "assessmentPolicyVersion": selected.POLICY_VERSION,
                 "instructions": selected.INSTRUCTIONS, "outputTokens": selected.OUTPUT_TOKENS,
@@ -385,7 +386,7 @@ def prompt_hash(selected=release):
         manifest["responseSchemas"] = {m.__name__: response_schema(m, **wire) for m in
             (w.PersonalizedExtraction, w.Dialogue, questions_model, review_model,
              w.Translations, w.PersonalizedReview, grade_model)}
-    if selected in (scope_candidate, fresh_candidate):
+    if selected in (scope_candidate, fresh_candidate, recovery_candidate):
         # Canonical hash sorting otherwise hides property order from the release fingerprint.
         manifest["responseOrder"] = "question-answer-before-targets.v1"
     if getattr(selected, "COLLECT_ITEM_ERRORS", False):
@@ -395,6 +396,10 @@ def prompt_hash(selected=release):
     if getattr(selected, "EXAMPLE_SET_HASH", None):
         manifest["fewShotExamples"] = {"version": selected.EXAMPLE_SET_VERSION,
             "hash": selected.EXAMPLE_SET_HASH, "idsByStage": selected.EXAMPLE_IDS}
+    if selected is recovery_candidate:
+        from .scenario_assessment_recovery import Review
+        manifest["recoveryReviewSchema"] = response_schema(Review)
+        manifest["recoveryProtocol"] = "verified-dependency-repair.v2;focused-explanation-support.v1"
     if parts:
         manifest["derivedGradeSchema"] = DerivedGrade.model_json_schema()
         manifest["aggregation"] = "all-captured;any-uncertain;any-correct-partial;any-incorrect;mode-omission.v1"
@@ -412,7 +417,7 @@ def prompt_hash(selected=release):
 
 
 def selected_release(requested_hash):
-    for selected in (fresh_candidate, scope_candidate, alignment_candidate, prevention_candidate, scoped_fewshot_candidate, scoped_release, direct_audit_candidate, evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
+    for selected in (recovery_candidate, fresh_candidate, scope_candidate, alignment_candidate, prevention_candidate, scoped_fewshot_candidate, scoped_release, direct_audit_candidate, evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
         if requested_hash == prompt_hash(selected):
             return selected
     raise ValueError("scenario prompt mismatch")
@@ -426,6 +431,8 @@ def project_input(selected, purpose, data):
             return audit.project_question_coverage(data)
         return audit.project(purpose, data)
     if not getattr(selected, "INPUT_PROJECTION", None):
+        return data
+    if selected is recovery_candidate and purpose in ("REVIEW_QUESTIONS", "REVIEW"):
         return data
     if purpose == "GRADE":
         submission = data["assessmentSubmission"]
@@ -441,7 +448,7 @@ def project_input(selected, purpose, data):
                 meanings.append(target)
         questions = [{key: question[key] for key in ("id", "meaningIds", "promptVi")}
                      for question in data["activity"]["questions"] if question["id"] in question_ids]
-        if selected in (alignment_candidate, scope_candidate, fresh_candidate):
+        if selected in (alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate):
             # Source is needed to detect an invalid key, never to fabricate learner evidence.
             return {"activity": {"id": data["activity"]["id"], "segments": data["activity"]["segments"],
                                   "assessment": {"meanings": meanings}, "questions": questions},
@@ -464,7 +471,7 @@ def project_input(selected, purpose, data):
                 **{key: data[key] for key in ("repairContext", "formatFeedback") if key in data},
                 **({key: data[key] for key in ("meaningAudit", "questionAudit") if key in data}
                    if getattr(selected, "AUDIT_PROTOCOL", None) else {})}
-    if purpose == "REVIEW_QUESTIONS" and selected in (scoped_release, scoped_fewshot_candidate, prevention_candidate, alignment_candidate, scope_candidate, fresh_candidate):
+    if purpose == "REVIEW_QUESTIONS" and selected in (scoped_release, scoped_fewshot_candidate, prevention_candidate, alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate):
         drafts = {activity["id"]: activity for activity in data["groundedQuestions"]["activities"]}
         # Keep draft speechAct/factEn for review; public content strips these fields.
         return {"content": {"activities": [{**activity, "questions": drafts[activity["id"]]["questions"]}
@@ -564,7 +571,7 @@ def question_scope_findings(questions, dialogue):
 
 
 @trace_gate
-def validate_questions(questions, dialogue, context, *, collect_errors=False):
+def validate_questions(questions, dialogue, context, *, collect_errors=False, require_focus=True):
     item_errors = []
     if [a.id for a in questions.activities] != [a.id for a in dialogue.activities]:
         raise _invalid("question activity mismatch")
@@ -648,8 +655,8 @@ def validate_questions(questions, dialogue, context, *, collect_errors=False):
         total_questions += len(activity.questions)
     if collect_errors:
         # Report missing coverage alongside item faults, so a repair sees both in one pass.
-        if not any(m.skill == context.focusSkill for act in questions.activities for m in act.assessment.meanings) or not any(
-                q.skill == context.focusSkill for act in questions.activities for q in act.questions):
+        if require_focus and (not any(m.skill == context.focusSkill for act in questions.activities for m in act.assessment.meanings) or not any(
+                q.skill == context.focusSkill for act in questions.activities for q in act.questions)):
             item_errors.append(_invalid("missing learning focus coverage"))
     if item_errors:
         error = ValueError("invalid question items")
@@ -657,7 +664,7 @@ def validate_questions(questions, dialogue, context, *, collect_errors=False):
         raise error
     if total_questions > context.profile.maxQuestionsPerSession:
         raise _invalid("question bank exceeds practice profile")
-    if not focus_meaning or not focus_question:
+    if require_focus and (not focus_meaning or not focus_question):
         raise _invalid("missing learning focus coverage")
 
 
@@ -794,7 +801,7 @@ async def execute(event, settings, *, observer=None):
                 gateway.observed_attempts = []
             schema = response_schema(model, legacy=selected is legacy_release,
                                      minimum_targets=getattr(selected, "MINIMUM_TARGETS", False),
-                                     answer_first=selected in (scope_candidate, fresh_candidate))
+                                     answer_first=selected in (scope_candidate, fresh_candidate, recovery_candidate))
             if purpose == "GENERATE":
                 schema["$defs"]["Segment"]["properties"]["speakerId"]["enum"] = [c.id for c in payload.specification.characters]
             captured = {"stage": purpose, "input": data, "schema": schema, "instruction": selected.INSTRUCTIONS[purpose]}
@@ -844,10 +851,13 @@ async def execute(event, settings, *, observer=None):
                 result = w.validate_extraction(extracted, payload.inputVi).model_dump()
             except ValueError as invalid:
                 raise w.QualityRejected("invalid extraction provenance") from invalid
+        elif selected is recovery_candidate:
+            from . import scenario_assessment_recovery as recovery
+            result, harness_metadata = await (recovery.grade(payload, call, deadline) if payload.phase == "GRADE" else recovery.generate(payload, call, deadline))
         elif payload.phase == "GRADE":
             grade = await call("GRADE", {"activity": payload.activity.model_dump(),
                 "assessmentSubmission": payload.assessmentSubmission.model_dump(), **context},
-                AlignedPartsGrade if selected in (alignment_candidate, scope_candidate, fresh_candidate) else PartsGrade if isinstance(payload.activity, PartsActivity) else Grade)
+                AlignedPartsGrade if selected in (alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate) else PartsGrade if isinstance(payload.activity, PartsActivity) else Grade)
             try:
                 if isinstance(payload.activity, PartsActivity):
                     grade = derive_grade(grade, payload)

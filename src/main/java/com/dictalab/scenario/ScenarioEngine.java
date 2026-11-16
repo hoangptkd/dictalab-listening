@@ -556,9 +556,11 @@ public class ScenarioEngine {
                 ScenarioContent.list(routing.path("fallbackModels"),0,3);
                 for (var model : routing.path("fallbackModels")) ScenarioContent.check(model.isTextual() && model.asText().matches("gemini-[a-zA-Z0-9_.-]{1,93}") && allowedModels.add(model.asText()));
             }
+            boolean recovery=ScenarioRecovery.enabled(input.path("promptHash").asText());
             boolean independentAudit=ScenarioAssessment.independentAudit(input.path("promptHash").asText());
-            ScenarioContent.list(result.path("calls"),kind.equals("GENERATE") ? independentAudit ? 7 : 5 : 1,kind.equals("GENERATE") ? independentAudit ? 11 : 9 : 1);
-            for (var call : result.path("calls")) { ScenarioContent.fields(call,"purpose","provider","model"); ScenarioContent.check(provider.equals(call.path("provider").asText()) && allowedModels.contains(call.path("model").asText()) && (kind.equals("GENERATE") || kind.equals(call.path("purpose").asText()))); }
+            ScenarioContent.list(result.path("calls"),kind.equals("GENERATE") ? independentAudit ? 7 : 5 : 1,recovery ? ScenarioOperations.callEnvelope(kind,input) : kind.equals("GENERATE") ? independentAudit ? 11 : 9 : 1);
+            for (var call : result.path("calls")) { ScenarioContent.fields(call,"purpose","provider","model"); ScenarioContent.check(provider.equals(call.path("provider").asText()) && allowedModels.contains(call.path("model").asText()) && (kind.equals("GENERATE") || recovery && kind.equals("GRADE") || kind.equals(call.path("purpose").asText()))); }
+            if (recovery && kind.equals("GRADE")) ScenarioRecovery.calls(result,true);
             if (kind.equals("GENERATE")) validateHarnessCalls(result);
         } else if (!kind.equals("TTS")) {
             boolean personalized="scenario-job.v2".equals(input.path("contractVersion").asText());
@@ -615,9 +617,9 @@ public class ScenarioEngine {
             boolean advisory="scenario-job.v2".equals(input.path("contractVersion").asText()) && Set.of("aa79b767fee0970408e4fe420d1d97615595fdd195e16d8e919f28881f265485", "358201f08eb87c7d4d2306220c3828a92cda57ac93d57faed80a508d892fa1c1", "c1dcc2e3cc29847ba09b6d53a447a45e8bfe48ae13e9dfb4e2e131173f1e6a18", "defd36c45a53aa6ac5002d0acb50996a5790fd87554646e36f9830dd3a225504", "a98960f21fabe1f652f68fac72794c41e5c18870a400059cef4b03f50a9a838b", "df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303").contains(pin);
             boolean flexible=advisory || "scenario-job.v2".equals(input.path("contractVersion").asText()) && "f5f347bcac1dd0767f3af409704778357cd0ce39dd2a2d7f325671bc22abee1f".equals(pin);
             ScenarioContent.content(task,input.path("specification"),input.path("profile"),input.has("learningContext") ? input.path("learningContext") : null,
-                    meaning || flexible,meaning || advisory,ScenarioAssessment.flexibleBank(input.path("promptHash").asText()) ? 2 : 3);
+                    meaning || flexible,(meaning && !ScenarioRecovery.enabled(pin)) || advisory,ScenarioAssessment.flexibleBank(input.path("promptHash").asText()) ? 2 : 3);
         }
-        else if (kind.equals("GRADE")) { if (meaning) ScenarioAssessment.grade(task,input.path("assessmentSubmission"),input.path("activity")); else ScenarioContent.grade(task,input.path("answers")); }
+        else if (kind.equals("GRADE")) { if (meaning) ScenarioAssessment.grade(task,input.path("assessmentSubmission"),ScenarioRecovery.gradedActivity(input,result)); else ScenarioContent.grade(task,input.path("answers")); }
         else {
             boolean multiVoice=input.path("kind").asText().equals("scenario_tts");
             ScenarioContent.check((multiVoice ? "TTS_WAV_V2" : "TTS_WAV_V1").equals(result.path("promptVersion").asText()));
@@ -651,6 +653,13 @@ public class ScenarioEngine {
                     data.db.update("UPDATE scenario_sessions SET status='ACTIVE',provenance_json=?,version=version+1 WHERE id=? AND user_id=? AND status='PREPARING'",provenance.toString(),resource,user);
                 }
                 case "GRADE" -> {
+                    if (result.has("assessmentRepair")) {
+                        var row=data.db.queryForMap("SELECT a.* FROM scenario_activities a JOIN scenario_attempts t ON t.activity_id=a.id WHERE t.id=? FOR UPDATE",resource);
+                        var privateData=(ObjectNode)tree((String)row.get("private_json"));
+                        ScenarioContent.check(privateData.path("activity").equals(input.path("activity")));
+                        privateData.set("activity",ScenarioRecovery.gradedActivity(input,result));
+                        data.db.update("UPDATE scenario_activities SET private_json=?,content_hash=? WHERE id=?",privateData.toString(),ScenarioJson.hash(ScenarioJson.canonical(privateData)),row.get("id"));
+                    }
                     data.db.update("UPDATE scenario_attempts SET status='GRADED',result_json=? WHERE id=? AND status='PENDING'",task.toString(),resource);
                     if (meaning) {
                         var a=data.db.queryForMap("SELECT a.* FROM scenario_activities a JOIN scenario_attempts t ON t.activity_id=a.id WHERE t.id=?",resource);
@@ -675,6 +684,7 @@ public class ScenarioEngine {
 
     /** Finite V8/V9 protocol: one patch and one format retry per dependent review stage. */
     static void validateHarnessCalls(JsonNode result) {
+        if (ScenarioRecovery.enabled(result.path("promptHash").asText())) { ScenarioRecovery.calls(result,false); return; }
         var purposes=new ArrayList<String>();
         for (var call : result.path("calls")) purposes.add(call.path("purpose").asText());
         if (ScenarioAssessment.independentAudit(result.path("promptHash").asText())) {

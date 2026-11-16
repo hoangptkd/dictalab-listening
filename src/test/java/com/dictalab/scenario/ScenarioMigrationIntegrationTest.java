@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.*;
 class ScenarioMigrationIntegrationTest {
     @Test void upgradesPreserveLegacySessionAndHistoricalDraftAndFreshInstallHasEmptyScenarioTables() throws Exception {
         var postgres = ReliabilityContainers.disposablePostgres();
-        for (int previous : new int[]{47,49,50,51,0}) {
+        for (int previous : new int[]{47,49,50,51,52,53,0}) {
             String schema = "scenario_migration_" + UUID.randomUUID().toString().replace("-", "");
             var data = new DriverManagerDataSource(postgres.getJdbcUrl()
                     + (postgres.getJdbcUrl().contains("?") ? "&" : "?") + "currentSchema=" + schema,
@@ -51,7 +51,7 @@ class ScenarioMigrationIntegrationTest {
                         .locations("classpath:db/migration", "classpath:db/vendor/postgresql").load();
                 flyway.migrate(); flyway.validate();
                 assertThat(db.queryForObject("SELECT current_schema()", String.class)).isEqualTo(schema);
-                assertThat(flyway.info().current().getVersion().toString()).isEqualTo("52");
+                assertThat(flyway.info().current().getVersion().toString()).isEqualTo("54");
                 assertThat(db.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=? AND ((table_name='scenario_drafts' AND column_name='workflow_snapshot_json') OR (table_name='scenario_activities' AND column_name='assessment_state_json')) AND is_nullable='YES'",Integer.class,schema)).isEqualTo(2);
                 for (String table : new String[]{"scenario_program_versions", "scenario_learning_goals", "scenario_goal_requests", "scenario_drafts", "scenario_sessions", "scenario_activities", "scenario_attempts", "scenario_operations", "scenario_operation_budget", "scenario_media", "scenario_receipts", "scenario_learning_preferences"})
                     assertThat(db.queryForObject("SELECT COUNT(*) FROM " + table, Integer.class)).isEqualTo(
@@ -74,8 +74,8 @@ class ScenarioMigrationIntegrationTest {
                             INSERT INTO scenario_operations(id,user_id,request_key,scope,input_hash,kind,resource_id,payload_json,deadline)
                             VALUES (?,? ,?,'migration-test',?,'GENERATE',?,'{}',CURRENT_TIMESTAMP)
                             """,operation,newUser,UUID.randomUUID().toString(),"1".repeat(64),UUID.randomUUID().toString());
-                    db.update("INSERT INTO scenario_operation_budget(operation_id,user_id,calls_reserved,local_provider,tts) VALUES (?,?,11,FALSE,FALSE)",operation,newUser);
-                    assertThatThrownBy(() -> db.update("UPDATE scenario_operation_budget SET calls_reserved=12 WHERE operation_id=?",operation))
+                    db.update("INSERT INTO scenario_operation_budget(operation_id,user_id,calls_reserved,local_provider,tts) VALUES (?,?,17,FALSE,FALSE)",operation,newUser);
+                    assertThatThrownBy(() -> db.update("UPDATE scenario_operation_budget SET calls_reserved=18 WHERE operation_id=?",operation))
                             .isInstanceOf(org.springframework.dao.DataAccessException.class);
                     assertThatThrownBy(() -> db.update("UPDATE scenario_operation_budget SET calls_reserved=0 WHERE operation_id=?",operation))
                             .isInstanceOf(org.springframework.dao.DataAccessException.class);

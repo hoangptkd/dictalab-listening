@@ -36,7 +36,7 @@ def test_approved_release_is_versioned_without_historical_schema_changes():
     assert RELEASE.OUTPUT_TOKENS == a.scoped_release.OUTPUT_TOKENS
     root = Path(__file__).resolve().parents[3]
     assert f'PARTS_V4_15_PROMPT_HASH="{PIN}"' in (root / "src/main/java/com/dictalab/scenario/ScenarioAssessment.java").read_text(encoding="utf-8")
-    assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == a.prompt_hash(a.fresh_candidate)
+    assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == a.prompt_hash(a.recovery_candidate)
 
 
 @pytest.mark.parametrize("counts", [(2, 2, 2), (2, 3, 6), (6, 6, 6)])

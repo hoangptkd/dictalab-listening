@@ -50,6 +50,7 @@ public class ScenarioOperations {
         return get(user,id);
     }
     static int callEnvelope(String kind, JsonNode payload) {
+        if (ScenarioRecovery.enabled(payload.path("promptHash").asText())) return kind.equals("GENERATE") ? 17 : kind.equals("GRADE") ? 7 : 1;
         if (!kind.equals("GENERATE")) return 1;
         String pin=payload.path("promptHash").asText();
         if (ScenarioAssessment.independentAudit(pin)) return 11;

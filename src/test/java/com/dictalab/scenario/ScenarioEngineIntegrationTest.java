@@ -55,6 +55,7 @@ class ScenarioEngineIntegrationTest {
     long user;
     JsonNode fixture;
     String meaningGradeStatus="UNASSESSED";
+    boolean recoverGradeKey=false;
 
     @BeforeEach void setup() throws Exception {
         store.run(null);
@@ -161,6 +162,33 @@ class ScenarioEngineIntegrationTest {
                 }
             }
         }
+        if (ScenarioRecovery.enabled(input.path("promptHash").asText())) {
+            result.put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V5_1");
+            if (phase.equals("GENERATE")) {
+                try {
+                    var python=ScenarioRecoveryTest.fixture().path("result");
+                    for (String field : List.of("task","qualityHarness","calls")) result.set(field,python.path(field).deepCopy());
+                    for (var call : result.path("calls")) ((ObjectNode)call).put("provider","ollama").put("model","fixture-model");
+                } catch (Exception invalid) { throw new IllegalStateException(invalid); }
+            } else if (phase.equals("GRADE")) {
+                var report=result.putObject("qualityHarness").put("decision","ACCEPTED").put("policyVersion","scenario-meaning-harness.v4")
+                        .put("policyHash",ScenarioAssessment.RECOVERY_HARNESS_POLICY_HASH);
+                var source=object(); var act=source.putArray("activities").addObject(); act.set("id",input.path("activity").path("id")); act.set("segments",input.path("activity").path("segments"));
+                String hash=ScenarioJson.hash(ScenarioJson.canonical(source));
+                report.put("originalSourceHash",hash);
+                var purposes=recoverGradeKey ? List.of("REVIEW_QUESTIONS","REVIEW_QUESTIONS","REPAIR_QUESTIONS","REVIEW_QUESTIONS","GRADE") : List.of("REVIEW_QUESTIONS","GRADE");
+                report.put("extraCalls",purposes.size()-1); var plan=report.putArray("callPlan"); var calls=result.putArray("calls");
+                for (String purpose : purposes) { plan.addObject().put("purpose",purpose).put("sourceHash",hash); calls.addObject().put("purpose",purpose).put("provider","ollama").put("model","fixture-model"); }
+                if (recoverGradeKey) {
+                    var repair=result.putObject("assessmentRepair").put("originalHash",ScenarioJson.hash(ScenarioJson.canonical(input.path("activity"))));
+                    var fixed=(ObjectNode)input.path("activity").deepCopy();
+                    ((ObjectNode)fixed.path("assessment").path("meanings").get(0)).put("meaningEn","Opening time only.");
+                    var parts=(tools.jackson.databind.node.ArrayNode)fixed.path("assessment").path("meanings").get(0).path("requiredParts");
+                    while (parts.size()>1) parts.remove(parts.size()-1);
+                    repair.set("activity",fixed);
+                }
+            }
+        }
         var state=object().put("jobId",id).put("schemaVersion","1").put("status","DONE"); state.set("result",result); return state;
     }
     static byte[] wave() {
@@ -178,15 +206,15 @@ class ScenarioEngineIntegrationTest {
     }
     @Test void v5ReusesCompatibleSavedTargetsWithoutRewritingHistoricalPreferences() {
         var old=registry.require("general-communication",5);
-        var current=registry.require("general-communication",6);
+        var current=registry.require("general-communication",7);
         personalization.save(user,id(),new ScenarioPersonalization.Preference(old.code(),old.version(),
                 new ScenarioGoalRequest.Target("cefr-listening","LISTENING","b1"),null,"main-idea",0));
         String saved=db.queryForObject("SELECT preference_json FROM scenario_learning_preferences WHERE user_id=?",String.class,user);
         var effective=personalization.list(user).path("preferences").get(0);
-        assertThat(effective.path("programVersion").asInt()).isEqualTo(6);
+        assertThat(effective.path("programVersion").asInt()).isEqualTo(7);
         assertThat(effective.path("target").path("value").asText()).isEqualTo("b1");
         var context=personalization.forDraft(user,current);
-        assertThat(context.path("programVersion").asInt()).isEqualTo(6);
+        assertThat(context.path("programVersion").asInt()).isEqualTo(7);
         assertThat(context.path("programHash").asText()).isEqualTo(current.definitionHash());
         assertThat(db.queryForObject("SELECT preference_json FROM scenario_learning_preferences WHERE user_id=?",String.class,user)).isEqualTo(saved);
         assertThat(personalization.forDraft(user,old).path("programVersion").asInt()).isEqualTo(5);
@@ -240,12 +268,12 @@ class ScenarioEngineIntegrationTest {
         meaningGradeStatus="CAPTURED"; dispatch(engine.assessment(user,other,a,id(),new ScenarioEngine.AssessmentRequest(another.path("version").asLong(),"RECAP","nine, six pounds, tomorrow",List.of())));
         another=engine.session(user,other); assertThat(another.path("activities").get(0).path("assessment").path("canComplete").asBoolean()).isTrue(); assertThat(another.path("activities").get(0).path("questions")).isEmpty();
     }
-    @ParameterizedTest @ValueSource(strings={ScenarioAssessment.PARTS_PROMPT_HASH,ScenarioAssessment.PARTS_V4_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_3_PROMPT_HASH,ScenarioAssessment.PARTS_V4_4_PROMPT_HASH,ScenarioAssessment.PARTS_V4_6_PROMPT_HASH,ScenarioAssessment.PARTS_V4_7_PROMPT_HASH,ScenarioAssessment.PARTS_V4_11_PROMPT_HASH,ScenarioAssessment.PARTS_V4_12_PROMPT_HASH,ScenarioAssessment.PARTS_V4_13_PROMPT_HASH,ScenarioAssessment.PARTS_V4_14_PROMPT_HASH,ScenarioAssessment.PARTS_V4_15_PROMPT_HASH,ScenarioAssessment.FRESH_V5_0_PROMPT_HASH})
+    @ParameterizedTest @ValueSource(strings={ScenarioAssessment.PARTS_PROMPT_HASH,ScenarioAssessment.PARTS_V4_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_3_PROMPT_HASH,ScenarioAssessment.PARTS_V4_4_PROMPT_HASH,ScenarioAssessment.PARTS_V4_6_PROMPT_HASH,ScenarioAssessment.PARTS_V4_7_PROMPT_HASH,ScenarioAssessment.PARTS_V4_11_PROMPT_HASH,ScenarioAssessment.PARTS_V4_12_PROMPT_HASH,ScenarioAssessment.PARTS_V4_13_PROMPT_HASH,ScenarioAssessment.PARTS_V4_14_PROMPT_HASH,ScenarioAssessment.PARTS_V4_15_PROMPT_HASH,ScenarioAssessment.FRESH_V5_0_PROMPT_HASH,ScenarioAssessment.RECOVERY_V5_1_PROMPT_HASH})
     void requiredPartLessonKeepsItsPolicyAndPinThroughChecksCompletionAndAdmissionChanges(String pin) {
         when(release.assessmentPromptHash()).thenReturn(pin);
         var session=activeMeaning(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
         assertThat(db.queryForObject("SELECT b.calls_reserved FROM scenario_operation_budget b JOIN scenario_operations o ON o.id=b.operation_id WHERE o.kind='GENERATE' AND o.resource_id=?",Integer.class,sid))
-                .isEqualTo(ScenarioAssessment.independentAudit(pin) ? 11 : 9);
+                .isEqualTo(ScenarioRecovery.enabled(pin) ? 17 : ScenarioAssessment.independentAudit(pin) ? 11 : 9);
         assertThat(session.path("activities").get(0).path("assessment").path("policyVersion").asText()).isEqualTo(ScenarioAssessment.PARTS_POLICY);
         session=engine.assessment(user,sid,aid,id(),new ScenarioEngine.AssessmentRequest(session.path("version").asLong(),"SKIP_RECAP","",List.of()));
         assertThat(session.toString()).doesNotContain("requiredParts","answerVi","quoteEn");
@@ -257,11 +285,28 @@ class ScenarioEngineIntegrationTest {
         assertThat(pinned.path("promptHash").asText()).isEqualTo(pin);
         assertThat(dispatch(operation).path("status").asText()).isEqualTo("SUCCEEDED");
         session=engine.session(user,sid); var assessment=session.path("activities").get(0).path("assessment");
-        assertThat(assessment.path("coverage").path("partial").asInt()).isEqualTo(3);
+        assertThat(assessment.path("coverage").path("partial").asInt()).isEqualTo(ScenarioRecovery.enabled(pin) ? 2 : 3);
         assertThat(assessment.path("canComplete").asBoolean()).isTrue();
         session=engine.completeActivity(user,sid,aid,id(),new ScenarioEngine.VersionRequest(session.path("version").asLong()));
         assertThat(session.path("activities").get(0).path("questions").get(0).has("answerVi")).isTrue();
     }
+    @Test void repairedKeyIsPersistedAtomicallyBeforeLearnerGradeIsRecorded() {
+        when(release.assessmentPromptHash()).thenReturn(ScenarioAssessment.RECOVERY_V5_1_PROMPT_HASH);
+        var session=activeMeaning(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
+        var saved=(ObjectNode)tree(db.queryForObject("SELECT private_json FROM scenario_activities WHERE id=?",String.class,aid));
+        var part=((tools.jackson.databind.node.ArrayNode)saved.path("activity").path("assessment").path("meanings").get(0).path("requiredParts"));
+        var extra=part.get(0).deepCopy(); ((ObjectNode)extra).put("id","p2").put("meaningEn","An unrelated scoring requirement"); part.add(extra);
+        db.update("UPDATE scenario_activities SET private_json=? WHERE id=?",saved.toString(),aid);
+        recoverGradeKey=true; meaningGradeStatus="CAPTURED";
+        var op=engine.assessment(user,sid,aid,id(),new ScenarioEngine.AssessmentRequest(session.path("version").asLong(),"RECAP","The shop opens at nine.",List.of()));
+        assertThat(dispatch(op).path("status").asText()).isEqualTo("SUCCEEDED");
+        var fixed=tree(db.queryForObject("SELECT private_json FROM scenario_activities WHERE id=?",String.class,aid));
+        assertThat(fixed.path("activity").path("assessment").path("meanings").get(0).path("requiredParts")).hasSize(1);
+        assertThat(fixed.path("activity").path("questions")).isEqualTo(saved.path("activity").path("questions"));
+        assertThat(fixed.path("activity").path("segments")).isEqualTo(saved.path("activity").path("segments"));
+        assertThat(db.queryForObject("SELECT status FROM scenario_attempts WHERE id=?",String.class,op.path("attemptId").asText())).isEqualTo("GRADED");
+    }
+
     @Test void historicalGradeRecoversGenerationPinAndRejectsMissingProvenanceAndEmergencyStop() {
         var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
         String draft=db.queryForObject("SELECT draft_id FROM scenario_sessions WHERE id=?",String.class,sid),pin=release.promptHash();

@@ -77,7 +77,7 @@ class AiUsageBudgetIntegrationTest {
         assertThat(db.queryForObject("SELECT calls_reserved FROM scenario_operation_budget WHERE operation_id=?",Integer.class,operation)).isEqualTo(11);
         assertThat(db.queryForObject("SELECT calls FROM ai_daily_budget WHERE scope='GLOBAL'",Integer.class)).isEqualTo(1);
         assertThatThrownBy(()->budget.reserve(actor+1,false)).isInstanceOf(AiUsageBudget.Rejected.class);
-        assertThatThrownBy(()->budget.reserveScenario(actor,UUID.randomUUID().toString(),12,false,false)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->budget.reserveScenario(actor,UUID.randomUUID().toString(),18,false,false)).isInstanceOf(IllegalArgumentException.class);
         budget.setEnabled(actor,false);
         assertThatThrownBy(()->new TransactionTemplate(manager).executeWithoutResult(status ->
                 budget.reserveScenario(actor,UUID.randomUUID().toString(),11,false,false))).isInstanceOf(AiUsageBudget.Rejected.class);

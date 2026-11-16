@@ -23,8 +23,8 @@ def test_candidate_pin_keeps_active_release_and_unrelated_stages():
     root = Path(__file__).resolve().parents[3]
     core = (root / "src/main/java/com/dictalab/scenario/ScenarioAssessment.java").read_text()
     assert f'PARTS_V4_17_PROMPT_HASH="{PIN}"' in core
-    assert "ACTIVE_PROMPT_HASH=FRESH_V5_0_PROMPT_HASH" in core
-    assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == a.prompt_hash(a.fresh_candidate)
+    assert "ACTIVE_PROMPT_HASH=RECOVERY_V5_1_PROMPT_HASH" in core
+    assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == a.prompt_hash(a.recovery_candidate)
 
 
 def test_source_scope_gate_detects_extra_reason_and_action_without_case_specific_rules():
