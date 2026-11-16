@@ -36,6 +36,7 @@ alignment_candidate = historical_release('scenario_prompts_meaning_v4_16')
 scope_candidate = historical_release('scenario_prompts_meaning_v4_17')
 fresh_candidate = historical_release('scenario_prompts_meaning_v5_0')
 recovery_candidate = historical_release('scenario_prompts_meaning_v5_1')
+sparse_candidate = historical_release('scenario_prompts_meaning_v5_2')
 from .coach import StrictModel
 from .model_gateway import ModelGateway
 from .observability import trace_gate
@@ -215,6 +216,38 @@ class FlexibleContent(PartsContent):
     activities: list[FlexibleActivity] = Field(min_length=3, max_length=3)
 
 
+class SparseAssessment(PartsAssessment):
+    meanings: list[PartsMeaning] = Field(min_length=1, max_length=6)
+
+
+class SparseActivityDraft(FlexibleActivityDraft):
+    assessment: SparseAssessment
+    questions: list[QuestionDraft] = Field(min_length=1, max_length=6)
+
+
+class SparseQuestions(FlexibleQuestions):
+    activities: list[SparseActivityDraft] = Field(min_length=3, max_length=3)
+
+
+class SparseActivity(FlexibleActivity):
+    assessment: SparseAssessment
+    questions: list[Question] = Field(min_length=1, max_length=6)
+
+
+class SparseContent(FlexibleContent):
+    activities: list[SparseActivity] = Field(min_length=3, max_length=3)
+
+
+class RemovedTarget(StrictModel):
+    activityId: Literal["a1", "a2", "a3"]
+    itemType: Literal["question", "meaning"]
+    itemId: str = Field(pattern=r"^(?:q|m)[1-6]$")
+
+
+class SparseQuestionPatch(PartsQuestionPatch):
+    removals: list[RemovedTarget] = Field(max_length=36)
+
+
 class FlexibleQuestionReview(QuestionReview):
     meaningChecks: list[MeaningCheck] = Field(min_length=6, max_length=18)
     questionChecks: list[w.QuestionEvidenceCheck] = Field(min_length=6, max_length=18)
@@ -282,7 +315,7 @@ class ScenarioAssessmentInput(StrictModel):
     profile: w.PersonalizedProfile
     inputVi: str = Field(default="", max_length=2000)
     specification: w.PersonalizedSpecification | None = None
-    activity: Activity | PartsActivity | FlexibleActivity | None = None
+    activity: Activity | PartsActivity | FlexibleActivity | SparseActivity | None = None
     learningContext: AssessmentContext
     assessmentSubmission: Submission | None = None
 
@@ -304,7 +337,9 @@ class ScenarioAssessmentInput(StrictModel):
                 raise ValueError("invalid grade input")
             if (selected.POLICY_VERSION == parts_release.POLICY_VERSION) != isinstance(self.activity, PartsActivity):
                 raise ValueError("assessment policy does not match pinned release")
-            if selected not in (prevention_candidate, alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate) and (len(self.activity.questions) < 3 or len(self.activity.assessment.meanings) < 3):
+            if selected is not sparse_candidate and (len(self.activity.questions) < 2 or len(self.activity.assessment.meanings) < 2):
+                raise ValueError("historical assessment requires at least two items")
+            if selected not in (prevention_candidate, alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate, sparse_candidate) and (len(self.activity.questions) < 3 or len(self.activity.assessment.meanings) < 3):
                 raise ValueError("historical assessment requires at least three items")
             validate_submission(self.activity, self.assessmentSubmission)
         self.inputVi = redact_string(self.inputVi)
@@ -363,17 +398,17 @@ def response_schema(model, *, legacy=False, minimum_targets=False, answer_first=
 @cache
 def prompt_hash(selected=release):
     parts = selected.POLICY_VERSION == parts_release.POLICY_VERSION
-    flexible = selected in (prevention_candidate, alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate)
-    questions_model = FlexibleQuestions if flexible else PartsQuestions if parts else Questions
-    content_model = FlexibleContent if flexible else PartsContent if parts else Content
-    review_model = AlignedQuestionReview if selected in (alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate) else FlexibleQuestionReview if flexible else QuestionReview
-    grade_model = AlignedPartsGrade if selected in (alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate) else PartsGrade if parts else Grade
+    flexible = selected in (prevention_candidate, alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate, sparse_candidate)
+    questions_model = SparseQuestions if selected is sparse_candidate else FlexibleQuestions if flexible else PartsQuestions if parts else Questions
+    content_model = SparseContent if selected is sparse_candidate else FlexibleContent if flexible else PartsContent if parts else Content
+    review_model = AlignedQuestionReview if selected in (alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate, sparse_candidate) else FlexibleQuestionReview if flexible else QuestionReview
+    grade_model = AlignedPartsGrade if selected in (alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate, sparse_candidate) else PartsGrade if parts else Grade
     models = (AssessmentContext, w.PersonalizedSpecification, w.PersonalizedExtraction, w.Dialogue,
               questions_model, content_model, w.Translations,
               review_model, w.PersonalizedReview, Submission, grade_model)
     legacy = selected is legacy_release
     wire = {"legacy": legacy, "minimum_targets": getattr(selected, "MINIMUM_TARGETS", False)}
-    if selected in (scope_candidate, fresh_candidate, recovery_candidate):
+    if selected in (scope_candidate, fresh_candidate, recovery_candidate, sparse_candidate):
         wire["answer_first"] = True
     manifest = {"version": selected.PROMPT_VERSION, "assessmentPolicyVersion": selected.POLICY_VERSION,
                 "instructions": selected.INSTRUCTIONS, "outputTokens": selected.OUTPUT_TOKENS,
@@ -381,12 +416,12 @@ def prompt_hash(selected=release):
                 "reviewResponseSchemas": {m.__name__: response_schema(m, **wire) for m in (review_model, w.PersonalizedReview)},
                 "harness": {"policy": selected.HARNESS_POLICY,
                             "schemas": {m.__name__: response_schema(m, **wire) for m in
-                                        (PartsQuestionPatch if parts else QuestionPatch, w.TranslationPatch)}}}
+                                        (SparseQuestionPatch if selected is sparse_candidate else PartsQuestionPatch if parts else QuestionPatch, w.TranslationPatch)}}}
     if not legacy:
         manifest["responseSchemas"] = {m.__name__: response_schema(m, **wire) for m in
             (w.PersonalizedExtraction, w.Dialogue, questions_model, review_model,
              w.Translations, w.PersonalizedReview, grade_model)}
-    if selected in (scope_candidate, fresh_candidate, recovery_candidate):
+    if selected in (scope_candidate, fresh_candidate, recovery_candidate, sparse_candidate):
         # Canonical hash sorting otherwise hides property order from the release fingerprint.
         manifest["responseOrder"] = "question-answer-before-targets.v1"
     if getattr(selected, "COLLECT_ITEM_ERRORS", False):
@@ -396,9 +431,9 @@ def prompt_hash(selected=release):
     if getattr(selected, "EXAMPLE_SET_HASH", None):
         manifest["fewShotExamples"] = {"version": selected.EXAMPLE_SET_VERSION,
             "hash": selected.EXAMPLE_SET_HASH, "idsByStage": selected.EXAMPLE_IDS}
-    if selected is recovery_candidate:
-        from .scenario_assessment_recovery import Review
-        manifest["recoveryReviewSchema"] = response_schema(Review)
+    if selected in (recovery_candidate, sparse_candidate):
+        from .scenario_assessment_recovery import Review, UsefulReview
+        manifest["recoveryReviewSchema"] = response_schema(UsefulReview if selected is sparse_candidate else Review)
         manifest["recoveryProtocol"] = "verified-dependency-repair.v2;focused-explanation-support.v1"
     if parts:
         manifest["derivedGradeSchema"] = DerivedGrade.model_json_schema()
@@ -417,7 +452,7 @@ def prompt_hash(selected=release):
 
 
 def selected_release(requested_hash):
-    for selected in (recovery_candidate, fresh_candidate, scope_candidate, alignment_candidate, prevention_candidate, scoped_fewshot_candidate, scoped_release, direct_audit_candidate, evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
+    for selected in (sparse_candidate, recovery_candidate, fresh_candidate, scope_candidate, alignment_candidate, prevention_candidate, scoped_fewshot_candidate, scoped_release, direct_audit_candidate, evidence_audit_candidate, independent_audit_candidate, projected_parts_candidate, projected_grader_candidate, parts_consistency_candidate, grader_candidate, parts_candidate, parts_v4_3, parts_v4_1, parts_release, release, previous_release, legacy_release):
         if requested_hash == prompt_hash(selected):
             return selected
     raise ValueError("scenario prompt mismatch")
@@ -432,7 +467,7 @@ def project_input(selected, purpose, data):
         return audit.project(purpose, data)
     if not getattr(selected, "INPUT_PROJECTION", None):
         return data
-    if selected is recovery_candidate and purpose in ("REVIEW_QUESTIONS", "REVIEW"):
+    if selected in (recovery_candidate, sparse_candidate) and purpose in ("REVIEW_QUESTIONS", "REVIEW"):
         return data
     if purpose == "GRADE":
         submission = data["assessmentSubmission"]
@@ -448,7 +483,7 @@ def project_input(selected, purpose, data):
                 meanings.append(target)
         questions = [{key: question[key] for key in ("id", "meaningIds", "promptVi")}
                      for question in data["activity"]["questions"] if question["id"] in question_ids]
-        if selected in (alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate):
+        if selected in (alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate, sparse_candidate):
             # Source is needed to detect an invalid key, never to fabricate learner evidence.
             return {"activity": {"id": data["activity"]["id"], "segments": data["activity"]["segments"],
                                   "assessment": {"meanings": meanings}, "questions": questions},
@@ -471,7 +506,7 @@ def project_input(selected, purpose, data):
                 **{key: data[key] for key in ("repairContext", "formatFeedback") if key in data},
                 **({key: data[key] for key in ("meaningAudit", "questionAudit") if key in data}
                    if getattr(selected, "AUDIT_PROTOCOL", None) else {})}
-    if purpose == "REVIEW_QUESTIONS" and selected in (scoped_release, scoped_fewshot_candidate, prevention_candidate, alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate):
+    if purpose == "REVIEW_QUESTIONS" and selected in (scoped_release, scoped_fewshot_candidate, prevention_candidate, alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate, sparse_candidate):
         drafts = {activity["id"]: activity for activity in data["groundedQuestions"]["activities"]}
         # Keep draft speechAct/factEn for review; public content strips these fields.
         return {"content": {"activities": [{**activity, "questions": drafts[activity["id"]]["questions"]}
@@ -493,11 +528,11 @@ def _invalid(message, activity=None, item=None, kind="question"):
     return error
 
 
-def _support(item, context, activity, kind):
+def _support(item, context, activity, kind, *, optional_inference=False):
     if item.skill not in context.profile.skills:
         raise _invalid("skill outside practice profile", activity, item.id, kind)
     inferred = item.supportKind == "inference"
-    if (inferred != (item.skill == "supported-inference") or
+    if (not optional_inference and inferred != (item.skill == "supported-inference") or
             (inferred and (context.profile.inferencePolicy != "SUPPORTED_INFERENCE" or not item.inferenceReasonEn.strip())) or
             (not inferred and item.inferenceReasonEn)):
         raise _invalid("inference support mismatch", activity, item.id, kind)
@@ -573,6 +608,8 @@ def question_scope_findings(questions, dialogue):
 @trace_gate
 def validate_questions(questions, dialogue, context, *, collect_errors=False, require_focus=True):
     item_errors = []
+    sparse = isinstance(questions, SparseQuestions) or any(isinstance(act, (SparseActivityDraft, SparseActivity)) for act in questions.activities)
+    require_focus = require_focus and not (sparse and context.focusSkill == "supported-inference")
     if [a.id for a in questions.activities] != [a.id for a in dialogue.activities]:
         raise _invalid("question activity mismatch")
     total_questions = 0
@@ -581,9 +618,9 @@ def validate_questions(questions, dialogue, context, *, collect_errors=False, re
         if activity.assessment.policyVersion != questions.activities[0].assessment.policyVersion:
             raise _invalid("mixed assessment policies", activity.id)
         meanings = activity.assessment.meanings
-        if [m.id for m in meanings] != [f"m{i + 1}" for i in range(len(meanings))]:
+        if (len({m.id for m in meanings}) != len(meanings) if sparse else [m.id for m in meanings] != [f"m{i + 1}" for i in range(len(meanings))]):
             raise _invalid("meaning IDs mismatch", activity.id)
-        if [q.id for q in activity.questions] != [f"q{i + 1}" for i in range(len(activity.questions))]:
+        if (len({q.id for q in activity.questions}) != len(activity.questions) if sparse else [q.id for q in activity.questions] != [f"q{i + 1}" for i in range(len(activity.questions))]):
             raise _invalid("question IDs mismatch", activity.id)
         segments = {s.id: s for s in source.segments}
         normalized = [" ".join(m.meaningEn.casefold().split()) for m in meanings]
@@ -594,7 +631,7 @@ def validate_questions(questions, dialogue, context, *, collect_errors=False, re
         prompts = set()
         for meaning in meanings:
             try:
-                _support(meaning, context, activity.id, "meaning")
+                _support(meaning, context, activity.id, "meaning", optional_inference=sparse)
                 _evidence(meaning, segments, activity.id, "meaning")
                 if isinstance(meaning, PartsMeaning):
                     if [p.id for p in meaning.requiredParts] != [f"p{i + 1}" for i in range(len(meaning.requiredParts))]:
@@ -618,7 +655,7 @@ def validate_questions(questions, dialogue, context, *, collect_errors=False, re
                 item_errors.append(error)
         for question in activity.questions:
             try:
-                _support(question, context, activity.id, "question")
+                _support(question, context, activity.id, "question", optional_inference=sparse)
                 _evidence(question, segments, activity.id, "question")
                 focus_question |= question.skill == context.focusSkill
                 refs = set(question.meaningIds)
@@ -670,7 +707,7 @@ def validate_questions(questions, dialogue, context, *, collect_errors=False, re
 
 def attach_questions(dialogue, questions, context):
     validate_questions(questions, dialogue, context)
-    content_model, activity_model = ((FlexibleContent, FlexibleActivity) if isinstance(questions, FlexibleQuestions)
+    content_model, activity_model = ((SparseContent, SparseActivity) if isinstance(questions, SparseQuestions) else (FlexibleContent, FlexibleActivity) if isinstance(questions, FlexibleQuestions)
         else (PartsContent, PartsActivity) if isinstance(questions, PartsQuestions) else (Content, Activity))
     return content_model(activities=[activity_model(**source.model_dump(), assessment=draft.assessment,
         questions=[Question(**q.model_dump(exclude={"factEn", "speechAct"}), type="MEANING_RECALL_VI")
@@ -801,7 +838,7 @@ async def execute(event, settings, *, observer=None):
                 gateway.observed_attempts = []
             schema = response_schema(model, legacy=selected is legacy_release,
                                      minimum_targets=getattr(selected, "MINIMUM_TARGETS", False),
-                                     answer_first=selected in (scope_candidate, fresh_candidate, recovery_candidate))
+                                     answer_first=selected in (scope_candidate, fresh_candidate, recovery_candidate, sparse_candidate))
             if purpose == "GENERATE":
                 schema["$defs"]["Segment"]["properties"]["speakerId"]["enum"] = [c.id for c in payload.specification.characters]
             captured = {"stage": purpose, "input": data, "schema": schema, "instruction": selected.INSTRUCTIONS[purpose]}
@@ -851,13 +888,13 @@ async def execute(event, settings, *, observer=None):
                 result = w.validate_extraction(extracted, payload.inputVi).model_dump()
             except ValueError as invalid:
                 raise w.QualityRejected("invalid extraction provenance") from invalid
-        elif selected is recovery_candidate:
+        elif selected in (recovery_candidate, sparse_candidate):
             from . import scenario_assessment_recovery as recovery
             result, harness_metadata = await (recovery.grade(payload, call, deadline) if payload.phase == "GRADE" else recovery.generate(payload, call, deadline))
         elif payload.phase == "GRADE":
             grade = await call("GRADE", {"activity": payload.activity.model_dump(),
                 "assessmentSubmission": payload.assessmentSubmission.model_dump(), **context},
-                AlignedPartsGrade if selected in (alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate) else PartsGrade if isinstance(payload.activity, PartsActivity) else Grade)
+                AlignedPartsGrade if selected in (alignment_candidate, scope_candidate, fresh_candidate, recovery_candidate, sparse_candidate) else PartsGrade if isinstance(payload.activity, PartsActivity) else Grade)
             try:
                 if isinstance(payload.activity, PartsActivity):
                     grade = derive_grade(grade, payload)

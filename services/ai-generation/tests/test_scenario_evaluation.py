@@ -41,7 +41,7 @@ async def test_auth_disabled_production_bounds_and_catalog(config, monkeypatch):
     assert result.status_code == 200
     text = result.text
     assert config.service_token not in text
-    assert [r["id"] for r in result.json()["releases"]] == ["v5.1", "v5.0"]
+    assert [r["id"] for r in result.json()["releases"]] == ["v5.2", "v5.1", "v5.0"]
     assert (await call("POST", "/v1/evaluation/scenario", headers=headers, content="x" * 64001)).status_code == 413
     config.production_mode = True
     assert (await call("GET", "/v1/evaluation/scenario", headers=headers)).status_code == 503
@@ -56,13 +56,19 @@ async def test_changed_sources_require_restart_before_new_admission(config, monk
     assert result.status_code == 503 and "restart" in result.text
 
 
-@pytest.mark.parametrize("release", [a.fresh_candidate])
+@pytest.mark.parametrize("release", [a.fresh_candidate, a.sparse_candidate])
 async def test_real_pipeline_observer_persists_six_stages_and_idempotency(config, monkeypatch, release):
     data = request(config)
     data["payload"]["promptHash"] = a.prompt_hash(release)
     raw_extract = extraction_response()
     raw_extract.update(learnerMode="listener", learnerCharacterId=None, genre="information-exchange")
     responses = [raw_extract, *(aligned_rows() if release in (a.scope_candidate, a.fresh_candidate) else parts_fixtures())]
+    if release is a.sparse_candidate:
+        from test_scenario_assessment_sparse import sparse_review
+        from test_scenario_assessment_recovery import review
+        rows=aligned_rows();source=review(rows)
+        source['checks']=[c for c in source['checks'] if c['itemType']=='dialogue']
+        responses=[raw_extract,rows[0],source,rows[1],sparse_review(rows),rows[3],review(rows,'TRANSLATE')]
     calls = []
     class Gateway:
         def __init__(self, settings, client):
@@ -83,7 +89,8 @@ async def test_real_pipeline_observer_persists_six_stages_and_idempotency(config
     assert record["result"]["requestId"] == data["requestId"]
     assert record["before"]["hardPass"]
     assert len(record["result"]["task"]["activities"]) == 3
-    assert len(calls) == 6 and len(record["events"]) == 12
+    expected_calls=7 if release is a.sparse_candidate else 6
+    assert len(calls) == expected_calls and len(record["events"]) == expected_calls*2
     assert record["events"][1]["output"] == raw_extract
     assert record["events"][1]["attempts"][0]["prompt_tokens"] == 10
     for event in record["events"]:
@@ -92,7 +99,7 @@ async def test_real_pipeline_observer_persists_six_stages_and_idempotency(config
                 event["input"]["learningContext"]["targetScale"].pop(field, None)
     assert e.initial_artifact(record)["hardPass"]
     assert (await call("POST", "/v1/evaluation/scenario", json=data, headers=headers)).json()["status"] == "COMPLETED"
-    assert len(calls) == 6
+    assert len(calls) == expected_calls
     data["payload"]["inputVi"] += "!"
     assert (await call("POST", "/v1/evaluation/scenario", json=data, headers=headers)).status_code == 409
 

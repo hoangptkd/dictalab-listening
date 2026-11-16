@@ -38,7 +38,7 @@ def test_candidate_is_pinned_stage_local_and_does_not_replace_baseline():
     packaging = tomllib.loads((root / "services/ai-generation/pyproject.toml").read_text(encoding="utf-8"))
     assert "scenario-prompt-history.json.gz" in packaging["tool"]["setuptools"]["package-data"]["app"]
     assert f'PARTS_V4_14_PROMPT_HASH="{PIN}"' in (root / "src/main/java/com/dictalab/scenario/ScenarioAssessment.java").read_text(encoding="utf-8")
-    assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == a.prompt_hash(a.recovery_candidate)
+    assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == a.prompt_hash(a.sparse_candidate)
 
 
 @pytest.mark.parametrize("example", RELEASE.EXAMPLES, ids=lambda e: e["id"])

@@ -15,13 +15,13 @@ PIN = "b8026ffc1dabdb09393c3b419b41750ca51ece9a242363482e3a337f4a61697b"
 
 
 def test_fresh_release_keeps_history_and_active_pin():
-    assert a.recovery_candidate is p.CURRENT and a.selected_release(PIN) is RELEASE
+    assert a.sparse_candidate is p.CURRENT and a.selected_release(PIN) is RELEASE
     assert a.prompt_hash(RELEASE) == PIN
     assert a.prompt_hash(a.scope_candidate) == "6f81dd0f465c452696b0caf8df466c8603780a9db15ee3fafa47e7bdda4bd41e"
     assert RELEASE.HARNESS_POLICY == a.scope_candidate.HARNESS_POLICY
     assert RELEASE.OUTPUT_TOKENS == a.scope_candidate.OUTPUT_TOKENS
     root = Path(__file__).resolve().parents[3]
-    assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == a.prompt_hash(a.recovery_candidate)
+    assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == a.prompt_hash(a.sparse_candidate)
 
 
 def test_real_generation_path_uses_fresh_instructions_and_scoped_contracts():

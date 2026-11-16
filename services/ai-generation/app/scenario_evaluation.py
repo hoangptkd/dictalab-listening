@@ -61,7 +61,7 @@ def catalog(settings):
         {"id": name, "promptVersion": release.PROMPT_VERSION, "promptHash": a.prompt_hash(release),
          "instructions": release.INSTRUCTIONS, "outputTokens": release.OUTPUT_TOKENS,
          "exampleSetHash": getattr(release, "EXAMPLE_SET_HASH", None)}
-        for name, release in (("v5.1", a.recovery_candidate), ("v5.0", a.fresh_candidate))]}
+        for name, release in (("v5.2", a.sparse_candidate), ("v5.1", a.recovery_candidate), ("v5.0", a.fresh_candidate))]}
 
 def directory(settings):
     root = Path(settings.evaluation_directory).resolve()
@@ -114,7 +114,7 @@ async def versions(x_service_token: str | None = Header(default=None)):
 @router.post("/v1/evaluation/scenario", status_code=202)
 async def submit(payload: EvaluationRequest, x_service_token: str | None = Header(default=None)):
     settings = authorize(x_service_token)
-    if payload.payload.phase != "EXTRACT" or payload.payload.promptHash not in {a.prompt_hash(a.fresh_candidate), a.prompt_hash(a.recovery_candidate)}:
+    if payload.payload.phase != "EXTRACT" or payload.payload.promptHash not in {a.prompt_hash(a.fresh_candidate), a.prompt_hash(a.recovery_candidate), a.prompt_hash(a.sparse_candidate)}:
         raise HTTPException(400, "evaluation requires a supported extraction input")
     selected = await asyncio.to_thread(settings.current_registry)
     current = await asyncio.to_thread(catalog, selected)
@@ -190,7 +190,7 @@ def initial_artifact(record):
         context = a.AssessmentContext.model_validate(record.get("learningContext") or
             {"currentValue": None, **next(e["input"]["learningContext"] for e in record["events"] if e["stage"] == "EXTRACT")})
         selected = a.selected_release(record["extraction"]["promptHash"])
-        model = a.FlexibleQuestions if selected in (a.prevention_candidate, a.alignment_candidate, a.scope_candidate, a.fresh_candidate, a.recovery_candidate) else a.PartsQuestions
+        model = a.SparseQuestions if selected is a.sparse_candidate else a.FlexibleQuestions if selected in (a.prevention_candidate, a.alignment_candidate, a.scope_candidate, a.fresh_candidate, a.recovery_candidate, a.sparse_candidate) else a.PartsQuestions
         questions = model.model_validate(first["QUESTIONS"])
         content = a.attach_questions(dialogue, questions, context)
         translations = a.w.Translations.model_validate(first["TRANSLATE"])

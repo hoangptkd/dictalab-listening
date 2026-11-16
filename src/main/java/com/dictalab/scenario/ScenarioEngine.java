@@ -617,7 +617,7 @@ public class ScenarioEngine {
             boolean advisory="scenario-job.v2".equals(input.path("contractVersion").asText()) && Set.of("aa79b767fee0970408e4fe420d1d97615595fdd195e16d8e919f28881f265485", "358201f08eb87c7d4d2306220c3828a92cda57ac93d57faed80a508d892fa1c1", "c1dcc2e3cc29847ba09b6d53a447a45e8bfe48ae13e9dfb4e2e131173f1e6a18", "defd36c45a53aa6ac5002d0acb50996a5790fd87554646e36f9830dd3a225504", "a98960f21fabe1f652f68fac72794c41e5c18870a400059cef4b03f50a9a838b", "df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303").contains(pin);
             boolean flexible=advisory || "scenario-job.v2".equals(input.path("contractVersion").asText()) && "f5f347bcac1dd0767f3af409704778357cd0ce39dd2a2d7f325671bc22abee1f".equals(pin);
             ScenarioContent.content(task,input.path("specification"),input.path("profile"),input.has("learningContext") ? input.path("learningContext") : null,
-                    meaning || flexible,(meaning && !ScenarioRecovery.enabled(pin)) || advisory,ScenarioAssessment.flexibleBank(input.path("promptHash").asText()) ? 2 : 3);
+                    meaning || flexible,(meaning && !ScenarioRecovery.enabled(pin)) || advisory,ScenarioAssessment.sparseBank(input.path("promptHash").asText()) ? 1 : ScenarioAssessment.flexibleBank(input.path("promptHash").asText()) ? 2 : 3);
         }
         else if (kind.equals("GRADE")) { if (meaning) ScenarioAssessment.grade(task,input.path("assessmentSubmission"),ScenarioRecovery.gradedActivity(input,result)); else ScenarioContent.grade(task,input.path("answers")); }
         else {

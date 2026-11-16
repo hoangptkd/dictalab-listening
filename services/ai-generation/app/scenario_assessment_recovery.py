@@ -48,9 +48,45 @@ class Review(StrictModel):
     checks: list[Check] = Field(min_length=1, max_length=60)
 
 
+class UsefulCheck(Check):
+    addsInformationBeyondQuestion: bool
+
+
+class UsefulReview(Review):
+    checks: list[UsefulCheck] = Field(min_length=1, max_length=60)
+
+
 class Bank(StrictModel):
     # GRADE reviews one saved activity; generation still uses FlexibleQuestions.
     activities: list[a.FlexibleActivityDraft] = Field(min_length=1, max_length=3)
+
+
+class SparseBank(Bank):
+    activities: list[a.SparseActivityDraft] = Field(min_length=1, max_length=3)
+
+
+def merge_sparse_patch(original, patch, allowed):
+    """Remove only diagnosed dependency targets; retain stable IDs of all survivors."""
+    removals = {(r.itemType, r.activityId, r.itemId) for r in patch.removals}
+    if len(removals) != len(patch.removals) or not removals <= allowed:
+        raise ValueError("patch removals outside scope")
+    replacements = {("meaning", r.activityId, r.meaning.id) for r in patch.meaningReplacements}
+    replacements |= {("question", r.activityId, r.question.id) for r in patch.questionReplacements}
+    if replacements & removals or replacements | removals != allowed:
+        raise ValueError("patch targets mismatch")
+    # Reuse the exact-replacement gate before applying the explicit removals.
+    original_items = old.items(original, "QUESTIONS")
+    full = patch.model_copy(deep=True)
+    for kind, activity, item in removals:
+        if kind == "meaning":
+            full.meaningReplacements.append(a.PartsMeaningReplacement(activityId=activity, meaning=original_items[(kind, activity, item)]))
+        else:
+            full.questionReplacements.append(a.QuestionReplacement(activityId=activity, question=original_items[(kind, activity, item)]))
+    candidate = old.merge_patch(original, full, allowed, "QUESTIONS")
+    for act in candidate.activities:
+        act.questions = [q for q in act.questions if ("question", act.id, q.id) not in removals]
+        act.assessment.meanings = [m for m in act.assessment.meanings if ("meaning", act.id, m.id) not in removals]
+    return type(original).model_validate(candidate.model_dump())
 
 
 def inventory(dialogue, artifact, stage):
@@ -70,7 +106,7 @@ def contains(value, quote):
     return False
 
 
-def review_findings(review, dialogue, artifact, stage, input_vi):
+def review_findings(review, dialogue, artifact, stage, input_vi, *, optional_inference=False):
     bank = inventory(dialogue, artifact, stage)
     rows = {(c.itemType, c.activityId, c.itemId): c for c in review.checks}
     if rows.keys() != bank.keys() or len(rows) != len(review.checks):
@@ -91,7 +127,8 @@ def review_findings(review, dialogue, artifact, stage, input_vi):
                 raise ValueError("review answer/part coverage mismatch")
             material |= (any(not p.requiredByQuestion or not p.sourceSupportsPart for p in row.partChecks)
                          or not row.answerMatchesDerived or row.answerSupport == "not-answerable"
-                         or question.skill == "supported-inference" and row.answerSupport != "inference")
+                         or not getattr(row, "addsInformationBeyondQuestion", True)
+                         or not optional_inference and question.skill == "supported-inference" and row.answerSupport != "inference")
             if row.answerSupport == "not-applicable" or not row.sourceEvidence:
                 raise ValueError("missing independent answer support")
         elif row.partChecks or row.derivedAnswerVi or row.answerSupport != "not-applicable":
@@ -110,9 +147,12 @@ def review_findings(review, dialogue, artifact, stage, input_vi):
             issue.update(derivedAnswerVi=row.derivedAnswerVi, answerSupport=row.answerSupport,
                          answerMatchesDerived=row.answerMatchesDerived, declaredSkill=bank[key].skill,
                          partChecks=[p.model_dump() for p in row.partChecks])
-            if bank[key].skill == "supported-inference" and row.answerSupport != "inference":
+            if not optional_inference and bank[key].skill == "supported-inference" and row.answerSupport != "inference":
                 issue.update(code="semantic_support_classification",
                              constraint="The independently classified answer is not an inference. Rewrite this question and linked targets to genuinely test the requested skill using supported premises, or use the appropriate allowed skill while preserving bank focus coverage.")
+            if not getattr(row, "addsInformationBeyondQuestion", True):
+                issue.update(code="semantic_no_information_gain",
+                             constraint="This answer repeats information already in the question. Remove this question and its unused meaning instead of inventing a replacement to meet a count.")
         return issue
 
     findings, errors = [], []
@@ -130,7 +170,9 @@ class Recovery:
     def __init__(self, payload, call, deadline, *, grade=False):
         self.payload, self.call, self.deadline = payload, call, deadline
         self.base_calls = 1 if grade else 6
-        self.policy = a.recovery_candidate.HARNESS_POLICY
+        self.selected = a.selected_release(payload.promptHash)
+        self.sparse = self.selected is a.sparse_candidate
+        self.policy = self.selected.HARNESS_POLICY
         self.limit = self.policy["gradeMaxCalls"] if grade else self.policy["maxCalls"]
         self.plan, self.validations, self.attempts, self.disputes = [], [], [], []
         self.original_source = None
@@ -179,8 +221,8 @@ class Recovery:
         for _ in range(3):
             review = None
             try:
-                review = await self.invoke(purpose, data, Review, dialogue)
-                findings, row_errors = review_findings(review, dialogue, artifact, stage, self.payload.inputVi)
+                review = await self.invoke(purpose, data, UsefulReview if self.sparse and stage == "QUESTIONS" else Review, dialogue)
+                findings, row_errors = review_findings(review, dialogue, artifact, stage, self.payload.inputVi, optional_inference=self.sparse)
             except ValueError as error:
                 if review is None and not hasattr(error, "failed_output"):
                     raise
@@ -198,7 +240,7 @@ class Recovery:
                 if stage == "QUESTIONS" and not focused and len(artifact.activities) > 1:
                     selected = []
                     for act in artifact.activities:
-                        questions = [q for q in act.questions if q.skill in ("reason", "supported-inference")]
+                        questions = [q for q in act.questions if q.skill in (("reason",) if self.sparse else ("reason", "supported-inference"))]
                         if questions:
                             mids = {mid for q in questions for mid in q.meaningIds}
                             selected.append(act.model_copy(update={"questions": questions,
@@ -206,7 +248,7 @@ class Recovery:
                     if selected:
                         # A review projection, never a replacement bank: the original
                         # inventory and exact patch scopes remain authoritative.
-                        return await self.certify(dialogue, Bank.model_construct(activities=selected), stage, focused=True)
+                        return await self.certify(dialogue, (SparseBank if self.sparse else Bank).model_construct(activities=selected), stage, focused=True)
                 return []
             identity = lambda i: (i["itemType"], i["activityId"], i["itemId"])
             if prior is not None and {identity(i) for i in findings} <= {identity(i) for i in prior}:
@@ -230,10 +272,10 @@ class Recovery:
         data = {**self.data(dialogue, original, stage), "failedOutput": original.model_dump(),
                 "issues": old.repair_feedback(issues), "allowedTargets": targets, "preserveQuestionPrompts": grade}
         purpose = "REPAIR_QUESTIONS" if stage == "QUESTIONS" else "REPAIR_TRANSLATIONS"
-        patch_model = a.PartsQuestionPatch if stage == "QUESTIONS" else w.TranslationPatch
+        patch_model = (a.SparseQuestionPatch if self.sparse and not grade else a.PartsQuestionPatch) if stage == "QUESTIONS" else w.TranslationPatch
         try:
             patch = await self.invoke(purpose, data, patch_model, dialogue)
-            candidate = old.merge_patch(original, patch, allowed, stage)
+            candidate = merge_sparse_patch(original, patch, allowed) if isinstance(patch, a.SparseQuestionPatch) else old.merge_patch(original, patch, allowed, stage)
             if grade:
                 before = old.items(original, stage)
                 for key, q in old.items(candidate, stage).items():
@@ -292,7 +334,7 @@ async def generate(payload, call, deadline):
                 r.attempts.append(dict(stage="GENERATE", attempted=True, accepted=False, originalHash=h.digest(dialogue), targets=sorted(affected)))
                 continue
             r.reserve(4)
-            questions = await r.invoke("QUESTIONS", {**generation_data, "dialogue": dialogue.model_dump()}, a.FlexibleQuestions, dialogue)
+            questions = await r.invoke("QUESTIONS", {**generation_data, "dialogue": dialogue.model_dump()}, a.SparseQuestions if r.sparse else a.FlexibleQuestions, dialogue)
             if retained_questions is not None:
                 questions.activities = [act if act.id in affected else next(a for a in retained_questions.activities if a.id == act.id) for act in questions.activities]
             source_issues = []
@@ -381,10 +423,10 @@ async def grade(payload, call, deadline):
     dialogue = w.Dialogue.model_construct(activities=[w.DialogueActivity.model_validate(activity.model_dump(include={"id", "segments"}))])
     r.original_source = h.digest(dialogue)
     # Saved public questions omit draft-only fields. These are not learner evidence.
-    draft = a.FlexibleActivityDraft.model_validate(dict(id=activity.id, assessment=activity.assessment.model_dump(), questions=[
+    draft = (a.SparseActivityDraft if r.sparse else a.FlexibleActivityDraft).model_validate(dict(id=activity.id, assessment=activity.assessment.model_dump(), questions=[
         {**q.model_dump(exclude={"type"}), "factEn": next(m.meaningEn for m in activity.assessment.meanings if m.id == q.meaningIds[0]), "speechAct": "statement"}
         for q in activity.questions]))
-    bank = Bank(activities=[draft])
+    bank = (SparseBank if r.sparse else Bank)(activities=[draft])
     try:
         issues = []
         try:

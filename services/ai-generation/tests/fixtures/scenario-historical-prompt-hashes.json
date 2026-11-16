@@ -26,5 +26,6 @@
   "scenario_prompts_personalized_fewshot_v8": "a98960f21fabe1f652f68fac72794c41e5c18870a400059cef4b03f50a9a838b",
   "scenario_prompts_personalized_fewshot_v9": "df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303",
   "workflow": "d43a3e228449dc64d7b6c103c2013558ac6e9415feabad8ff50e083900b0ae21",
-  "personalized": "df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303"
+  "personalized": "df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303",
+  "scenario_prompts_meaning_v5_1": "7c7172b2bbb04423c5ddb3a5e525dcae1d93189279afb22da1fe74184dea440e"
 }

@@ -52,7 +52,9 @@ final class ScenarioContent {
         content(task,spec,profile,context,flexible,advisory,3);
     }
     static void content(JsonNode task, JsonNode spec, JsonNode profile,JsonNode context,boolean flexible,boolean advisory,int minimumAssessmentItems) {
-        check(minimumAssessmentItems==2 || minimumAssessmentItems==3);
+        check(minimumAssessmentItems>=1 && minimumAssessmentItems<=3);
+        boolean sparse=minimumAssessmentItems==1;
+        boolean inferenceOptional=sparse && context!=null && context.path("focusSkill").asText().equals("supported-inference");
         boolean meaning=context!=null && context.path("contractVersion").asText().equals("scenario-learning-context.v2");
         fields(task,"activities","translations","qualityPassed"); check(task.path("qualityPassed").isBoolean() && (advisory || task.path("qualityPassed").asBoolean()));
         list(task.path("activities"),3,3); list(task.path("translations"),6,18);
@@ -85,7 +87,7 @@ final class ScenarioContent {
                     String support=text(q,"supportKind",16); check(Set.of("direct","synthesis","inference").contains(support));
                     check(q.path("inferenceReasonEn").isTextual() && q.path("inferenceReasonEn").asText().length()<=400);
                     boolean inferred=support.equals("inference");
-                    check(inferred == q.path("skill").asText().equals("supported-inference"));
+                    if (!sparse) check(inferred == q.path("skill").asText().equals("supported-inference"));
                     check(inferred ? !q.path("inferenceReasonEn").asText().isBlank()
                             && context.path("profile").path("inferencePolicy").asText().equals("SUPPORTED_INFERENCE")
                             : q.path("inferenceReasonEn").asText().isEmpty());
@@ -93,7 +95,7 @@ final class ScenarioContent {
                     focusCovered |= context.path("focusSkill").asText().equals(q.path("skill").asText());
                 }
                 check(ids.add(id(q,"id")));
-                if (meaning) check(q.path("id").asText().equals("q"+ ++questionOrdinal));
+                if (meaning) check(sparse ? q.path("id").asText().matches("q[1-6]") : q.path("id").asText().equals("q"+ ++questionOrdinal));
                 check("MEANING_RECALL_VI".equals(text(q,"type",30)) && (context!=null ? ScenarioPersonalization.SKILLS : Set.of("detail","main-idea")).contains(text(q,"skill",30)));
                 String prompt = text(q,"promptVi",300), answer = text(q,"answerVi",200);
                 if (meaning) check(!normalize(prompt).isEmpty() && prompts.add(normalize(prompt)));
@@ -106,10 +108,10 @@ final class ScenarioContent {
                     if (meaning) check(evidenceSet.add(sid+"\u0000"+quote));
                 }
             }
-            check(ids.equals(java.util.stream.IntStream.rangeClosed(1,a.path("questions").size()).mapToObj(i -> "q"+i).collect(java.util.stream.Collectors.toSet())));
+            if (!sparse) check(ids.equals(java.util.stream.IntStream.rangeClosed(1,a.path("questions").size()).mapToObj(i -> "q"+i).collect(java.util.stream.Collectors.toSet())));
         }
-        check(context==null || focusCovered);
-        if (meaning) check(focusMeaningCovered && questionCount<=context.path("profile").path("maxQuestionsPerSession").asInt());
+        check(context==null || inferenceOptional || focusCovered);
+        if (meaning) check((inferenceOptional || focusMeaningCovered) && questionCount<=context.path("profile").path("maxQuestionsPerSession").asInt());
         if (!flexible) check(total <= profile.path("maxWordsPerSession").asInt()); var actual = new HashSet<String>();
         for (var t : task.path("translations")) {
             fields(t,"activityId","segmentId","textVi"); text(t,"textVi",800);
@@ -125,13 +127,13 @@ final class ScenarioContent {
         for (var meaning : assessment.path("meanings")) {
             if (parts) fields(meaning,"id","meaningEn","skill","supportKind","inferenceReasonEn","evidence","requiredParts");
             else fields(meaning,"id","meaningEn","skill","supportKind","inferenceReasonEn","evidence");
-            String id=id(meaning,"id"); check(id.equals("m"+ ++ordinal) && meanings.put(id,meaning)==null);
+            String id=id(meaning,"id"); check((minimumItems==1 ? id.matches("m[1-6]") : id.equals("m"+ ++ordinal)) && meanings.put(id,meaning)==null);
             String label=normalize(text(meaning,"meaningEn",300)); check(!label.isEmpty() && labels.add(label));
             String skill=text(meaning,"skill",30),support=text(meaning,"supportKind",16);
             check(Set.of("direct","synthesis","inference").contains(support));
             check(java.util.stream.StreamSupport.stream(context.path("profile").path("skills").spliterator(),false).anyMatch(s -> s.asText().equals(skill)));
             var reason=meaning.path("inferenceReasonEn"); check(reason.isTextual() && reason.asText().length()<=400);
-            boolean inference=support.equals("inference"); check(inference==skill.equals("supported-inference"));
+            boolean inference=support.equals("inference"); if (minimumItems!=1) check(inference==skill.equals("supported-inference"));
             check(inference ? !reason.asText().isBlank() && context.path("profile").path("inferencePolicy").asText().equals("SUPPORTED_INFERENCE") : reason.asText().isEmpty());
             list(meaning.path("evidence"),1,3);
             var evidenceSet=new HashSet<String>();

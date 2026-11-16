@@ -206,15 +206,15 @@ class ScenarioEngineIntegrationTest {
     }
     @Test void v5ReusesCompatibleSavedTargetsWithoutRewritingHistoricalPreferences() {
         var old=registry.require("general-communication",5);
-        var current=registry.require("general-communication",7);
+        var current=registry.require("general-communication",9);
         personalization.save(user,id(),new ScenarioPersonalization.Preference(old.code(),old.version(),
                 new ScenarioGoalRequest.Target("cefr-listening","LISTENING","b1"),null,"main-idea",0));
         String saved=db.queryForObject("SELECT preference_json FROM scenario_learning_preferences WHERE user_id=?",String.class,user);
         var effective=personalization.list(user).path("preferences").get(0);
-        assertThat(effective.path("programVersion").asInt()).isEqualTo(7);
+        assertThat(effective.path("programVersion").asInt()).isEqualTo(9);
         assertThat(effective.path("target").path("value").asText()).isEqualTo("b1");
         var context=personalization.forDraft(user,current);
-        assertThat(context.path("programVersion").asInt()).isEqualTo(7);
+        assertThat(context.path("programVersion").asInt()).isEqualTo(9);
         assertThat(context.path("programHash").asText()).isEqualTo(current.definitionHash());
         assertThat(db.queryForObject("SELECT preference_json FROM scenario_learning_preferences WHERE user_id=?",String.class,user)).isEqualTo(saved);
         assertThat(personalization.forDraft(user,old).path("programVersion").asInt()).isEqualTo(5);

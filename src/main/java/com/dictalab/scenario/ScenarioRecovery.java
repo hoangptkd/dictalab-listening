@@ -7,7 +7,7 @@ import static com.dictalab.scenario.ScenarioContent.*;
 /** Core verifies the finite recovery transcript and binds acceptance to final artifacts. */
 final class ScenarioRecovery {
     private ScenarioRecovery() {}
-    static boolean enabled(String pin) { return ScenarioAssessment.RECOVERY_V5_1_PROMPT_HASH.equals(pin); }
+    static boolean enabled(String pin) { return ScenarioAssessment.RECOVERY_V5_1_PROMPT_HASH.equals(pin) || ScenarioAssessment.SPARSE_V5_2_PROMPT_HASH.equals(pin); }
 
     static void calls(JsonNode result, boolean grading) {
         var report=result.path("qualityHarness");
@@ -83,7 +83,7 @@ final class ScenarioRecovery {
             }
         }
         var segments=new HashMap<String,String>(); fixed.path("segments").forEach(s -> segments.put(s.path("id").asText(),s.path("textEn").asText()));
-        ScenarioContent.meanings(fixed,segments,input.path("learningContext"),2);
+        ScenarioContent.meanings(fixed,segments,input.path("learningContext"),ScenarioAssessment.sparseBank(input.path("promptHash").asText()) ? 1 : 2);
         var beforeIds=new ArrayList<String>(); var afterIds=new ArrayList<String>();
         original.path("assessment").path("meanings").forEach(m -> beforeIds.add(m.path("id").asText()));
         fixed.path("assessment").path("meanings").forEach(m -> afterIds.add(m.path("id").asText())); check(beforeIds.equals(afterIds));

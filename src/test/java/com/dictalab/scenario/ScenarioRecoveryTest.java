@@ -5,10 +5,37 @@ import tools.jackson.databind.node.ObjectNode;
 import static org.assertj.core.api.Assertions.*;
 
 class ScenarioRecoveryTest {
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named="dictalab.scenario.saved-acceptance-file",matches=".+")
+    void savedArtifactsUseTheActualCoreAcceptanceGate() throws Exception {
+        var path=java.nio.file.Path.of(System.getProperty("dictalab.scenario.saved-acceptance-file"));
+        var cases=ScenarioJson.MAPPER.readTree(java.nio.file.Files.readAllBytes(path));
+        for (var row : cases) {
+            var input=row.path("payload");
+            if (row.has("result")) ScenarioEngine.validateHarnessCalls(row.path("result"));
+            ScenarioContent.content(row.path("task"),input.path("specification"),input.path("profile"),input.path("learningContext"),true,false,1);
+        }
+    }
     static tools.jackson.databind.JsonNode fixture() throws Exception {
         try (var stream=ScenarioRecoveryTest.class.getResourceAsStream("/scenario-v5-recovery-fixture.json")) {
             return ScenarioJson.MAPPER.readTree(stream);
         }
+    }
+    @Test void sparseBankAcceptsOneDirectQuestionAndDoesNotRequireInferenceCoverage() throws Exception {
+        var f=fixture(); var payload=(ObjectNode)f.path("payload").deepCopy(); var result=(ObjectNode)f.path("result").deepCopy();
+        result.put("promptHash",ScenarioAssessment.SPARSE_V5_2_PROMPT_HASH).put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V5_2");
+        ((ObjectNode)payload.path("learningContext")).put("focusSkill","supported-inference");
+        for (var activity : result.path("task").path("activities")) {
+            // Removing q1/m1 leaves q2/m2 stable; no renumbering of correct neighbors.
+            var questions=(tools.jackson.databind.node.ArrayNode)activity.path("questions"); while (questions.size()>1) questions.remove(0);
+            var meanings=(tools.jackson.databind.node.ArrayNode)activity.path("assessment").path("meanings"); while (meanings.size()>1) meanings.remove(0);
+        }
+        ((ObjectNode)result.path("qualityHarness")).put("contentHash",ScenarioJson.hash(ScenarioJson.canonical(result.path("task"))));
+        assertThatCode(() -> ScenarioEngine.validateHarnessCalls(result)).doesNotThrowAnyException();
+        assertThatCode(() -> ScenarioContent.content(result.path("task"),payload.path("specification"),payload.path("profile"),payload.path("learningContext"),true,false,1)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> ScenarioContent.content(result.path("task"),payload.path("specification"),payload.path("profile"),payload.path("learningContext"),true,false,2)).isInstanceOf(IllegalArgumentException.class);
+        ((ObjectNode)result.path("task").path("activities").get(0).path("questions").get(0).path("evidence").get(0)).put("quoteEn","Unsupported answer.");
+        assertThatThrownBy(() -> ScenarioContent.content(result.path("task"),payload.path("specification"),payload.path("profile"),payload.path("learningContext"),true,false,1)).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void pythonRepairResultIsAcceptedByCoreWithTheSameSourceAndContent() throws Exception {
         var f=fixture(); var result=f.path("result"); var payload=f.path("payload");

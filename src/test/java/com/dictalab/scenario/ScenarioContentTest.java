@@ -161,17 +161,17 @@ class ScenarioContentTest {
         var properties=new ScenarioEngineProperties(true,1,"",ScenarioAssessment.ACTIVE_PROMPT_HASH,false,java.util.Set.of(),approvals);
         var env=new org.springframework.mock.env.MockEnvironment(); env.setActiveProfiles("production");
         var release=new ScenarioRelease(new ScenarioProperties(true),properties,registry,ai,env);
-        assertThat(release.assessmentPromptHash()).isEqualTo(ScenarioAssessment.RECOVERY_V5_1_PROMPT_HASH);
+        assertThat(release.assessmentPromptHash()).isEqualTo(ScenarioAssessment.SPARSE_V5_2_PROMPT_HASH);
         assertThat(release.generationPrograms(14)).hasSize(3).allMatch(p -> p.status()==ScenarioProgram.Status.APPROVED);
         for (var program : release.generationPrograms(14)) {
             assertThatCode(()->release.require(15,program.code(),program.version())).doesNotThrowAnyException();
             assertThatCode(()->release.requireGrade(15,program.code(),program.version(),program.definitionHash())).doesNotThrowAnyException();
-            assertThat(release.available(14,registry.require(program.code(),program.version()-1))).isFalse();
+            assertThat(release.available(14,registry.require(program.code(),program.code().equals("general-communication") ? 7 : 6))).isFalse();
         }
         var retiredPin=new ScenarioEngineProperties(true,1,"",ScenarioAssessment.PARTS_V4_15_PROMPT_HASH,true,java.util.Set.of(14L),approvals);
         var local=new org.springframework.mock.env.MockEnvironment().withProperty("server.address","127.0.0.1"); local.setActiveProfiles("local");
         var retired=new ScenarioRelease(new ScenarioProperties(true),retiredPin,registry,ai,local);
-        assertThat(retired.assessmentPromptHash()).isEqualTo(ScenarioAssessment.RECOVERY_V5_1_PROMPT_HASH);
+        assertThat(retired.assessmentPromptHash()).isEqualTo(ScenarioAssessment.SPARSE_V5_2_PROMPT_HASH);
         assertThat(retired.generationPrograms(14)).isEmpty();
         var wrongPin=new ScenarioEngineProperties(true,1,"",ScenarioAssessment.PARTS_V4_13_PROMPT_HASH,false,java.util.Set.of(),approvals);
         assertThat(new ScenarioRelease(new ScenarioProperties(true),wrongPin,registry,ai,env).generationPrograms(14)).isEmpty();
