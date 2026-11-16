@@ -1,8 +1,9 @@
-# Bộ prompt hội thoại mới V5.0 — bản thử local
+# Bộ prompt hội thoại V5.0
 
 Bộ này được viết mới theo yêu cầu ngày 16/11/2026. Chỉ tái sử dụng hợp đồng dữ liệu,
 luồng thực thi và cơ chế bảo vệ hiện có; không chỉnh nối tiếp nội dung prompt V4.
-Đây là ứng viên để người dùng tự so sánh, chưa phải kết luận chất lượng tốt hơn.
+Chủ dự án đã chọn V5 thay V4.15 ngày 16/11/2026. Xem [bàn giao kích hoạt](scenario-v5-activation.md).
+Các thử nghiệm bên dưới là lịch sử tạo và so sánh; chúng không chứng minh V5 đã hết lỗi.
 Quy tắc trong prompt là hành vi mong muốn; kiểm thử thật vẫn phát hiện lỗi GRADE với khóa sai.
 Xem [kết quả và giới hạn đã đo](scenario-prompts-v5-verification.md) trước khi chọn dùng.
 
@@ -32,7 +33,8 @@ Hướng dẫn model cụ thể trong các tài liệu cộng đồng không đ�
 - Mã phiên bản: `SCENARIO_MEANING_ASSESSMENT_V5_0`, lựa chọn Studio: `v5.0`.
 - Local Studio: `http://localhost:18082/admin/ai-evaluation?view=versions`.
 - Bản đối chứng hiện hành: `v4.15`; dùng cùng tập đầu vào, model và cấu hình trong một lần so sánh.
-- Bộ mới xuất hiện trong danh mục thử; pin học viên mặc định và bản production không được đổi.
+- V5 là pin mặc định và là lựa chọn duy nhất cho lượt đánh giá mới. Các lượt so sánh cũ vẫn đọc được.
+  Trạng thái local/production phải dựa trên [bằng chứng kích hoạt](scenario-v5-activation.md).
 - Thứ tự sinh: EXTRACT → GENERATE → QUESTIONS → REVIEW_QUESTIONS → TRANSLATE → REVIEW.
   GRADE dùng khi nộp câu trả lời. Hai REPAIR là nhánh có điều kiện, không bắt buộc gọi cả chín bước mỗi bài.
 - REVIEW_QUESTIONS suy ra đáp án từ câu hỏi + transcript rồi đối chiếu khóa chấm; REVIEW so từng câu dịch với bản gốc.

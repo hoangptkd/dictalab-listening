@@ -8,14 +8,14 @@ import static com.dictalab.scenario.ScenarioData.*;
 import static org.assertj.core.api.Assertions.*;
 
 class ScenarioAssessmentTest {
-    @Test void freshPromptSetIsAvailableForComparisonWithoutActivation() {
+    @Test void freshPromptSetIsTheActiveRelease() {
         String pin=ScenarioAssessment.FRESH_V5_0_PROMPT_HASH;
         assertThat(ScenarioAssessment.releaseMatches(pin,"SCENARIO_MEANING_ASSESSMENT_V5_0")).isTrue();
         assertThat(ScenarioAssessment.releaseMatches(pin,"SCENARIO_MEANING_ASSESSMENT_V4_17")).isFalse();
         assertThat(ScenarioAssessment.policyFor(pin)).isEqualTo(ScenarioAssessment.PARTS_POLICY);
         assertThat(ScenarioAssessment.flexibleBank(pin)).isTrue();
         assertThat(ScenarioAssessment.independentAudit(pin)).isFalse();
-        assertThat(ScenarioAssessment.ACTIVE_PROMPT_HASH).isEqualTo(ScenarioAssessment.PARTS_V4_15_PROMPT_HASH);
+        assertThat(ScenarioAssessment.ACTIVE_PROMPT_HASH).isEqualTo(ScenarioAssessment.FRESH_V5_0_PROMPT_HASH);
         assertThat(ScenarioOperations.callEnvelope("GENERATE",object().put("promptHash",pin).put("contractVersion","scenario-job.v3"))).isEqualTo(9);
         assertThat(ScenarioOperations.callEnvelope("GRADE",object().put("promptHash",pin))).isEqualTo(1);
     }
@@ -27,7 +27,7 @@ class ScenarioAssessmentTest {
         assertThat(ScenarioAssessment.policyFor(pin)).isEqualTo(ScenarioAssessment.PARTS_POLICY);
         assertThat(ScenarioAssessment.flexibleBank(pin)).isTrue();
         assertThat(ScenarioAssessment.independentAudit(pin)).isFalse();
-        assertThat(ScenarioAssessment.ACTIVE_PROMPT_HASH).isEqualTo(ScenarioAssessment.PARTS_V4_15_PROMPT_HASH);
+        assertThat(ScenarioAssessment.ACTIVE_PROMPT_HASH).isEqualTo(ScenarioAssessment.FRESH_V5_0_PROMPT_HASH);
         assertThat(ScenarioOperations.callEnvelope("GENERATE",object().put("promptHash",pin).put("contractVersion","scenario-job.v3"))).isEqualTo(9);
         assertThat(ScenarioOperations.callEnvelope("GRADE",object().put("promptHash",pin))).isEqualTo(1);
     }
@@ -39,7 +39,7 @@ class ScenarioAssessmentTest {
         assertThat(ScenarioAssessment.flexibleBank(pin)).isTrue();
         assertThat(ScenarioAssessment.flexibleBank(ScenarioAssessment.PARTS_V4_14_PROMPT_HASH)).isFalse();
         assertThat(ScenarioAssessment.independentAudit(pin)).isFalse();
-        assertThat(ScenarioAssessment.ACTIVE_PROMPT_HASH).isEqualTo(ScenarioAssessment.PARTS_V4_15_PROMPT_HASH);
+        assertThat(ScenarioAssessment.ACTIVE_PROMPT_HASH).isEqualTo(ScenarioAssessment.FRESH_V5_0_PROMPT_HASH);
         assertThat(ScenarioOperations.callEnvelope("GENERATE",object().put("promptHash",pin).put("contractVersion","scenario-job.v3"))).isEqualTo(9);
         assertThat(ScenarioOperations.callEnvelope("GRADE",object().put("promptHash",pin))).isEqualTo(1);
     }

@@ -32,7 +32,7 @@ final class ScenarioAssessment {
     static final String LEGACY_PROMPT_HASH="ff50fd266eb277d973b8daed92dbf5b7ccb1beb17c28ad6c353fcaaf86c58630";
     static final String WIRE_V2_PROMPT_HASH="4693e3c73b820a6eaea53311eaa5d8beaa7269cb9a71089fca6af98c112d31eb";
     static final String PROMPT_HASH="650193db73e2fb03c4f94a7ccb8f29fc9bc1c3f77c8391fabc0b0e07803f287e";
-    static final String ACTIVE_PROMPT_HASH=PARTS_V4_15_PROMPT_HASH;
+    static final String ACTIVE_PROMPT_HASH=FRESH_V5_0_PROMPT_HASH;
     static boolean releaseMatches(String hash,String version) {
         return LEGACY_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V1".equals(version)
                 || WIRE_V2_PROMPT_HASH.equals(hash) && "SCENARIO_MEANING_ASSESSMENT_V2".equals(version)

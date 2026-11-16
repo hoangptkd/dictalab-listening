@@ -24,7 +24,7 @@ def config(monkeypatch, tmp_path):
 
 def request(settings):
     catalog = e.catalog(settings)
-    payload = parts_payload("EXTRACT", promptHash=a.prompt_hash(a.scoped_release))
+    payload = parts_payload("EXTRACT", promptHash=a.prompt_hash(a.fresh_candidate))
     return dict(requestId=str(uuid4()), backendHash=catalog["backendHash"], runtimeHash=e.digest(catalog["runtime"]),
                 payload=payload.model_dump(mode="json"))
 
@@ -41,7 +41,7 @@ async def test_auth_disabled_production_bounds_and_catalog(config, monkeypatch):
     assert result.status_code == 200
     text = result.text
     assert config.service_token not in text
-    assert [r["id"] for r in result.json()["releases"]] == ["v4.13", "v4.14", "v4.15", "v4.16", "v4.17", "v5.0"]
+    assert [r["id"] for r in result.json()["releases"]] == ["v5.0"]
     assert (await call("POST", "/v1/evaluation/scenario", headers=headers, content="x" * 64001)).status_code == 413
     config.production_mode = True
     assert (await call("GET", "/v1/evaluation/scenario", headers=headers)).status_code == 503
@@ -56,7 +56,7 @@ async def test_changed_sources_require_restart_before_new_admission(config, monk
     assert result.status_code == 503 and "restart" in result.text
 
 
-@pytest.mark.parametrize("release", [a.scoped_release, a.scoped_fewshot_candidate, a.prevention_candidate, a.scope_candidate, a.fresh_candidate])
+@pytest.mark.parametrize("release", [a.fresh_candidate])
 async def test_real_pipeline_observer_persists_six_stages_and_idempotency(config, monkeypatch, release):
     data = request(config)
     data["payload"]["promptHash"] = a.prompt_hash(release)
@@ -97,9 +97,10 @@ async def test_real_pipeline_observer_persists_six_stages_and_idempotency(config
     assert (await call("POST", "/v1/evaluation/scenario", json=data, headers=headers)).status_code == 409
 
 
-async def test_other_historical_releases_are_not_admitted(config):
+@pytest.mark.parametrize("release", [a.direct_audit_candidate, a.scoped_release, a.prevention_candidate, a.scope_candidate])
+async def test_other_historical_releases_are_not_admitted(config, release):
     data = request(config)
-    data["payload"]["promptHash"] = a.prompt_hash(a.direct_audit_candidate)
+    data["payload"]["promptHash"] = a.prompt_hash(release)
     assert (await call("POST", "/v1/evaluation/scenario", json=data,
                        headers={"X-Service-Token": config.service_token})).status_code == 400
     assert not list(e.directory(config).glob("*.json"))

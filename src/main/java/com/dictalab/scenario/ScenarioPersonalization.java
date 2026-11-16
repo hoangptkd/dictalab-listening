@@ -25,7 +25,14 @@ public class ScenarioPersonalization {
     public JsonNode list(long user) {
         var result=object(); var items=result.putArray("preferences");
         for (var row : data.db.queryForList("SELECT preference_json,version FROM scenario_learning_preferences WHERE user_id=? ORDER BY updated_at DESC,program_code",user)) {
-            var item=(ObjectNode)tree((String)row.get("preference_json")); item.put("version",number(row,"version")); items.add(item);
+            var item=(ObjectNode)tree((String)row.get("preference_json"));
+            var current=registry.definitions().stream().filter(p -> p.code().equals(item.path("programCode").asText())
+                    && p.status()==ScenarioProgram.Status.APPROVED
+                    && !p.promptArtifactRefs().isEmpty()
+                    && p.promptArtifactRefs().stream().allMatch(ref -> ref.sha256().equals(ScenarioAssessment.ACTIVE_PROMPT_HASH)))
+                    .max(java.util.Comparator.comparingInt(ScenarioProgram::version));
+            var effective=current.map(p -> compatiblePreference(item,p)).orElse(item);
+            effective.put("version",number(row,"version")); items.add(effective);
         }
         return result;
     }
@@ -53,11 +60,25 @@ public class ScenarioPersonalization {
         return forDraft(user,program,null);
     }
     public ObjectNode forDraft(long user,ScenarioProgram program,String focus) {
-        var rows=data.db.queryForList("SELECT preference_json FROM scenario_learning_preferences WHERE user_id=? AND program_code=? AND program_version=?",user,program.code(),program.version());
+        var rows=data.db.queryForList("SELECT preference_json FROM scenario_learning_preferences WHERE user_id=? AND program_code=?",user,program.code());
         if (rows.isEmpty()) throw new ScenarioFailure(400,"PERSONALIZATION_REQUIRED","Hãy chọn mục tiêu luyện nghe trước khi tạo bài.");
-        var preference=tree((String)rows.get(0).get("preference_json"));
+        var preference=compatiblePreference((ObjectNode)tree((String)rows.get(0).get("preference_json")),program);
+        if (preference.path("programVersion").asInt()!=program.version())
+            throw new ScenarioFailure(400,"PERSONALIZATION_REQUIRED","Hãy chọn mục tiêu luyện nghe trước khi tạo bài.");
         // Only an explicit recommendation overrides the default, never a removed legacy preference field.
         return context(program,ScenarioJson.MAPPER.treeToValue(preference.path("target"),ScenarioGoalRequest.Target.class),null,focus==null || focus.isEmpty() ? "main-idea" : focus);
+    }
+
+    private ObjectNode compatiblePreference(ObjectNode preference,ScenarioProgram program) {
+        int savedVersion=preference.path("programVersion").asInt();
+        if (savedVersion>=program.version()) return preference;
+        var previous=registry.require(program.code(),savedVersion);
+        // A prompt-only successor can reuse the declared target without rewriting saved goals or receipts.
+        if (previous.status()==ScenarioProgram.Status.APPROVED && program.status()==ScenarioProgram.Status.APPROVED
+                && previous.targetScales().equals(program.targetScales())
+                && previous.difficultyProfiles().equals(program.difficultyProfiles()))
+            return preference.deepCopy().put("programVersion",program.version());
+        return preference;
     }
     /** Synthetic Studio fixtures use the same profile resolution as learner drafts; no preference writes. */
     public static tools.jackson.databind.node.ArrayNode evaluationFixtures(ScenarioProgramRegistry registry) {

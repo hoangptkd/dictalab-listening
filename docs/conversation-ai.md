@@ -3,14 +3,18 @@
 ## Bản đang chỉnh sửa
 
 Một nguồn prompt: `services/ai-generation/app/scenario-prompts.json`.
-V4.15 được chủ dự án duyệt làm bản chính thức ngày 15/11/2026,
-hash `f03dd35a2443d8a2ad69e9d3995de3638116b3749261f666b6f8c19f5b73ff89`.
-Phê duyệt này không thay kết luận kiểm thử: vẫn có lỗi phạm vi chấm gây chấm thiếu điểm;
-chưa chứng minh chất lượng tăng. V4.13/V4.14 được giữ nguyên trong kho lịch sử.
-Pin mặc định Core nằm ở `scenario/workflow-v3.sha256`. Các chương trình được duyệt mới:
-giao tiếp phiên bản 5, TOEIC/IELTS phiên bản 4; định nghĩa cũ giữ nguyên để đọc/chấm bài đã lưu.
-Production chỉ được coi là cập nhật khi release và runtime đã xác minh, không chỉ vì đổi pin source.
-Xem [kết quả và bàn giao V4.15](scenario-v415-verification-handoff.md).
+V5 được chủ dự án yêu cầu thay thế V4.15 ngày 16/11/2026,
+hash `b8026ffc1dabdb09393c3b419b41750ca51ece9a242363482e3a337f4a61697b`.
+Pin mặc định Core nằm ở `scenario/workflow-v3.sha256`. Chương trình tạo bài hiện hành:
+giao tiếp phiên bản 6, TOEIC/IELTS phiên bản 5. V4.15 không còn trong lựa chọn chạy đánh giá mới;
+định nghĩa và prompt cũ chỉ được giữ để bảo toàn bài đã lưu, provenance và bằng chứng lịch sử.
+Mục tiêu đã lưu ở phiên bản APPROVED cũ được sử dụng cho chương trình mới nếu thang điểm và
+profile hoàn toàn giống nhau; không ghi đè lịch sử mục tiêu hoặc tự quy đổi điểm.
+
+Kết quả 18 mẫu mỗi bản: V5 hoàn tất 16/18, V4.15 12/18; vẫn còn lỗi ngữ nghĩa và chấm khóa sai.
+Phê duyệt thay thế không đồng nghĩa đã sửa các lỗi này. Xem [báo cáo so sánh](scenario-v415-v5-18-per-prompt-20261116.md)
+và [bàn giao kích hoạt V5](scenario-v5-activation.md).
+Production chỉ được coi là cập nhật khi qua main release và runtime được xác minh.
 
 `scenario_prompts.py` nạp bản hiện hành. `scenario-prompt-history.json.gz` giữ giá trị đã biên dịch của
 các bản cũ, được kiểm tra SHA-256 khi đọc. Kho này chỉ phục vụ tương thích bài đã lưu, pin cũ và benchmark;
@@ -42,7 +46,7 @@ flowchart TD
 - AI API/worker: `services/ai-generation/app`; job ledger giữ idempotency và kết quả chưa rõ.
 - Hợp đồng API: [Scenario engine](scenario-engine-openapi.yaml), [foundation](scenario-foundation-openapi.yaml).
 
-V4.15 sinh bài qua năm bước, không gọi `AUDIT_MEANINGS` hoặc `AUDIT_QUESTIONS`.
+V5 sinh bài sau EXTRACT qua năm bước, không gọi `AUDIT_MEANINGS` hoặc `AUDIT_QUESTIONS`.
 EXTRACT trước đó là một lượt riêng; GRADE chạy khi người học trả lời.
 Luồng không sửa cần 6 lượt cho EXTRACT + sinh bài, giảm 2 so với V4.12. Envelope sinh bài tối đa 9 lượt;
 đây là số lời gọi logic, không phải số HTTP attempts hoặc hóa đơn.

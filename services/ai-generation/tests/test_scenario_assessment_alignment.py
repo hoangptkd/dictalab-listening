@@ -42,7 +42,7 @@ def test_candidate_is_pinned_but_not_activated():
     root = Path(__file__).resolve().parents[3]
     core = (root / "src/main/java/com/dictalab/scenario/ScenarioAssessment.java").read_text()
     assert f'PARTS_V4_16_PROMPT_HASH="{PIN}"' in core
-    assert "ACTIVE_PROMPT_HASH=PARTS_V4_15_PROMPT_HASH" in core
+    assert "ACTIVE_PROMPT_HASH=FRESH_V5_0_PROMPT_HASH" in core
     assert RELEASE.HARNESS_POLICY == a.prevention_candidate.HARNESS_POLICY
 
 

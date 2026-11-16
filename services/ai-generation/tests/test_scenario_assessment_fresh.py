@@ -21,7 +21,7 @@ def test_fresh_release_keeps_history_and_active_pin():
     assert RELEASE.HARNESS_POLICY == a.scope_candidate.HARNESS_POLICY
     assert RELEASE.OUTPUT_TOKENS == a.scope_candidate.OUTPUT_TOKENS
     root = Path(__file__).resolve().parents[3]
-    assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == a.prompt_hash(a.prevention_candidate)
+    assert (root / "src/main/resources/scenario/workflow-v3.sha256").read_text().strip() == PIN
 
 
 def test_real_generation_path_uses_fresh_instructions_and_scoped_contracts():

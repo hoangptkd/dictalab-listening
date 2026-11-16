@@ -6,14 +6,14 @@ Open <http://localhost:18082/admin/ai-evaluation> as an existing ADMIN. API requ
 `local`, authentication, ADMIN and CSRF. QA14 remains a learner; never elevate it to access this screen.
 Provider accounts and fallback policies come from `/admin/gemini`.
 
-New versions and runs use the personalized Python pipeline: frozen **V4.13**, frozen **V4.14**
-and **V4.15**, approved by the owner as the default release on 2026-11-15.
-V4.15 is the one editable prompt source; earlier prompts load from the checked historical artifact.
-The owner approved testing on 2026-11-15. Offline checks passed; the partial live comparison found
-scoring-scope defects; the owner subsequently approved activation despite those known defects.
-This decision is not evidence of improved semantic quality or a verified production deployment.
-See the [results and handoff](scenario-v415-verification-handoff.md).
-Java V8 and other historical prompt releases are read-only evidence. No new replay or generation uses them.
+New experiment versions and runs use **V5.0 only**, selected by the owner on 2026-11-16.
+V4.15 and the earlier experimental releases are no longer offered for new execution. Existing
+snapshots, runs, judgments and output remain readable; historical hashes are not rewritten.
+An attempt to submit a historical release to the evaluation API is rejected before inference.
+V5.0 is the single editable prompt source. Historical compatibility remains for saved learner lessons.
+The owner selected V5 despite the remaining semantic and grading defects documented in the
+[18-case comparison](scenario-v415-v5-18-per-prompt-20261116.md).
+See the [activation handoff](scenario-v5-activation.md) for current source/local/runtime status.
 Creating an experiment snapshot does not activate or approve a learner/production prompt.
 
 ## Durable evidence

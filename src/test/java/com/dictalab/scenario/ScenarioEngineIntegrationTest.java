@@ -123,6 +123,8 @@ class ScenarioEngineIntegrationTest {
                 if (ScenarioAssessment.PARTS_V4_13_PROMPT_HASH.equals(input.path("promptHash").asText())) result.put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_13");
                 if (ScenarioAssessment.PARTS_V4_14_PROMPT_HASH.equals(input.path("promptHash").asText())) result.put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_14");
                 boolean prevention=ScenarioAssessment.PARTS_V4_15_PROMPT_HASH.equals(input.path("promptHash").asText());
+                boolean fresh=ScenarioAssessment.FRESH_V5_0_PROMPT_HASH.equals(input.path("promptHash").asText());
+                if (fresh) result.put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V5_0");
                 if (prevention) result.put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V4_15");
                 boolean independentAudit=ScenarioAssessment.independentAudit(input.path("promptHash").asText());
                 if (independentAudit) result.put("promptVersion",ScenarioAssessment.PARTS_V4_11_PROMPT_HASH.equals(input.path("promptHash").asText())
@@ -131,7 +133,7 @@ class ScenarioEngineIntegrationTest {
                 if (phase.equals("GENERATE")) {
                     result.set("task",(parts ? ScenarioAssessmentTest.partsFixture() : ScenarioAssessmentTest.fixture()).path("content"));
                     result.putObject("qualityHarness").put("extraCalls",0).put("policyVersion","scenario-meaning-harness.v1").put("policyHash","56d0d6d5e826e1b46f20b5ab4a3868dada9537cca996cb35999d3886ee3d6fe2");
-                    if (prevention) ((ObjectNode)result.path("qualityHarness")).put("policyVersion","scenario-meaning-harness.v3")
+                    if (prevention || fresh) ((ObjectNode)result.path("qualityHarness")).put("policyVersion","scenario-meaning-harness.v3")
                             .put("policyHash",ScenarioAssessment.PREVENTION_HARNESS_POLICY_HASH);
                     if (independentAudit) {
                         calls.removeAll();
@@ -174,6 +176,30 @@ class ScenarioEngineIntegrationTest {
         assertThat(generation.path("status").asText()).isEqualTo("SUCCEEDED");
         return engine.session(user,generation.path("sessionId").asText());
     }
+    @Test void v5ReusesCompatibleSavedTargetsWithoutRewritingHistoricalPreferences() {
+        var old=registry.require("general-communication",5);
+        var current=registry.require("general-communication",6);
+        personalization.save(user,id(),new ScenarioPersonalization.Preference(old.code(),old.version(),
+                new ScenarioGoalRequest.Target("cefr-listening","LISTENING","b1"),null,"main-idea",0));
+        String saved=db.queryForObject("SELECT preference_json FROM scenario_learning_preferences WHERE user_id=?",String.class,user);
+        var effective=personalization.list(user).path("preferences").get(0);
+        assertThat(effective.path("programVersion").asInt()).isEqualTo(6);
+        assertThat(effective.path("target").path("value").asText()).isEqualTo("b1");
+        var context=personalization.forDraft(user,current);
+        assertThat(context.path("programVersion").asInt()).isEqualTo(6);
+        assertThat(context.path("programHash").asText()).isEqualTo(current.definitionHash());
+        assertThat(db.queryForObject("SELECT preference_json FROM scenario_learning_preferences WHERE user_id=?",String.class,user)).isEqualTo(saved);
+        assertThat(personalization.forDraft(user,old).path("programVersion").asInt()).isEqualTo(5);
+    }
+
+    @Test void promptUpgradeDoesNotReuseAnIncompatibleDraftProgramPreference() {
+        var old=registry.require("general-communication",4);
+        personalization.save(user,id(),new ScenarioPersonalization.Preference(old.code(),old.version(),
+                new ScenarioGoalRequest.Target("cefr-listening","LISTENING","a1"),null,"main-idea",0));
+        assertThatThrownBy(()->personalization.forDraft(user,registry.require("general-communication",6)))
+                .isInstanceOf(ScenarioFailure.class).hasMessageContaining("chọn mục tiêu");
+    }
+
     JsonNode activeMeaning() {
         long version=db.queryForObject("SELECT COALESCE(MAX(version),0) FROM scenario_learning_preferences WHERE user_id=? AND program_code='general-communication'",Long.class,user);
         personalization.save(user,id(),new ScenarioPersonalization.Preference("general-communication",4,new ScenarioGoalRequest.Target("cefr-listening","LISTENING","a1"),null,"detail",version));
@@ -214,7 +240,7 @@ class ScenarioEngineIntegrationTest {
         meaningGradeStatus="CAPTURED"; dispatch(engine.assessment(user,other,a,id(),new ScenarioEngine.AssessmentRequest(another.path("version").asLong(),"RECAP","nine, six pounds, tomorrow",List.of())));
         another=engine.session(user,other); assertThat(another.path("activities").get(0).path("assessment").path("canComplete").asBoolean()).isTrue(); assertThat(another.path("activities").get(0).path("questions")).isEmpty();
     }
-    @ParameterizedTest @ValueSource(strings={ScenarioAssessment.PARTS_PROMPT_HASH,ScenarioAssessment.PARTS_V4_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_3_PROMPT_HASH,ScenarioAssessment.PARTS_V4_4_PROMPT_HASH,ScenarioAssessment.PARTS_V4_6_PROMPT_HASH,ScenarioAssessment.PARTS_V4_7_PROMPT_HASH,ScenarioAssessment.PARTS_V4_11_PROMPT_HASH,ScenarioAssessment.PARTS_V4_12_PROMPT_HASH,ScenarioAssessment.PARTS_V4_13_PROMPT_HASH,ScenarioAssessment.PARTS_V4_14_PROMPT_HASH,ScenarioAssessment.PARTS_V4_15_PROMPT_HASH})
+    @ParameterizedTest @ValueSource(strings={ScenarioAssessment.PARTS_PROMPT_HASH,ScenarioAssessment.PARTS_V4_1_PROMPT_HASH,ScenarioAssessment.PARTS_V4_3_PROMPT_HASH,ScenarioAssessment.PARTS_V4_4_PROMPT_HASH,ScenarioAssessment.PARTS_V4_6_PROMPT_HASH,ScenarioAssessment.PARTS_V4_7_PROMPT_HASH,ScenarioAssessment.PARTS_V4_11_PROMPT_HASH,ScenarioAssessment.PARTS_V4_12_PROMPT_HASH,ScenarioAssessment.PARTS_V4_13_PROMPT_HASH,ScenarioAssessment.PARTS_V4_14_PROMPT_HASH,ScenarioAssessment.PARTS_V4_15_PROMPT_HASH,ScenarioAssessment.FRESH_V5_0_PROMPT_HASH})
     void requiredPartLessonKeepsItsPolicyAndPinThroughChecksCompletionAndAdmissionChanges(String pin) {
         when(release.assessmentPromptHash()).thenReturn(pin);
         var session=activeMeaning(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
