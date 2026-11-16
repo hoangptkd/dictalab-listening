@@ -38,7 +38,7 @@ def measure_record(path: Path):
         dialogue = workflow.Dialogue.model_validate(event["input"]["dialogue"])
         selected = assessment.selected_release(record.get("promptHash") or record.get("extraction", {}).get("promptHash", ""))
         model = assessment.FlexibleQuestions if selected in (
-            assessment.prevention_candidate, assessment.alignment_candidate, assessment.scope_candidate) \
+            assessment.prevention_candidate, assessment.alignment_candidate, assessment.scope_candidate, assessment.fresh_candidate) \
             else assessment.PartsQuestions
         questions = model.model_validate(event["output"])
         learning_context = event["input"]["learningContext"]

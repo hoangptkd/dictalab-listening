@@ -19,7 +19,7 @@ def test_effective_prompt_and_schema_hashes_are_unchanged_for_saved_jobs():
         else:
             actual = w.personalized_prompt_hash(prompts.historical_release(name))
         assert actual == value, name
-    assert a.scope_candidate is prompts.CURRENT
+    assert a.fresh_candidate is prompts.CURRENT
     assert a.prompt_hash(a.alignment_candidate) == 'ce9b6398767cd1cdc927e0f0e442984373a05d058470e616a7d9a3a758669ab8'
     assert a.prompt_hash(a.prevention_candidate) == 'f03dd35a2443d8a2ad69e9d3995de3638116b3749261f666b6f8c19f5b73ff89'
     assert a.prompt_hash(a.scoped_release) == 'b1f627bce2367904664a68ca2460e5ffd96868e1eb7fa93b244762673d6d3087'
