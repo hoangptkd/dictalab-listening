@@ -27,7 +27,7 @@ class ConversationPythonSmokeTest {
                 "smoke-only-token-at-least-32-characters", "ollama", 10,
                 "legacy", "legacy", "legacy", java.util.Set.of());
         var platform = new AiPlatformClient(json, config, new SimpleMeterRegistry());
-        var core = new GeminiClient(json, "", "unused", "http://127.0.0.1:1");
+        var core = new AiTextService(json, "", "unused", "http://127.0.0.1:1");
         var registry = org.mockito.Mockito.mock(AiProviderRegistry.class);
         core.configureRegistry(registry);
         core.configureLocal("ollama", "http://127.0.0.1:1", "qwen3.5:9b");

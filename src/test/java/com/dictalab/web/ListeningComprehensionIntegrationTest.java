@@ -5,7 +5,7 @@ import com.dictalab.exception.InvalidPracticeStateException;
 import com.dictalab.repository.AppUserRepository;
 import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.ListeningComprehensionService;
-import com.dictalab.service.GeminiClient;
+import com.dictalab.service.AiTextService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -46,13 +46,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class ListeningComprehensionIntegrationTest {
+    private static com.dictalab.service.AiTextService.Result textResult(tools.jackson.databind.JsonNode value) {
+        return new com.dictalab.service.AiTextService.Result(java.util.UUID.randomUUID(), value, "deepseek", "test-model",
+            "test-completed-model", null, null, java.util.List.of(), new tools.jackson.databind.ObjectMapper().createObjectNode());
+    }
+
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
     @Autowired AppUserRepository users;
     @Autowired ListeningComprehensionService service;
     @Autowired PlatformTransactionManager transactions;
-    @MockitoBean GeminiClient ai;
+    @MockitoBean AiTextService ai;
 
     @Test
     void seededListeningUnitsCoverEveryLevelWithAlignedAudioAndValidContent() throws Exception {
@@ -81,12 +86,12 @@ class ListeningComprehensionIntegrationTest {
     @Test
     void twoPassAssessmentHidesAnswersUntilCompleteAndKeepsSessionsPrivate() throws Exception {
         when(ai.configured()).thenReturn(true);
-        when(ai.completeJson(anyString(), anyString())).thenReturn(json.readTree("""
+        when(ai.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(textResult(json.readTree("""
                 {"facts":[{"factId":"F1","status":"CAPTURED","explanationVi":"Đúng"},
                 {"factId":"F2","status":"PARTIAL","explanationVi":"Một phần"},
                 {"factId":"F3","status":"MISSED","explanationVi":"Thiếu"},
                 {"factId":"F4","status":"INCORRECT","explanationVi":"Sai"}]}
-                """));
+                """)));
         AppUser owner = users.save(new AppUser("listening-" + UUID.randomUUID() + "@test.local",
                 "Listener", "unused", Instant.now()));
         AppUser stranger = users.save(new AppUser("listening-" + UUID.randomUUID() + "@test.local",

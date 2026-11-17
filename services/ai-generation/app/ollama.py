@@ -95,21 +95,15 @@ translated or changed. Do not answer the question or add explanations.
 
 async def _chat(body: dict[str, Any], settings: Settings, client: httpx.AsyncClient) -> dict[str, Any]:
     """POST one /api/chat call and return the parsed structured object."""
+    from .model_gateway import ModelGateway
+    from .providers.base import ProviderError
     try:
-        response = await client.post(settings.ollama_url.rstrip("/") + "/api/chat", json=body)
-        response.raise_for_status()
-        envelope = response.json()
-        content = envelope.get("message", {}).get("content")
-        if envelope.get("done") is not True or envelope.get("done_reason") != "stop" or not isinstance(content, str):
-            raise OllamaError("incomplete Ollama response")
-        task = json.loads(content)
-        if not isinstance(task, dict):
-            raise OllamaError("Ollama task is not an object")
-        return task
-    except (httpx.TimeoutException, httpx.ConnectError) as exc:
-        raise TimeoutError("Ollama request timed out or was unavailable") from exc
-    except (httpx.HTTPError, json.JSONDecodeError, OllamaError) as exc:
-        raise OllamaError("Ollama generation failed") from exc
+        result, _ = await ModelGateway(settings, client).complete(body["messages"], body["format"],
+            time.monotonic() + settings.timeout_seconds, "legacy_conversation",
+            temperature=body["options"]["temperature"])
+        return result
+    except ProviderError as error:
+        raise OllamaError("AI generation failed") from error
 
 
 async def generate_content(request: Any, settings: Settings, client: httpx.AsyncClient) -> dict[str, Any]:

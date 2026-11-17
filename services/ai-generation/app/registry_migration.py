@@ -5,6 +5,11 @@ from pathlib import Path
 from .provider_registry import connect, decrypt_key, validate_endpoint
 
 SCHEMA = Path(__file__).with_name("sql") / "001_provider_registry.sql"
+EXTENSION = Path(__file__).with_name("sql") / "003_extensible_provider_ids.sql"
+
+
+def extension_checksum():
+    return hashlib.sha256(EXTENSION.read_text(encoding="utf-8").encode()).hexdigest()
 
 
 def schema_checksum():
@@ -31,7 +36,8 @@ def restricted_role(db):
 def verify_private(db, *, runtime=False):
     restricted_role(db)
     versions = db.execute("SELECT version,checksum FROM ai_registry_schema ORDER BY version").fetchall()
-    if versions != [{"version": 1, "checksum": schema_checksum()}]:
+    original = [{"version": 1, "checksum": schema_checksum()}]
+    if versions not in (original, original + [{"version": 3, "checksum": extension_checksum()}]):
         raise ValueError("private registry migration checksum mismatch")
     if runtime:
         if db.execute("""SELECT EXISTS(SELECT 1 FROM pg_roles parent WHERE parent.rolname<>current_user
@@ -68,6 +74,18 @@ def initialize(dsn):
         db.execute("CREATE TABLE ai_registry_schema (version INTEGER PRIMARY KEY, checksum VARCHAR(64) NOT NULL)")
         db.execute("REVOKE ALL ON ai_registry_schema FROM PUBLIC")
         db.execute("INSERT INTO ai_registry_schema VALUES (1,%s)", (schema_checksum(),))
+
+
+def upgrade_provider_ids(dsn):
+    """Owner identity only; never invoked by a runtime Settings load or readiness check."""
+    with connect(dsn, readonly=False) as db:
+        restricted_role(db)
+        db.execute("SELECT pg_advisory_xact_lock(6028102801)")
+        verify_private(db)
+        if db.execute("SELECT checksum FROM ai_registry_schema WHERE version=3").fetchone():
+            return
+        db.execute(EXTENSION.read_text(encoding="utf-8"))
+        db.execute("INSERT INTO ai_registry_schema VALUES (3,%s)", (extension_checksum(),))
 
 
 def snapshot(db, master):

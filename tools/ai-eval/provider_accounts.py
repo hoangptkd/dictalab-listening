@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services/ai-generation"))
 from dotenv import dotenv_values
 from app.config import GeminiSource
+from app.providers import CLOUD_PROVIDERS, get_provider
 from app.provider_registry import connect, load_registry, save_pool, save_source, encrypt_key, decrypt_key
 
 
@@ -23,7 +24,7 @@ async def probe(config, platform, generate=False):
     from app.config import Settings
     from app.model_gateway import ModelGateway
     settings = Settings(primary_provider=platform,ai_provider_config_source="database",
-        operational_limits_enabled=config.get("DICTALAB_OPERATIONAL_LIMITS_ENABLED", "true"),
+        operational_limits_enabled=config.get("DICTALAB_OPERATIONAL_LIMITS_ENABLED", "false"),
         ai_provider_database_url=config["AI_PROVIDER_DATABASE_URL"],
         ai_provider_encryption_key=config["AI_PROVIDER_ENCRYPTION_KEY"],
         gemini_quota_backend="redis",gemini_quota_redis_url=config.get("GEMINI_QUOTA_REDIS_URL","redis://127.0.0.1:16379/0"),
@@ -31,10 +32,9 @@ async def probe(config, platform, generate=False):
     result = {"platform":platform,"accounts":[]}
     async with httpx.AsyncClient(timeout=15,follow_redirects=False) as client:
         for source in settings.sources_for(platform):
-            response = await client.get(source.url.removesuffix("/chat/completions")+"/models",
-                headers={"Authorization":"Bearer "+source.api_key})
-            available = response.status_code==200 and any(
-                item.get("id","").removeprefix("models/")==source.model for item in response.json().get("data",[]))
+            registration = get_provider(platform)
+            response = await registration.probe(settings, client, source=source, timeout=15)
+            available = response.status_code == 200 and registration.model_matches(response, source.model)
             result["accounts"].append(dict(id=source.id,http_status=response.status_code,model_available=available))
         if not result["accounts"] or not all(r["model_available"] for r in result["accounts"]):
             return result
@@ -190,15 +190,22 @@ def import_env(path, payload, config=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command",choices=("import-env","upsert","list","probe","init-private","init-management","copy-registry"))
+    parser.add_argument("command",choices=("import-env","upsert","list","probe","init-private","init-management","copy-registry","upgrade-provider-ids"))
     parser.add_argument("--env-file",type=Path)
-    parser.add_argument("--platform",choices=("gemini","deepseek","openai_compatible"),default="gemini")
+    parser.add_argument("--platform",choices=sorted(CLOUD_PROVIDERS),default="gemini")
     parser.add_argument("--generate",action="store_true",help="Probe only: send at most one bounded paid generation; never retry")
     parser.add_argument("--target-env",type=Path,help="Copy only: explicit protected management config for the private target")
     args = parser.parse_args()
     try:
         # An explicit file always wins over ambient credentials, including for later upserts/probes.
         path = args.env_file or ROOT/".env"
+        if args.command == "upgrade-provider-ids":
+            if not args.env_file:
+                raise ValueError("upgrade requires an explicit protected owner configuration file")
+            from app.registry_migration import upgrade_provider_ids
+            upgrade_provider_ids(dict(dotenv_values(path, interpolate=False))["AI_PROVIDER_DATABASE_URL"])
+            print("Provider ID schema upgraded; no account data changed.")
+            return
         config = dict(dotenv_values(path, interpolate=False)) if args.env_file or args.command in ("init-private", "init-management", "copy-registry") else environment(path)
         if args.command == "init-management":
             from app.provider_admin import initialize_management

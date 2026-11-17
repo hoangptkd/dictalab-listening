@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.*;
 
-class GeminiClientTest {
+class AiTextServiceTest {
     private final ObjectMapper json = new ObjectMapper();
     private final AtomicReference<String> content = new AtomicReference<>("{\"ok\":true}");
     private final AtomicReference<Integer> status = new AtomicReference<>(200);
@@ -28,7 +28,7 @@ class GeminiClientTest {
     private final AtomicReference<java.util.concurrent.CountDownLatch> gate = new AtomicReference<>(new java.util.concurrent.CountDownLatch(0));
     private final java.util.concurrent.atomic.AtomicInteger requests = new java.util.concurrent.atomic.AtomicInteger();
     private HttpServer server;
-    private GeminiClient client;
+    private AiTextService client;
 
     @BeforeEach void setup() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -45,7 +45,7 @@ class GeminiClientTest {
             try (var output = exchange.getResponseBody()) { output.write(body); }
         });
         server.start();
-        client = new GeminiClient(json, "test-only-key", "gemini-3.5-flash-lite",
+        client = new AiTextService(json, "test-only-key", "gemini-3.5-flash-lite",
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");
     }
 
@@ -55,8 +55,12 @@ class GeminiClientTest {
         var registry = org.mockito.Mockito.mock(AiProviderRegistry.class);
         var platform = org.mockito.Mockito.mock(AiPlatformClient.class);
         org.mockito.Mockito.when(platform.textConfigured()).thenReturn(true);
-        org.mockito.Mockito.when(platform.completeText("Review", "Evidence", "ai-owned-model", java.time.Duration.ofSeconds(60)))
-                .thenReturn(json.valueToTree(Map.of("ok", true)));
+        org.mockito.Mockito.when(platform.completeText(org.mockito.ArgumentMatchers.any(AiTextService.Request.class)))
+                .thenAnswer(invocation -> {
+                    AiTextService.Request call = invocation.getArgument(0);
+                    return new AiTextService.Result(call.requestId(), json.valueToTree(Map.of("ok", true)), "gemini",
+                        call.model(), call.model(), null, null, List.of(), json.createObjectNode());
+                });
         client.configureRegistry(registry);
         client.configureTextTransport(platform, "python", "ai-owned-model");
         assertThat(client.configured()).isTrue();
@@ -64,10 +68,10 @@ class GeminiClientTest {
         assertThat(client.completeJson("Review", "Evidence").path("ok").asBoolean()).isTrue();
         org.mockito.Mockito.verifyNoInteractions(registry);
         assertThat(requests.get()).isZero();
-        org.mockito.Mockito.when(platform.completeText("Review", "Evidence", "ai-owned-model", java.time.Duration.ofSeconds(60)))
+        org.mockito.Mockito.when(platform.completeText(org.mockito.ArgumentMatchers.any(AiTextService.Request.class)))
                 .thenThrow(new IllegalStateException("unknown outcome secret-value"));
         assertThatThrownBy(() -> client.completeJson("Review", "Evidence"))
-                .isInstanceOf(GeminiClient.Failure.class).hasMessageNotContaining("secret-value");
+                .isInstanceOf(AiTextService.Failure.class).hasMessageNotContaining("secret-value");
         assertThat(requests.get()).isZero();
         org.mockito.Mockito.verifyNoInteractions(registry);
     }
@@ -129,11 +133,11 @@ class GeminiClientTest {
         assertThat(received.get().path("model").asText()).isEqualTo("qwen3.5:9b");
         assertThat(authorization.get()).isNull();
         finishReason.set("length");
-        assertThatThrownBy(() -> client.completeJson("Review", "Evidence")).isInstanceOf(GeminiClient.Failure.class);
+        assertThatThrownBy(() -> client.completeJson("Review", "Evidence")).isInstanceOf(AiTextService.Failure.class);
     }
 
     @Test void missingKeyRejectsRequestsBeforeSendingAnyContext() {
-        var unconfigured = new GeminiClient(json, "", "gemini-3.5-flash-lite",
+        var unconfigured = new AiTextService(json, "", "gemini-3.5-flash-lite",
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");
         assertThat(unconfigured.configured()).isFalse();
         assertThatThrownBy(() -> unconfigured.completeJson("Instruction", "Learner evidence"))
@@ -152,7 +156,7 @@ class GeminiClientTest {
         var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         var quota = new GeminiQuotaCoordinator(props,metrics,null,java.time.Clock.systemUTC());
         quota.configureRegistry(registry);
-        var routed = new GeminiClient(json,"must-not-fallback","gemini-3.5-flash-lite","http://127.0.0.1:1/wrong",8,
+        var routed = new AiTextService(json,"must-not-fallback","gemini-3.5-flash-lite","http://127.0.0.1:1/wrong",8,
             metrics,io.micrometer.observation.ObservationRegistry.NOOP,5,30,props,quota);
         routed.configureRegistry(registry);
         routed.configureLocal("deepseek","http://127.0.0.1:11434","qwen3.5:9b");
@@ -168,11 +172,11 @@ class GeminiClientTest {
     @Test void truncatedAndMalformedOutputAreTypedFailuresWithoutRetry() {
         finishReason.set("length");
         assertThatThrownBy(()->client.completeJson("synthetic","synthetic"))
-                .isInstanceOfSatisfying(GeminiClient.Failure.class,f->assertThat(f.reason()).isEqualTo("OUTPUT_TRUNCATED"));
+                .isInstanceOfSatisfying(AiTextService.Failure.class,f->assertThat(f.reason()).isEqualTo("OUTPUT_TRUNCATED"));
         assertThat(requests.get()).isEqualTo(1);
         finishReason.set("stop"); content.set("{broken}");
         assertThatThrownBy(()->client.completeJson("synthetic","synthetic"))
-                .isInstanceOfSatisfying(GeminiClient.Failure.class,f->assertThat(f.reason()).isEqualTo("INVALID_JSON"));
+                .isInstanceOfSatisfying(AiTextService.Failure.class,f->assertThat(f.reason()).isEqualTo("INVALID_JSON"));
         assertThat(requests.get()).isEqualTo(2);
     }
 
@@ -187,7 +191,7 @@ class GeminiClientTest {
     @Test void provider429And500ReleasePermitWithoutHiddenRetries() {
         var metrics=new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         try{
-            var single=new GeminiClient(json,"fake","fixture","http://127.0.0.1:"+server.getAddress().getPort()+"/v1/chat/completions",
+            var single=new AiTextService(json,"fake","fixture","http://127.0.0.1:"+server.getAddress().getPort()+"/v1/chat/completions",
                     1,metrics,io.micrometer.observation.ObservationRegistry.NOOP,5,30);
             status.set(429);retryAfter.set("2");
             assertThatThrownBy(()->single.completeJson("fixture","fixture"))
@@ -208,7 +212,7 @@ class GeminiClientTest {
         var metrics=new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         var stalled=new java.util.concurrent.CountDownLatch(1);gate.set(stalled);
         try{
-            var single=new GeminiClient(json,"fake","fixture","http://127.0.0.1:"+server.getAddress().getPort()+"/v1/chat/completions",
+            var single=new AiTextService(json,"fake","fixture","http://127.0.0.1:"+server.getAddress().getPort()+"/v1/chat/completions",
                     1,metrics,io.micrometer.observation.ObservationRegistry.NOOP,5,30);
             long began=System.nanoTime();
             assertThatThrownBy(()->single.completeJson("fixture","fixture","fixture")).isInstanceOf(IllegalStateException.class);
@@ -227,7 +231,7 @@ class GeminiClientTest {
         var stalled=new java.util.concurrent.CountDownLatch(1);gate.set(stalled);
         try {
             assertThatThrownBy(()->client.completeJson("synthetic","synthetic"))
-                    .isInstanceOfSatisfying(GeminiClient.Failure.class,f->assertThat(f.reason()).isEqualTo("TIMEOUT"));
+                    .isInstanceOfSatisfying(AiTextService.Failure.class,f->assertThat(f.reason()).isEqualTo("TIMEOUT"));
             assertThat(requests.get()).isEqualTo(1);
         } finally {stalled.countDown();}
         assertThat(client.completeJson("synthetic","synthetic").path("ok").asBoolean()).isTrue();
@@ -237,14 +241,14 @@ class GeminiClientTest {
     @Test @org.junit.jupiter.api.Timeout(10)
     void remainingConversationBudgetBoundsCallsAndRejectsExpiredWorkWithoutSending() {
         assertThatThrownBy(() -> client.completeJson("synthetic", "synthetic", "fixture", java.time.Duration.ZERO))
-                .isInstanceOfSatisfying(GeminiClient.Failure.class, failure -> assertThat(failure.reason()).isEqualTo("TIMEOUT"));
+                .isInstanceOfSatisfying(AiTextService.Failure.class, failure -> assertThat(failure.reason()).isEqualTo("TIMEOUT"));
         assertThat(requests.get()).isZero();
         var stalled = new java.util.concurrent.CountDownLatch(1);
         gate.set(stalled);
         long began = System.nanoTime();
         try {
             assertThatThrownBy(() -> client.completeJson("synthetic", "synthetic", "fixture", java.time.Duration.ofMillis(200)))
-                    .isInstanceOfSatisfying(GeminiClient.Failure.class, failure -> assertThat(failure.reason()).isEqualTo("TIMEOUT"));
+                    .isInstanceOfSatisfying(AiTextService.Failure.class, failure -> assertThat(failure.reason()).isEqualTo("TIMEOUT"));
             assertThat(java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - began)).isLessThan(3000L);
             assertThat(requests.get()).isEqualTo(1);
         } finally { stalled.countDown(); }
@@ -262,7 +266,7 @@ class GeminiClientTest {
         var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         {
             var quota = new GeminiQuotaCoordinator(properties, metrics, null, java.time.Clock.systemUTC());
-            var pooled = new GeminiClient(json, "legacy-key", "legacy-model",
+            var pooled = new AiTextService(json, "legacy-key", "legacy-model",
                     "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions", 8, metrics,
                     io.micrometer.observation.ObservationRegistry.NOOP, 5, 30, properties, quota);
 
@@ -283,7 +287,7 @@ class GeminiClientTest {
                 1, 0, true, "memory");
         var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         var quota = new GeminiQuotaCoordinator(properties, metrics, null, java.time.Clock.systemUTC());
-        var pooled = new GeminiClient(json, "legacy-key", "legacy-model",
+        var pooled = new AiTextService(json, "legacy-key", "legacy-model",
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions", 8, metrics,
                 io.micrometer.observation.ObservationRegistry.NOOP, 5, 30, properties, quota);
 
@@ -302,16 +306,16 @@ class GeminiClientTest {
         var properties = new GeminiProviderProperties(providers, 0, 0, true, "memory");
         var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         var quota = new GeminiQuotaCoordinator(properties, metrics, null, java.time.Clock.systemUTC());
-        var pooled = new GeminiClient(json, "unused", "fixture", "http://127.0.0.1:1/wrong", 8, metrics,
+        var pooled = new AiTextService(json, "unused", "fixture", "http://127.0.0.1:1/wrong", 8, metrics,
             io.micrometer.observation.ObservationRegistry.NOOP, 5, 30, properties, quota);
         status.set(429); retryAfter.set("60");
         assertThatThrownBy(() -> pooled.completeJson("test", "test")).isInstanceOf(ProviderGuard.Unavailable.class);
         assertThat(requests.get()).isEqualTo(3);
         var freshQuota = new GeminiQuotaCoordinator(properties, metrics, null, java.time.Clock.systemUTC());
-        var fresh = new GeminiClient(json, "unused", "fixture", "http://127.0.0.1:1/wrong", 8, metrics,
+        var fresh = new AiTextService(json, "unused", "fixture", "http://127.0.0.1:1/wrong", 8, metrics,
             io.micrometer.observation.ObservationRegistry.NOOP, 5, 30, properties, freshQuota);
         status.set(500);
-        assertThatThrownBy(() -> fresh.completeJson("test", "test")).isInstanceOf(GeminiClient.Failure.class);
+        assertThatThrownBy(() -> fresh.completeJson("test", "test")).isInstanceOf(AiTextService.Failure.class);
         assertThat(requests.get()).isEqualTo(4);
     }
 }

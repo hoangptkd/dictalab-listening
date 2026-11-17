@@ -333,13 +333,13 @@ def local_call(body, purpose):
     # Persist exact request before sending; credentials are never part of local requests.
     a.append("local-wire-requests.jsonl", {"purpose": purpose, "request": body, "requestWireHash": a.wire_hash(body)})
     started = time.monotonic()
-    req = urllib.request.Request("http://127.0.0.1:11434/api/chat", data=a.d.packed(body).encode("utf-8"),
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=600) as response:
-        payload = response.read(100_001)
-    if len(payload) > 100_000:
-        raise ValueError("Oversize local response")
-    env = json.loads(payload)
+    from app.offline_text import environment_settings, run
+    result = run(environment_settings(provider="ollama"), body["messages"], body["format"], model=body["model"],
+        purpose="offline_refinement", temperature=body["options"]["temperature"],
+        max_tokens=body["options"]["num_predict"], context_tokens=body["options"]["num_ctx"],
+        seed=body["options"].get("seed"), timeout=600, json_object=False, frozen_wire=body,
+        journal=ROOT / "local-text-admissions")
+    env = result.envelope
     a.append("local-raw-responses.jsonl", {"purpose": purpose, "envelope": env,
                                           "seconds": round(time.monotonic() - started, 2)})
     if env.get("done") is not True or env.get("done_reason") != "stop":

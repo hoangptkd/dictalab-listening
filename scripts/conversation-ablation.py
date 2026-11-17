@@ -196,14 +196,14 @@ def run(stage):
                                      ("partnerRole", "learnerRole") if k in actual}))
             print("START", stage, key, flush=True)
             started = time.monotonic()
-            request = urllib.request.Request("http://127.0.0.1:11434/api/chat",
-                        data=d.packed(body).encode("utf-8"), headers={"Content-Type": "application/json"})
             try:
-                with urllib.request.urlopen(request, timeout=600) as response:
-                    payload = response.read(100_001)
-                if len(payload) > 100_000:
-                    raise ValueError("Local response too large")
-                envelope = json.loads(payload)
+                from app.offline_text import environment_settings, run
+                result = run(environment_settings(provider="ollama"), body["messages"], body["format"],
+                    model=body["model"], purpose="offline_ablation", temperature=body["options"]["temperature"],
+                    max_tokens=body["options"]["num_predict"], context_tokens=body["options"]["num_ctx"],
+                    seed=body["options"].get("seed"), timeout=600, json_object=False, frozen_wire=body,
+                    journal=ROOT / "local-text-admissions")
+                envelope = result.envelope
                 row["envelope"] = envelope
                 if envelope.get("done") is not True or envelope.get("done_reason") != "stop":
                     raise ValueError("Unfinished local response")

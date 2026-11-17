@@ -27,6 +27,11 @@ import static org.mockito.BDDMockito.*;
         "spring.rabbitmq.listener.simple.default-requeue-rejected=false","spring.rabbitmq.publisher-confirm-type=correlated",
         "spring.rabbitmq.publisher-returns=true","spring.rabbitmq.template.mandatory=true"})
 class ListeningGradingQueueIntegrationTest {
+    private static com.dictalab.service.AiTextService.Result textResult(tools.jackson.databind.JsonNode value) {
+        return new com.dictalab.service.AiTextService.Result(java.util.UUID.randomUUID(), value, "deepseek", "test-model",
+            "test-completed-model", null, null, java.util.List.of(), new tools.jackson.databind.ObjectMapper().createObjectNode());
+    }
+
     private static final String EXCHANGE="dictalab.test."+UUID.randomUUID();
     private static final String QUEUE=EXCHANGE+".grade",DLQ=QUEUE+".dlq";
     @DynamicPropertySource static void properties(DynamicPropertyRegistry properties) {
@@ -45,7 +50,7 @@ class ListeningGradingQueueIntegrationTest {
     @Autowired RabbitListenerEndpointRegistry listeners;
     @Autowired PlatformTransactionManager manager;
     @Autowired MeterRegistry metrics;
-    @MockitoBean GeminiClient ai;
+    @MockitoBean AiTextService ai;
     private final List<String> sessions=new ArrayList<>();
     private final List<Long> users=new ArrayList<>();
 
@@ -97,7 +102,7 @@ class ListeningGradingQueueIntegrationTest {
         queue.publish(id,1,0,0);queue.publish(id,1,0,0);
         queue.consume(id+"/1/0/0");
         assertThat(db.queryForObject("SELECT grading_attempts FROM listening_passes WHERE session_id=?",Integer.class,id)).isEqualTo(1);
-        then(ai).should(never()).completeJson(anyString(),anyString());
+        then(ai).should(never()).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString());
     }
     @Test void concurrentDeliveriesCallTheProviderOnlyOnce() throws Exception {
         given(ai.configured()).willReturn(true);given(ai.model()).willReturn("test-model");
@@ -109,9 +114,9 @@ class ListeningGradingQueueIntegrationTest {
         content.path("facts").forEach(f->labels.addObject().put("factId",f.path("id").asText())
                 .put("status","CAPTURED").put("explanationVi","fixture"));
         var entered=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);
-        given(ai.completeJson(anyString(),anyString())).willAnswer(invocation->{
+        given(ai.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString())).willAnswer(invocation->{
             assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
-            entered.countDown();assertThat(release.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue();return result;
+            entered.countDown();assertThat(release.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue();return textResult(result);
         });
         double before=metrics.counter("dictalab.listening.queue.consumed").count();
         queue.publish(id,1,0,0);queue.publish(id,1,0,0);listeners.start();
@@ -122,7 +127,7 @@ class ListeningGradingQueueIntegrationTest {
             assertThat(metrics.counter("dictalab.listening.queue.consumed").count()).isGreaterThan(before);
         } finally {release.countDown();}
         awaitStatus(id,"COMPLETED");
-        then(ai).should(times(1)).completeJson(anyString(),anyString());
+        then(ai).should(times(1)).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString());
         assertThat(db.queryForObject("SELECT grading_attempts FROM listening_passes WHERE session_id=?",Integer.class,id)).isEqualTo(1);
     }
     @Test void unroutablePublishKeepsPendingWorkAndRecoveryRepublishes() throws Exception {
@@ -142,11 +147,11 @@ class ListeningGradingQueueIntegrationTest {
         queue.consume(id+"/1/0/0");
         assertThat(status(id)).isEqualTo("PENDING");
         assertThat(db.queryForObject("SELECT grading_attempts FROM listening_passes WHERE session_id=?",Integer.class,id)).isZero();
-        then(ai).should(never()).completeJson(anyString(),anyString());
+        then(ai).should(never()).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString());
         db.update("UPDATE listening_passes SET grading_attempts=1 WHERE session_id=?",id);
         queue.consume(id+"/1/1/0");
         assertThat(status(id)).isEqualTo("PENDING");
-        then(ai).should(never()).completeJson(anyString(),anyString());
+        then(ai).should(never()).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString());
     }
     @Test void lostBillableWorkerBecomesOutcomeUnknownWithoutResubmission() {
         given(ai.configured()).willReturn(true);
@@ -161,7 +166,7 @@ class ListeningGradingQueueIntegrationTest {
                 });
         assertThat(db.queryForObject("SELECT grading_last_error FROM listening_passes WHERE session_id=?",String.class,id)).isEqualTo("OUTCOME_UNKNOWN");
         assertThat(db.queryForObject("SELECT recall_text FROM listening_passes WHERE session_id=?",String.class,id)).isEqualTo("saved recall");
-        then(ai).should(never()).completeJson(anyString(),anyString());
+        then(ai).should(never()).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString());
     }
     @Test void malformedMessagesGoToDeadLetterQueueAndDeletedSessionsAreIgnored() throws Exception {
         rabbit.convertAndSend(EXCHANGE,QUEUE,"malformed");listeners.start();
@@ -172,28 +177,28 @@ class ListeningGradingQueueIntegrationTest {
 
     @Test void providerResponseWithUncertainSideEffectIsNotAutomaticallyRetried() {
         given(ai.configured()).willReturn(true);
-        given(ai.completeJson(anyString(), anyString())).willThrow(new ProviderGuard.Unavailable("HTTP outcome uncertain", 30));
+        given(ai.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).willThrow(new ProviderGuard.Unavailable("HTTP outcome uncertain", 30));
         String id=prepare("saved recall"); submit(id); queue.consume(id+"/1/0/0");
         assertThat(status(id)).isEqualTo("FAILED");
         assertThat(db.queryForObject("SELECT next_grading_at FROM listening_passes WHERE session_id=?", java.sql.Timestamp.class, id)).isNull();
         queue.consume(id+"/1/0/0"); service.dispatchGrades();
-        then(ai).should(times(1)).completeJson(anyString(), anyString());
+        then(ai).should(times(1)).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
     }
 
     @Test void admissionRejectionRetriesWithBoundedBackoffAndAttemptBudget() {
         given(ai.configured()).willReturn(true);
-        given(ai.completeJson(anyString(), anyString())).willThrow(new ProviderGuard.Unavailable("Before HTTP", 45, true));
+        given(ai.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).willThrow(new ProviderGuard.Unavailable("Before HTTP", 45, true));
         String id=prepare("saved recall"); submit(id); queue.consume(id+"/1/0/0");
         assertThat(status(id)).isEqualTo("PENDING");
         assertThat(db.queryForObject("SELECT next_grading_at>CURRENT_TIMESTAMP + INTERVAL '40' SECOND FROM listening_passes WHERE session_id=?", Boolean.class,id)).isTrue();
         queue.consume(id+"/1/0/1");
-        then(ai).should(times(1)).completeJson(anyString(), anyString());
+        then(ai).should(times(1)).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
         for(int attempt=1;attempt<3;attempt++) {
             db.update("UPDATE listening_passes SET next_grading_at=NULL WHERE session_id=?", id);
             queue.consume(id+"/1/0/"+attempt);
         }
         assertThat(status(id)).isEqualTo("FAILED");
         assertThat(db.queryForObject("SELECT grading_attempts FROM listening_passes WHERE session_id=?",Integer.class,id)).isEqualTo(3);
-        then(ai).should(times(3)).completeJson(anyString(), anyString());
+        then(ai).should(times(3)).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
     }
 }

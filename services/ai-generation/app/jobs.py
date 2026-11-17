@@ -92,12 +92,16 @@ def execution_fingerprint(payload, settings):
     if payload.kind == "tts" and settings.tts_provider != "cartesia":
         return digest({"payload": payload.model_dump(), "metadata": capability_metadata(payload, settings),
                        "config": {k: v for k, v in tts.PROVIDERS[settings.tts_provider].configuration(settings).items() if k != "key"}})
-    return digest({"payload": payload.model_dump(), "metadata": capability_metadata(payload, settings),
+    original = digest({"payload": payload.model_dump(), "metadata": capability_metadata(payload, settings),
         "pool": [{k: v for k, v in p.model_dump().items() if k != "api_key"}
                  for p in settings.sources_for(settings.selected_provider)] if settings.gemini_quota_enabled else [],
         "config": {name: getattr(settings, name) for name in ("num_ctx", "num_predict", "ollama_url", "gemini_base_url",
                     "gemini_model", "cartesia_url", "cartesia_voice", "cartesia_version", "model_serving_url",
                     "demo_daily_budget_microusd", "demo_call_reservation_microusd", "demo_daily_cloud_calls")}})
+    if payload.kind not in ("tts", "scenario_tts") and settings.model_profiles:
+        return digest({"version": "text-capabilities.v1", "legacyFingerprint": original, "profiles": settings.model_profiles})
+    return original
+
 
 
 class Conflict(ValueError):

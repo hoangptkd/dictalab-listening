@@ -27,6 +27,49 @@ _DEADLINE_BUFFER = 1.0
 class OpenAiCompatibleProvider(ModelProvider):
     """OpenAI-compatible cloud provider used by Gemini."""
 
+    inject_schema = True
+    validate_schema = True
+
+    @staticmethod
+    def validate_endpoint(endpoint):
+        from urllib.parse import urlsplit
+        if not urlsplit(endpoint).path.endswith("/chat/completions"):
+            raise ValueError("Provider endpoint must be a full chat completions URL")
+
+    async def probe(self, timeout=3):
+        response = await self._client.get(self._url.removesuffix("/chat/completions") + "/models",
+            headers={"Authorization": "Bearer " + self._api_key}, timeout=timeout)
+        response.raise_for_status()
+        return response
+
+    @staticmethod
+    def model_ids(response):
+        return [m.get("id", "") for m in response.json().get("data", []) if isinstance(m, dict)]
+
+    @classmethod
+    def gateway_options(cls, options, json_object):
+        options.require_supported()
+        return {}
+
+    def configure_model_profile(self, profile, *, json_object=False):
+        self.validate_model_profile(profile)
+        self._profile = dict(profile)
+        if not json_object and "schemaMode" in profile:
+            self._use_json_schema = profile["schemaMode"] == "native"
+
+    @staticmethod
+    def validate_model_profile(profile):
+        if (set(profile) - {"tokenField", "temperaturePolicy", "jsonModes", "schemaMode"} or
+                profile.get("schemaMode", "prompt") not in {"native", "prompt"} or
+                profile.get("tokenField", "max_tokens") not in {"max_tokens", "max_completion_tokens"} or
+                profile.get("temperaturePolicy", "send") not in {"send", "omit"} or
+                not isinstance(profile.get("jsonModes", ["json_object", "json_schema"]), list) or
+                not set(profile.get("jsonModes", ["json_object", "json_schema"])) <= {"json_object", "json_schema"}):
+            raise ValueError("invalid model capability profile")
+
+    def server_rejection(self, response):
+        return False
+
     def __init__(
         self,
         *,
@@ -63,6 +106,8 @@ class OpenAiCompatibleProvider(ModelProvider):
         if type(cache_stable_prefix) is not bool or cache_stable_prefix and provider_name != "deepseek":
             raise ValueError("cache prefix layout requires DeepSeek")
         self._cache_stable_prefix = cache_stable_prefix
+        self._profile = {}
+        self.reported_model = None
 
     @property
     def name(self) -> str:
@@ -78,6 +123,7 @@ class OpenAiCompatibleProvider(ModelProvider):
         temperature: float | None = None,
     ) -> dict[str, Any]:
         self.last_usage = {}
+        self.reported_model = None
         if not self._api_key:
             raise ProviderError(f"{self._provider_name}:no_api_key_configured")
         remaining = deadline - time.monotonic()
@@ -97,7 +143,14 @@ class OpenAiCompatibleProvider(ModelProvider):
             "response_format": response_format,
             **self._extra_body,
         }
-        if self._provider_name != "gemini" and schema:
+        mode = "json_schema" if self._use_json_schema else "json_object"
+        if mode not in self._profile.get("jsonModes", ["json_object", "json_schema"]):
+            raise ProviderError("UNSUPPORTED_CAPABILITY: " + mode)
+        if self._profile.get("tokenField") == "max_completion_tokens":
+            body["max_completion_tokens"] = body.pop("max_tokens")
+        if self._profile.get("temperaturePolicy") == "omit":
+            body.pop("temperature", None)
+        if self.inject_schema and schema:
             schema_message = {"role": "system", "content": "Return one JSON object matching this JSON schema: " + json.dumps(schema)}
             # Per-request enum IDs must not precede the reusable instructions/payload prefix.
             body["messages"] = ([*messages, schema_message] if self._cache_stable_prefix else
@@ -113,20 +166,8 @@ class OpenAiCompatibleProvider(ModelProvider):
                 self._url, json=body, headers=headers, timeout=timeout
             )
             if response.status_code == 429 or response.status_code >= 500:
-                server_failure = False
-                if self._provider_name == "gemini" and response.status_code in (500, 503):
-                    try:
-                        error = response.json()
-                        if isinstance(error, list) and len(error) == 1:
-                            error = error[0]
-                        # Gateway HTML/timeouts do not prove that Gemini rejected the generation.
-                        detail = error.get("error", {}) if isinstance(error, dict) and set(error) == {"error"} else {}
-                        server_failure = (isinstance(detail, dict) and detail.get("code") == response.status_code
-                            and detail.get("status") == {500: "INTERNAL", 503: "UNAVAILABLE"}[response.status_code])
-                    except ValueError:
-                        pass
                 raise ProviderHttpError(response.status_code, response.headers.get("Retry-After"), self._provider_name,
-                                        server_failure=server_failure)
+                                        server_failure=self.server_rejection(response))
             if response.status_code in (400, 401, 403, 422):
                 error = ProviderError(
                     f"{self._provider_name}:{purpose}:client_error:{response.status_code}"
@@ -136,6 +177,14 @@ class OpenAiCompatibleProvider(ModelProvider):
                 raise error
             response.raise_for_status()
             data = response.json()
+            if not isinstance(data, dict):
+                raise ProviderError("INVALID_OUTPUT: response envelope")
+            # A provider may reflect its header credential in an error or response; never persist it.
+            if self._api_key and self._api_key in json.dumps(data, ensure_ascii=False):
+                data = json.loads(json.dumps(data, ensure_ascii=False).replace(self._api_key, "[redacted]"))
+            reported = data.get("model")
+            if isinstance(reported, str) and re.fullmatch(r"[a-zA-Z0-9_.:/-]{1,128}", reported):
+                self.reported_model = reported
             usage = data.get("usage") or {}
             self.last_usage = {target: usage[name] for target, name in
                 (("input_tokens", "prompt_tokens"), ("output_tokens", "completion_tokens"))
@@ -144,7 +193,7 @@ class OpenAiCompatibleProvider(ModelProvider):
             from ..observability import record_response
             usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
             details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
-            record_response((choice.get("message") or {}).get("content"), model=data.get("model") or self._model,
+            record_response((choice.get("message") or {}).get("content"), model=self.reported_model or self._model,
                 input_tokens=usage.get("prompt_tokens"), output_tokens=usage.get("completion_tokens"),
                 cached_tokens=details.get("cached_tokens", usage.get("prompt_cache_hit_tokens")),
                 finish_reason=choice.get("finish_reason"),
@@ -153,7 +202,7 @@ class OpenAiCompatibleProvider(ModelProvider):
                 raise ProviderError(f"{self._provider_name}:{purpose}:output_truncated")
             raw = (choice.get("message") or {}).get("content", "")
             parsed = _parse_content(raw, purpose, self._provider_name)
-            if self._provider_name != "gemini" and schema:
+            if self.validate_schema and schema:
                 try:
                     Draft202012Validator(schema).validate(parsed)
                 except ValidationError:
@@ -171,6 +220,8 @@ class OpenAiCompatibleProvider(ModelProvider):
 
 def _parse_content(raw: str, purpose: str, provider_name: str = "openai_compatible") -> dict[str, Any]:
     """Strip optional markdown fences then strict-parse JSON."""
+    if not isinstance(raw, str) or not raw.strip():
+        raise ProviderError(f"{provider_name}:{purpose}:invalid_content")
     stripped = raw.strip()
     match = _FENCE_RE.search(stripped)
     if match:

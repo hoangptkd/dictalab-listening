@@ -1,4 +1,4 @@
-"""Offline synthetic data/evaluation pipeline. Standard library only; never imported by the app."""
+"""Offline synthetic data/evaluation pipeline. Uses the shared AI runtime; never imported by the app."""
 import argparse
 import collections
 import copy
@@ -14,10 +14,11 @@ import re
 import statistics
 import sys
 import time
-import urllib.error
-import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "services" / "ai-generation"))
+from app.offline_text import environment_settings, run as run_text
+
 DATA = ROOT / "data/conversation-distillation"
 TEACHER = "gemini-3.5-flash-lite"
 JUDGE = "gemini-3.5-flash-lite"
@@ -187,11 +188,6 @@ def check_output(context, output, spec=None):
     return sorted(set(errors))
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):
-        return None
-
-
 class Cloud:
     def __init__(self):
         settings = {}
@@ -202,9 +198,9 @@ class Cloud:
                     k, v = line.split("=", 1)
                     settings[k.strip()] = v.strip().strip("\"'")
         self.key = os.environ.get("GEMINI_API_KEY") or settings.get("GEMINI_API_KEY")
-        if not self.key:
-            raise RuntimeError("GEMINI_API_KEY unavailable")
-        self.opener = urllib.request.build_opener(NoRedirect)
+        configured = settings | dict(os.environ)
+        preferred = configured.get("DICTALAB_AI_PRIMARY_PROVIDER", "gemini")
+        self.settings = environment_settings(configured, provider="gemini" if preferred == "auto" else preferred)
 
     def call(self, model, messages, purpose, max_tokens=2200):
         reservations = load("api-reservations.jsonl")
@@ -213,50 +209,18 @@ class Cloud:
             raise RuntimeError("Offline run reached request/token safety cap")
         append("api-reservations.jsonl", {"number": len(reservations)+1, "model": model, "purpose": purpose,
                "reservedTokens": reserve, "time": time.time()})
-        body = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0,
-                "stream": False, "response_format": {"type": "json_object"}}
-        request = urllib.request.Request("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", data=packed(body).encode(),
-                    headers={"Authorization": "Bearer " + self.key, "Content-Type": "application/json"})
-        started = time.monotonic()
-        try:
-            with self.opener.open(request, timeout=180) as response:
-                raw = response.read(200_001)
-            if len(raw) > 200_000:
-                raise RuntimeError("Cloud response too large")
-            envelope = json.loads(raw)
-            choice = envelope["choices"][0]
+        captured = {}
+        def record(envelope):
+            captured.update(envelope)
             append("api-usage.jsonl", {"model": model, "purpose": purpose, "usage": envelope.get("usage", {}),
-                   "seconds": round(time.monotonic()-started, 2), "returnedModel": envelope.get("model"),
-                   "finishReason": choice.get("finish_reason")})
-            if choice.get("finish_reason") != "stop":
-                raise RuntimeError("Cloud response unfinished")
-            content = choice["message"]["content"].strip()
-            if content.startswith("```"):
-                content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content)
-            # Match production GeminiClient's tolerance for prose/fences around a JSON object.
-            start, end = content.find("{"), content.rfind("}")
-            if start >= 0 and end >= start:
-                content = content[start:end+1]
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                append("provider-invalid-content.jsonl", {"purpose": purpose, "model": model,
-                       "content": content.replace(self.key, "[redacted]")[:12000]})
-                raise RuntimeError("Gemini invalid JSON content") from None
-        except urllib.error.HTTPError as error:
-            detail = ""
-            try:
-                problem = json.loads(error.read(4000)).get("error", {})
-                detail = str(problem.get("message", "")) if isinstance(problem, dict) else ""
-                detail = detail.replace(self.key, "[redacted]")
-                detail = re.sub(r"sk-[A-Za-z0-9_-]+", "[redacted]", detail)[:350]
-            except Exception:
-                pass
-            raise RuntimeError(f"Gemini HTTP {error.code}: {detail}") from None
-        except (urllib.error.URLError, TimeoutError):
-            raise RuntimeError("Gemini transport/timeout") from None
-        except (json.JSONDecodeError, KeyError, IndexError, TypeError, AttributeError, UnicodeDecodeError):
-            raise RuntimeError("Gemini invalid JSON/envelope") from None
+                "returnedModel": envelope.get("model"), "finishReason": (envelope.get("choices") or [{}])[0].get("finish_reason")})
+        configured = getattr(self, "settings", None) or environment_settings(provider="gemini", api_key=self.key)
+        try:
+            outcome = run_text(configured, messages, {"type": "object"}, model=model, purpose="offline_distillation",
+                max_tokens=max_tokens, temperature=0, timeout=180, on_response=record, journal=DATA / "text-admissions")
+            return outcome.result.value
+        except Exception as error:
+            raise RuntimeError("AI text failed or outcome unknown; stopped without replay: " + type(error).__name__) from None
 
 
 def messages(context, spec):

@@ -202,6 +202,8 @@ dictalab:
     dispatch-delay-ms: 5000
     index-delay-ms: 10000
   ai:
+    text:
+      model-profiles-json: ${DICTALAB_AI_MODEL_PROFILES:{}}
     platform:
       base-url: ${DICTALAB_AI_PLATFORM_BASE_URL:http://127.0.0.1:8091}
       service-token: ${DICTALAB_AI_SERVICE_TOKEN:}

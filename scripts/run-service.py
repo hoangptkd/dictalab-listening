@@ -43,7 +43,7 @@ def validate_config(component, config):
             normalized = upper.replace('_', '').replace('-', '').replace('.', '')
             if (upper in CORE_PROVIDER_SECRETS or upper.startswith(('GEMINI_PROVIDER_',
                     'DICTALAB_AI_GEMINI_', 'DICTALAB_AI_CARTESIA_', 'POSTGRES_'))
-                    or normalized.startswith('DICTALABTTS') and normalized.endswith('APIKEY')
+                    or normalized.startswith(('DICTALABTTS', 'DICTALABAITEXT', 'DICTALABGEMINI')) and normalized.endswith('APIKEY')
                     or upper.startswith('DICTALAB_MODEL_') and upper != 'DICTALAB_MODEL_DEMO_ENABLED'
                     or upper.startswith('AI_PROVIDER_') and (upper != 'AI_PROVIDER_CONFIG_SOURCE' or value != 'env')):
                 raise ValueError('Core runtime must not receive provider or management credentials')
@@ -271,9 +271,11 @@ def local_plan():
         'PORT': '18082', 'MANAGEMENT_PORT': '18184', 'SERVER_ADDRESS': '127.0.0.1',
         'DICTALAB_AI_PLATFORM_BASE_URL': 'http://127.0.0.1:8094',
         'DICTALAB_PUBLIC_URL': 'http://localhost:18082', 'DICTALAB_SCENARIO_ENABLED': 'true',
-        'DICTALAB_SCENARIO_ENGINE_ENABLED': 'true', 'DICTALAB_AI_TEXT_PROVIDER': 'gemini'}
+        'DICTALAB_SCENARIO_ENGINE_ENABLED': 'true'}
     if any(core.get(key) != value for key, value in required.items()):
         raise ValueError('Canonical local ports, profile or routing changed; inspect protected configuration')
+    if core.get('DICTALAB_AI_TEXT_PROVIDER', 'gemini') != ai.get('DICTALAB_AI_PRIMARY_PROVIDER', 'gemini'):
+        raise ValueError('Core text provider and AI primary provider must match')
     uri = urlsplit(core.get('DB_URL', '').removeprefix('jdbc:'))
     if uri.hostname not in ('127.0.0.1', 'localhost') or uri.path != '/dictalab_personalized_local_20261102':
         raise ValueError('Canonical local database does not match the QA account')

@@ -86,7 +86,29 @@ public class AiPlatformClient {
                 "deadline", Instant.now().plus(timeout).toString()));
         if (body.getBytes(StandardCharsets.UTF_8).length > 256000)
             throw new IllegalArgumentException("AI text input exceeds limit");
-        var builder = HttpRequest.newBuilder(URI.create(config.baseUrl() + "/v1/text/completions"))
+        return exchangeText(body, requestId, model, timeout, "1").path("task");
+    }
+
+    public AiTextService.Result completeText(AiTextService.Request call) {
+        if (!textConfigured() || !call.profile().equals("default") || call.remaining().compareTo(Duration.ofSeconds(60)) > 0)
+            throw new IllegalArgumentException("Invalid internal AI text request");
+        var payload = json.createObjectNode().put("schemaVersion", "2").put("requestId", call.requestId().toString())
+            .put("provider", config.textProvider()).put("model", call.model()).put("purpose", call.purpose())
+            .put("outputMode", call.outputMode()).put("maxOutputTokens", call.maxOutputTokens())
+            .put("deadline", Instant.now().plus(call.remaining()).toString());
+        payload.set("messages", json.valueToTree(call.messages()));
+        payload.set("schema", call.schema() == null ? json.createObjectNode().put("type", "object") : call.schema());
+        if (call.temperature() != null) payload.put("temperature", call.temperature());
+        var result = exchangeText(json.writeValueAsString(payload), call.requestId().toString(), call.model(), call.remaining(), "2");
+        var fallbacks = new ArrayList<JsonNode>(); result.path("fallbacks").forEach(fallbacks::add);
+        return new AiTextService.Result(call.requestId(), result.path("task"), result.path("provider").asText(), call.model(),
+            result.path("model").asText(), result.path("reportedModel").isTextual() ? result.path("reportedModel").asText() : null,
+            null, List.copyOf(fallbacks), result.path("observation"));
+    }
+
+    private JsonNode exchangeText(String body, String requestId, String model, Duration timeout, String version) {
+        if (body.getBytes(StandardCharsets.UTF_8).length > 256000) throw new IllegalArgumentException("AI text input exceeds limit");
+        var builder = HttpRequest.newBuilder(URI.create(config.baseUrl() + "/v" + version + "/text/completions"))
                 .timeout(timeout).header("X-Service-Token", config.serviceToken())
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body));
         if (AiCallObservation.active()) builder.header("X-AI-Observe", "usage");
@@ -97,14 +119,26 @@ public class AiPlatformClient {
             var response = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
             if (response.statusCode() == 429) {
                 int delay = ProviderGuard.retryAfterSeconds(response.headers().firstValue("Retry-After").orElse("60"), Instant.now());
-                throw new ProviderGuard.Unavailable("Gemini đã hết nguồn khả dụng tạm thời.", Math.max(1, delay));
+                throw new ProviderGuard.Unavailable("AI provider tạm thời không khả dụng.", Math.max(1, delay));
             }
-            if (response.statusCode() != 200) throw new IllegalStateException("AI text transport rejected request");
+            if (response.statusCode() != 200) {
+                if (version.equals("2")) {
+                    try {
+                        String code = json.readTree(response.body()).path("error").path("code").asText();
+                        if (Set.of("INVALID_REQUEST", "UNREGISTERED_PROVIDER", "INVALID_MODEL", "UNSUPPORTED_CAPABILITY",
+                                "PROVIDER_REJECTED", "INVALID_OUTPUT", "PROVIDER_OUTCOME_UNKNOWN", "ALREADY_ADMITTED").contains(code))
+                            throw new AiTextService.Failure(code, "AI service rejected request: " + code);
+                    } catch (tools.jackson.core.JacksonException invalid) { /* Never expose the response body. */ }
+                }
+                throw new IllegalStateException("AI text transport rejected request");
+            }
             JsonNode result = json.reader().with(tools.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                     .readTree(response.body());
-            String expectedModel = local() ? model : model.replaceFirst("^models/", "");
+            String expectedModel = config.textProvider().equals("gemini") || version.equals("1") && !local() ? model.replaceFirst("^models/", "") : model;
             boolean modelVerified = expectedModel.equals(result.path("model").asText());
-            if (result.has("fallbacks")) {
+            if (result.has("fallbacks") && !result.path("fallbacks").isArray())
+                throw new IllegalStateException("Invalid AI fallback metadata");
+            if (result.path("fallbacks").isArray() && !result.path("fallbacks").isEmpty()) {
                 var fallbacks = result.path("fallbacks");
                 modelVerified = config.textProvider().equals("gemini")
                         && expectedModel.equals(result.path("requestedModel").asText())
@@ -120,13 +154,13 @@ public class AiPlatformClient {
                 }
                 modelVerified &= previous.equals(result.path("model").asText());
             }
-            if (!"1".equals(result.path("schemaVersion").asText()) || !requestId.equals(result.path("requestId").asText())
+            if (!version.equals(result.path("schemaVersion").asText()) || !requestId.equals(result.path("requestId").asText())
                     || !config.textProvider().equals(result.path("provider").asText())
                     || !modelVerified || !result.path("task").isObject()
                     || result.path("task").toString().length() > 12000)
                 throw new IllegalStateException("Invalid AI text result or provenance");
             AiCallObservation.remote(result);
-            return result.path("task");
+            return result;
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("AI text request interrupted");

@@ -27,6 +27,12 @@ public class AiProviderRegistry {
         this.jdbc = jdbc; this.database = source.equals("database"); this.master = master;
     }
 
+    private Map<String, AiTextProvider> adapters = AiTextService.builtins();
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureProviders(List<AiTextProvider> providers) {
+        adapters = providers.stream().collect(java.util.stream.Collectors.toUnmodifiableMap(AiTextProvider::id, p -> p));
+    }
+
     public boolean databaseEnabled() { return database; }
 
     public synchronized GeminiProviderProperties properties(String platform) {
@@ -53,19 +59,16 @@ public class AiProviderRegistry {
             var policies = new HashMap<String, Map<String,Object>>();
             for (var row : rows) {
                 String platform = (String)row.get("platform");
-                if (!Set.of("gemini", "deepseek", "openai_compatible").contains(platform)) throw unavailable();
+                if (!adapters.containsKey(platform)) throw unavailable();
                 policies.put(platform, row);
                 accounts.computeIfAbsent(platform, ignored -> new ArrayList<>());
                 if (row.get("id") == null) continue;
                 String endpoint = (String)row.get("endpoint");
-                if (!URI.create(endpoint).getPath().endsWith("/chat/completions")) throw unavailable();
-                String host = URI.create(endpoint).getHost();
-                String expected = Map.of("gemini", "generativelanguage.googleapis.com", "deepseek", "api.deepseek.com").get(platform);
-                if (expected != null && !Set.of(expected,"localhost","127.0.0.1","[::1]").contains(host)) throw unavailable();
+                adapters.get(platform).validateTarget(new AiTextProvider.Target(endpoint, (String)row.get("model"), "", (String)row.get("id")));
                 accounts.get(platform).add(new GeminiProviderProperties.Provider((String)row.get("id"),
                     (String)row.get("account_id"), decrypt(master,row), (String)row.get("model"), endpoint,
                     number(row,"rpm_limit"),number(row,"tpm_limit"),number(row,"rpd_limit"),number(row,"operating_rpm"),
-                    Boolean.TRUE.equals(row.get("enabled")) && Boolean.TRUE.equals(row.get("pool_enabled")),number(row,"priority")));
+                    Boolean.TRUE.equals(row.get("enabled")) && Boolean.TRUE.equals(row.get("pool_enabled")),number(row,"priority"),platform));
             }
             var loaded = new HashMap<String, GeminiProviderProperties>();
             for (var entry : policies.entrySet()) {
@@ -74,7 +77,7 @@ public class AiProviderRegistry {
                 loaded.put(entry.getKey(), new GeminiProviderProperties(sources, number(row,"global_rpm_limit"),
                     number(row,"global_rpd_limit"), sources.stream().anyMatch(GeminiProviderProperties.Provider::enabled), "redis"));
                 String model = (String)row.get("default_model");
-                if (!model.matches("[a-zA-Z0-9_.-]{1,100}")) throw unavailable();
+                if (!model.matches("[a-zA-Z0-9_.:/-]{1,100}")) throw unavailable();
                 models.put(entry.getKey(),model);
             }
             if (loaded.isEmpty()) throw unavailable();

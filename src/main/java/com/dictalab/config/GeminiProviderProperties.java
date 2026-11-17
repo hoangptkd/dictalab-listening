@@ -47,15 +47,22 @@ public record GeminiProviderProperties(List<Provider> providers, int globalRpmLi
 
     public record Provider(String id, String projectId, String apiKey, String model, String url,
                            int rpmLimit, int tpmLimit, int rpdLimit, int operatingRpm,
-                           boolean enabled, int priority) {
+                           boolean enabled, int priority, String platform) {
+        public Provider(String id, String projectId, String apiKey, String model, String url,
+                        int rpmLimit, int tpmLimit, int rpdLimit, int operatingRpm, boolean enabled, int priority) {
+            this(id, projectId, apiKey, model, url, rpmLimit, tpmLimit, rpdLimit, operatingRpm, enabled, priority, "gemini");
+        }
+        @org.springframework.boot.context.properties.bind.ConstructorBinding
         public Provider {
+            if (platform == null) platform = "gemini";
+            if (!platform.matches("[a-z][a-z0-9_]{0,31}")) throw new IllegalArgumentException("Invalid AI platform");
             if (id == null || !id.matches("[a-zA-Z0-9_-]{1,64}")) throw new IllegalArgumentException("Invalid Gemini provider ID");
             if (projectId == null) projectId = "";
             if (apiKey == null) apiKey = "";
             if (model == null || model.isBlank()) model = "gemini-3.5-flash-lite";
             if (url == null || url.isBlank()) url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-            model = model.replaceFirst("^models/", "");
-            if (!model.matches("[a-zA-Z0-9_.-]{1,100}") || !projectId.matches("[a-zA-Z0-9_-]{0,100}"))
+            if (platform.equals("gemini")) model = model.replaceFirst("^models/", "");
+            if (!model.matches("[a-zA-Z0-9_.:/-]{1,100}") || !projectId.matches("[a-zA-Z0-9_-]{0,100}"))
                 throw new IllegalArgumentException("Invalid Gemini model or project ID");
             if (apiKey.length() > 512 || apiKey.chars().anyMatch(c -> c < 33 || c > 126))
                 throw new IllegalArgumentException("Invalid Gemini API key");

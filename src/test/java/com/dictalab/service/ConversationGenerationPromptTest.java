@@ -13,7 +13,7 @@ class ConversationGenerationPromptTest {
     void malformedSlotPlanRepairsOnlyWhenExplicitlyEnabled(boolean repairEnabled) throws Exception {
         var service = org.mockito.Mockito.mock(ConversationService.class, org.mockito.Mockito.CALLS_REAL_METHODS);
         var local = org.mockito.Mockito.mock(ConversationLocalClient.class);
-        var ai = org.mockito.Mockito.mock(GeminiClient.class);
+        var ai = org.mockito.Mockito.mock(AiTextService.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "json", json);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "localGeneration", local);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "ai", ai);
@@ -36,7 +36,7 @@ class ConversationGenerationPromptTest {
         org.mockito.Mockito.when(local.completeTask(org.mockito.ArgumentMatchers.eq("A1"), org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any(java.time.Duration.class))).thenReturn(
                         new ConversationLocalClient.GeneratedTask(bad), new ConversationLocalClient.GeneratedTask(good));
-        org.mockito.Mockito.when(ai.completeJson(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+        org.mockito.Mockito.when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.eq("unit-model"), org.mockito.ArgumentMatchers.any(java.time.Duration.class)))
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
         var state = json.createObjectNode().put("curatedStarter", true);

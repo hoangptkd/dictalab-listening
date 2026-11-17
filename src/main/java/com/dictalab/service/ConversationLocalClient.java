@@ -7,11 +7,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-import java.net.URI;
-import java.net.http.*;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.*;
 
 @Service
 public class ConversationLocalClient implements ConversationAiClient {
@@ -134,7 +131,7 @@ public class ConversationLocalClient implements ConversationAiClient {
         return schema;
     }
 
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+    private final AiTextService text;
     private final ObjectMapper json;
     private final ConversationGenerationProperties config;
     private final ProviderGuard guard;
@@ -142,6 +139,13 @@ public class ConversationLocalClient implements ConversationAiClient {
 
     public ConversationLocalClient(ObjectMapper json, ConversationGenerationProperties config, MeterRegistry metrics,
                                    io.micrometer.observation.ObservationRegistry observations) {
+        this(json, config, metrics, observations, new AiTextService(json, "", "unused", "http://127.0.0.1/unused"));
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ConversationLocalClient(ObjectMapper json, ConversationGenerationProperties config, MeterRegistry metrics,
+                                   io.micrometer.observation.ObservationRegistry observations, AiTextService text) {
+        this.text = text;
         this.json = json; this.config = config; this.metrics = metrics;
         guard = new ProviderGuard("conversation-local", 0, metrics, observations, 5, Duration.ofSeconds(30));
     }
@@ -155,6 +159,7 @@ public class ConversationLocalClient implements ConversationAiClient {
     }
 
     public GeneratedTask completeTask(String level, String input, Duration remaining) {
+        long deadline = System.nanoTime() + remaining.toNanos();
         Duration timeout = Duration.ofMillis(Math.min(config.localTimeoutSeconds() * 1000L, remaining.toMillis()));
         if (timeout.toMillis() < 1) throw new IllegalStateException("Conversation local deadline exhausted");
         if (input.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 64_000)
@@ -164,15 +169,15 @@ public class ConversationLocalClient implements ConversationAiClient {
         // Step 1: generate English content (utteranceEn, English facts, questionVi, taskVi, skill).
         byte[] englishBytes = requestBodyEnglish(level, input, context).getBytes(java.nio.charset.StandardCharsets.UTF_8);
         if (englishBytes.length > 64_000) throw new IllegalArgumentException("Conversation exceeds local request limit");
-        var englishRaw = send(englishBytes, timeout);
+        var englishRaw = send(englishRequest(level, input, context, timeout));
 
         // Step 2: translate utteranceEn and English facts into Vietnamese at lower temperature.
-        Duration remaining2 = remaining.minus(Duration.ofMillis(timeout.toMillis()));
-        Duration translateTimeout = Duration.ofMillis(Math.min(config.localTimeoutSeconds() * 1000L,
-                Math.max(remaining2.toMillis(), 5_000)));
+        Duration remaining2 = Duration.ofNanos(Math.max(0, deadline - System.nanoTime()));
+        Duration translateTimeout = Duration.ofMillis(Math.min(config.localTimeoutSeconds() * 1000L, remaining2.toMillis()));
+        if (translateTimeout.toMillis() < 1) throw new AiTextService.Failure("TIMEOUT", "Conversation translation deadline exhausted");
         byte[] translateBytes = requestBodyTranslate(englishRaw, context).getBytes(java.nio.charset.StandardCharsets.UTF_8);
         if (translateBytes.length > 64_000) throw new IllegalArgumentException("Translation exceeds local request limit");
-        var translated = send(translateBytes, translateTimeout);
+        var translated = send(translationRequest(englishRaw, context, translateTimeout));
 
         // Combine: merge translationVi + facts[].textVi into the English output.
         var combined = combine(englishRaw, translated, json);
@@ -197,92 +202,73 @@ public class ConversationLocalClient implements ConversationAiClient {
         return result;
     }
 
-    // Shared with the opt-in benchmark: measure the actual production request, not a Python reimplementation.
+    // Benchmark exports use the same neutral requests as production.
     String requestBodyEnglish(String level, String input, JsonNode context) {
-        if (input.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 64_000)
-            throw new IllegalArgumentException("Conversation exceeds local request limit");
-        String contextJson = json.writeValueAsString(context);
-        String instruction = ConversationGenerationPrompt.INSTRUCTION_ENGLISH
-                + "\nThe first user/assistant pair is an example, not the current task. Generate for the LAST user only.";
-        return json.writeValueAsString(Map.of("model", config.localModel(), "stream", false, "think", false,
-                "format", schemaEnglish(level), "keep_alive", "5m",
-                "options", Map.of("temperature", 0.3, "num_ctx", 8192, "num_predict", 1000),
-                "messages", List.of(Map.of("role", "system", "content", instruction),
-                        Map.of("role", "user", "content", json.writeValueAsString(ConversationGenerationPrompt.exampleInput(level, context.path("turnNumber").asInt(2)))),
-                        Map.of("role", "assistant", "content", ConversationGenerationPrompt.wireExampleEnglish(level, context.path("turnNumber").asInt(2))),
-                        Map.of("role", "user", "content", "Create the NEXT task for this input, not the example.\n<data>" + contextJson + "</data>"
-                                + ConversationGenerationPrompt.turnBrief(context)))));
+        return preview(englishRequest(level, input, context, Duration.ofSeconds(config.localTimeoutSeconds())));
     }
 
-    // Kept for the ablation script and any legacy callers that pass a pre-built context.
+    private AiTextService.Request englishRequest(String level, String input, JsonNode context, Duration timeout) {
+        if (input.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 64000)
+            throw new IllegalArgumentException("Conversation exceeds local request limit");
+        int turn = context.path("turnNumber").asInt(2);
+        return request("conversation_content", schemaEnglish(level), 0.3, 8192, 1000, timeout, List.of(
+            new AiTextService.Message("system", ConversationGenerationPrompt.INSTRUCTION_ENGLISH
+                + "\nThe first user/assistant pair is an example, not the current task. Generate for the LAST user only."),
+            new AiTextService.Message("user", json.writeValueAsString(ConversationGenerationPrompt.exampleInput(level, turn))),
+            new AiTextService.Message("assistant", ConversationGenerationPrompt.wireExampleEnglish(level, turn)),
+            new AiTextService.Message("user", "Create the NEXT task for this input, not the example.\n<data>"
+                + json.writeValueAsString(context) + "</data>" + ConversationGenerationPrompt.turnBrief(context))));
+    }
+
     String requestBody(String level, String input) {
-        if (input.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 64_000)
+        if (input.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 64000)
             throw new IllegalArgumentException("Conversation exceeds local request limit");
         var context = ConversationGenerationPrompt.context(json, json.readTree(input));
-        input = json.writeValueAsString(context);
-        // shortcut: fixed 8K context; add token-aware history budgeting before large-history production rollout.
-        return json.writeValueAsString(Map.of("model", config.localModel(), "stream", false, "think", false,
-                "format", schema(level), "keep_alive", "5m",
-                "options", Map.of("temperature", 0.3, "num_ctx", 8192, "num_predict", 1000),
-                "messages", List.of(Map.of("role", "system", "content", ConversationGenerationPrompt.INSTRUCTION
-                                + "\nThe first user/assistant pair is an example, not the current task. Generate for the LAST user only."),
-                        Map.of("role", "user", "content", json.writeValueAsString(ConversationGenerationPrompt.exampleInput(level, context.path("turnNumber").asInt(2)))),
-                        Map.of("role", "assistant", "content", ConversationGenerationPrompt.wireExample(level, context.path("turnNumber").asInt(2))),
-                        Map.of("role", "user", "content", "Create the NEXT task for this input, not the example.\n<data>" + input + "</data>"
-                                + ConversationGenerationPrompt.turnBrief(context)))));
+        int turn = context.path("turnNumber").asInt(2);
+        return preview(request("conversation_generate", schema(level), 0.3, 8192, 1000,
+            Duration.ofSeconds(config.localTimeoutSeconds()), List.of(
+                new AiTextService.Message("system", ConversationGenerationPrompt.INSTRUCTION
+                    + "\nThe first user/assistant pair is an example, not the current task. Generate for the LAST user only."),
+                new AiTextService.Message("user", json.writeValueAsString(ConversationGenerationPrompt.exampleInput(level, turn))),
+                new AiTextService.Message("assistant", ConversationGenerationPrompt.wireExample(level, turn)),
+                new AiTextService.Message("user", "Create the NEXT task for this input, not the example.\n<data>"
+                    + json.writeValueAsString(context) + "</data>" + ConversationGenerationPrompt.turnBrief(context)))));
     }
 
     String requestBodyTranslate(JsonNode english, JsonNode context) {
-        int factCount = english.path("facts").size();
-        var userPayload = new ObjectMapper().createObjectNode();
-        userPayload.put("partnerRole", context.path("partnerRole").asText());
-        userPayload.put("learnerRole", context.path("learnerRole").asText());
-        userPayload.put("utteranceEn", english.path("utteranceEn").asText());
-        userPayload.put("questionVi", english.path("questionVi").asText());
-        var factsNode = userPayload.putArray("facts");
-        for (var fact : english.path("facts")) {
-            factsNode.addObject().put("textEn", fact.path("textEn").asText());
-        }
-        return json.writeValueAsString(Map.of("model", config.localModel(), "stream", false, "think", false,
-                "format", schemaTranslate(factCount), "keep_alive", "5m",
-                "options", Map.of("temperature", 0.1, "num_ctx", 4096, "num_predict", 800),
-                "messages", List.of(
-                        Map.of("role", "system", "content", ConversationGenerationPrompt.TRANSLATE),
-                        Map.of("role", "user", "content", json.writeValueAsString(userPayload)))));
+        return preview(translationRequest(english, context, Duration.ofSeconds(config.localTimeoutSeconds())));
     }
 
-    private JsonNode send(byte[] bytes, Duration timeout) {
+    private AiTextService.Request translationRequest(JsonNode english, JsonNode context, Duration timeout) {
+        var data = json.createObjectNode().put("partnerRole", context.path("partnerRole").asText())
+            .put("learnerRole", context.path("learnerRole").asText()).put("utteranceEn", english.path("utteranceEn").asText())
+            .put("questionVi", english.path("questionVi").asText());
+        var facts = data.putArray("facts");
+        for (var fact : english.path("facts")) facts.addObject().put("textEn", fact.path("textEn").asText());
+        return request("conversation_translation", schemaTranslate(english.path("facts").size()), 0.1, 4096, 800, timeout,
+            List.of(new AiTextService.Message("system", ConversationGenerationPrompt.TRANSLATE),
+                    new AiTextService.Message("user", json.writeValueAsString(data))));
+    }
+
+    private AiTextService.Request request(String purpose, JsonNode schema, double temperature, int context, int tokens,
+                                          Duration timeout, List<AiTextService.Message> messages) {
+        return new AiTextService.Request(UUID.randomUUID(), purpose, "conversation_local", config.localModel(), messages,
+            schema, "json_schema", temperature, tokens, timeout, context, "5m");
+    }
+
+    private String preview(AiTextService.Request request) {
+        return json.writeValueAsString(text.previewLocal(request, config.localBaseUrl()));
+    }
+
+    private JsonNode send(AiTextService.Request request) {
         try (var permit = guard.enter()) {
-            var request = HttpRequest.newBuilder(URI.create(config.localBaseUrl() + "/api/chat"))
-                    .timeout(timeout).header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofByteArray(bytes)).build();
-            var pending = http.sendAsync(request, ignored -> BoundedProviderBody.bytes(24_000));
             try {
-                var response = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-                if (response.statusCode() != 200) throw new IllegalStateException("Local conversation HTTP " + response.statusCode());
-                var envelope = json.readTree(response.body());
-                var content = envelope.path("message").path("content");
-                if (!envelope.path("done").asBoolean() || !"stop".equals(envelope.path("done_reason").asText())
-                        || !content.isTextual() || content.asText().isBlank())
-                    throw new IllegalStateException("Incomplete local conversation response");
-                var result = json.reader().with(tools.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
-                        .readTree(content.asText());
-                if (!result.isObject()) throw new IllegalStateException("Local conversation object missing");
-                metrics.summary("dictalab.conversation.local.tokens", "kind", "input").record(envelope.path("prompt_eval_count").asLong());
-                metrics.summary("dictalab.conversation.local.tokens", "kind", "output").record(envelope.path("eval_count").asLong());
+                var result = text.completeLocal(request, config.localBaseUrl());
+                metrics.summary("dictalab.conversation.local.tokens", "kind", "input").record(result.usage().path("prompt_eval_count").asLong());
+                metrics.summary("dictalab.conversation.local.tokens", "kind", "output").record(result.usage().path("eval_count").asLong());
                 permit.success();
-                return result;
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("Local conversation interrupted");
-            } catch (ExecutionException | TimeoutException failed) {
-                permit.failure();
-                throw new IllegalStateException("Local conversation transport or deadline failure");
-            } catch (RuntimeException failed) {
-                permit.failure(); throw failed;
-            } finally {
-                pending.cancel(true);
-            }
+                return result.value();
+            } catch (RuntimeException failed) { permit.failure(); throw failed; }
         }
     }
 }

@@ -15,7 +15,7 @@ import httpx
 from pydantic import Field, model_validator, model_serializer
 
 from .coach import StrictModel
-from .model_gateway import ModelGateway
+from .model_gateway import ModelGateway, routing_metadata
 from .redaction import redact_string
 from .observability import trace_gate, trace_job
 from .scenario_prompts import historical_release
@@ -582,9 +582,7 @@ def example_metadata(requested_hash, phase):
 def metadata(settings, is_personalized=False, requested_hash=None):
     from .config import CLOUD_PROVIDERS
     release = personalized_release(requested_hash or personalized_prompt_hash()) if is_personalized else None
-    routing = ({"modelRouting": {"primaryModel": settings.active_cloud_model,
-                "fallbackModels": [m for m in settings.gemini_fallback_models if m != settings.active_cloud_model]}}
-               if settings.selected_provider == "gemini" and settings.gemini_fallback_models else {})
+    routing = routing_metadata(settings)
     return {**routing, "schemaVersion": "1", "provider": settings.selected_provider,
             "model": settings.active_cloud_model if settings.selected_provider in CLOUD_PROVIDERS else settings.model,
             "modelDigest": settings.model_digest if settings.selected_provider == "ollama" else "provider-managed",
@@ -823,13 +821,7 @@ async def execute(event, settings):
             calls.append({"purpose": purpose, "provider": provider, "model": gateway.last_model})
             if getattr(gateway, "model_fallbacks", []):
                 # Keep later steps on the successful fallback; never replay earlier paid steps.
-                chain = call_settings.gemini_fallback_models
-                pools = {p: dict(policy) for p, policy in call_settings.registry_pools.items()}
-                if "gemini" in pools:
-                    pools["gemini"]["default_model"] = gateway.last_model
-                call_settings = call_settings.model_copy(update={"gemini_model": gateway.last_model,
-                    "registry_pools": pools, "gemini_fallback_models": chain[chain.index(gateway.last_model) + 1:]})
-                call_settings._registry_snapshot = True
+                call_settings = gateway.continuation_settings(call_settings)
             try:
                 return model.model_validate(raw)
             except ValueError as invalid:

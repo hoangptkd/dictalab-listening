@@ -3,12 +3,13 @@ import py_compile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-ROOTS = ("services/ai-generation", "tools/ai-eval", "training", "artifacts/prompts", "artifacts/reports",
+ROOTS = ("docs/ai-text.md", "scripts/ai-text.py", "scripts/conversation-distill.py", "scripts/enrich-preview-vocabulary.py",
+         "scripts/conversation-ablation.py", "scripts/conversation-offline-refinement.py", "scripts/linux/probe-ai.py", "services/ai-generation", "tools/ai-eval", "training", "artifacts/prompts", "artifacts/reports",
          "src/main/java", "src/main/resources/application.yml", "src/test/java/com/dictalab/service/ConversationRolloutTest.java",
          ".github/workflows", "docs/ai-platform-runbook.md", "docs/conversation-ai.md", ".env.example", "compose.yaml",
          ".env.ai-production.example", ".env.ai-local.example", "ops/observability", "src/main/resources/application-local.yml",
          "src/test/java/com/dictalab/service/AiPlatformClientTest.java", "src/test/java/com/dictalab/service/AiPlatformSmokeTest.java",
-         "src/test/java/com/dictalab/service/AiBackgroundJobsIntegrationTest.java", "src/test/java/com/dictalab/service/GeminiClientTest.java")
+         "src/test/java/com/dictalab/service/AiBackgroundJobsIntegrationTest.java", "src/test/java/com/dictalab/service/AiTextServiceTest.java")
 MARKERS = ("\u00c3", "\u00c4", "\u00e1\u00bb", "\u00e1\u00ba", "\u00c6", "\u00e2\u20ac", "\u00f0\u0178", "\ufffd", "?" * 4)
 
 

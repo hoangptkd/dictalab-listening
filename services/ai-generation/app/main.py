@@ -119,7 +119,7 @@ async def bound_job_requests(request: Request, call_next):
                 if len(body) > 8192:
                     return JSONResponse(status_code=413, content={"detail": "management input exceeds limit"})
             request._body = bytes(body)
-    if request.method == "POST" and request.url.path == "/v1/text/completions":
+    if request.method == "POST" and request.url.path in ("/v1/text/completions", "/v2/text/completions"):
         if not settings.service_token or not _authorized(request.headers.get("X-Service-Token")):
             return JSONResponse(status_code=401, content={"error": "invalid service token"})
         body = bytearray()
@@ -209,20 +209,20 @@ async def ready() -> dict[str, str]:
 
 
 async def _ready(settings):
+    from .providers import get_provider
     try:
         artifact = load_artifact(settings) if settings.conversation_enabled else None
         timeout = httpx.Timeout(min(settings.timeout_seconds, 3.0))
         provider = settings.selected_provider
+        registration = get_provider(provider)
         async with httpx.AsyncClient(timeout=timeout) as client:
             if provider in CLOUD_PROVIDERS:
                 if settings.gemini_quota_enabled:
                     store = quota_store(settings)
                     for source in settings.sources_for(provider):
                         await asyncio.to_thread(store.execute, source, 1, "status")
-                        url = source.url.removesuffix("/chat/completions") + "/models"
-                        check = await client.get(url, headers={"Authorization": "Bearer " + source.api_key})
-                        check.raise_for_status()
-                        if not any(cloud_model_id_matches(source.model, m.get("id") or "") for m in check.json().get("data", [])):
+                        check = await registration.probe(settings, client, source=source)
+                        if not registration.model_matches(check, source.model):
                             raise ValueError("pool model missing")
                     if not any(cloud_model_id_matches(settings.active_cloud_model, p.model) for p in settings.sources_for(provider)):
                         raise ValueError("requested cloud model missing from pool")
@@ -230,11 +230,9 @@ async def _ready(settings):
                 else:
                     if not settings.active_cloud_api_key:
                         raise ValueError("cloud key is missing")
-                    response = await client.get(settings.active_cloud_models_url,
-                        headers={"Authorization": "Bearer " + settings.active_cloud_api_key})
+                    response = await registration.probe(settings, client)
             else:
-                response = await client.get(settings.ollama_url.rstrip("/") + "/api/tags",
-                    headers={"X-Service-Token": settings.ollama_service_token} if settings.ollama_service_token else {})
+                response = await registration.probe(settings, client)
             response.raise_for_status()
         if provider == "ollama":
             if artifact:
@@ -243,8 +241,7 @@ async def _ready(settings):
                     m.get("digest", "").removeprefix("sha256:") == settings.model_digest.removeprefix("sha256:"))
                     for m in response.json().get("models", [])):
                 raise ValueError("local model missing or digest drift")
-        elif not settings.gemini_quota_enabled and not any(cloud_model_id_matches(settings.active_cloud_model, m.get("id") or "")
-                     for m in response.json().get("data", [])):
+        elif not settings.gemini_quota_enabled and not registration.model_matches(response, settings.active_cloud_model):
             raise ValueError("cloud model missing")
         if settings.jobs_enabled:
             from .jobs import JobStore, broker_connection, QUEUE
@@ -360,7 +357,17 @@ async def create_task(payload: ConversationTaskRequest, request: Request,
 
 
 @app.exception_handler(HTTPException)
-async def http_error(_: Request, exc: HTTPException) -> JSONResponse:
+async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
+    if request.url.path == "/v2/text/completions":
+        detail = exc.detail
+        if isinstance(detail, dict) and set(detail) <= {"code", "outcome"}:
+            error = detail
+        else:
+            code = {400: "INVALID_REQUEST", 401: "AUTHENTICATION", 429: "RATE_LIMITED"}.get(exc.status_code,
+                "ALREADY_ADMITTED" if exc.status_code == 409 and "already admitted" in str(detail)
+                else "INVALID_MODEL" if exc.status_code == 409 else "PROVIDER_OUTCOME_UNKNOWN")
+            error = {"code": code, "outcome": "UNKNOWN" if code in ("ALREADY_ADMITTED", "PROVIDER_OUTCOME_UNKNOWN") else "NOT_SENT"}
+        return JSONResponse(status_code=exc.status_code, content={"error": error}, headers=exc.headers)
     detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
     logger.warning("conversation_request_rejected status=%s reason=%s", exc.status_code, redact(detail))
     return JSONResponse(status_code=exc.status_code, content={"error": redact(detail)}, headers=exc.headers)
@@ -369,5 +376,7 @@ async def http_error(_: Request, exc: HTTPException) -> JSONResponse:
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
     logger.warning("ai_request_invalid count=%s", len(exc.errors()))
+    if request.url.path == "/v2/text/completions":
+        return JSONResponse(status_code=400, content={"error": {"code": "INVALID_REQUEST", "outcome": "NOT_SENT"}})
     message = "invalid conversation request" if request.url.path == "/v1/conversation/tasks" else "invalid background job request"
     return JSONResponse(status_code=400, content={"error": message})

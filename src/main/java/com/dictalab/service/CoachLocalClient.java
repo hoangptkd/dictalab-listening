@@ -6,11 +6,8 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import java.net.URI;
-import java.net.http.*;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.*;
 
 @Service
 public class CoachLocalClient {
@@ -45,7 +42,7 @@ public class CoachLocalClient {
               "reviewIds":{"type":"array","items":{"type":"string"},"maxItems":3,"uniqueItems":true}},
               "required":["focus","reviewIds"],"additionalProperties":false}
             """;
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+    private final AiTextService text;
     private final ObjectMapper json;
     private final CoachProperties config;
     private final ProviderGuard guard;
@@ -53,6 +50,13 @@ public class CoachLocalClient {
 
     public CoachLocalClient(ObjectMapper json, CoachProperties config, MeterRegistry metrics,
                             io.micrometer.observation.ObservationRegistry observations) {
+        this(json, config, metrics, observations, new AiTextService(json, "", "unused", "http://127.0.0.1/unused"));
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CoachLocalClient(ObjectMapper json, CoachProperties config, MeterRegistry metrics,
+                            io.micrometer.observation.ObservationRegistry observations, AiTextService text) {
+        this.text = text;
         this.json = json;
         this.config = config;
         this.metrics = metrics;
@@ -60,47 +64,18 @@ public class CoachLocalClient {
     }
 
     public JsonNode completeJson(String input) {
-        String body = json.writeValueAsString(Map.of("model", config.localModel(), "stream", false, "think", false,
-                "format", json.readTree(SCHEMA), "keep_alive", "5m",
-                "options", Map.of("temperature", 0, "num_ctx", 8192, "num_predict", 240),
-                "messages", List.of(Map.of("role", "system", "content", INSTRUCTION),
-                        Map.of("role", "user", "content", input))));
-        byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        if (bytes.length > 32_000) throw new IllegalArgumentException("Coach evidence exceeds local request limit");
-        Duration timeout = Duration.ofSeconds(config.localTimeoutSeconds());
+        var call = new AiTextService.Request(UUID.randomUUID(), "coach_report", "coach_local", config.localModel(),
+            List.of(new AiTextService.Message("system", INSTRUCTION), new AiTextService.Message("user", input)),
+            json.readTree(SCHEMA), "json_schema", 0.0, 240, Duration.ofSeconds(config.localTimeoutSeconds()), 8192, "5m");
+        if (json.writeValueAsString(text.previewLocal(call, config.localBaseUrl())).getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 32000)
+            throw new IllegalArgumentException("Coach evidence exceeds local request limit");
         try (var permit = guard.enter()) {
-            var request = HttpRequest.newBuilder(URI.create(config.localBaseUrl() + "/api/chat"))
-                    .timeout(timeout).header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofByteArray(bytes)).build();
-            var pending = http.sendAsync(request, ignored -> BoundedProviderBody.bytes(16_000));
             try {
-                var response = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-                if (response.statusCode() != 200) throw new IllegalStateException("Local Coach HTTP " + response.statusCode());
-                var envelope = json.readTree(response.body());
-                var content = envelope.path("message").path("content");
-                if (!envelope.path("done").asBoolean() || !"stop".equals(envelope.path("done_reason").asText())
-                        || !content.isTextual() || content.asText().isBlank())
-                    throw new IllegalStateException("Incomplete local Coach response");
-                var result = json.reader().with(tools.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
-                        .readTree(content.asText());
-                if (!result.isObject()) throw new IllegalStateException("Local Coach object missing");
-                metrics.summary("dictalab.coach.local.tokens", "kind", "input").record(envelope.path("prompt_eval_count").asLong());
-                metrics.summary("dictalab.coach.local.tokens", "kind", "output").record(envelope.path("eval_count").asLong());
-                permit.success();
-                return result;
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("Local Coach interrupted");
-            } catch (ExecutionException | TimeoutException failed) {
-                permit.failure();
-                throw new IllegalStateException("Local Coach transport or deadline failure");
-            } catch (RuntimeException failed) {
-                permit.failure();
-                throw failed;
-            } finally {
-                // Enforce the deadline across headers AND body; never hold a slot for a stalled body.
-                pending.cancel(true);
-            }
+                var result = text.completeLocal(call, config.localBaseUrl());
+                metrics.summary("dictalab.coach.local.tokens", "kind", "input").record(result.usage().path("prompt_eval_count").asLong());
+                metrics.summary("dictalab.coach.local.tokens", "kind", "output").record(result.usage().path("eval_count").asLong());
+                permit.success(); return result.value();
+            } catch (RuntimeException failed) { permit.failure(); throw failed; }
         }
     }
 }

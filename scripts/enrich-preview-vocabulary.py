@@ -13,8 +13,6 @@ import re
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 
 
 WORD = re.compile(r"[A-Za-z0-9]+(?:[’'-][A-Za-z0-9]+)*")
@@ -68,9 +66,9 @@ Transcript:
 
 def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ssh-host", required=True)
+    parser.add_argument("--ssh-host")
     parser.add_argument("--ssh-user", default="Administrator")
-    parser.add_argument("--ssh-key", type=Path, required=True)
+    parser.add_argument("--ssh-key", type=Path)
     parser.add_argument("--model", default="gemini-3.5-flash-lite")
     parser.add_argument("--api-url", default="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
     parser.add_argument("--cache", type=Path, default=Path("data/ai-preview-cache.json"))
@@ -78,7 +76,10 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--prompt-api-key", action="store_true")
     parser.add_argument("--self-test", action="store_true")
-    return parser.parse_args()
+    parsed = parser.parse_args()
+    if not parsed.self_test and (not parsed.ssh_host or not parsed.ssh_key):
+        parser.error("--ssh-host and --ssh-key are required unless --self-test is used")
+    return parsed
 
 
 def normalize(value: str) -> str:
@@ -172,28 +173,14 @@ def save_json(path: Path, payload: dict) -> None:
 
 
 def call_ai(api_key: str, api_url: str, model: str, prompt: str) -> str:
-    body = json.dumps({
-        "model": model,
-        "temperature": 0,
-        "max_tokens": 800,
-        "response_format": {"type": "json_object"},
-        "messages": [{"role": "user", "content": prompt}],
-    }).encode("utf-8")
-    request = urllib.request.Request(api_url, data=body, headers={
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    })
-    for attempt in range(3):
-        try:
-            with urllib.request.urlopen(request, timeout=180) as response:
-                payload = json.load(response)
-            return payload["choices"][0]["message"]["content"]
-        except (urllib.error.URLError, KeyError, json.JSONDecodeError) as error:
-            if attempt == 2:
-                raise RuntimeError(f"Gemini request failed after three attempts: {error}") from error
-            time.sleep(2 ** attempt)
-    raise AssertionError("unreachable")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "services" / "ai-generation"))
+    from app.offline_text import environment_settings, run
+    settings = environment_settings(provider=os.environ.get("DICTALAB_AI_PRIMARY_PROVIDER", "gemini"),
+        api_key=api_key, endpoint=api_url)
+    result = run(settings, [{"role": "user", "content": prompt}], {"type": "object"}, model=model,
+        purpose="offline_vocabulary", temperature=0, max_tokens=800, timeout=180,
+        journal=Path(__file__).resolve().parents[1] / "data" / "vocabulary-text-admissions")
+    return json.dumps(result.result.value, ensure_ascii=False)
 
 
 def sql_quote(value: str) -> str:
@@ -263,8 +250,8 @@ def main() -> int:
         if parsed is None:
             if args.prompt_api_key and not api_key:
                 api_key = getpass.getpass("Gemini API key: ")
-            if not api_key:
-                raise ValueError("Set GEMINI_API_KEY or use --prompt-api-key")
+            if not api_key and os.environ.get("AI_PROVIDER_CONFIG_SOURCE") != "database" and os.environ.get("DICTALAB_AI_PRIMARY_PROVIDER") != "ollama":
+                raise ValueError("Configure the shared text provider or use --prompt-api-key")
             prompt = PROMPT.format(
                 target=TARGETS[lesson["level"]], level=lesson["level"],
                 title=lesson["title"], transcript=lesson["transcript"],

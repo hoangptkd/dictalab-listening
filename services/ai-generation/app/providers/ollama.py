@@ -1,9 +1,4 @@
-"""Ollama local provider — wraps /api/chat with structured JSON output.
-
-Uses the existing low-level _chat() helper from ollama.py so the structured
-request format stays in one place. This module is the thin adapter that
-satisfies the ModelProvider interface.
-"""
+"""Ollama /api/chat adapter; business workflows supply messages, schema and budget."""
 from __future__ import annotations
 
 import json
@@ -22,6 +17,20 @@ _DEADLINE_BUFFER = 1.0  # seconds headroom before we attempt the call
 
 class OllamaProvider(ModelProvider):
     """Calls Ollama /api/chat with structured JSON output (format= field)."""
+
+    @staticmethod
+    def validate_endpoint(endpoint):
+        pass  # Registration validates URL security; Ollama config additionally restricts remote access.
+
+    async def probe(self, timeout=3):
+        response = await self._client.get(self._url.removesuffix("/api/chat") + "/api/tags",
+            headers=self._headers, timeout=timeout)
+        response.raise_for_status()
+        return response
+
+    @staticmethod
+    def model_ids(response):
+        return [m.get("name", "") for m in response.json().get("models", []) if isinstance(m, dict)]
 
     def __init__(
         self,
@@ -55,6 +64,8 @@ class OllamaProvider(ModelProvider):
         *,
         temperature: float | None = None,
     ) -> dict[str, Any]:
+        self.last_usage = {}
+        self.reported_model = None
         remaining = deadline - time.monotonic()
         if remaining < _DEADLINE_BUFFER:
             raise TimeoutError(
@@ -78,6 +89,14 @@ class OllamaProvider(ModelProvider):
             response = await self._client.post(self._url, json=body, timeout=timeout, headers=self._headers)
             response.raise_for_status()
             envelope = response.json()
+            if not isinstance(envelope, dict):
+                raise ProviderError("ollama:invalid_envelope")
+            reported = envelope.get("model")
+            if isinstance(reported, str) and len(reported) <= 128:
+                self.reported_model = reported
+            self.last_usage = {target: envelope[field] for target, field in (
+                ("input_tokens", "prompt_eval_count"), ("output_tokens", "eval_count"))
+                if type(envelope.get(field)) is int and 0 <= envelope[field] < 2**63}
             content = envelope.get("message", {}).get("content")
             from ..observability import record_response
             record_response(content, model=envelope.get("model") or self._model,

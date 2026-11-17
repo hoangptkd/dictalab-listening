@@ -19,6 +19,13 @@ final class AiCallObservation implements AutoCloseable {
         this.admission = admission; this.sink = sink; CURRENT.set(this);
     }
     static boolean active() { return CURRENT.get() != null; }
+    static void result(AiTextService.Result result) {
+        var scope = CURRENT.get();
+        if (scope == null || scope.call == null) return;
+        scope.returnedModel = result.model();
+        scope.call.put("model", result.model());
+        scope.call.put("provider", result.provider());
+    }
     static String returnedModel() {
         var scope = CURRENT.get(); return scope == null ? null : scope.returnedModel;
     }

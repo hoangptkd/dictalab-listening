@@ -11,7 +11,7 @@ test('application configuration, startup and deploy use Gemini without the legac
     const read = file => fs.readFileSync(path.resolve(__dirname, '../../..', file), 'utf8');
     for (const service of ['CoachService', 'ConversationService']) {
         const source = read(`src/main/java/com/dictalab/service/${service}.java`);
-        assert.ok(source.includes('GeminiClient'));
+        assert.ok(source.includes('AiTextService'));
         assert.ok(!source.includes('ChatGptWebCoachClient'));
         assert.ok(!source.includes('closeSession('));
     }

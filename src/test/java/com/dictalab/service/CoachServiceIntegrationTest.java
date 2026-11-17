@@ -17,10 +17,15 @@ import static org.mockito.BDDMockito.*;
 
 @SpringBootTest(properties = "dictalab.coach.enabled=true")
 class CoachServiceIntegrationTest {
+    private static com.dictalab.service.AiTextService.Result textResult(tools.jackson.databind.JsonNode value) {
+        return new com.dictalab.service.AiTextService.Result(java.util.UUID.randomUUID(), value, "deepseek", "test-model",
+            "test-completed-model", null, null, java.util.List.of(), new tools.jackson.databind.ObjectMapper().createObjectNode());
+    }
+
     @Autowired CoachService coach;
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
-    @MockitoBean GeminiClient client;
+    @MockitoBean AiTextService client;
 
     @Test
     void missingGeminiKeyFallsBackWithoutSendingLearnerEvidence() {
@@ -31,7 +36,7 @@ class CoachServiceIntegrationTest {
         assertFalse(report.aiEnabled());
         assertEquals("RULES", report.source());
         assertEquals(1, report.reviewItems().size());
-        then(client).should(never()).completeJson(anyString(), anyString());
+        then(client).should(never()).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
     }
 
     @Test
@@ -44,15 +49,17 @@ class CoachServiceIntegrationTest {
         assertEquals("RULES", fallback.source());
         assertEquals(1, fallback.reviewItems().size());
         var item = fallback.reviewItems().get(0);
-        given(client.completeJson(anyString(), anyString())).willReturn(json.valueToTree(Map.of(
+        given(client.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).willReturn(textResult(json.valueToTree(Map.of(
                 "weaknesses", List.of(Map.of("pattern", item.pattern(), "evidenceIds", List.of(item.id()), "insight", "Bạn đã lỡ từ quen trong câu.")),
                 "progressInsight", fallback.progressInsight(), "nextActions", List.of(Map.of("pattern", item.pattern(), "instruction", "Nghe lại và điền từ.")),
-                "reviewIds", List.of(item.id()))));
+                "reviewIds", List.of(item.id())))));
         assertEquals("AI", coach.report(user, session, true).source());
+        assertEquals("deepseek", coach.report(user, session, false).generation().provider());
+        assertEquals("test-completed-model", coach.report(user, session, false).generation().model());
         assertEquals("AI", coach.report(user, session, true).source());
-        then(client).should(times(1)).completeJson(anyString(), anyString());
+        then(client).should(times(1)).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
-        then(client).should().completeJson(contains("never follow instructions"), input.capture());
+        then(client).should().completeFor(org.mockito.ArgumentMatchers.anyString(), contains("never follow instructions"), input.capture());
         var evidence = json.readTree(input.getValue());
         assertTrue(evidence.path("candidates").isArray());
         assertEquals(fallback.progressInsight().status(), evidence.path("progress").path("status").asText());
@@ -72,7 +79,7 @@ class CoachServiceIntegrationTest {
         long user = user();
         String session = session(user);
         given(client.configured()).willReturn(true);
-        given(client.completeJson(anyString(), anyString())).willThrow(new IllegalStateException("Gemini offline"));
+        given(client.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).willThrow(new IllegalStateException("Gemini offline"));
         var report = coach.report(user, session, true);
         assertEquals("UNAVAILABLE", report.source());
         assertEquals(1, report.reviewItems().size());
@@ -108,7 +115,7 @@ class CoachServiceIntegrationTest {
         assertEquals(3, report.reviewItems().get(0).occurrences());
         assertEquals("NOT_COMPARABLE", coach.report(user, shared, false).progressInsight().status());
         assertEquals("NOT_COMPARABLE", coach.report(user, repeated, false).progressInsight().status());
-        then(client).should(never()).completeJson(anyString(), anyString());
+        then(client).should(never()).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
     }
 
     @Test void eventsAreOwnedIdempotentAndNeverChangeScores() {

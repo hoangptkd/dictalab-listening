@@ -972,8 +972,8 @@ async def test_teacher_dispatch_uses_frozen_budget_and_marks_unknown_transport(
             # Compare absolute times to avoid rounding above the budget on a coarse clock.
             now = time.monotonic()
             assert now + timeout - 2 < deadline <= now + timeout
-            assert kwargs.get("deepseek_reasoning_effort") == wire_effort
-            assert kwargs.get("deepseek_cache_prefix") is (True if cache_prefix else None)
+            assert kwargs["options"].reasoning_effort == wire_effort
+            assert kwargs["options"].cache_stable_prefix is cache_prefix
             schema_message = {"role":"system", "content":"Return one JSON object matching this JSON schema: " + json.dumps(schema)}
             await self.client.post("https://teacher.invalid/v1/chat/completions", json={
                 "model": "deepseek-test", "temperature": 0.2, "max_tokens": self.config.num_predict,
@@ -1436,7 +1436,7 @@ async def test_teacher_wire_uses_exact_provider_model_and_thinking_contract(tmp_
             self.config, self.client = config, client
         async def complete(self, messages, schema, deadline, purpose, **kwargs):
             assert self.config.primary_provider == provider
-            assert kwargs["deepseek_thinking"] is (provider == "deepseek")
+            assert kwargs["options"].reasoning is (provider == "deepseek")
             body = {"model": model, "temperature": .2, "max_tokens": 16384}
             if provider == "deepseek":
                 body["thinking"] = {"type": "enabled"}

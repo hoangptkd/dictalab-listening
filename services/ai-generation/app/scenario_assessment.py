@@ -865,13 +865,7 @@ async def execute(event, settings, *, observer=None):
                 **({"exampleSetHash": selected.EXAMPLE_SET_HASH, "exampleIds": selected.EXAMPLE_IDS[purpose]}
                    if getattr(selected, "EXAMPLE_SET_HASH", None) else {})})
             if getattr(gateway, "model_fallbacks", []):
-                chain = call_settings.gemini_fallback_models
-                pools = {p: dict(policy) for p, policy in call_settings.registry_pools.items()}
-                if "gemini" in pools:
-                    pools["gemini"]["default_model"] = gateway.last_model
-                call_settings = call_settings.model_copy(update={"gemini_model": gateway.last_model, "registry_pools": pools,
-                    "gemini_fallback_models": chain[chain.index(gateway.last_model) + 1:]})
-                call_settings._registry_snapshot = True
+                call_settings = gateway.continuation_settings(call_settings)
             try:
                 return model.model_validate(raw)
             except ValueError as invalid:

@@ -77,7 +77,7 @@ class CoachLocalClientTest {
         Future<?> first = pool.submit(() -> assertThrows(IllegalStateException.class, () -> client.completeJson("{}")));
         assertTrue(entered.get().await(3, TimeUnit.SECONDS));
         assertFalse(first.isDone());
-        assertThrowsExactly(IllegalStateException.class, () -> client.completeJson("{}"));
+        assertThrowsExactly(AiTextService.Failure.class, () -> client.completeJson("{}"));
         assertEquals(2, requests.get());
         first.get(3, TimeUnit.SECONDS);
         bodyGate.get().countDown();

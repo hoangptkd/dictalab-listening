@@ -53,7 +53,7 @@ public class AiEvaluationStudio {
     static final String RUBRIC = "conversation-evaluation-v1";
     private final ObjectMapper json;
     private final ConversationService conversations;
-    private final GeminiClient ai;
+    private final AiTextService ai;
     private final AiUsageBudget budget;
     private final Path root;
     private final boolean local;
@@ -64,7 +64,7 @@ public class AiEvaluationStudio {
     private volatile boolean cancel;
     private boolean initialized;
 
-    public AiEvaluationStudio(ObjectMapper json, ConversationService conversations, GeminiClient ai, AiUsageBudget budget,
+    public AiEvaluationStudio(ObjectMapper json, ConversationService conversations, AiTextService ai, AiUsageBudget budget,
                               Environment environment,
                               @Value("${dictalab.evaluation.directory:data/ai-evaluation}") String directory) {
         this.json = json; this.conversations = conversations; this.ai = ai; this.budget = budget;
@@ -300,7 +300,7 @@ public class AiEvaluationStudio {
                     row.remove("error");
                 } catch (Halted stop) { row.put("status", "CANCELLED"); throw stop;
                 } catch (Exception error) {
-                    row.put("status", "ERROR").put("error", error instanceof RuntimeException runtime ? GeminiClient.reason(runtime) : "STORAGE");
+                    row.put("status", "ERROR").put("error", error instanceof RuntimeException runtime ? AiTextService.reason(runtime) : "STORAGE");
                     row.put("failureType", error.getClass().getSimpleName());
                     if (error.getCause() != null) row.put("causeType", error.getCause().getClass().getSimpleName());
                     // Capture available first evidence even if generation/review failed; no implicit retry.
@@ -430,7 +430,7 @@ public class AiEvaluationStudio {
         if (reused) verdict = read("judgments", key);
         else {
             budget.reserve(actor, false);
-            verdict = checkedVerdict(ai.completeJson(SCENARIO_JUDGE, json.writeValueAsString(input), conversations.evaluationModel(), java.time.Duration.ofSeconds(55)), input);
+            verdict = checkedVerdict(ai.completeJsonFor("evaluation_scenario_judge", SCENARIO_JUDGE, json.writeValueAsString(input), conversations.evaluationModel(), java.time.Duration.ofSeconds(55)), input);
             String returnedModel = AiCallObservation.returnedModel();
             if (returnedModel != null && !returnedModel.equals(conversations.evaluationModel())) {
                 cacheKey.put("model", returnedModel); key = hash(cacheKey);
@@ -632,9 +632,18 @@ public class AiEvaluationStudio {
     String backendHash() {
         try {
             var digest = MessageDigest.getInstance("SHA-256");
-            for (Class<?> type : List.of(ConversationService.class, GeminiClient.class, AiPlatformClient.class, AiEvaluationStudio.class,
-                    com.dictalab.scenario.ScenarioPersonalization.class, com.dictalab.scenario.ScenarioProgramRegistry.class, com.dictalab.scenario.ScenarioProgram.class))
-                try (var input = type.getResourceAsStream(type.getSimpleName() + ".class")) { digest.update(input.readAllBytes()); }
+            if (ai.capabilityConfiguration() != null)
+                digest.update(ai.capabilityConfiguration().getBytes(StandardCharsets.UTF_8));
+            var types = new java.util.ArrayList<Class<?>>(List.of(ConversationService.class, AiTextService.class,
+                    AiTextService.Request.class, AiTextService.Result.class, AiTextProvider.class,
+                    com.dictalab.config.AiTextProperties.class, com.dictalab.config.AiTextProperties.ModelProfile.class,
+                    AiPlatformClient.class, AiEvaluationStudio.class, com.dictalab.scenario.ScenarioPersonalization.class,
+                    com.dictalab.scenario.ScenarioProgramRegistry.class, com.dictalab.scenario.ScenarioProgram.class));
+            if (ai.providerTypes() != null) types.addAll(ai.providerTypes());
+            for (Class<?> type : types)
+                try (var input = type.getResourceAsStream(type.getName().substring(type.getName().lastIndexOf('.') + 1) + ".class")) {
+                    digest.update(input.readAllBytes());
+                }
             for (String resource : List.of("scenario/programs-v1.json", "scenario/programs-personalized-v1.json", "scenario/programs-meaning-v1.json"))
                 try (var input = new org.springframework.core.io.ClassPathResource(resource).getInputStream()) { digest.update(input.readAllBytes()); }
             return HexFormat.of().formatHex(digest.digest());

@@ -49,7 +49,8 @@ async def dispatch(path: Path, folder: Path, stem: str, body: dict, accounts: li
         gen.append(path / "sent-index.jsonl", {"kind": "web-account-attempt", "stem": stem,
             "phase": folder.name, **row})
         async with httpx.AsyncClient(follow_redirects=False, trust_env=False, timeout=240) as client:
-            response = await client.post(account["url"], json=body)
+            from app.model_gateway import ModelGateway
+            response = await ModelGateway.web_evaluation(client, account["url"], body)
         envelope = gen.strict_json(response.text)
         row.update(httpStatus=response.status_code, envelope=envelope)
         quota = (response.status_code == 429 and isinstance(envelope, dict) and

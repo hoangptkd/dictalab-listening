@@ -10,7 +10,7 @@ import threading
 import httpx
 
 from . import coach, review, tts
-from .config import Settings
+from .config import Settings, CLOUD_PROVIDERS
 from .jobs import JobEvent, JobStore, QUEUE, broker_connection, capability_metadata, declare, publish_pending
 from .model_gateway import ModelGateway
 from .redaction import RedactingFilter
@@ -22,7 +22,7 @@ logger.addFilter(RedactingFilter())
 
 @trace_job
 async def execute(event, settings):
-    if event.payload.kind not in ("tts", "scenario_tts") and settings.selected_provider in ("gemini", "deepseek", "openai_compatible"):
+    if event.payload.kind not in ("tts", "scenario_tts") and settings.selected_provider in CLOUD_PROVIDERS:
         settings = await asyncio.to_thread(settings.current_registry)
     if event.payload.kind == "scenario":
         from .scenario_workflow import execute as execute_scenario

@@ -16,7 +16,7 @@ class AiEvaluationStudioTest {
     @TempDir Path directory;
     final ObjectMapper json = new ObjectMapper();
     final ConversationService conversation = mock(ConversationService.class);
-    final GeminiClient ai = mock(GeminiClient.class);
+    final AiTextService ai = mock(AiTextService.class);
     final AiUsageBudget budget = mock(AiUsageBudget.class);
     final AiPlatformClient platform = mock(AiPlatformClient.class);
     ObjectNode catalog;
@@ -71,6 +71,11 @@ class AiEvaluationStudioTest {
         AiEvaluationStudio.CRITERIA.forEach(c -> checks.put(c, true)); value.putArray("issues"); return value;
     }
 
+    private void assertNoModelCalls() {
+        verify(ai, atLeast(0)).providerTypes();
+        verify(ai, atLeast(0)).capabilityConfiguration();
+        verifyNoMoreInteractions(ai);
+    }
     @Test void snapshotsAreImmutableCanonicalAndDatasetCoversAllSuiteLevelsAndTurns() {
         var first = version(); var second = version();
         assertThat(json.writeValueAsString(second)).isEqualTo(json.writeValueAsString(first));
@@ -94,20 +99,20 @@ class AiEvaluationStudioTest {
         request.put("judge",true); assertThatThrownBy(() -> studio.start(request,14)).hasMessageContaining("409");
         var replay = request(version().path("id").asText(),"smoke",false).put("mode","replay").put("sourceRun",run.path("id").asText());
         assertThatThrownBy(() -> studio.start(replay,14)).hasMessageContaining("409");
-        verifyNoInteractions(ai);
+        assertNoModelCalls();
         verify(budget,times(30)).reserve(14L,false);
     }
     @Test void exactJudgeCacheIsReusedAndUnknownFailureStopsFurtherCases() throws Exception {
-        fakeGeneration(); when(ai.completeJson(anyString(),anyString(),eq("gemini-test"),any(Duration.class))).thenReturn(verdict());
+        fakeGeneration(); when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString(),eq("gemini-test"),any(Duration.class))).thenReturn(verdict());
         var version = version().path("id").asText();
         for (int i=0;i<2;i++) {
             var run = finished(studio.start(request(version,"smoke",true),14).path("id").asText());
             assertThat(run.path("metrics").path("afterPassed").asInt()).isEqualTo(3);
         }
-        verify(ai,times(3)).completeJson(anyString(),anyString(),eq("gemini-test"),any(Duration.class));
+        verify(ai,times(3)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString(),eq("gemini-test"),any(Duration.class));
         verify(budget,times(63)).reserve(14L,false);
         when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload"))))
-                .thenThrow(new GeminiClient.Failure("TIMEOUT","unknown"));
+                .thenThrow(new AiTextService.Failure("TIMEOUT","unknown"));
         var stopped=finished(studio.start(request(version,"regression",false),14).path("id").asText());
         assertThat(stopped.path("status").asText()).isEqualTo("STOPPED");
         assertThat(stopped.path("cases").size()).isEqualTo(1);
@@ -115,7 +120,7 @@ class AiEvaluationStudioTest {
     }
     @Test void fallbackJudgeIsNeverCachedAsTheRequestedPrimaryModel() throws Exception {
         fakeGeneration();
-        when(ai.completeJson(anyString(), anyString(), eq("gemini-test"), any(Duration.class))).thenAnswer(call -> {
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString(), eq("gemini-test"), any(Duration.class))).thenAnswer(call -> {
             AiCallObservation.begin("gemini-test");
             AiCallObservation.remote(json.createObjectNode().put("model", "gemini-fallback"));
             AiCallObservation.end("SUCCESS");
@@ -127,7 +132,7 @@ class AiEvaluationStudioTest {
             assertThat(run.path("metrics").path("afterPassed").asInt()).isEqualTo(3);
             assertThat(run.path("cases").path(0).path("calls").path(1).path("model").asText()).isEqualTo("gemini-fallback");
         }
-        verify(ai, times(6)).completeJson(anyString(), anyString(), eq("gemini-test"), any(Duration.class));
+        verify(ai, times(6)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString(), eq("gemini-test"), any(Duration.class));
         try (var files = Files.list(directory.resolve("judgments"))) {
             for (var path : files.toList())
                 assertThat(json.readTree(Files.readString(path)).path("model").asText()).isEqualTo("gemini-fallback");
@@ -136,7 +141,7 @@ class AiEvaluationStudioTest {
     @Test void continuationReadsAdmittedCaseAndSubmitsOnlyMissingInputs() throws Exception {
         var version = version().path("id").asText();
         when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload"))))
-                .thenThrow(new GeminiClient.Failure("TIMEOUT", "POST result unknown"));
+                .thenThrow(new AiTextService.Failure("TIMEOUT", "POST result unknown"));
         var parent = finished(studio.start(request(version, "smoke", false), 14).path("id").asText());
         String parentId = parent.path("id").asText(), remoteId = parent.path("cases").path(0).path("remoteRequestId").asText();
         byte[] original = Files.readAllBytes(directory.resolve("runs").resolve(parentId + ".json"));
@@ -164,7 +169,7 @@ class AiEvaluationStudioTest {
         var count = new java.util.concurrent.atomic.AtomicInteger();
         when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")))).thenAnswer(call -> {
             int index = count.incrementAndGet();
-            if (index == 3) throw new GeminiClient.Failure("TIMEOUT", "unknown");
+            if (index == 3) throw new AiTextService.Failure("TIMEOUT", "unknown");
             var result = remote(call.getArgument(1));
             if (index == 2) { result.put("status", "ERROR").put("error", "QualityRejected"); result.remove("result"); }
             return result;
@@ -186,7 +191,7 @@ class AiEvaluationStudioTest {
     @Test void continuationRejectsChangedSettingsAndStopsOnUnresolvedAdmission() throws Exception {
         var version = version().path("id").asText();
         when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload"))))
-                .thenThrow(new GeminiClient.Failure("TIMEOUT", "unknown"));
+                .thenThrow(new AiTextService.Failure("TIMEOUT", "unknown"));
         var parent = finished(studio.start(request(version, "smoke", false), 14).path("id").asText());
         String parentId = parent.path("id").asText(), remoteId = parent.path("cases").path(0).path("remoteRequestId").asText();
         assertThatThrownBy(() -> studio.start(request(version, "smoke", true).put("continueFrom", parentId), 14))
@@ -231,7 +236,7 @@ class AiEvaluationStudioTest {
         assertThat(run.path("metrics").path("errors").asInt()).isEqualTo(3);
         assertThat(run.path("metrics").path("afterPassed").asInt()).isZero();
         verify(platform,times(3)).scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload")));
-        verifyNoInteractions(ai);
+        assertNoModelCalls();
     }
     @Test void contentRejectionCannotMaskUnknownJudgeFailure() throws Exception {
         when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload"))))
@@ -241,8 +246,8 @@ class AiEvaluationStudioTest {
                     result.remove("result");
                     return result;
                 });
-        when(ai.completeJson(anyString(),anyString(),eq("gemini-test"),any(Duration.class)))
-                .thenThrow(new GeminiClient.Failure("TIMEOUT", "unknown"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString(),eq("gemini-test"),any(Duration.class)))
+                .thenThrow(new AiTextService.Failure("TIMEOUT", "unknown"));
         var run = finished(studio.start(request(version().path("id").asText(), "smoke", true),14).path("id").asText());
         assertThat(run.path("status").asText()).isEqualTo("STOPPED");
         assertThat(run.path("cases").size()).isEqualTo(1);
@@ -284,7 +289,7 @@ class AiEvaluationStudioTest {
         }
         var production=new AiEvaluationStudio(json,conversation,ai,budget,new MockEnvironment(),directory.toString());
         try { assertThatThrownBy(production::snapshot).hasMessageContaining("503"); } finally { production.close(); }
-        verifyNoInteractions(ai,budget);
+        assertNoModelCalls(); verifyNoInteractions(budget);
     }
     @Test void missingJudgmentsRemainInDenominatorAndCriticalRegressionWinsOverOtherImprovements() {
         var a=comparableRun();var b=a.deepCopy();
@@ -343,7 +348,7 @@ class AiEvaluationStudioTest {
         assertThatThrownBy(() -> studio.start(request(id, "smoke", false),14)).hasMessageContaining("410");
         when(platform.scenarioEvaluation(isNull(), isNull())).thenThrow(new IllegalStateException("offline"));
         assertThat(studio.snapshot().path("liveAvailable").asBoolean()).isFalse();
-        verifyNoInteractions(ai,budget);
+        assertNoModelCalls(); verifyNoInteractions(budget);
     }
     ObjectNode comparableRun() {
         var run=json.createObjectNode().put("status","COMPLETED").put("planned",1).put("repeats",1).put("judge",true).put("mode","live").put("repair",true);

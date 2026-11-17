@@ -1,6 +1,7 @@
 # DictaLab — English Listening Dictation
 
 Microservice migration: [accepted scope and delivery ledger](docs/microservices-implementation.md).
+Shared text AI providers, model capabilities and internal v2 contract: [AI text](docs/ai-text.md).
 Progress Service has its own database, build and event consumer; local startup,
 backfill, shadow comparison and rollback: [Progress runbook](services/progress/README.md).
 Architecture, runnable local stack, demo sequence and measured limits:

@@ -148,7 +148,7 @@ public final class GeminiQuotaCoordinator {
         return new Admission(true, 0);
     }
 
-    private static String normalize(String model) { return model.replaceFirst("^models/", ""); }
+    private String normalize(String model) { return platform.equals("gemini") ? model.replaceFirst("^models/", "") : model; }
     private String limit(int configured) { return operationalLimitsEnabled ? Integer.toString(configured) : "0"; }
     public record Admission(boolean allowed, long retryAfterMs) {}
     private record Request(long time, int tokens) {}

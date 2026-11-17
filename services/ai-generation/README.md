@@ -166,6 +166,11 @@ Read `docs/ai-platform-runbook.md` (Gemini pool section) before enabling this on
 
 ## Opt-in generic Core text transport
 
+`POST /v2/text/completions` is the shared Core text contract with purpose, schema,
+model capabilities and verified result metadata; v1 remains compatible with older
+Core releases. Provider adapters, extension, migration and rollback details:
+[shared AI text](../../docs/ai-text.md).
+
 `POST /v1/text/completions` executes the synchronous JSON text calls already used
 by Core for assessment, conversation review and clarification. It supplements the
 durable capability jobs. It does not return provider keys, accounts or endpoints.
@@ -211,7 +216,7 @@ Repeatable unpaid verification from repository root:
 
 ```powershell
 python -X utf8 -m pytest -q services/ai-generation/tests/test_text_gateway.py services/ai-generation/tests/test_model_gateway.py
-mvn --batch-mode --no-transfer-progress '-Dtest=GeminiClientTest,AiPlatformClientTest' test
+mvn --batch-mode --no-transfer-progress '-Dtest=AiTextServiceTest,AiTextProviderTest,AiPlatformClientTest' test
 python -X utf8 tools/ai-eval/smoke.py
 ```
 

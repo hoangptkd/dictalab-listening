@@ -174,7 +174,7 @@ class ConversationLocalClientTest {
                 () -> client.completeJson("A1", "{}", Duration.ofMillis(500))));
         assertTrue(entered.await(3, TimeUnit.SECONDS));
         assertFalse(first.isDone());
-        assertThrowsExactly(IllegalStateException.class, this::call);
+        assertThrowsExactly(AiTextService.Failure.class, this::call);
         assertEquals(2, requests.get());
         first.get(2, TimeUnit.SECONDS);
         gate.get().countDown();

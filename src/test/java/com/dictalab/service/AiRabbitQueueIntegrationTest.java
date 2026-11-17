@@ -60,7 +60,7 @@ class AiRabbitQueueIntegrationTest {
     @Autowired AiQueueProperties config;
     @Autowired io.micrometer.core.instrument.MeterRegistry metrics;
     @MockitoBean TtsService tts;
-    @MockitoBean GeminiClient ai;
+    @MockitoBean AiTextService ai;
     private long owner;
     private String session;
 

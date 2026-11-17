@@ -7,6 +7,16 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const {createHash, randomUUID} = require("node:crypto");
 const assert = require("node:assert/strict");
+const {spawnSync} = require("node:child_process");
+
+async function textRequest(payload, marker, launch = spawnSync) {
+    // A failed process may already have sent paid work. Never overwrite the durable send marker.
+    await fs.writeFile(marker, JSON.stringify({version:1, hash:createHash("sha256").update(JSON.stringify(payload)).digest("hex")}) + "\n", {encoding:"utf8",flag:"wx"});
+    const result = launch(process.env.DICTALAB_PYTHON || "python", [path.join(__dirname, "ai-text.py")],
+        {input:JSON.stringify(payload),encoding:"utf8",maxBuffer:1000000,windowsHide:true});
+    if (result.error || result.status !== 0) throw new Error("Text generation failed or outcome unknown; inspect the send marker before resuming.");
+    return JSON.parse(result.stdout);
+}
 const SAMPLE_RATE = 24000;
 const BYTES_PER_SECOND = SAMPLE_RATE * 2;
 const topics = [
@@ -171,7 +181,6 @@ async function main() {
     const root = path.resolve(output), manifestPath = path.join(root, "manifest.json");
     await fs.mkdir(root, {recursive: true});
     if (mode === "generate") {
-        assert(process.env.GEMINI_API_KEY, "Missing Gemini key");
         try { await fs.access(manifestPath); throw new Error("Manifest already exists; review/resume it instead"); }
         catch (error) { if (error.code !== "ENOENT") throw error; }
         const model = process.env.DICTALAB_CONVERSATION_MODEL || "gemini-3.5-flash-lite";
@@ -185,10 +194,8 @@ async function main() {
                 try { body = JSON.parse(await fs.readFile(cache,"utf8")); }
                 catch (error) {
                     if (error.code !== "ENOENT") throw error;
-                    body = JSON.parse((await request(process.env.GEMINI_URL || "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-                        process.env.GEMINI_API_KEY, {model, temperature:0, max_tokens:2200,
-                            response_format:{type:"json_object"},
-                            messages:[{role:"system",content:instruction},{role:"user",content:context}]})).toString("utf8"));
+                    body = await textRequest({model, temperature:0, max_tokens:2200, purpose:"offline_dictation",
+                        messages:[{role:"system",content:instruction},{role:"user",content:context}]}, cache + ".sent");
                     await fs.writeFile(cache, JSON.stringify(body,null,2)+"\n", "utf8");
                 }
                 const content = body.choices?.[0]?.message?.content;
@@ -259,5 +266,5 @@ async function main() {
     console.log("REVIEW_REQUIRED: verify audio before SQL import/publication");
 }
 
-module.exports = {words, request, readWave, combine};
+module.exports = {words, request, textRequest, readWave, combine};
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

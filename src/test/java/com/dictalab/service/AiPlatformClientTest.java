@@ -50,6 +50,32 @@ class AiPlatformClientTest {
     }
     @AfterEach void cleanup() { client.stopShadows(); server.stop(0); }
 
+    @Test void typedTextUsesV2AndVerifiesPurposeModelAndRequestIdentity() {
+        var reported = new java.util.concurrent.atomic.AtomicReference<>("qwen3.5:9b");
+        server.createContext("/v2/text/completions", exchange -> {
+            calls.incrementAndGet();
+            assertThat(exchange.getRequestHeaders().getFirst("X-Service-Token")).isEqualTo("s".repeat(40));
+            var body = json.readTree(exchange.getRequestBody().readAllBytes());
+            assertThat(body.path("purpose").asText()).isEqualTo("conversation_grade");
+            assertThat(body.path("maxOutputTokens").asInt()).isEqualTo(240);
+            assertThat(body.path("schema").path("type").asText()).isEqualTo("object");
+            byte[] bytes = json.writeValueAsBytes(Map.of("schemaVersion", "2", "requestId", body.path("requestId").asText(),
+                "provider", "ollama", "model", reported.get(), "task", Map.of("ok", true), "fallbacks", List.of()));
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (var out = exchange.getResponseBody()) { out.write(bytes); }
+        });
+        var remote = new AiPlatformClient(json, new AiPlatformProperties("http://127.0.0.1:" + server.getAddress().getPort(),
+            "s".repeat(40), "ollama", 5, "legacy", "legacy", "legacy", Set.of()), new SimpleMeterRegistry());
+        var call = new AiTextService.Request(UUID.randomUUID(), "conversation_grade", "default", "qwen3.5:9b",
+            List.of(new AiTextService.Message("user", "Synthetic evidence")), json.createObjectNode().put("type", "object"),
+            "json_object", 0.0, 240, java.time.Duration.ofSeconds(2), 8192, null);
+        assertThat(remote.completeText(call).value().path("ok").asBoolean()).isTrue();
+        assertThat(calls.get()).isEqualTo(1);
+        reported.set("unexpected-model");
+        assertThatThrownBy(() -> remote.completeText(call)).isInstanceOf(IllegalStateException.class).hasMessageContaining("provenance");
+        assertThat(calls.get()).isEqualTo(2);
+    }
+
     @Test void scenarioEvaluationUsesAuthenticatedBoundedTransportAndNeverRetriesRejectedPost() {
         var remote = new AiPlatformClient(json, new AiPlatformProperties("http://127.0.0.1:" + server.getAddress().getPort(),
                 "t".repeat(40), "gemini", 5, "legacy", "legacy", "legacy", Set.of()), new SimpleMeterRegistry());

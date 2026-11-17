@@ -131,7 +131,8 @@ class QuotaStore:
             return [1, 0]
 
     def select(self, model, tokens, excluded=(), preferred_project=None):
-        model = model.removeprefix("models/")
+        from .providers import get_provider
+        model = get_provider(getattr(self.settings, "quota_platform", "gemini")).normalize_model(model)
         sources = [p for p in self.settings.enabled_gemini_sources if p.model == model and p.id not in excluded]
         if not sources:
             raise QuotaUnavailable(60)

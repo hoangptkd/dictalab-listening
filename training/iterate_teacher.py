@@ -31,6 +31,7 @@ from training.semantic_rubric import CHECKS, VERSION_V3, decision, rules_for, se
 from app.config import cloud_model_id_matches
 from app.gemini_pool import QuotaUnavailable, quota_store
 from app.model_gateway import ModelGateway
+from app.providers.base import GenerationOptions
 from training import web_judge_accounts as web_accounts
 
 
@@ -672,7 +673,7 @@ async def _judge_web_one(path: Path, manifest: dict, case: dict, wire_id: str,
             path, folder, stem, body, manifest["judge"]["accounts"])
     else:
         async with httpx.AsyncClient(follow_redirects=False, trust_env=False, timeout=240) as client:
-            response = await client.post(url, json=body)
+            response = await ModelGateway.web_evaluation(client, url, body)
             envelope = gen.strict_json(response.text)
     gen.write_json(envelope_path, envelope)
     response.raise_for_status()
@@ -1049,9 +1050,8 @@ async def _teacher_one(path: Path, manifest: dict, entry: dict, group: dict,
                 {"role": "system", "content": gen.teacher_batch_system(artifact)},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
                 full_schema, time.monotonic() + run_settings.timeout_seconds, "teacher_batch",
-                deepseek_thinking=teacher_provider == "deepseek" and thinking_mode == "enabled",
-                **({"deepseek_cache_prefix": True} if cache_prefix else {}),
-                **({"deepseek_reasoning_effort": reasoning_effort} if reasoning_effort is not None else {}))
+                options=GenerationOptions(reasoning=teacher_provider == "deepseek" and thinking_mode == "enabled",
+                    cache_stable_prefix=cache_prefix, reasoning_effort=reasoning_effort))
         row["teacherSourceId"] = gateway.last_source_id
         if (provider != teacher_provider or gateway.last_model != manifest["teacher"]["model"] or
                 gateway.last_source_id not in manifest["teacher"]["sourceIds"]):

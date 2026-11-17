@@ -365,3 +365,10 @@ Dừng consumer, khôi phục backup DB vào môi trường kiểm tra trước.
 không in plaintext ra terminal. Không đổi lại `env` khi thiếu bộ cấu hình cũ đã xác minh.
 Khôi phục toàn DB cần cửa sổ bảo trì và kiểm tra dữ liệu phát sinh sau backup; không tự động
 down migration hoặc xóa bảng registry.
+# Provider extension
+
+The original provider tables and encryption format remain compatible. New provider
+IDs use an additive forward CHECK upgrade; private registry SQL 001 and management
+SQL 002 are unchanged. The explicit owner command, ledger compatibility and
+rollback boundary are documented in [shared AI text](ai-text.md#registry-schema-compatibility).
+Do not apply the upgrade using a runtime account or a personal database during tests.

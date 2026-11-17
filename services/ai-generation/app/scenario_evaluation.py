@@ -29,7 +29,8 @@ def digest(value):
 
 
 def build_hash():
-    sources = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(Path(__file__).parent.iterdir())
+    sources = {p.relative_to(Path(__file__).parent).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+               for p in sorted(Path(__file__).parent.rglob("*"))
                if p.suffix in (".py", ".json", ".lua", ".gz")}
     sources["dependencies"] = {name: version(name) for name in ("pydantic", "httpx", "fastapi")}
     sources["python"] = list(sys.version_info[:3])
@@ -57,6 +58,8 @@ def catalog(settings):
                "fallbackModels": selected.gemini_fallback_models, "temperature": 0,
                "sourcePolicy": "existing-configured-pool", "transport": "scenario-python",
                "pool": [{"id": s.id, "model": s.model, "enabled": s.enabled} for s in selected.sources_for(selected.selected_provider)]}
+    if selected.model_profiles:
+        runtime["modelProfiles"] = selected.model_profiles
     return {"backendHash": LOADED_BUILD, "runtime": runtime, "releases": [
         {"id": name, "promptVersion": release.PROMPT_VERSION, "promptHash": a.prompt_hash(release),
          "instructions": release.INSTRUCTIONS, "outputTokens": release.OUTPUT_TOKENS,

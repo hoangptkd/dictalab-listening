@@ -38,7 +38,7 @@ public class CoachService {
     private final ObjectMapper json;
     private final CoachAnalysis analysis;
     private final TranscriptTokenizer tokenizer;
-    private final GeminiClient client;
+    private final AiTextService client;
     private final CoachProperties config;
     private final CoachLocalClient local;
     private final AiUsageBudget budget;
@@ -51,7 +51,7 @@ public class CoachService {
     void configurePlatform(AiPlatformClient platform) { this.platform = platform; }
 
     public CoachService(HistoryService history, JdbcTemplate db, ObjectMapper json, CoachAnalysis analysis,
-                        TranscriptTokenizer tokenizer, GeminiClient client, CoachProperties config,
+                        TranscriptTokenizer tokenizer, AiTextService client, CoachProperties config,
                         org.springframework.beans.factory.ObjectProvider<AiBackgroundJobs> jobs, AiUsageBudget budget,
                         CoachLocalClient local) {
         this.history = history;
@@ -179,15 +179,16 @@ public class CoachService {
                                     CoachLocalClient.PROMPT_VERSION, CoachLocalClient.SCHEMA_VERSION));
                 } else {
                     budget.reserve(userId,false);
-                    interpreted = analysis.interpret(client.completeJson(INSTRUCTION, json.writeValueAsString(evidence)), selected, progress)
-                            .withGeneration(new CoachAnalysis.Generation(platform != null && platform.local() ? "ollama" : "gemini",
-                                    client.model(), "COACH_LEGACY_V1", "REPORT_V1"));
+                    var completed = client.completeFor("coach_report", INSTRUCTION, json.writeValueAsString(evidence));
+                    interpreted = analysis.interpret(completed.value(), selected, progress)
+                            .withGeneration(new CoachAnalysis.Generation(completed.provider(),
+                                    completed.model(), "COACH_LEGACY_V1", "REPORT_V1"));
                 }
                 if (background && platform != null && !platformRoute)
                     platform.compare("coach", userId, "coach/" + sessionId, platformInput, () -> reservePlatform(null));
             } catch (RuntimeException exception) {
                 org.slf4j.LoggerFactory.getLogger(CoachService.class).warn("Coach generation failed, reason={}, errorType={}, errorId={}",
-                        GeminiClient.reason(exception),exception.getClass().getSimpleName(),UUID.randomUUID());
+                        AiTextService.reason(exception),exception.getClass().getSimpleName(),UUID.randomUUID());
                 if (background && exception instanceof ProviderGuard.Unavailable unavailable && unavailable.retrySafe()) throw unavailable;
                 // No raw response/transcript in logs; failures never prevent completion or review.
                 return analysis.baseline(candidates, progress, true, "UNAVAILABLE");

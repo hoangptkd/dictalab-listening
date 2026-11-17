@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import csv
 import json
+import httpx
 import re
 from io import BytesIO
 from types import SimpleNamespace
@@ -238,7 +239,7 @@ def test_teacher_and_judge_share_quota_but_use_separate_output_budgets(tmp_path,
     client = object.__new__(Gemini)
     client.output, client.key = tmp_path, "test-only"
     envelope = {"choices": [{"finish_reason": "stop", "message": {"content": '{"items":[]}'}}]}
-    client.opener = SimpleNamespace(open=lambda *a, **kw: BytesIO(json.dumps(envelope).encode()))
+    client.transport = httpx.MockTransport(lambda request: httpx.Response(200, json=envelope))
     monkeypatch.setattr("training.generate_teacher_data.time.sleep", lambda _: None)
     assert TEACHER == JUDGE
     client.call(TEACHER, "author", {}, "teacher-first")
@@ -261,7 +262,7 @@ def test_malformed_unicode_target_is_preserved_and_never_repaired_or_retried(tmp
     client.output, client.key = tmp_path, "test-only"
     malformed = r'{"items": [{"textVi": "bad \u00dt"}]}'
     envelope = {"choices": [{"finish_reason": "stop", "message": {"content": malformed}}]}
-    client.opener = SimpleNamespace(open=lambda *a, **kw: BytesIO(json.dumps(envelope).encode()))
+    client.transport = httpx.MockTransport(lambda request: httpx.Response(200, json=envelope))
     with pytest.raises(DatasetError, match="invalid target JSON"):
         client.call(TEACHER, "author", {}, "teacher-bad")
     saved = json.loads((tmp_path / "teacher-bad.envelope.json").read_text())
@@ -310,7 +311,7 @@ def test_gemini_schema_subset_does_not_remove_local_production_constraints(tmp_p
     client = object.__new__(Gemini)
     client.output, client.key = tmp_path, "test-only"
     envelope = {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(result)}}]}
-    client.opener = SimpleNamespace(open=lambda *a, **kw: BytesIO(json.dumps(envelope).encode()))
+    client.transport = httpx.MockTransport(lambda request: httpx.Response(200, json=envelope))
     with pytest.raises(DatasetError, match="response schema failed"):
         client.call(TEACHER, "author", {}, "teacher-overlength", schema=schema)
     assert not (tmp_path / "teacher-overlength.response.json").exists()

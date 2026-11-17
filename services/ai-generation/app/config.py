@@ -6,7 +6,7 @@ import re
 from urllib.parse import urlsplit
 from .tts import ScenarioTtsRecipe
 
-CLOUD_PROVIDERS = ("gemini", "deepseek", "openai_compatible")
+from .providers import CLOUD_PROVIDERS, get_provider
 
 
 class GeminiSource(BaseModel):
@@ -28,9 +28,9 @@ class GeminiSource(BaseModel):
     def valid_source(self):
         if self.platform not in CLOUD_PROVIDERS:
             raise ValueError("unsupported cloud platform")
-        self.model = self.model.removeprefix("models/")
+        self.model = get_provider(self.platform).normalize_model(self.model)
         uri = urlsplit(self.url)
-        if (not re.fullmatch(r"[a-zA-Z0-9_.-]{1,100}", self.model) or
+        if (not re.fullmatch(r"[a-zA-Z0-9_.:/-]{1,100}", self.model) or
                 any(ord(c) < 33 or ord(c) > 126 for c in self.api_key)):
             raise ValueError("invalid Gemini model or key")
         if (not uri.hostname or uri.username or uri.password or uri.query or uri.fragment or
@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     provider_telemetry_database_url: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_TELEMETRY_DATABASE_URL")
     registry_ownership: str = "legacy"
     cloud_providers: list[GeminiSource] = Field(default_factory=list, repr=False)
+    model_profiles: dict[str, dict] = Field(default_factory=dict)
     registry_pools: dict = Field(default_factory=dict, repr=False, exclude=True)
     gemini_providers: list[GeminiSource] = Field(default_factory=list, repr=False,
         validation_alias=AliasChoices("GEMINI_PROVIDERS_JSON", "DICTALAB_AI_GEMINI_PROVIDERS"))
@@ -205,8 +206,13 @@ class Settings(BaseSettings):
             raise ValueError("Gemini quota requires an enabled provider")
         if self.production_mode and self.gemini_quota_enabled and self.gemini_quota_backend != "redis":
             raise ValueError("production Gemini quota requires Redis")
-        if self.primary_provider not in ("auto", "ollama", *CLOUD_PROVIDERS):
+        if self.primary_provider != "auto" and self.primary_provider not in ("ollama", *CLOUD_PROVIDERS):
             raise ValueError("unsupported primary_provider")
+        for identity, profile in self.model_profiles.items():
+            platform, separator, model = identity.partition("/")
+            if not separator or platform not in CLOUD_PROVIDERS or not re.fullmatch(r"[a-zA-Z0-9_.:/-]{1,128}", model):
+                raise ValueError("invalid model capability identity")
+            get_provider(platform).adapter.validate_model_profile(profile)
         if self.selected_provider in CLOUD_PROVIDERS and self.ai_provider_config_source == "database" and self.selected_provider not in self.registry_pools:
             raise ValueError("selected platform has no database pool")
         if self.selected_provider != "gemini" and self.selected_provider in CLOUD_PROVIDERS and self.ai_provider_config_source != "database":

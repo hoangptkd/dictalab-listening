@@ -18,7 +18,7 @@ from app.providers.base import ProviderHttpError
 def settings(n=3, **updates):
     sources = [dict(id=f"s{i}", projectId=f"test-project-{i}", apiKey=f"fake-{i}",
         model="gemini-3.5-flash-lite", rpmLimit=15, operatingRpm=13, rpdLimit=100,
-        url="https://example.test/v1/chat/completions", enabled=True) for i in range(n)]
+        url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", enabled=True) for i in range(n)]
     return Settings(**(dict(primary_provider="gemini", gemini_quota_enabled=True, operational_limits_enabled=True,
         gemini_quota_backend="memory", gemini_providers=sources,
         gemini_global_rpm_limit=39) | updates))
@@ -148,7 +148,8 @@ def test_pool_readiness_checks_every_source_and_requested_model(monkeypatch, mis
     monkeypatch.setattr(main, "quota_store", lambda _: QuotaStore(cfg))
     calls = []
 
-    async def models(url, headers):
+    async def models(url, headers, timeout):
+        assert timeout == 3
         index = int(headers["Authorization"].rsplit("-", 1)[1])
         calls.append(index)
         return httpx.Response(200, json={"data": [] if index == missing_source else [{"id": cfg.gemini_providers[index].model}]},
@@ -171,32 +172,32 @@ def test_invalid_configuration_and_secret_redaction():
     assert retry_seconds("invalid") == 60
 
 
-def test_teacher_pool_keeps_approved_model_and_records_source_without_legacy_key(tmp_path):
+def test_teacher_pool_keeps_approved_model_and_records_source_without_legacy_key(tmp_path, monkeypatch):
     from io import BytesIO
     from types import SimpleNamespace
     from training.generate_teacher_data import Gemini, TEACHER
     client = object.__new__(Gemini)
     client.output, client.key = tmp_path, None
     calls, reports = [], []
-    source = SimpleNamespace(id="source-b", api_key="test-pool-key", url="https://example.test/chat")
-    def select(model, tokens):
-        assert model == TEACHER and tokens > 0
-        return source
-    client.pool = SimpleNamespace(select=select, report=lambda *args: reports.append(args))
-    def send(request, **kwargs):
+    client.settings = settings(n=1)
+    source = client.settings.gemini_providers[0]
+    store = QuotaStore(client.settings)
+    monkeypatch.setattr("app.model_gateway.quota_store", lambda _: store)
+    monkeypatch.setattr(store, "report", lambda *args: reports.append(args))
+    def send(request):
         calls.append(request)
-        assert request.get_header("Authorization") == "Bearer test-pool-key"
-        return BytesIO(json.dumps({"choices":[{"finish_reason":"stop", "message":{"content":'{"items":[]}'}}]}).encode())
-    client.opener = SimpleNamespace(open=send)
+        assert request.headers["Authorization"] == "Bearer " + source.api_key
+        return httpx.Response(200, json={"choices":[{"finish_reason":"stop", "message":{"content":'{"items":[]}'}}]})
+    client.transport = httpx.MockTransport(send)
     client.call(TEACHER, "author", {}, "teacher-pool")
     assert len(calls) == 1 and reports == [(source, "success")]
-    assert json.loads(calls[0].data)["model"] == TEACHER
+    assert json.loads(calls[0].content)["model"] == TEACHER
     saved = json.loads((tmp_path / "teacher-pool.response.json").read_text())
-    assert saved["sourceId"] == "source-b"
-    assert "test-pool-key" not in "".join(p.read_text() for p in tmp_path.iterdir())
+    assert saved["sourceId"] == source.id
+    assert source.api_key not in "".join(p.read_text() for p in tmp_path.iterdir())
 
 
-def test_teacher_pool_admission_failure_writes_no_request_checkpoint(tmp_path):
+def test_teacher_pool_admission_failure_writes_no_request_checkpoint(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from training.generate_teacher_data import Gemini, TEACHER
     from training.prepare_dataset import DatasetError
@@ -204,7 +205,8 @@ def test_teacher_pool_admission_failure_writes_no_request_checkpoint(tmp_path):
     client.output, client.key = tmp_path, None
     def reject(*args):
         raise QuotaUnavailable(60)
-    client.pool = SimpleNamespace(select=reject)
+    client.settings = settings(n=1)
+    monkeypatch.setattr("app.model_gateway.quota_store", lambda _: SimpleNamespace(select=reject))
     with pytest.raises(DatasetError, match="no request sent"):
         client.call(TEACHER, "author", {}, "teacher-pool")
     assert not list(tmp_path.iterdir())

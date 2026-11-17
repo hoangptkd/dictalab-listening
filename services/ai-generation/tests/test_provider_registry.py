@@ -1,3 +1,4 @@
+from app.providers.base import GenerationOptions
 import base64
 import json
 import time
@@ -117,8 +118,7 @@ async def test_deepseek_wire_and_no_cross_platform_fallback(thinking, effort, ca
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         gateway = ModelGateway(cfg,client)
         result,platform = await gateway.complete([{"role":"system", "content":"Stable instructions"}],
-            {"type":"object"},time.monotonic()+10,"check", deepseek_thinking=thinking,
-            deepseek_reasoning_effort=effort, deepseek_cache_prefix=cache_prefix)
+            {"type":"object"},time.monotonic()+10,"check", options=GenerationOptions(thinking, effort, cache_prefix))
         assert result == {"ok":True} and platform == "deepseek"
         with pytest.raises(QuotaUnavailable):
             await gateway.complete([], {"type":"object"},time.monotonic()+10,"check")
@@ -132,7 +132,7 @@ async def test_invalid_reasoning_effort_never_sends(thinking, effort):
             lambda request: pytest.fail("invalid effort must not send"))) as client:
         with pytest.raises(ValueError, match="reasoning effort"):
             await ModelGateway(registry_settings(), client).complete([], {}, time.monotonic()+10, "check",
-                deepseek_thinking=thinking, deepseek_reasoning_effort=effort)
+                options=GenerationOptions(thinking, effort))
 
 
 @pytest.mark.asyncio
@@ -142,7 +142,7 @@ async def test_invalid_cache_opt_in_never_sends(platform, cache_prefix):
             lambda request: pytest.fail("invalid cache opt-in must not send"))) as client:
         with pytest.raises(ValueError, match="cache prefix"):
             await ModelGateway(registry_settings(platform), client).complete([], {}, time.monotonic()+10,
-                "check", deepseek_cache_prefix=cache_prefix)
+                "check", options=GenerationOptions(cache_stable_prefix=cache_prefix))
 
 
 @pytest.mark.asyncio
@@ -151,7 +151,7 @@ async def test_thinking_opt_in_cannot_silently_use_another_provider():
     async with httpx.AsyncClient(transport=httpx.MockTransport(
             lambda request: pytest.fail("invalid opt-in must not send a request"))) as client:
         with pytest.raises(ValueError, match="DeepSeek registry"):
-            await ModelGateway(cfg, client).complete([], {}, time.monotonic()+10, "check", deepseek_thinking=True)
+            await ModelGateway(cfg, client).complete([], {}, time.monotonic()+10, "check", options=GenerationOptions(reasoning=True))
 
 
 def test_database_mode_fails_closed_without_env_fallback():

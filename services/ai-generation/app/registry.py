@@ -53,6 +53,8 @@ def load_artifact(settings):
                 or artifact["metricReport"].get("gate", {}).get("releaseAllowed") is not True):
             raise RegistryError("production requires a pinned, approved artifact with a passing gate")
         if settings.production_mode:
+            if settings.model_profiles and artifact["generationConfig"].get("model_profiles") != settings.model_profiles:
+                raise RegistryError("model capabilities differ from evaluated artifact")
             for name, expected in artifact["generationConfig"].items():
                 if getattr(settings, name) != expected:
                     raise RegistryError("production config differs from evaluated artifact")

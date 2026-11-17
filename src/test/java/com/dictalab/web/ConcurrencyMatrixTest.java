@@ -37,6 +37,11 @@ import static org.mockito.ArgumentMatchers.*;
 @SpringBootTest(properties={"spring.datasource.hikari.maximum-pool-size=30",
         "dictalab.listening.dispatch-delay-ms=600000","dictalab.email.dispatch-delay-ms=600000"})
 class ConcurrencyMatrixTest {
+    private static com.dictalab.service.AiTextService.Result textResult(tools.jackson.databind.JsonNode value) {
+        return new com.dictalab.service.AiTextService.Result(java.util.UUID.randomUUID(), value, "deepseek", "test-model",
+            "test-completed-model", null, null, java.util.List.of(), new tools.jackson.databind.ObjectMapper().createObjectNode());
+    }
+
     @Autowired JdbcTemplate db;
     @Autowired PlatformTransactionManager manager;
     @Autowired PracticeService practice;
@@ -47,7 +52,7 @@ class ConcurrencyMatrixTest {
     @Autowired ListeningComprehensionService listening;
     @Autowired ObjectMapper json;
     @MockitoSpyBean AppUserRepository users;
-    @MockitoBean GeminiClient ai;
+    @MockitoBean AiTextService ai;
     final int repeats=Integer.getInteger("dictalab.race-repeats",2);
     String caseName;
 
@@ -182,19 +187,19 @@ class ConcurrencyMatrixTest {
             String id=(String)listening.start(owner,unit,"ONE_PASS",true).get("sessionId");
             db.update("UPDATE listening_passes SET grading_status='PENDING',recall_text='fixture' WHERE session_id=?",id);
             var entered=new CountDownLatch(1);var release=new CountDownLatch(1);
-            when(ai.completeJson(anyString(),anyString())).thenAnswer(invocation->{entered.countDown();assertThat(release.await(15,TimeUnit.SECONDS)).isTrue();
+            when(ai.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString())).thenAnswer(invocation->{entered.countDown();assertThat(release.await(15,TimeUnit.SECONDS)).isTrue();
                 var result=json.createObjectNode();var facts=result.putArray("facts");
-                for(var fact:json.readTree(db.queryForObject("SELECT content_json FROM listening_units WHERE id=?",String.class,unit)).path("facts"))facts.addObject().put("factId",fact.path("id").asText()).put("status","CAPTURED");return result;});
+                for(var fact:json.readTree(db.queryForObject("SELECT content_json FROM listening_units WHERE id=?",String.class,unit)).path("facts"))facts.addObject().put("factId",fact.path("id").asText()).put("status","CAPTURED");return textResult(result);});
             var pool=Executors.newSingleThreadExecutor();
             try{
                 var worker=pool.submit(()->race(n,
                         "SELECT session_id FROM listening_passes WHERE session_id=? AND pass_number=1 FOR UPDATE",
                         new Object[]{id},()->{listening.gradeQueued(id,1,0,0);return 1;}));
                 assertThat(entered.await(10,TimeUnit.SECONDS)).isTrue();
-                verify(ai,times(1)).completeJson(anyString(),anyString());
+                verify(ai,times(1)).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString());
                 db.update("UPDATE listening_passes SET grading_lease='replacement' WHERE session_id=?",id);
                 release.countDown();assertThat(worker.get(20,TimeUnit.SECONDS)).hasSize(n);
-                verify(ai,times(1)).completeJson(anyString(),anyString());
+                verify(ai,times(1)).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString());
                 assertThat(db.queryForObject("SELECT recall_score FROM listening_passes WHERE session_id=?",Double.class,id)).isNull();
                 assertThat(db.queryForObject("SELECT grading_attempts FROM listening_passes WHERE session_id=?",Integer.class,id)).isEqualTo(1);
             }finally{release.countDown();pool.shutdownNow();assertThat(pool.awaitTermination(10,TimeUnit.SECONDS)).isTrue();reset(ai);db.update("UPDATE listening_passes SET grading_status='FAILED' WHERE session_id=?",id);}

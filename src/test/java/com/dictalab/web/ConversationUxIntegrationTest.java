@@ -24,7 +24,7 @@ class ConversationUxIntegrationTest {
     @Autowired AppUserRepository users;
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
-    @MockitoBean GeminiClient ai;
+    @MockitoBean AiTextService ai;
     @MockitoBean TtsService tts;
     @MockitoBean ConversationLocalClient local;
     @MockitoSpyBean AiUsageBudget budget;
@@ -48,8 +48,8 @@ class ConversationUxIntegrationTest {
             assertThat(english.split("\\s+").length).isBetween(8,55);
             review.path("facts").forEach(f -> assertThat(english).contains(f.path("evidenceEn").asText()));
         }
-        verify(ai,never()).completeJson(anyString(),anyString(),anyString());
-        verify(ai,never()).completeJson(anyString(),anyString(),anyString(),any());
+        verify(ai,never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString(),anyString());
+        verify(ai,never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString(),anyString(),any());
         verify(local,never()).completeTask(anyString(),anyString(),any());
     }
 
@@ -69,7 +69,7 @@ class ConversationUxIntegrationTest {
                 {"textVi":"Quầy phía trước","evidenceEn":"at the front desk"}]}
                 """);
         when(local.completeTask(eq("A1"),anyString(),any())).thenReturn(new ConversationLocalClient.GeneratedTask(generated));
-        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"),anyString(),anyString(),any()))
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
         var next=service.next(owner,id,1);
         assertThat(next.path("turnNumber").asInt()).isEqualTo(2);
@@ -81,14 +81,14 @@ class ConversationUxIntegrationTest {
         assertThat(storedTurn.path("prompt").path("facts").path(1).path("id").asText()).isEqualTo("f2");
         verify(budget).reserveLocal(owner);
         verify(local).completeTask(eq("A1"),anyString(),argThat(d -> d.toMillis()>60000 && d.toMillis()<=450000));
-        verify(ai,never()).completeJson(startsWith("You design"),anyString(),anyString(),any());
-        when(ai.completeJson(startsWith("Evaluate MEANING"),anyString())).thenReturn(json.readTree("""
+        verify(ai,never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"),anyString(),anyString(),any());
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Evaluate MEANING"),anyString())).thenReturn(json.readTree("""
                 {"facts":[{"factId":"f1","status":"CAPTURED","evidenceVi":"thẻ"},
                 {"factId":"f2","status":"CAPTURED","evidenceVi":"quầy phía trước"}],
                 "feedbackVi":"Bạn đã hiểu đúng.","clarificationVi":""}
                 """));
         service.answer(owner,id,2,UUID.randomUUID(),"Trả bằng thẻ tại quầy phía trước");
-        verify(ai).completeJson(startsWith("Evaluate MEANING"),anyString());
+        verify(ai).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Evaluate MEANING"),anyString());
     }
 
     @Test void b1InferenceEvidenceIsStoredReviewedAndGradedByMeaningWithoutLeakingIt() {
@@ -107,22 +107,22 @@ class ConversationUxIntegrationTest {
                   {"textVi":"Sổ ghi chép","evidenceEn":"your notebook","taskType":"direct_detail"}]}
                 """);
         when(local.completeTask(eq("B1"),anyString(),any())).thenReturn(new ConversationLocalClient.GeneratedTask(generated));
-        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"),anyString(),anyString(),any()))
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
         var next=service.next(owner,id,1);
         assertThat(next.toString()).doesNotContain("reasoningEvidence", "rationaleEn", "Có thể đi chuyến tàu trưa");
         assertThat(state(id).path("turns").path(1).path("prompt").path("facts").path(0).path("reasoningEvidence"))
                 .isEqualTo(generated.path("facts").path(0).path("reasoningEvidence"));
-        verify(ai).completeJson(contains("Never require the inferred conclusion to be stated verbatim"),
+        verify(ai).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), contains("Never require the inferred conclusion to be stated verbatim"),
                 contains("reasoningEvidence"),anyString(),any());
-        when(ai.completeJson(startsWith("Evaluate MEANING"),anyString())).thenReturn(json.readTree("""
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Evaluate MEANING"),anyString())).thenReturn(json.readTree("""
                 {"facts":[{"factId":"f1","status":"CAPTURED","evidenceVi":"chuyến trưa"},
                           {"factId":"f2","status":"CAPTURED","evidenceVi":"sổ ghi chép"}],
                  "feedbackVi":"Bạn đã hiểu đúng.","clarificationVi":""}
                 """));
         var answered=service.answer(owner,id,2,UUID.randomUUID(),"Anh ấy có thể đi chuyến trưa; tôi mang sổ ghi chép.");
         assertThat(answered.path("turns").path(1).path("capturedFacts").asInt()).isEqualTo(2);
-        verify(ai).completeJson(contains("never require the learner to repeat"),contains("reasoningEvidence"));
+        verify(ai).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), contains("never require the learner to repeat"),contains("reasoningEvidence"));
     }
 
     @Test void localLeaseAndBrowserBudgetFollowConfiguredHardwareTimeout() {
@@ -155,8 +155,8 @@ class ConversationUxIntegrationTest {
         assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?",String.class,id)).isNull();
         assertThatThrownBy(() -> service.next(owner,id,1)).isInstanceOf(ResponseStatusException.class);
         verify(local,times(2)).completeTask(anyString(),anyString(),any());
-        verify(ai,never()).completeJson(anyString(),anyString(),anyString(),any());
-        verify(ai,never()).completeJson(anyString(),anyString(),anyString());
+        verify(ai,never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString(),anyString(),any());
+        verify(ai,never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString(),anyString());
     }
 
     @Test void localInvalidTaskGetsOneRepairWithSameContextAndShrinkingDeadline() {
@@ -172,7 +172,7 @@ class ConversationUxIntegrationTest {
                 """);
         when(local.completeTask(anyString(),anyString(),any())).thenReturn(
                 new ConversationLocalClient.GeneratedTask(json.readTree("{}")), new ConversationLocalClient.GeneratedTask(valid));
-        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"),anyString(),anyString(),any()))
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
         assertThat(service.next(owner,id,1).path("turnNumber").asInt()).isEqualTo(2);
         var inputs=org.mockito.ArgumentCaptor.forClass(String.class);
@@ -270,14 +270,14 @@ class ConversationUxIntegrationTest {
                 "facts":[{"id":"f1","textVi":"Hộp giấy","evidenceEn":"a paper box"},
                 {"id":"f2","textVi":"Tại quầy","evidenceEn":"at the counter"}]}
                 """);
-        when(ai.completeJson(startsWith("You design"),anyString(),anyString(),any()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"),anyString(),anyString(),any()))
                 .thenReturn(previous.path("turns").path(0).path("prompt"),fresh);
-        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"),anyString(),anyString(),any()))
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
         service.next(owner,id,1);
         var inputs=org.mockito.ArgumentCaptor.forClass(String.class);
         var deadlines=org.mockito.ArgumentCaptor.forClass(java.time.Duration.class);
-        verify(ai,times(3)).completeJson(anyString(),inputs.capture(),anyString(),deadlines.capture());
+        verify(ai,times(3)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),inputs.capture(),anyString(),deadlines.capture());
         var context=generationContext(inputs.getAllValues().get(0));
         assertThat(context.path("recentPractice").size()).isEqualTo(1);
         assertThat(context.path("recentPractice").path(0).path("tasks").path(0).path("answersVi").size()).isEqualTo(2);
@@ -326,7 +326,7 @@ class ConversationUxIntegrationTest {
     }
     @Test void reportDoesNotChangeGradeAndCrossContextPracticeRetainsLevel() {
         String id=service.create(owner,"cafe","A1").path("id").asText(); service.next(owner,id,0);
-        when(ai.completeJson(anyString(),anyString())).thenReturn(json.readTree("""
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString())).thenReturn(json.readTree("""
                 {"facts":[{"factId":"f1","status":"CAPTURED","evidenceVi":"trà"},
                 {"factId":"f2","status":"CAPTURED","evidenceVi":"bánh"}],
                 "feedbackVi":"Bạn đã nắm hai ý.","clarificationVi":""}
@@ -362,8 +362,8 @@ class ConversationUxIntegrationTest {
         assertThat(service.get(owner,pending).path("turns").path(0).path("attempts").path(0).path("answerVi").asText())
                 .isEqualTo("Phòng tám");
         assertThatThrownBy(() -> service.help(owner,pending,1,"clarify")).isInstanceOf(AiUsageBudget.Rejected.class);
-        verify(ai,never()).completeJson(anyString(),anyString());
-        verify(ai,never()).completeJson(anyString(),anyString(),anyString(),any());
+        verify(ai,never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString());
+        verify(ai,never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString(),anyString(),any());
     }
     @Test void followupRepairsContradictionsWithoutLosingEstablishedContext() {
         String id=service.create(owner,"hotel","A2").path("id").asText(); service.next(owner,id,0);
@@ -382,15 +382,15 @@ class ConversationUxIntegrationTest {
                 "facts":[{"id":"f1","textVi":"Bảy giờ sáng","evidenceEn":"seven in the morning"},
                 {"id":"f2","textVi":"Quầy lễ tân","evidenceEn":"at the front desk"}]}
                 """);
-        when(ai.completeJson(startsWith("You design"),anyString(),anyString(),any())).thenReturn(contradictory,repaired);
-        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"),anyString(),anyString(),any())).thenReturn(contradictory,repaired);
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"),anyString(),anyString(),any()))
                 .thenReturn(json.readTree("{\"valid\":false,\"reason\":\"Breakfast moves from garden to balcony without an announced change.\"}"),
                         json.readTree("{\"valid\":true,\"reason\":\"\"}"));
         var result=service.next(owner,id,1);
         assertThat(result.path("turnNumber").asInt()).isEqualTo(2);
         var instruction=org.mockito.ArgumentCaptor.forClass(String.class);
         var inputs=org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(ai,times(4)).completeJson(instruction.capture(),inputs.capture(),anyString(),any());
+        verify(ai,times(4)).completeJsonFor(anyString(), instruction.capture(),inputs.capture(),anyString(),any());
         assertThat(instruction.getAllValues().get(0)).contains("Preserve established arrangements in history",
                 "must explicitly announce the change", "Old arrangements can remain background");
         var first=generationContext(inputs.getAllValues().get(0));
@@ -405,25 +405,25 @@ class ConversationUxIntegrationTest {
     @Test void generatedFollowupUsesStableSkillsAndOneSharedDeadline() {
         String id=service.create(owner,"cafe","A1").path("id").asText(); service.next(owner,id,0);
         service.help(owner,id,1,"review");
-        when(ai.completeJson(startsWith("You design"),anyString(),anyString(),any())).thenReturn(json.readTree("""
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"),anyString(),anyString(),any())).thenReturn(json.readTree("""
                 {"taskVi":"Nghe nơi gặp và giờ hẹn.","questionVi":"Gặp ở đâu và lúc mấy giờ?",
                 "skill":"Nắm thông tin cụ thể","utteranceEn":"Please meet me at the park at six tomorrow. Bring your notebook so we can plan the next activity.",
                 "translationVi":"Gặp tôi ở công viên lúc sáu giờ ngày mai. Mang sổ để lên kế hoạch hoạt động tiếp theo.",
                 "facts":[{"id":"f1","textVi":"Công viên","evidenceEn":"at the park"},
                 {"id":"f2","textVi":"Sáu giờ","evidenceEn":"at six"}]}
                 """));
-        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"),anyString(),anyString(),any()))
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
         var result=service.next(owner,id,1);
         assertThat(result.path("turns").path(1).path("skillId").asText()).isEqualTo("details");
         var deadline=org.mockito.ArgumentCaptor.forClass(java.time.Duration.class);
-        verify(ai,times(2)).completeJson(anyString(),anyString(),anyString(),deadline.capture());
+        verify(ai,times(2)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString(),anyString(),deadline.capture());
         assertThat(deadline.getAllValues()).allSatisfy(d -> {
             assertThat(d).isPositive(); assertThat(d).isLessThanOrEqualTo(java.time.Duration.ofSeconds(45));
         });
         assertThat(deadline.getAllValues().get(1)).isLessThan(deadline.getAllValues().get(0));
         service.play(owner,id,2,"original",false); service.play(owner,id,2,"original",false);
-        when(ai.completeJson(anyString(),anyString())).thenReturn(json.readTree("""
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString())).thenReturn(json.readTree("""
                 {"facts":[{"factId":"f1","status":"CAPTURED","evidenceVi":"công viên"},
                 {"factId":"f2","status":"CAPTURED","evidenceVi":"sáu giờ"}],
                 "feedbackVi":"Bạn đã nắm hai ý.","clarificationVi":""}

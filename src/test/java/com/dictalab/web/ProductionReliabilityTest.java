@@ -24,6 +24,11 @@ import static org.mockito.Mockito.*;
 
 @SpringBootTest(properties={"spring.mail.host=test.invalid","dictalab.mail-from=test@dictalab.local","dictalab.email.dispatch-delay-ms=600000","management.health.mail.enabled=false"})
 class ProductionReliabilityTest {
+    private static com.dictalab.service.AiTextService.Result textResult(tools.jackson.databind.JsonNode value) {
+        return new com.dictalab.service.AiTextService.Result(java.util.UUID.randomUUID(), value, "deepseek", "test-model",
+            "test-completed-model", null, null, java.util.List.of(), new tools.jackson.databind.ObjectMapper().createObjectNode());
+    }
+
     @Autowired JdbcTemplate db;
     @Autowired AppUserRepository users;
     @Autowired PracticeService practice;
@@ -33,7 +38,7 @@ class ProductionReliabilityTest {
     @Autowired EmailOutbox outbox;
     @Autowired PlatformTransactionManager manager;
     @Autowired ObjectMapper json;
-    @MockitoBean GeminiClient ai;
+    @MockitoBean AiTextService ai;
     @MockitoBean JavaMailSender mail;
 
     private AppUser user(){return users.saveAndFlush(new AppUser("reliability-"+UUID.randomUUID()+"@test.local","Learner","unused",Instant.now()));}
@@ -177,12 +182,12 @@ class ProductionReliabilityTest {
         var owner=user();Long unit=db.queryForObject("SELECT id FROM listening_units WHERE published=TRUE ORDER BY id LIMIT 1",Long.class);
         String id=(String)listening.start(owner.getId(),unit,"ONE_PASS",false).get("sessionId");
         db.update("UPDATE listening_passes SET grading_status='PENDING',recall_text='fixture' WHERE session_id=?",id);
-        when(ai.completeJson(anyString(),anyString())).thenAnswer(invocation->{
+        when(ai.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString())).thenAnswer(invocation->{
             db.update("UPDATE listening_passes SET grading_lease='new-owner',grading_attempts=2 WHERE session_id=?",id);
             var content=json.readTree(db.queryForObject("SELECT content_json FROM listening_units WHERE id=?",String.class,unit));
             var result=json.createObjectNode();var facts=result.putArray("facts");
             for(var fact:content.path("facts"))facts.addObject().put("factId",fact.path("id").asText()).put("status","CAPTURED");
-            return result;
+            return textResult(result);
         });
         listening.gradePending();
         assertThat(db.queryForObject("SELECT grading_status FROM listening_passes WHERE session_id=?",String.class,id)).isEqualTo("RUNNING");
@@ -194,12 +199,12 @@ class ProductionReliabilityTest {
         var owner=user();Long unit=db.queryForObject("SELECT id FROM listening_units WHERE published=TRUE ORDER BY id LIMIT 1",Long.class);
         String id=(String)listening.start(owner.getId(),unit,"ONE_PASS",false).get("sessionId");
         db.update("UPDATE listening_passes SET grading_status='PENDING',recall_text='fixture' WHERE session_id=?",id);
-        when(ai.completeJson(anyString(),anyString())).thenAnswer(invocation->{
+        when(ai.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString())).thenAnswer(invocation->{
             db.update("UPDATE listening_passes SET grading_started_at=? WHERE session_id=?",java.sql.Timestamp.from(Instant.now().minusSeconds(121)),id);
             var content=json.readTree(db.queryForObject("SELECT content_json FROM listening_units WHERE id=?",String.class,unit));
             var result=json.createObjectNode();var facts=result.putArray("facts");
             for(var fact:content.path("facts"))facts.addObject().put("factId",fact.path("id").asText()).put("status","CAPTURED");
-            return result;
+            return textResult(result);
         });
         try{
             listening.gradePending();
@@ -212,7 +217,7 @@ class ProductionReliabilityTest {
         var owner=user();Long unit=db.queryForObject("SELECT id FROM listening_units WHERE published=TRUE ORDER BY id LIMIT 1",Long.class);
         String id=(String)listening.start(owner.getId(),unit,"ONE_PASS",false).get("sessionId");
         db.update("UPDATE listening_passes SET grading_status='PENDING',recall_text='private-fixture' WHERE session_id=?",id);
-        when(ai.completeJson(anyString(),anyString())).thenThrow(new IllegalStateException("private-provider-response"));
+        when(ai.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString())).thenThrow(new IllegalStateException("private-provider-response"));
         var registry=io.micrometer.observation.ObservationRegistry.create();
         var errors=new java.util.ArrayList<Throwable>();
         registry.observationConfig().observationHandler(new io.micrometer.observation.ObservationHandler<io.micrometer.observation.Observation.Context>(){
@@ -239,7 +244,7 @@ class ProductionReliabilityTest {
         var owner=user();Long unit=db.queryForObject("SELECT id FROM listening_units WHERE published=TRUE ORDER BY id LIMIT 1",Long.class);
         String id=(String)listening.start(owner.getId(),unit,"ONE_PASS",false).get("sessionId");
         db.update("UPDATE listening_passes SET grading_status='PENDING',recall_text='fixture' WHERE session_id=?",id);
-        when(ai.completeJson(anyString(),anyString())).thenThrow(new ProviderGuard.Unavailable("rejected",120));
+        when(ai.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString())).thenThrow(new ProviderGuard.Unavailable("rejected",120));
         Instant before=Instant.now();
         try{
             listening.gradePending();listening.gradePending();
@@ -258,7 +263,7 @@ class ProductionReliabilityTest {
         assertThat(db.queryForObject("SELECT grading_status FROM listening_passes WHERE session_id=?",String.class,id)).isEqualTo("FAILED");
         assertThat(db.queryForObject("SELECT grading_last_error FROM listening_passes WHERE session_id=?",String.class,id)).isEqualTo("OUTCOME_UNKNOWN");
         assertThat(db.queryForObject("SELECT recall_text FROM listening_passes WHERE session_id=?",String.class,id)).isEqualTo("saved recall");
-        verify(ai,never()).completeJson(anyString(),anyString());
+        verify(ai,never()).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString());
     }
 
     @Test void historyIsBoundedAndStable(){

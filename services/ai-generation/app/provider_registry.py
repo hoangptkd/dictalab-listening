@@ -8,7 +8,7 @@ import psycopg
 from psycopg.rows import dict_row
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-PLATFORMS = ("gemini", "deepseek", "openai_compatible")
+from .providers import CLOUD_PROVIDERS as PLATFORMS, get_provider
 
 
 def connect(dsn, *, readonly=True):
@@ -44,12 +44,9 @@ def associated_data(row):
 
 
 def validate_endpoint(platform, endpoint):
-    uri = urlsplit(endpoint)
-    if not uri.path.endswith("/chat/completions"):
-        raise ValueError("Provider endpoint must be a full chat completions URL")
-    expected = {"gemini": "generativelanguage.googleapis.com", "deepseek": "api.deepseek.com"}.get(platform)
-    if expected and uri.hostname not in (expected, "localhost", "127.0.0.1", "::1"):
-        raise ValueError("Provider endpoint does not match platform")
+    if platform not in PLATFORMS:
+        raise ValueError("unsupported cloud platform")
+    get_provider(platform).validate_endpoint(endpoint)
 
 
 def cipher(master):
@@ -108,7 +105,7 @@ def load_registry(dsn, master, *, require_private=False):
 
 
 def save_pool(db, platform, model, rpm, rpd, enabled):
-    if platform not in PLATFORMS or not re.fullmatch(r"[a-zA-Z0-9_.-]{1,100}", model) or min(rpm, rpd) < 0:
+    if platform not in PLATFORMS or not re.fullmatch(r"[a-zA-Z0-9_.:/-]{1,100}", model) or min(rpm, rpd) < 0:
         raise ValueError("Invalid provider pool")
     db.execute("""INSERT INTO ai_provider_pools(platform,default_model,global_rpm_limit,global_rpd_limit,enabled)
         VALUES (%s,%s,%s,%s,%s) ON CONFLICT (platform) DO UPDATE SET

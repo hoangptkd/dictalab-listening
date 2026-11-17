@@ -5,7 +5,7 @@ import com.dictalab.repository.AppUserRepository;
 import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.TtsService;
 import com.dictalab.service.ConversationService;
-import com.dictalab.service.GeminiClient;
+import com.dictalab.service.AiTextService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -40,7 +40,7 @@ class ConversationIntegrationTest {
     @Test void unrestrictedLegacySessionsContinuePastTwentyWithoutProviderCalls() {
         for(int i=0;i<20;i++) db.update("INSERT INTO ai_conversation_sessions(id,user_id,scenario,difficulty,state_json) VALUES (?,?,'cafe','A1','{}')",UUID.randomUUID().toString(),owner);
         assertThat(service.create(owner,"cafe","A1").path("id").asText()).isNotBlank();
-        verify(ai,never()).completeJson(anyString(),anyString());
+        verify(ai,never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString());
     }
     @Test void recentSessionsReportCompletionWithoutExposingTheirStoredState() {
         var owner = users.saveAndFlush(new AppUser("recent-" + UUID.randomUUID() + "@test.local", "Recent", "unused", Instant.now()));
@@ -61,7 +61,7 @@ class ConversationIntegrationTest {
     @Autowired com.dictalab.config.ConversationProperties config;
     @Autowired com.dictalab.service.AiUsageBudget budget;
     @Autowired MockMvc mvc;
-    @MockitoBean GeminiClient ai;
+    @MockitoBean AiTextService ai;
     @MockitoBean TtsService tts;
     @MockitoBean com.dictalab.service.AiPlatformClient platform;
     long owner;
@@ -70,10 +70,10 @@ class ConversationIntegrationTest {
         owner = users.saveAndFlush(new AppUser("conversation-" + UUID.randomUUID() + "@test.local", "Learner", "unused", Instant.now())).getId();
         when(ai.configured()).thenReturn(true); when(tts.enabled()).thenReturn(true);
         when(tts.synthesize(anyString())).thenReturn(new byte[]{1,2,3});
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("ten"));
-        when(ai.completeJson(startsWith("Audit a listening task"), anyString(), anyString()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt("ten"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"), anyString(), anyString()))
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
-        when(ai.completeJson(startsWith("Audit a clarification"), anyString(), anyString()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a clarification"), anyString(), anyString()))
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
     }
     private JsonNode generationContext(String input) {
@@ -105,14 +105,14 @@ class ConversationIntegrationTest {
     @ValueSource(strings = {"At the cafe at ten tomorrow.", "Ở quán cà phê lúc mười giờ ngày mai.", "Ở cafe at ten tomorrow."})
     void gradingAcceptsEnglishVietnameseAndMixedRepliesWithoutTranslatingEvidence(String answer) {
         String id = start();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", answer));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", answer));
         var turn = service.answer(owner, id, 1, UUID.randomUUID(), answer).path("turns").path(0);
         assertThat(turn.path("done").asBoolean()).isTrue();
         var attempt = turn.path("attempts").path(0);
         assertThat(attempt.path("answerVi").asText()).isEqualTo(answer);
         var stored = json.readTree(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=? AND user_id=?", String.class, id, owner));
         assertThat(stored.path("turns").path(0).path("attempts").path(0).path("evaluation").path("facts").path(0).path("evidenceVi").asText()).isEqualTo(answer);
-        verify(ai).completeJson(argThat(instruction -> instruction.contains("English or Vietnamese")
+        verify(ai).completeJsonFor(eq("conversation_grade"), argThat(instruction -> instruction.contains("English or Vietnamese")
                 && instruction.contains("ORIGINAL")), argThat(body -> body.contains(answer)));
     }
 
@@ -137,7 +137,7 @@ class ConversationIntegrationTest {
         arm.set("task",prompt("demo"));
         arm.putArray("calls").addObject().put("purpose","content").put("provider","local_cpu")
                 .put("model","Qwen/Qwen3.5-4B").put("variant","full07");
-        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any(java.time.Duration.class)))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"),anyString(),anyString(),any(java.time.Duration.class)))
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
         String job=UUID.randomUUID().toString();
         var accepted=service.acceptModelDemo(owner,id,job,context,arm);
@@ -148,7 +148,7 @@ class ConversationIntegrationTest {
         assertThat(turn.path("prompt").has("utteranceEn")).isFalse();
         assertThat(turn.path("prompt").has("facts")).isFalse();
         assertThat(service.acceptModelDemo(owner,id,job,context,arm).path("turns").size()).isEqualTo(1);
-        verify(ai,times(1)).completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any(java.time.Duration.class));
+        verify(ai,times(1)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"),anyString(),anyString(),any(java.time.Duration.class));
         assertThatThrownBy(()->service.acceptModelDemo(owner+100000,id,job,context,arm)).isInstanceOf(ResponseStatusException.class);
     }
 
@@ -159,8 +159,8 @@ class ConversationIntegrationTest {
         arm.set("task",prompt("demo"));
         assertThatThrownBy(()->service.acceptModelDemo(owner,id,"stale",json.createObjectNode(),arm))
                 .isInstanceOf(ResponseStatusException.class);
-        verify(ai,never()).completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any(java.time.Duration.class));
-        when(ai.completeJson(startsWith("Audit a listening task"),anyString(),anyString(),any(java.time.Duration.class)))
+        verify(ai,never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"),anyString(),anyString(),any(java.time.Duration.class));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"),anyString(),anyString(),any(java.time.Duration.class)))
                 .thenReturn(json.readTree("{\"valid\":false,\"reason\":\"fixture mismatch\"}"));
         assertThatThrownBy(()->service.acceptModelDemo(owner,id,"rejected",context,arm)).isInstanceOf(IllegalStateException.class);
         assertThat(service.get(owner,id).path("turns")).isEmpty();
@@ -169,7 +169,7 @@ class ConversationIntegrationTest {
 
     private void reviewRemaining(String id, int from) {
         for (int number = from; number <= 4; number++) {
-            when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("review" + number));
+            when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt("review" + number));
             service.next(owner, id, number - 1);
             service.help(owner, id, number, "review");
         }
@@ -190,12 +190,12 @@ class ConversationIntegrationTest {
         assertThat(summary.path("independentFacts").asInt()).isZero();
         assertThat(summary.path("assistedFacts").asInt()).isZero();
         assertThat(summary.path("transferVi").asText()).contains("còn thiếu ý");
-        verify(ai, never()).completeJson(anyString(), anyString());
+        verify(ai, never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
     }
 
     @Test void exhaustedAnswersRevealGroundedReviewAndCapturedCounts() {
         String id = start();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "MISSED", "quán"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "MISSED", "quán"));
         for (int n = 1; n <= 3; n++) {
             var turn = service.answer(owner, id, 1, UUID.randomUUID(), "quán").path("turns").path(0);
             assertThat(turn.path("capturedFacts").asInt()).isEqualTo(1);
@@ -208,7 +208,7 @@ class ConversationIntegrationTest {
 
     @Test void pendingAnswerCannotBeSkippedByRevealingTheKey() {
         String id = start();
-        when(ai.completeJson(anyString(), anyString())).thenThrow(new IllegalStateException("offline"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenThrow(new IllegalStateException("offline"));
         assertThatThrownBy(() -> service.answer(owner, id, 1, UUID.randomUUID(), "quán")).isInstanceOf(ResponseStatusException.class);
         assertThatThrownBy(() -> service.help(owner, id, 1, "review")).isInstanceOf(ResponseStatusException.class);
         assertThat(service.get(owner, id).path("turns").path(0).has("review")).isFalse();
@@ -216,10 +216,10 @@ class ConversationIntegrationTest {
 
     @Test void supportIsAttributedToEachFactWhenItWasFirstCaptured() {
         String id = start();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "MISSED", "quán"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "MISSED", "quán"));
         service.answer(owner, id, 1, UUID.randomUUID(), "quán");
         service.help(owner, id, 1, "translation");
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
         service.answer(owner, id, 1, UUID.randomUUID(), "quán");
         reviewRemaining(id, 2);
         var summary = service.get(owner, id).path("summary");
@@ -230,12 +230,12 @@ class ConversationIntegrationTest {
 
     @Test void laterContradictionResetsIndependentEvidence() {
         String id = start();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "MISSED", "quán"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "MISSED", "quán"));
         service.answer(owner, id, 1, UUID.randomUUID(), "quán");
         service.help(owner, id, 1, "translation");
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("INCORRECT", "CAPTURED", "quán"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("INCORRECT", "CAPTURED", "quán"));
         service.answer(owner, id, 1, UUID.randomUUID(), "quán");
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
         service.answer(owner, id, 1, UUID.randomUUID(), "quán");
         reviewRemaining(id, 2);
         var summary = service.get(owner, id).path("summary");
@@ -252,7 +252,7 @@ class ConversationIntegrationTest {
         assertThat(service.get(owner, followup).path("practiceFocus").asText()).isEqualTo("Nghe giờ và địa điểm");
         service.next(owner, followup, 0);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(ai, times(5)).completeJson(startsWith("You design"), input.capture(), anyString());
+        verify(ai, times(5)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), input.capture(), anyString());
         var context = generationContext(input.getAllValues().get(4));
         assertThat(context.path("scenarioJourney").asText()).contains("Same customer and server");
         assertThat(context.path("practiceFocus").asText()).isEqualTo("Nghe giờ và địa điểm");
@@ -265,7 +265,7 @@ class ConversationIntegrationTest {
     @Test void previousAudioCanBeReplayedWithoutChangingCurrentTask() {
         String id = start();
         service.help(owner, id, 1, "review");
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("eleven"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt("eleven"));
         service.next(owner, id, 1);
         var result = service.play(owner, id, 1, "original", false);
         assertThat(result.path("turnNumber").asInt()).isEqualTo(2);
@@ -280,10 +280,10 @@ class ConversationIntegrationTest {
         assertThatThrownBy(() -> service.help(owner, id, 1, "finish")).isInstanceOf(ResponseStatusException.class);
         service.help(owner, id, 1, "review");
         for (int n = 2; n <= 3; n++) {
-            when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("step" + n));
+            when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt("step" + n));
             service.next(owner, id, n - 1); service.help(owner, id, n, "review");
         }
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenThrow(new IllegalStateException("offline"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenThrow(new IllegalStateException("offline"));
         assertThatThrownBy(() -> service.next(owner, id, 3)).isInstanceOf(ResponseStatusException.class);
         var result = service.help(owner, id, 3, "finish");
         assertThat(result.path("completed").asBoolean()).isTrue();
@@ -296,9 +296,9 @@ class ConversationIntegrationTest {
 
     @Test void changedFactsInClarificationAreNeverPublished() {
         String id = start();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(json.valueToTree(Map.of(
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(json.valueToTree(Map.of(
                 "utteranceEn", prompt("eleven").path("utteranceEn").asText(), "translationVi", "Đến quán khác.")));
-        when(ai.completeJson(startsWith("Audit a clarification"), anyString(), anyString()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a clarification"), anyString(), anyString()))
                 .thenReturn(json.readTree("{\"valid\":false,\"reason\":\"Changed final decision\"}"));
         assertThatThrownBy(() -> service.help(owner, id, 1, "clarify")).isInstanceOf(ResponseStatusException.class);
         assertThat(service.get(owner, id).path("turns").path(0).has("clarification")).isFalse();
@@ -310,22 +310,22 @@ class ConversationIntegrationTest {
         assertThatThrownBy(() -> service.create(owner, "cafe", "A1"))
                 .isInstanceOfSatisfying(ResponseStatusException.class, e -> assertThat(e.getStatusCode().value()).isEqualTo(503));
         assertThat(db.queryForObject("SELECT COUNT(*) FROM ai_conversation_sessions WHERE user_id=?", Integer.class, owner)).isZero();
-        verify(ai, never()).completeJson(anyString(), anyString(), anyString());
+        verify(ai, never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString(), anyString());
     }
 
     @Test void semanticReviewRejectsUnaskedDetailsAndRepairsBeforePublishing() {
         var invalid = (tools.jackson.databind.node.ObjectNode) prompt("ten");
         ((tools.jackson.databind.node.ObjectNode) invalid.path("facts").path(0))
                 .put("textVi", "Quán ten, mang theo vé");
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString()))
                 .thenReturn(invalid, prompt("eleven"));
-        when(ai.completeJson(startsWith("Audit a listening task"), anyString(), anyString()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"), anyString(), anyString()))
                 .thenReturn(json.readTree("{\"valid\":false,\"reason\":\"Ticket is not requested by questionVi\"}"),
                         json.readTree("{\"valid\":true,\"reason\":\"\"}"));
         String id = service.create(owner, "cafe", "A1").path("id").asText();
         assertThat(service.next(owner, id, 0).path("turnNumber").asInt()).isEqualTo(1);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), anyString());
+        verify(ai, times(2)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), input.capture(), anyString());
         JsonNode repair = generationContext(input.getAllValues().get(1));
         assertThat(repair.path("validationError").asText()).contains("Ticket is not requested");
         assertThat(repair.path("previousInvalidPrompt")).isEqualTo(invalid);
@@ -338,12 +338,12 @@ class ConversationIntegrationTest {
         for (JsonNode review : java.util.List.of(
                 json.readTree("{\"valid\":false,\"reason\":\"Question has no answer in utterance\"}"),
                 json.readTree("{\"valid\":\"true\",\"reason\":\"\"}"))) {
-            when(ai.completeJson(startsWith("Audit a listening task"), anyString(), anyString())).thenReturn(review);
+            when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"), anyString(), anyString())).thenReturn(review);
             assertThatThrownBy(() -> service.next(owner, id, 0)).isInstanceOf(ResponseStatusException.class);
             assertThat(service.get(owner, id).path("turnNumber").asInt()).isZero();
             assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?", String.class, id)).isNull();
         }
-        when(ai.completeJson(startsWith("Audit a listening task"), anyString(), anyString()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"), anyString(), anyString()))
                 .thenThrow(new IllegalStateException("offline"));
         assertThatThrownBy(() -> service.next(owner, id, 0)).isInstanceOf(ResponseStatusException.class);
         assertThat(service.get(owner, id).path("turnNumber").asInt()).isZero();
@@ -356,7 +356,7 @@ class ConversationIntegrationTest {
             org.springframework.boot.test.system.CapturedOutput output) {
         String id = service.create(owner, "cafe", "A1").path("id").asText();
         String instruction = operation.equals("next") ? "You design" : "Audit a listening task";
-        when(ai.completeJson(startsWith(instruction), anyString(), anyString()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith(instruction), anyString(), anyString()))
                 .thenThrow(new com.dictalab.service.ProviderGuard.Unavailable("PRIVATE_PROVIDER_FAILURE_MARKER", 30));
         assertThatThrownBy(() -> service.next(owner, id, 0))
                 .isInstanceOfSatisfying(ResponseStatusException.class, e -> assertThat(e.getStatusCode().value()).isEqualTo(503));
@@ -364,9 +364,9 @@ class ConversationIntegrationTest {
                 .doesNotContain("PRIVATE_PROVIDER_FAILURE_MARKER");
         assertThat(service.get(owner, id).path("turnNumber").asInt()).isZero();
         assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?", String.class, id)).isNull();
-        verify(ai, times(1)).completeJson(startsWith(instruction), anyString(), anyString());
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("ten"));
-        when(ai.completeJson(startsWith("Audit a listening task"), anyString(), anyString()))
+        verify(ai, times(1)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith(instruction), anyString(), anyString());
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt("ten"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"), anyString(), anyString()))
                 .thenReturn(json.readTree("{\"valid\":true,\"reason\":\"\"}"));
         assertThat(service.next(owner, id, 0).path("turnNumber").asInt()).isEqualTo(1);
         assertThat(service.next(owner, id, 0).path("turnNumber").asInt()).isEqualTo(1);
@@ -379,7 +379,7 @@ class ConversationIntegrationTest {
     void firstTaskValidationLogsFixedCodesWithoutProviderContent(String rule,
             org.springframework.boot.test.system.CapturedOutput output) {
         String id = service.create(owner, "cafe", "A1").path("id").asText();
-        when(ai.completeJson(startsWith("Audit a listening task"), anyString(), anyString()))
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"), anyString(), anyString()))
                 .thenReturn(json.readTree(rule.equals("TASK_MEANING")
                         ? "{\"valid\":false,\"reason\":\"PRIVATE_TASK_REVIEW_MARKER\"}"
                         : "{\"valid\":\"PRIVATE_TASK_REVIEW_MARKER\",\"reason\":\"\"}"));
@@ -391,15 +391,15 @@ class ConversationIntegrationTest {
 
     @Test void challengeAndPreciseMeaningRulesReachTheProvider() {
         String id = start();
-        verify(ai).completeJson(contains("avoid relative clauses and deliberately inserted distractors or self-corrections"), anyString(), anyString());
-        verify(ai).completeJson(contains("levelProfile: {minWords,maxWords}, authoritative word bounds"), anyString(), anyString());
-        verify(ai).completeJson(contains("A2: short connected sentences"), anyString(), anyString());
-        verify(ai).completeJson(contains("B1: connected familiar speech"), anyString(), anyString());
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("PARTIAL", "INCORRECT", "quán"));
+        verify(ai).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), contains("avoid relative clauses and deliberately inserted distractors or self-corrections"), anyString(), anyString());
+        verify(ai).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), contains("levelProfile: {minWords,maxWords}, authoritative word bounds"), anyString(), anyString());
+        verify(ai).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), contains("A2: short connected sentences"), anyString(), anyString());
+        verify(ai).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), contains("B1: connected familiar speech"), anyString(), anyString());
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("PARTIAL", "INCORRECT", "quán"));
         var result = service.answer(owner, id, 1, UUID.randomUUID(), "quán");
         assertThat(result.path("turns").path(0).path("done").asBoolean()).isFalse();
-        verify(ai).completeJson(contains("a relevant keyword alone does not prove"), anyString());
-        verify(ai).completeJson(contains("Contradictions in the latest reply"), anyString());
+        verify(ai).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), contains("a relevant keyword alone does not prove"), anyString());
+        verify(ai).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), contains("Contradictions in the latest reply"), anyString());
     }
 
     @Test void audioCleanupPreservesHistoryRecentAudioAndAllowsResumingOldSessions() {
@@ -442,12 +442,12 @@ class ConversationIntegrationTest {
         assertThat(service.catalog(owner).get("enabled")).isEqualTo(true);
         String id = start();
         String utterance = prompt("ten").path("utteranceEn").asText();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(json.valueToTree(Map.of(
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(json.valueToTree(Map.of(
                 "utteranceEn", utterance, "translationVi", "Đến quán ten vào giờ ten ngày mai, mang theo vé.")));
         service.help(owner, id, 1, "clarify");
         service.help(owner, id, 1, "clarify");
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(ai, times(1)).completeJson(contains("Preserve ALL facts exactly"), input.capture());
+        verify(ai, times(1)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), contains("Preserve ALL facts exactly"), input.capture());
         JsonNode context = json.readTree(input.getValue());
         assertThat(context.path("utteranceEn").asText()).isEqualTo(utterance);
         assertThat(context.path("facts").size()).isEqualTo(2);
@@ -464,19 +464,19 @@ class ConversationIntegrationTest {
             invalid.put("utteranceEn", "word ".repeat(words).trim());
             ((tools.jackson.databind.node.ObjectNode) invalid.path("facts").path(0)).put("evidenceEn", "word");
             ((tools.jackson.databind.node.ObjectNode) invalid.path("facts").path(1)).put("evidenceEn", "word word");
-            when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(invalid);
+            when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(invalid);
             assertThatThrownBy(() -> service.next(owner, id, 0)).isInstanceOf(ResponseStatusException.class);
             assertThat(service.get(owner, id).path("turnNumber").asInt()).isZero();
             assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?", String.class, id)).isNull();
         }
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("ten"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt("ten"));
         assertThat(service.next(owner, id, 0).path("turnNumber").asInt()).isEqualTo(1);
-        verify(ai, never()).completeJson(anyString(), anyString());
+        verify(ai, never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
     }
 
     @Test void invalidLegacyPrefetchIsReplacedRatherThanTrappingNextInRetryLoop() {
         String id = start();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
         service.answer(owner, id, 1, UUID.randomUUID(), "quán");
         var stored = (tools.jackson.databind.node.ObjectNode) json.readTree(db.queryForObject(
                 "SELECT state_json FROM ai_conversation_sessions WHERE id=?", String.class, id));
@@ -484,7 +484,7 @@ class ConversationIntegrationTest {
         legacy.put("utteranceEn", "A short legacy task.");
         stored.set("nextPrompt", legacy);
         db.update("UPDATE ai_conversation_sessions SET state_json=? WHERE id=?", stored.toString(), id);
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("twelve"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt("twelve"));
         assertThat(service.next(owner, id, 1).path("turnNumber").asInt()).isEqualTo(2);
         var saved = json.readTree(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=?", String.class, id));
         assertThat(saved.has("nextPrompt")).isFalse();
@@ -494,21 +494,21 @@ class ConversationIntegrationTest {
     @Test void invalidGenerationGetsOneRepairWithSameContextButNetworkFailuresAreNotRetried() {
         var invalid = (tools.jackson.databind.node.ObjectNode) prompt("ten");
         invalid.remove("skill");
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(invalid, prompt("eleven"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(invalid, prompt("eleven"));
         String id = service.create(owner, "cafe", "A1").path("id").asText();
         assertThat(service.next(owner, id, 0).path("turnNumber").asInt()).isEqualTo(1);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), eq("gemini-3.5-flash-lite"));
+        verify(ai, times(2)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), input.capture(), eq("gemini-3.5-flash-lite"));
         JsonNode first = generationContext(input.getAllValues().get(0)), repaired = generationContext(input.getAllValues().get(1));
         assertThat(repaired.path("scenario")).isEqualTo(first.path("scenario"));
         assertThat(repaired.path("turnNumber").asInt()).isEqualTo(1);
         assertThat(repaired.path("validationError").asText()).isEqualTo("Invalid JSON schema");
         assertThat(repaired.path("previousInvalidPrompt")).isEqualTo(invalid);
         clearInvocations(ai);
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenThrow(new IllegalStateException("offline"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenThrow(new IllegalStateException("offline"));
         String failedId = service.create(owner, "cafe", "A1").path("id").asText();
         assertThatThrownBy(() -> service.next(owner, failedId, 0)).isInstanceOf(ResponseStatusException.class);
-        verify(ai, times(1)).completeJson(startsWith("You design"), anyString(), anyString());
+        verify(ai, times(1)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString());
     }
 
     @Test void wordCountIncludesItsBoundsAndDuplicateFactsCannotPassAsIndependentDetails() {
@@ -517,13 +517,13 @@ class ConversationIntegrationTest {
             valid.put("utteranceEn", "first second " + "word ".repeat(words - 2).trim());
             ((tools.jackson.databind.node.ObjectNode) valid.path("facts").path(0)).put("evidenceEn", "first");
             ((tools.jackson.databind.node.ObjectNode) valid.path("facts").path(1)).put("evidenceEn", "second");
-            when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(valid);
+            when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(valid);
             String id = service.create(owner, "cafe", "A1").path("id").asText();
             assertThat(service.next(owner, id, 0).path("turnNumber").asInt()).isEqualTo(1);
         }
         var duplicate = (tools.jackson.databind.node.ObjectNode) prompt("ten");
         ((tools.jackson.databind.node.ObjectNode) duplicate.path("facts").path(1)).put("textVi", "Quán ten");
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(duplicate);
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(duplicate);
         String invalidId = service.create(owner, "cafe", "A1").path("id").asText();
         assertThatThrownBy(() -> service.next(owner, invalidId, 0)).isInstanceOf(ResponseStatusException.class);
         assertThat(service.get(owner, invalidId).path("turnNumber").asInt()).isZero();
@@ -531,40 +531,40 @@ class ConversationIntegrationTest {
 
     @Test void transferRejectsRepeatedFactsEvenWhenUtteranceIsReworded() {
         String id = start();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenThrow(new IllegalStateException("prefetch offline"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenThrow(new IllegalStateException("prefetch offline"));
         for (int n = 1; n <= 3; n++) {
             service.answer(owner, id, n, UUID.randomUUID(), "quán");
             if (n < 3) {
-                doReturn(prompt("time" + n)).when(ai).completeJson(startsWith("You design"), anyString(), anyString());
+                doReturn(prompt("time" + n)).when(ai).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString());
                 service.next(owner, id, n);
-                when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenThrow(new IllegalStateException("prefetch offline"));
+                when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenThrow(new IllegalStateException("prefetch offline"));
             }
         }
         var repeated = (tools.jackson.databind.node.ObjectNode) prompt("ten");
         repeated.put("utteranceEn", "Hello there. " + repeated.path("utteranceEn").asText());
-        doReturn(repeated).when(ai).completeJson(startsWith("You design"), anyString(), anyString());
+        doReturn(repeated).when(ai).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString());
         assertThatThrownBy(() -> service.next(owner, id, 3)).isInstanceOf(ResponseStatusException.class);
         assertThat(service.get(owner, id).path("turnNumber").asInt()).isEqualTo(3);
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("four"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt("four"));
         assertThat(service.next(owner, id, 3).path("turnNumber").asInt()).isEqualTo(4);
     }
 
     @Test void answerDoesNotCallGeneratorAndNextGenerationIncludesGradedHistory() {
         String id = start();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenThrow(new IllegalStateException("API offline"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenThrow(new IllegalStateException("API offline"));
         UUID request = UUID.randomUUID();
         var result = service.answer(owner, id, 1, request, "quán");
         assertThat(result.path("turns").path(0).path("done").asBoolean()).isTrue();
         assertThat(result.path("turns").path(0).path("attempts").path(0).has("evaluation")).isTrue();
         service.answer(owner, id, 1, request, "quán");
-        verify(ai, times(1)).completeJson(contains("Grade ONLY meanings explicitly asked"), anyString());
-        verify(ai, times(1)).completeJson(startsWith("You design"), anyString(), anyString());
-        doReturn(prompt("eleven")).when(ai).completeJson(startsWith("You design"), anyString(), anyString());
+        verify(ai, times(1)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), contains("Grade ONLY meanings explicitly asked"), anyString());
+        verify(ai, times(1)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString());
+        doReturn(prompt("eleven")).when(ai).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString());
         assertThat(service.next(owner, id, 1).path("turnNumber").asInt()).isEqualTo(2);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(ai, times(2)).completeJson(startsWith("You design"), input.capture(), eq("gemini-3.5-flash-lite"));
+        verify(ai, times(2)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), input.capture(), eq("gemini-3.5-flash-lite"));
         JsonNode history = generationContext(input.getAllValues().get(1)).path("history").path(0);
         assertThat(history.path("facts").size()).isEqualTo(2);
         assertThat(history.path("evaluation").path("facts").path(0).path("status").asText()).isEqualTo("CAPTURED");
@@ -600,17 +600,17 @@ class ConversationIntegrationTest {
 
     @Test void uncertaintyNeedsConfirmationAndParaphraseAdvancesExactlyOnce() {
         String id = start(); UUID uncertain = UUID.randomUUID();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("UNCERTAIN", "MISSED", ""));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("UNCERTAIN", "MISSED", ""));
         var incomplete = service.answer(owner, id, 1, uncertain, "Mình chưa chắc");
         assertThat(incomplete.path("turns").path(0).path("done").asBoolean()).isFalse();
         assertThat(incomplete.path("turns").path(0).path("attempts").path(0).path("evaluation").path("clarificationVi").asText()).isNotBlank();
         assertThatThrownBy(() -> service.next(owner, id, 1)).isInstanceOf(ResponseStatusException.class);
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán lúc mười giờ"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán lúc mười giờ"));
         UUID captured = UUID.randomUUID();
         assertThat(service.answer(owner, id, 1, captured, "Đến quán lúc mười giờ nhé").path("turns").path(0).path("done").asBoolean()).isTrue();
         service.answer(owner, id, 1, captured, "Đến quán lúc mười giờ nhé");
-        verify(ai, times(2)).completeJson(anyString(), anyString()); // Grading calls only; generation uses a model override.
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("eleven"));
+        verify(ai, times(2)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString()); // Grading calls only; generation uses a model override.
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt("eleven"));
         assertThat(service.next(owner, id, 1).path("turnNumber").asInt()).isEqualTo(2);
         assertThat(service.next(owner, id, 1).path("turnNumber").asInt()).isEqualTo(2);
         assertThatThrownBy(() -> service.answer(owner, id, 1, UUID.randomUUID(), "late answer")).isInstanceOf(ResponseStatusException.class);
@@ -618,22 +618,22 @@ class ConversationIntegrationTest {
 
     @Test void providerFailureKeepsSubmittedAnswerAndInvalidEvidenceCannotAwardCredit() {
         String id = start(); UUID request = UUID.randomUUID();
-        when(ai.completeJson(anyString(), anyString())).thenThrow(new IllegalStateException("offline"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenThrow(new IllegalStateException("offline"));
         assertThatThrownBy(() -> service.answer(owner, id, 1, request, "Mình nghe thấy quán")).isInstanceOf(ResponseStatusException.class);
         JsonNode stored = json.readTree(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=?", String.class, id));
         assertThat(stored.path("turns").path(0).path("attempts").path(0).path("answerVi").asText()).isEqualTo("Mình nghe thấy quán");
         assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?", String.class, id)).isNull();
-        doReturn(grade("CAPTURED", "CAPTURED", "invented evidence")).when(ai).completeJson(anyString(), anyString());
+        doReturn(grade("CAPTURED", "CAPTURED", "invented evidence")).when(ai).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
         assertThatThrownBy(() -> service.answer(owner, id, 1, request, "Mình nghe thấy quán")).isInstanceOf(ResponseStatusException.class);
         assertThat(service.get(owner, id).path("turns").path(0).path("done").asBoolean()).isFalse();
         var missingConfirmation = (tools.jackson.databind.node.ObjectNode) grade("PARTIAL", "MISSED", "quán");
         missingConfirmation.put("clarificationVi", "");
-        when(ai.completeJson(anyString(), anyString())).thenReturn(missingConfirmation);
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(missingConfirmation);
         assertThatThrownBy(() -> service.answer(owner, id, 1, request, "Mình nghe thấy quán"))
                 .isInstanceOfSatisfying(ResponseStatusException.class, e -> assertThat(e.getStatusCode().value()).isEqualTo(503));
         assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?", String.class, id)).isNull();
         assertThat(service.get(owner, id).path("turns").path(0).path("attempts").path(0).has("evaluation")).isFalse();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("PARTIAL", "MISSED", "quán"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("PARTIAL", "MISSED", "quán"));
         service.answer(owner, id, 1, request, "Mình nghe thấy quán");
         assertThat(service.get(owner, id).path("turns").path(0).path("attempts").size()).isEqualTo(1);
     }
@@ -656,7 +656,7 @@ class ConversationIntegrationTest {
             case "CONFIRMATION_MISSING" -> invalid.put("clarificationVi", "");
             default -> throw new AssertionError("Unknown test rule");
         }
-        when(ai.completeJson(anyString(), anyString())).thenReturn(invalid);
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(invalid);
         assertThatThrownBy(() -> service.answer(owner, id, 1, request, answer))
                 .isInstanceOfSatisfying(ResponseStatusException.class, e -> assertThat(e.getStatusCode().value()).isEqualTo(503));
         var stored = json.readTree(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=?", String.class, id));
@@ -665,7 +665,7 @@ class ConversationIntegrationTest {
         assertThat(attempts.path(0).path("answerVi").asText()).isEqualTo(answer);
         assertThat(attempts.path(0).has("evaluation")).isFalse();
         assertThat(db.queryForObject("SELECT lease_id FROM ai_conversation_sessions WHERE id=?", String.class, id)).isNull();
-        verify(ai, times(1)).completeJson(anyString(), anyString());
+        verify(ai, times(1)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
         assertThat(output.getOut()).contains("operation=grade", "validationRule=" + rule)
                 .doesNotContain(answer, "PRIVATE_INVENTED_EVIDENCE_MARKER", "privateUnexpectedField");
     }
@@ -674,22 +674,22 @@ class ConversationIntegrationTest {
     @org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
     void arbitraryProviderExceptionTextNeverBecomesAValidationRule(org.springframework.boot.test.system.CapturedOutput output) {
         String id = start();
-        when(ai.completeJson(anyString(), anyString())).thenThrow(new IllegalStateException("PRIVATE_PROVIDER_OUTPUT_MARKER"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenThrow(new IllegalStateException("PRIVATE_PROVIDER_OUTPUT_MARKER"));
         assertThatThrownBy(() -> service.answer(owner, id, 1, UUID.randomUUID(), "fixture"))
                 .isInstanceOf(ResponseStatusException.class);
         assertThat(output.getOut()).contains("validationRule=NONE").doesNotContain("PRIVATE_PROVIDER_OUTPUT_MARKER");
-        verify(ai, times(1)).completeJson(anyString(), anyString());
+        verify(ai, times(1)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
     }
 
     @Test void fourTasksEndWithNewTransferAndSupportIsSeparated() {
         String id = start();
         for (int n = 1; n <= 4; n++) {
             if (n == 2) service.help(owner, id, n, "translation");
-            when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
+            when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
             var result = service.answer(owner, id, n, UUID.randomUUID(), "quán");
             if (n < 4) {
                 assertThat(result.path("completed").asBoolean()).isFalse();
-                when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("time" + n));
+                when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt("time" + n));
                 service.next(owner, id, n);
             }
         }
@@ -701,13 +701,13 @@ class ConversationIntegrationTest {
         assertThat(result.path("summary").path("understoodVi").size()).isLessThanOrEqualTo(3);
         assertThat(result.path("summary").path("transferVi").asText()).contains("câu mới");
         assertThat(service.next(owner, id, 4).path("turnNumber").asInt()).isEqualTo(4);
-        verify(ai, times(4)).completeJson(anyString(), anyString());
+        verify(ai, times(4)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
     }
 
     @Test void concurrentAnswerCannotOverwriteLeaseAndNoDbLockSpansAi() throws Exception {
         String id = start(); var entered = new CountDownLatch(1); var finish = new CountDownLatch(1);
         UUID request = UUID.randomUUID();
-        when(ai.completeJson(anyString(), anyString())).thenAnswer(invocation -> {
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenAnswer(invocation -> {
             entered.countDown(); if (!finish.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("timeout");
             return grade("CAPTURED", "CAPTURED", "quán");
         });
@@ -728,7 +728,7 @@ class ConversationIntegrationTest {
         var finishProvider = new CountDownLatch(1);
         var staleRead = new CountDownLatch(1);
         var resultCommitted = new CountDownLatch(1);
-        when(ai.completeJson(anyString(), anyString())).thenAnswer(invocation -> {
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenAnswer(invocation -> {
             providerEntered.countDown();
             if (!finishProvider.await(10, TimeUnit.SECONDS)) throw new AssertionError("Provider timed out");
             return grade("CAPTURED", "CAPTURED", "quán");
@@ -762,7 +762,7 @@ class ConversationIntegrationTest {
                             failure -> assertThat(failure.getStatusCode().value()).isEqualTo(409));
             assertThat(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=?", String.class, id))
                     .isEqualTo(committed);
-            verify(ai, times(1)).completeJson(anyString(), anyString());
+            verify(ai, times(1)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
         } finally {
             finishProvider.countDown(); resultCommitted.countDown(); executor.shutdownNow();
             executor.awaitTermination(10, TimeUnit.SECONDS);
@@ -785,7 +785,7 @@ class ConversationIntegrationTest {
             var barrier=new CyclicBarrier(n);var entered=new CountDownLatch(1);
             var rejected=new CountDownLatch(n-1);var release=new CountDownLatch(1);
             clearInvocations(ai);
-            when(ai.completeJson(anyString(),anyString())).thenAnswer(invocation->{
+            when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString())).thenAnswer(invocation->{
                 entered.countDown();assertThat(release.await(15,TimeUnit.SECONDS)).isTrue();
                 return grade("CAPTURED","CAPTURED","fixture");
             });
@@ -801,7 +801,7 @@ class ConversationIntegrationTest {
                 }));
                 assertThat(entered.await(10,TimeUnit.SECONDS)).isTrue();
                 assertThat(rejected.await(10,TimeUnit.SECONDS)).as("All losers reached the live lease boundary").isTrue();
-                verify(ai,times(1)).completeJson(anyString(),anyString());
+                verify(ai,times(1)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString());
                 release.countDown();int winners=0;
                 for(var future:futures)if(future.get(15,TimeUnit.SECONDS))winners++;
                 assertThat(winners).isEqualTo(1);
@@ -809,7 +809,7 @@ class ConversationIntegrationTest {
                 var retries=new java.util.ArrayList<Future<JsonNode>>();
                 for(int i=0;i<n;i++)retries.add(pool.submit(()->service.answer(owner,id,1,request,"fixture")));
                 for(var retry:retries)assertThat(retry.get(15,TimeUnit.SECONDS)).isEqualTo(committed);
-                verify(ai,times(1)).completeJson(anyString(),anyString());
+                verify(ai,times(1)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString());
                 var stored=json.readTree(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=?",String.class,id));
                 assertThat(stored.path("turns").path(0).path("attempts").size()).isEqualTo(1);
                 assertThatThrownBy(()->service.answer(owner,id,1,request,"changed payload"))
@@ -822,7 +822,7 @@ class ConversationIntegrationTest {
 
     @Test void expiredGenerationCannotCommitEvenBeforeAReplacementClaims() {
         String id=service.create(owner,"cafe","A1").path("id").asText();
-        when(ai.completeJson(startsWith("You design"),anyString(),anyString())).thenAnswer(call->{
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"),anyString(),anyString())).thenAnswer(call->{
             db.update("UPDATE ai_conversation_sessions SET busy_until=? WHERE id=?",
                     java.sql.Timestamp.from(Instant.now().minusSeconds(1)),id);
             return prompt("ten");
@@ -834,7 +834,7 @@ class ConversationIntegrationTest {
 
     @Test void committedAnswerReplaysAfterServiceRecreationWithoutCallingAiAgain() {
         String id=start();UUID request=UUID.randomUUID();
-        when(ai.completeJson(anyString(),anyString())).thenReturn(grade("CAPTURED","CAPTURED","quán"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString())).thenReturn(grade("CAPTURED","CAPTURED","quán"));
         JsonNode original=service.answer(owner,id,1,request,"quán");
         var isolatedMetrics=new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         var replacement=new ConversationService(db,json,ai,tts,config,manager,isolatedMetrics,
@@ -843,8 +843,8 @@ class ConversationIntegrationTest {
         clearInvocations(ai);
         try{
             assertThat(replacement.answer(owner,id,1,request,"quán")).isEqualTo(original);
-            verify(ai,never()).completeJson(anyString(),anyString());
-            verify(ai,never()).completeJson(anyString(),anyString(),anyString());
+            verify(ai,never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString());
+            verify(ai,never()).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(),anyString(),anyString());
             assertThatThrownBy(()->replacement.answer(owner,id,1,request,"different body"))
                     .isInstanceOfSatisfying(ResponseStatusException.class,failure->assertThat(failure.getStatusCode().value()).isEqualTo(409));
             assertThat(replacement.get(owner,id).path("turns").path(0).path("attempts").size()).isEqualTo(1);
@@ -853,15 +853,15 @@ class ConversationIntegrationTest {
 
     @Test void newTransferCannotRepeatOriginalAndExtraJsonFieldsAreRejected() {
         var invalid = (tools.jackson.databind.node.ObjectNode) prompt("ten"); invalid.put("answerKey", "leak");
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(invalid);
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(invalid);
         String id = service.create(owner, "tickets", "B1").path("id").asText();
         assertThatThrownBy(() -> service.next(owner, id, 0)).isInstanceOf(ResponseStatusException.class);
         assertThat(service.get(owner, id).path("turnNumber").asInt()).isZero();
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("ten")); service.next(owner, id, 0);
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt("ten")); service.next(owner, id, 0);
         for (int n=1; n<=3; n++) {
-            when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
+            when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
             service.answer(owner, id, n, UUID.randomUUID(), "quán");
-            when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt(n < 3 ? "time" + n : "ten"));
+            when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt(n < 3 ? "time" + n : "ten"));
             if (n<3) service.next(owner, id, n);
         }
         assertThatThrownBy(() -> service.next(owner, id, 3)).isInstanceOf(ResponseStatusException.class);
@@ -870,8 +870,8 @@ class ConversationIntegrationTest {
 
     @Test void nextGeneratesReviewedTaskOnceAndCachedAudioIsReused() throws Exception {
         String id = start();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("eleven"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt("eleven"));
         UUID request = UUID.randomUUID();
         var result = service.answer(owner, id, 1, request, "quán");
         assertThat(result.has("nextPrompt")).isFalse();
@@ -882,33 +882,33 @@ class ConversationIntegrationTest {
         service.answer(owner, id, 1, request, "quán");
         assertThat(service.next(owner, id, 1).path("turnNumber").asInt()).isEqualTo(2);
         service.next(owner, id, 1);
-        verify(ai, times(1)).completeJson(anyString(), anyString());
-        verify(ai, times(2)).completeJson(startsWith("You design"), anyString(), eq("gemini-3.5-flash-lite"));
-        verify(ai, times(2)).completeJson(startsWith("Audit a listening task"), anyString(), eq("gemini-3.5-flash-lite"));
+        verify(ai, times(1)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
+        verify(ai, times(2)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), eq("gemini-3.5-flash-lite"));
+        verify(ai, times(2)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("Audit a listening task"), anyString(), eq("gemini-3.5-flash-lite"));
         service.play(owner, id, 2, "original", false);
         verify(tts, times(1)).synthesize(contains("eleven"));
     }
 
     @Test void failedNextGenerationKeepsCommittedGradeAndCanRetry() {
         String id = start();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("CAPTURED", "CAPTURED", "quán"));
         assertThat(service.answer(owner, id, 1, UUID.randomUUID(), "quán").path("turns").path(0).path("done").asBoolean()).isTrue();
         assertThat(json.readTree(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=?",
                 String.class, id)).has("nextPrompt")).isFalse();
         assertThatThrownBy(() -> service.next(owner, id, 1)).isInstanceOf(ResponseStatusException.class);
         assertThat(service.get(owner, id).path("turns").path(0).path("attempts").path(0).has("evaluation")).isTrue();
-        when(ai.completeJson(startsWith("You design"), anyString(), anyString())).thenReturn(prompt("eleven"));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString())).thenReturn(prompt("eleven"));
         assertThat(service.next(owner, id, 1).path("turnNumber").asInt()).isEqualTo(2);
     }
 
     @Test void prematureNextTaskCannotAdvanceAnUnfinishedTurn() {
         String id = start();
-        when(ai.completeJson(anyString(), anyString())).thenReturn(grade("UNCERTAIN", "MISSED", ""));
+        when(ai.completeJsonFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).thenReturn(grade("UNCERTAIN", "MISSED", ""));
         service.answer(owner, id, 1, UUID.randomUUID(), "Chưa rõ");
         assertThatThrownBy(() -> service.next(owner, id, 1)).isInstanceOf(ResponseStatusException.class);
         assertThat(json.readTree(db.queryForObject("SELECT state_json FROM ai_conversation_sessions WHERE id=?",
                 String.class, id)).has("nextPrompt")).isFalse();
-        verify(ai, times(1)).completeJson(startsWith("You design"), anyString(), anyString()); // Only the initial task.
+        verify(ai, times(1)).completeJsonFor(org.mockito.ArgumentMatchers.anyString(), startsWith("You design"), anyString(), anyString()); // Only the initial task.
     }
 
     @Test void playbackJoinsBackgroundAudioAndFailureCanRetry() throws Exception {

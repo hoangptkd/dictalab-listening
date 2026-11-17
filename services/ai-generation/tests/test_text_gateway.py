@@ -25,6 +25,16 @@ def request(**updates):
         "deadline": (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat(), **updates}
 
 
+def request_v2(**updates):
+    body = request()
+    body.pop("instruction")
+    body.pop("input")
+    return {**body, "schemaVersion": "2", "purpose": "conversation_grade", "messages": [
+        {"role": "system", "content": "Return JSON only"}, {"role": "user", "content": "synthetic evidence"}],
+        "schema": {"type": "object", "properties": {"ok": {"const": True}}, "required": ["ok"]},
+        "outputMode": "json_schema", "maxOutputTokens": 240, "temperature": 0, **updates}
+
+
 @pytest.fixture
 def api(tmp_path, monkeypatch):
     from app import main
@@ -34,6 +44,49 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "semaphore", None)
     with TestClient(main.app) as client:
         yield client, settings, main
+
+
+def test_v2_preserves_purpose_schema_options_and_cross_version_admission(api):
+    client, _, _ = api
+    body = request_v2()
+    async def execute(self, messages, schema, deadline, purpose, **options):
+        assert purpose == "conversation_grade"
+        assert schema == body["schema"] and messages == body["messages"]
+        assert self._settings.num_predict == 240
+        assert options["json_object"] is False
+        return {"ok": True}, "ollama"
+    with patch.object(ModelGateway, "complete", execute):
+        response = client.post("/v2/text/completions", json=body, headers={"X-Service-Token": TOKEN})
+    assert response.status_code == 200, response.text
+    assert response.json()["schemaVersion"] == "2"
+    assert response.json()["model"] == body["model"]
+    with patch.object(ModelGateway, "complete") as execute_again:
+        assert client.post("/v1/text/completions", json=request(requestId=body["requestId"]),
+            headers={"X-Service-Token": TOKEN}).status_code == 409
+        execute_again.assert_not_called()
+
+
+def test_v2_refuses_remote_schema_reference_and_large_or_unauthenticated_input(api):
+    client, _, _ = api
+    with patch.object(ModelGateway, "complete") as execute:
+        assert client.post("/v2/text/completions", json=request_v2()).status_code == 401
+        headers = {"X-Service-Token": TOKEN}
+        assert client.post("/v2/text/completions", content=b"x" * 256001, headers=headers).status_code == 413
+        assert client.post("/v2/text/completions", json=request_v2(schema={"type": "object", "$ref": "https://private.invalid"}),
+                           headers=headers).status_code == 400
+        execute.assert_not_called()
+
+
+def test_v2_invalid_output_is_not_replayed(api):
+    client, _, _ = api
+    body = request_v2()
+    async def execute(self, *args, **kwargs):
+        return {"ok": False}, "ollama"
+    with patch.object(ModelGateway, "complete", execute):
+        assert client.post("/v2/text/completions", json=body, headers={"X-Service-Token": TOKEN}).status_code == 503
+    with patch.object(ModelGateway, "complete") as execute_again:
+        assert client.post("/v2/text/completions", json=body, headers={"X-Service-Token": TOKEN}).status_code == 409
+        execute_again.assert_not_called()
 
 
 def test_auth_disabled_bounds_and_deadlines_never_dispatch(api):

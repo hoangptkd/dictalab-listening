@@ -57,15 +57,10 @@ def cloud_model_digest(settings):
 
 
 async def verify_cloud_model(settings, client):
-    response = await client.get(
-        settings.active_cloud_models_url,
-        headers={"Authorization": "Bearer " + settings.active_cloud_api_key},
-        timeout=20,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    ids = [item.get("id") or "" for item in payload.get("data", []) if isinstance(item, dict)]
-    if not any(cloud_model_id_matches(settings.active_cloud_model, model_id) for model_id in ids):
+    from app.providers import get_provider
+    registration = get_provider(settings.selected_provider)
+    response = await registration.probe(settings, client, timeout=20)
+    if not registration.model_matches(response, settings.active_cloud_model):
         raise RegistryError("configured cloud model is missing")
 
 

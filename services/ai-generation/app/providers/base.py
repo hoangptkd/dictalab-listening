@@ -7,11 +7,39 @@ workflow nodes never import a provider directly.
 from __future__ import annotations
 
 import abc
+from dataclasses import dataclass, field
 from typing import Any
+
+
+@dataclass(frozen=True)
+class GenerationOptions:
+    reasoning: bool = False
+    reasoning_effort: str | None = None
+    cache_stable_prefix: bool = False
+
+    def require_supported(self, *, reasoning=False, cache=False):
+        if (type(self.reasoning) is not bool or type(self.cache_stable_prefix) is not bool or
+                (self.reasoning or self.reasoning_effort is not None) and not reasoning or
+                self.cache_stable_prefix and not cache):
+            raise ValueError("UNSUPPORTED_CAPABILITY: DeepSeek registry thinking or cache prefix options")
+
+
+@dataclass(frozen=True)
+class ProviderResult:
+    value: dict[str, Any] = field(repr=False)
+    provider: str
+    model: str
+    reported_model: str | None
+    usage: dict[str, int]
+    source_id: str | None = None
 
 
 class ModelProvider(abc.ABC):
     """Interface every provider must implement."""
+
+    @property
+    def endpoint(self):
+        return self._url
 
     @abc.abstractmethod
     async def complete(
@@ -20,6 +48,8 @@ class ModelProvider(abc.ABC):
         schema: dict[str, Any],
         deadline: float,
         purpose: str,
+        *,
+        temperature: float | None = None,
     ) -> dict[str, Any]:
         """Post a structured-output request and return a parsed dict.
 

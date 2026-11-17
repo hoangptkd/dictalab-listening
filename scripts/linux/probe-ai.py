@@ -9,6 +9,16 @@ import urllib.error
 import urllib.request
 
 
+def text_call(settings, messages, model, tokens):
+    import sys
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "services" / "ai-generation"))
+    from app.offline_text import environment_settings, run, run_internal
+    if settings.get("DICTALAB_AI_TEXT_TRANSPORT") == "python":
+        return run_internal(settings, messages, model=model, purpose="operator_probe", max_tokens=tokens)
+    return run(environment_settings(settings, provider=settings.get("DICTALAB_AI_TEXT_PROVIDER", "gemini")),
+        messages, {"type": "object"}, model=model, purpose="operator_probe", max_tokens=tokens, temperature=0, timeout=25).result.value
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--grading-source', type=pathlib.Path)
@@ -20,10 +30,10 @@ def main():
             values = shlex.split(value)
             settings[name] = values[0] if values else ''
     key = settings.get('GEMINI_API_KEY', '')
-    if not key:
+    if not key and settings.get("DICTALAB_AI_TEXT_TRANSPORT") != "python" and settings.get("AI_PROVIDER_CONFIG_SOURCE") != "database":
         print(json.dumps({'result': 'NOT_CONFIGURED'}))
         return
-    models = list(dict.fromkeys([settings.get('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
+    models = list(dict.fromkeys([settings.get('DICTALAB_AI_TEXT_MODEL', settings.get('GEMINI_MODEL', 'gemini-3.5-flash-lite')),
                                 settings.get('DICTALAB_CONVERSATION_MODEL', 'gemini-3.5-flash-lite')]))
     if args.grading_source:
         instruction = re.search(r'private static final String GRADE_INSTRUCTION = """(.*?)""";',
@@ -49,18 +59,8 @@ def main():
                 began = time.monotonic()
                 result = {'model': model, 'case': name, 'expected': expected}
                 try:
-                    with urllib.request.urlopen(urllib.request.Request(
-                            settings.get('GEMINI_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'),
-                            data=json.dumps(body).encode(), headers={'Authorization': 'Bearer ' + key,
-                            'Content-Type': 'application/json'}), timeout=25) as response:
-                        raw = response.read(100001)
-                    if len(raw) > 100000:
-                        raise ValueError('Oversized')
-                    choice = json.loads(raw)['choices'][0]
-                    content = choice['message']['content'].strip()
-                    if content.startswith('```'):
-                        content = content[content.index('\n') + 1:content.rindex('```')].strip()
-                    output = json.loads(content)
+                    output = text_call(settings, body["messages"], model, 2200)
+                    choice = {"finish_reason": "stop"}  # Shared adapters reject incomplete model output.
                     facts = output.get('facts', [])
                     by_id = {fact.get('factId'): fact for fact in facts}
                     actual = [by_id.get(fact_id, {}).get('status') for fact_id in ('F1', 'F2')]
@@ -78,27 +78,13 @@ def main():
                 print(json.dumps(result), flush=True)
         return
     for model in models:
-        body = json.dumps({'model': model, 'temperature': 0, 'max_tokens': 120,
-                          'response_format': {'type': 'json_object'},
-                          'messages': [{'role': 'system', 'content': 'Return only JSON: {"ok":true}.'},
-                                       {'role': 'user', 'content': 'Synthetic connectivity probe.'}]}).encode()
-        request = urllib.request.Request(settings.get('GEMINI_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'),
-                                         data=body, headers={'Authorization': 'Bearer ' + key,
-                                                             'Content-Type': 'application/json'})
+        messages = [{"role": "system", "content": 'Return only JSON: {"ok":true}.'},
+                    {"role": "user", "content": "Synthetic connectivity probe."}]
         began = time.monotonic()
         result = {'model': model}
         try:
-            with urllib.request.urlopen(request, timeout=25) as response:
-                payload = response.read(100001)
-                result['http'] = response.status
-            if len(payload) > 100000:
-                result['result'] = 'OVERSIZED'
-            else:
-                parsed = json.loads(payload)
-                content = parsed.get('choices', [{}])[0].get('message', {}).get('content', '')
-                result['result'] = 'CONTENT' if content else 'EMPTY'
-                result['content_characters'] = len(content)
-                result['finish_reason'] = parsed.get('choices', [{}])[0].get('finish_reason')
+            output = text_call(settings, messages, model, 120)
+            result.update(http=200, result="CONTENT", content_characters=len(json.dumps(output)), finish_reason="stop")
         except urllib.error.HTTPError as error:
             result.update(http=error.code, result='HTTP_REJECTED')
         except Exception as error:

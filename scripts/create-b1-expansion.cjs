@@ -3,7 +3,7 @@
 // Original content, bounded provider calls, cached outputs, verified S3 required before SQL import.
 const fs=require('node:fs/promises'),path=require('node:path'),assert=require('node:assert/strict');
 const {createHash}=require('node:crypto'),{spawnSync}=require('node:child_process');
-const {words,request,readWave,combine}=require('./create-b1-dictation.cjs');
+const {words,request,textRequest,readWave,combine}=require('./create-b1-dictation.cjs');
 const {render}=require('./create-listening-samples.cjs');
 const root=path.resolve(process.argv[3]||'data/generated-b1-expansion-20261015');
 const batchId='b1-expansion-20261015',hash=data=>createHash('sha256').update(data).digest('hex');
@@ -192,15 +192,14 @@ Avoid simple word-copy distractors; an option must not be true elsewhere in a wa
 async function cachedJson(file,system,user,model,maxTokens=5500){
  let body;try{body=JSON.parse(await fs.readFile(file,'utf8'))}catch(e){
   if(e.code!=='ENOENT')throw e;
-  body=JSON.parse((await request(process.env.GEMINI_URL||'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',process.env.GEMINI_API_KEY,
-   {model,temperature:0.35,max_tokens:maxTokens,response_format:{type:'json_object'},messages:[{role:'system',content:system},{role:'user',content:user}]},{},150000)).toString('utf8'));
+  body=await textRequest({model,temperature:0.35,max_tokens:maxTokens,purpose:'offline_expansion',
+   messages:[{role:'system',content:system},{role:'user',content:user}]},file+'.sent');
   await fs.writeFile(file,JSON.stringify(body,null,2)+'\n',{encoding:'utf8',flag:'wx'});
  }
  const content=body.choices?.[0]?.message?.content;assert(typeof content==='string'&&content.length<=40000);
  return JSON.parse(content.slice(content.indexOf('{'),content.lastIndexOf('}')+1));
 }
 async function generate(){
- assert(process.env.GEMINI_API_KEY,'Missing text provider runtime configuration');
  await fs.mkdir(path.join(root,'text-cache'),{recursive:true});
  const model=process.env.DICTALAB_CONVERSATION_MODEL||'gemini-3.5-flash-lite',lessons=[];
  const specs=specifications();

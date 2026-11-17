@@ -12,7 +12,6 @@ from pathlib import Path
 import sys
 import time
 import urllib.error
-import urllib.request
 
 from jsonschema import Draft202012Validator
 
@@ -23,6 +22,7 @@ from training.semantic_rubric import (CHECKS, RULES, VERSION as REVIEW_VERSION,
                                      calibration_cases, decision, severity)
 sys.path.insert(0, str(ROOT / "services" / "ai-generation"))
 from app.conversation_context import encounter_state
+from app.offline_text import environment_settings, run as run_text
 
 ARTIFACT = ROOT / "artifacts/prompts/conversation-cefr-v8-20261022.json"
 CATALOGUE = ROOT / "data/conversation-distillation/production-contract.json"
@@ -345,11 +345,6 @@ def make_context(group: dict, turn: int, prior: list[dict], artifact: dict, inde
     return context
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):
-        return None
-
-
 class Gemini:
     def __init__(self, output: Path):
         self.output = output
@@ -360,30 +355,11 @@ class Gemini:
                 if "=" in line and not line.lstrip().startswith("#"):
                     key, value = line.split("=", 1)
                     settings[key.strip()] = value.strip().strip("\"'")
-        self.key = os.environ.get("GEMINI_API_KEY") or settings.get("GEMINI_API_KEY")
-        self.pool = None
-        env_value = lambda name, default=None: os.environ.get(name, settings.get(name, default))
-        database = env_value("AI_PROVIDER_CONFIG_SOURCE", "env") == "database"
-        if database or str(env_value("GEMINI_QUOTA_ENABLED", "false")).lower() == "true":
-            sys.path.insert(0, str(ROOT / "services" / "ai-generation"))
-            from app.config import Settings
-            from app.gemini_pool import quota_store
-            pool_settings = Settings(primary_provider="gemini", gemini_quota_enabled=True,
-                operational_limits_enabled=env_value("DICTALAB_OPERATIONAL_LIMITS_ENABLED", "true"),
-                ai_provider_config_source=env_value("AI_PROVIDER_CONFIG_SOURCE","env"),
-                ai_provider_database_url=env_value("AI_PROVIDER_DATABASE_URL",""),
-                ai_provider_encryption_key=env_value("AI_PROVIDER_ENCRYPTION_KEY",""),
-                gemini_providers=json.loads(env_value("GEMINI_PROVIDERS_JSON", "[]")),
-                gemini_quota_backend=env_value("GEMINI_QUOTA_BACKEND", "redis"),
-                gemini_quota_redis_url=env_value("GEMINI_QUOTA_REDIS_URL", "redis://127.0.0.1:16379/0"),
-                gemini_global_rpm_limit=int(env_value("GEMINI_GLOBAL_RPM_LIMIT", "39")),
-                gemini_global_rpd_limit=int(env_value("GEMINI_GLOBAL_RPD_LIMIT", "0")))
-            self.pool = quota_store(pool_settings)
-            if database:
-                self.key = None
-        if not self.key and self.pool is None:
-            raise DatasetError("GEMINI_API_KEY unavailable")
-        self.opener = urllib.request.build_opener(NoRedirect)
+        self.key = os.environ.get("GEMINI_API_KEY") or settings.get("GEMINI_API_KEY", "")
+        configured = settings | dict(os.environ)
+        preferred = configured.get("DICTALAB_AI_PRIMARY_PROVIDER", "gemini")
+        self.settings = environment_settings(configured, provider="gemini" if preferred == "auto" else preferred)
+        self.pool = self.settings.gemini_quota_enabled
 
     def call(self, model: str, system: str, data: dict, name: str, *, schema: dict | None = None) -> dict:
         schema = schema if schema is not None else {"type": "object"}
@@ -391,6 +367,10 @@ class Gemini:
         request_path, response_path = self.output / f"{name}.request.json", self.output / f"{name}.response.json"
         if response_path.exists():
             saved, wire = read_json(response_path), read_json(request_path)
+            settings = getattr(self, "settings", None)
+            if settings is not None and (saved.get("provider", "gemini") != settings.selected_provider or
+                    settings.model_profiles and saved.get("modelProfilesHash") != digest(settings.model_profiles)):
+                raise DatasetError("cached provider/capability configuration differs; preserve it and start a new campaign")
             if (saved.get("requestHash") != digest(wire) or saved.get("responseHash") != digest(saved.get("result"))
                     or wire.get("model") != model or wire.get("messages") != [
                         {"role": "system", "content": system},
@@ -408,74 +388,57 @@ class Gemini:
             raise DatasetError("run request cap reached; quota/billing changes require a separate decision")
         if used and not getattr(self, "pool", None):
             time.sleep(max(0, 13 - (time.time() - used[-1]["time"])))
-        body = {"model": model, "stream": False,
-            "temperature": 0.2 if name.startswith("teacher-") else 0,
-            "max_tokens": 8192 if name.startswith("teacher-") else 4096,
-            "response_format": {"type": "json_schema", "json_schema": {
-                "name": "teacher_batch" if name.startswith("teacher-") else "judge_batch",
-                "strict": True, "schema": provider_schema(schema)}},
-            "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": json.dumps(data, ensure_ascii=False)}]}
         if _contains_secret(data):
             raise DatasetError("possible sensitive data in teacher/judge input")
-        source = None
-        request_key, request_url = self.key, "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-        if getattr(self, "pool", None):
-            from app.gemini_pool import estimate_tokens, QuotaUnavailable
-            try:
-                source = self.pool.select(model, estimate_tokens(body["messages"], body["max_tokens"], schema))
-            except QuotaUnavailable as exc:
-                raise DatasetError(f"Gemini pool admission rejected; retry after {exc.retry_after}s; no request sent") from None
-            request_key, request_url = source.api_key, source.url
-        write_json(request_path, body)
-        append(self.output / "api-reservations.jsonl", {"model": model, "name": name,
-            "requestHash": digest(body), "time": time.time(), "sourceId": source.id if source else "legacy"})
-        request = urllib.request.Request(request_url,
-            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-            headers={"Authorization": "Bearer " + request_key, "Content-Type": "application/json"})
+        captured, wire = {}, {}
+        def before_send(body):
+            wire.update(body)
+            with request_path.open("x", encoding="utf-8") as saved:
+                json.dump(body, saved, ensure_ascii=False)
+            append(self.output / "api-reservations.jsonl", {"model": model, "name": name,
+                "requestHash": digest(body), "time": time.time()})
+        def after_response(envelope):
+            captured.update(envelope)
+            write_json(self.output / f"{name}.envelope.json", envelope)
+        configured = getattr(self, "settings", None) or environment_settings(provider="gemini", api_key=self.key)
         started = time.monotonic()
         try:
-            with self.opener.open(request, timeout=240) as response:
-                raw = response.read(1_000_001)
-            if len(raw) > 1_000_000:
-                raise DatasetError("response too large")
-            envelope = json.loads(raw.decode("utf-8").replace(request_key, "[redacted]"))
-            write_json(self.output / f"{name}.envelope.json", envelope)
-            choice = envelope["choices"][0]
-            if choice["finish_reason"] != "stop":
+            outcome = run_text(configured, [
+                {"role": "system", "content": system}, {"role": "user", "content": json.dumps(data, ensure_ascii=False)}],
+                provider_schema(schema), model=model, purpose="teacher_batch" if name.startswith("teacher-") else "judge_batch",
+                temperature=0.2 if name.startswith("teacher-") else 0,
+                max_tokens=8192 if name.startswith("teacher-") else 4096, json_object=False, timeout=240,
+                on_request=before_send, on_response=after_response, transport=getattr(self, "transport", None))
+            # Training targets remain strict even when an adapter tolerates Markdown for application calls.
+            result = strict_json(captured["choices"][0]["message"]["content"])
+            if captured["choices"][0].get("finish_reason") != "stop":
                 raise DatasetError("unfinished response; no retry/repair allowed")
-            try:
-                result = strict_json(choice["message"]["content"])
-            except json.JSONDecodeError as exc:
-                write_json(self.output / f"{name}.invalid-json.json", {
-                    "requestHash": digest(body), "envelopeHash": digest(envelope),
-                    "error": exc.msg, "line": exc.lineno, "column": exc.colno, "offset": exc.pos,
-                    "repaired": False, "acceptedTargetRecords": 0})
-                raise DatasetError(f"{name}: invalid target JSON at character {exc.pos}; "
-                                   "raw envelope preserved, stopped without repair/retry") from None
-            if not isinstance(result, dict):
-                raise DatasetError("expected one strict JSON object")
             if list(Draft202012Validator(schema).iter_errors(result)):
                 raise DatasetError(f"{name}: response schema failed; no repair/retry allowed")
-            write_json(response_path, {"result": result, "responseHash": digest(result),
-                "requestHash": digest(body), "returnedModel": envelope.get("model"),
-                "sourceId": source.id if source else "legacy",
-                "usage": envelope.get("usage"), "seconds": round(time.monotonic()-started, 2)})
-            if source:
-                self.pool.report(source, "success")
+            write_json(response_path, {"result": result, "responseHash": digest(result), "requestHash": digest(wire),
+                "returnedModel": captured.get("model"), "sourceId": outcome.result.source_id or "legacy",
+                "provider": outcome.result.provider, "modelProfilesHash": digest(configured.model_profiles),
+                "usage": captured.get("usage"), "seconds": round(time.monotonic()-started, 2)})
             return result
-        except urllib.error.HTTPError as exc:
-            if source:
-                from app.gemini_pool import retry_seconds
-                self.pool.report(source, "429" if exc.code == 429 else "failure", retry_seconds(exc.headers.get("Retry-After")))
-            try:
-                error = json.loads(exc.read(16000).decode("utf-8")).get("error", {})
-                message = str(error.get("message", ""))[:2000].replace(request_key, "[redacted]")
-            except (ValueError, UnicodeError, AttributeError):
-                message = "provider error body unavailable"
-            append(self.output / "api-errors.jsonl", {"name": name, "model": model,
-                "httpStatus": exc.code, "message": message})
-            raise DatasetError(f"{model}: HTTP {exc.code}; stopped without retry or fallback") from None
+        except Exception as error:
+            from app.gemini_pool import QuotaUnavailable
+            if isinstance(error, QuotaUnavailable):
+                raise DatasetError(f"AI pool admission rejected; retry after {error.retry_after}s; no request sent") from None
+            if captured:
+                try:
+                    strict_json(captured["choices"][0]["message"]["content"])
+                except json.JSONDecodeError as invalid:
+                    write_json(self.output / f"{name}.invalid-json.json", {
+                        "requestHash": digest(wire), "envelopeHash": digest(captured), "error": invalid.msg,
+                        "line": invalid.lineno, "column": invalid.colno, "offset": invalid.pos,
+                        "repaired": False, "acceptedTargetRecords": 0})
+                    raise DatasetError(f"{name}: invalid target JSON at character {invalid.pos}; raw envelope preserved, stopped without repair/retry") from None
+            if isinstance(getattr(error, "status", None), int):
+                append(self.output / "api-errors.jsonl", {"name": name, "model": model,
+                    "httpStatus": error.status, "message": "provider rejected or outcome unknown; no replay"})
+            if isinstance(error, DatasetError):
+                raise
+            raise DatasetError(f"{name}: AI generation failed or outcome unknown; no retry/repair allowed ({type(error).__name__})") from None
 
 
 def unpack_batch(result: dict, ids: list[str]) -> dict[str, dict]:

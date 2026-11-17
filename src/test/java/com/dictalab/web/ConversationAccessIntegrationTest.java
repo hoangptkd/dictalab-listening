@@ -43,7 +43,7 @@ class ConversationAccessIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate db;
     @Autowired AppUserRepository users;
-    @MockitoBean GeminiClient ai;
+    @MockitoBean AiTextService ai;
     @MockitoBean TtsService tts;
     @MockitoBean AiPlatformClient platform;
     @MockitoSpyBean AiUsageBudget budget;

@@ -6,7 +6,7 @@ import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.AiPlatformClient;
 import com.dictalab.service.AiUsageBudget;
 import com.dictalab.service.TtsService;
-import com.dictalab.service.GeminiClient;
+import com.dictalab.service.AiTextService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,7 +36,7 @@ class ScenarioIntegrationTest {
     @Autowired ScenarioProgramStore programs;
     @Autowired ScenarioGoalService goals;
     @MockitoBean AiPlatformClient ai;
-    @MockitoBean GeminiClient gemini;
+    @MockitoBean AiTextService gemini;
     @MockitoBean TtsService tts;
     @MockitoBean AiUsageBudget budget;
     AppUser owner;

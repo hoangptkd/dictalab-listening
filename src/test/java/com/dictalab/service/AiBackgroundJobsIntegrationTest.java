@@ -25,6 +25,11 @@ import static org.mockito.BDDMockito.*;
         "dictalab.conversation.enabled=true", "dictalab.coach.enabled=true",
         "spring.rabbitmq.listener.simple.auto-startup=false"})
 class AiBackgroundJobsIntegrationTest {
+    private static com.dictalab.service.AiTextService.Result textResult(tools.jackson.databind.JsonNode value) {
+        return new com.dictalab.service.AiTextService.Result(java.util.UUID.randomUUID(), value, "deepseek", "test-model",
+            "test-completed-model", null, null, java.util.List.of(), new tools.jackson.databind.ObjectMapper().createObjectNode());
+    }
+
     @Autowired AiBackgroundJobs jobs;
     @Autowired ConversationService conversation;
     @Autowired CoachService coach;
@@ -32,7 +37,7 @@ class AiBackgroundJobsIntegrationTest {
     @Autowired ObjectMapper json;
     @Autowired ApplicationContext context;
     @MockitoBean TtsService tts;
-    @MockitoBean GeminiClient ai;
+    @MockitoBean AiTextService ai;
     @MockitoBean RabbitTemplate rabbit;
     @MockitoBean AiPlatformClient platform;
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean AiUsageBudget budget;
@@ -87,20 +92,20 @@ class AiBackgroundJobsIntegrationTest {
         String id = practice();
         var fallback = coach.report(owner, id, false);
         var item = fallback.reviewItems().get(0);
-        given(ai.completeJson(anyString(), anyString())).willReturn(json.valueToTree(Map.of(
+        given(ai.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).willReturn(textResult(json.valueToTree(Map.of(
                 "weaknesses", List.of(Map.of("pattern", item.pattern(), "evidenceIds", List.of(item.id()), "insight", "Test insight")),
                 "progressInsight", fallback.progressInsight(), "nextActions", List.of(Map.of("pattern", item.pattern(), "instruction", "Test action")),
-                "reviewIds", List.of(item.id()))));
+                "reviewIds", List.of(item.id())))));
         assertThat(coach.report(owner, id, true).source()).isEqualTo("QUEUED");
         assertThat(coach.report(owner, id, true).source()).isEqualTo("QUEUED");
         assertThat(coach.report(owner, id, false).source()).isEqualTo("QUEUED");
-        then(ai).should(never()).completeJson(anyString(), anyString());
+        then(ai).should(never()).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
         assertThatThrownBy(() -> coach.report(user(), id, true)).isInstanceOf(com.dictalab.exception.ResourceNotFoundException.class);
         String job = db.queryForObject("SELECT id FROM ai_background_jobs WHERE practice_id=?", String.class, id);
         jobs.consumeCoach(job); jobs.consumeCoach(job);
         assertThat(coach.report(owner, id, false).source()).isEqualTo("AI");
         assertThat(state(job)).isEqualTo("DONE");
-        then(ai).should(times(1)).completeJson(anyString(), anyString());
+        then(ai).should(times(1)).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
     }
 
     @Test void failedTtsRequiresExplicitBoundedRetryAndOldMessagesAreIgnored() {
@@ -161,7 +166,7 @@ class AiBackgroundJobsIntegrationTest {
         jobs.consumeCoach(second); jobs.consumeCoach(second);
         assertThat(coach.report(owner, id, false).source()).isEqualTo("AI");
         assertThat(coach.report(owner, id, false).progressInsight()).isEqualTo(baseline.progressInsight());
-        then(ai).should(never()).completeJson(anyString(), anyString());
+        then(ai).should(never()).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
     }
 
     @Test void accountDeletedDuringPythonCallCannotReceiveAudio() {
@@ -226,14 +231,14 @@ class AiBackgroundJobsIntegrationTest {
 
     @Test void coachAdmissionBackpressurePreservesTheQueuedBaseline() {
         String id = practice();
-        given(ai.completeJson(anyString(), anyString())).willThrow(new ProviderGuard.Unavailable("Busy before HTTP", 5, true));
+        given(ai.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).willThrow(new ProviderGuard.Unavailable("Busy before HTTP", 5, true));
         coach.report(owner, id, true);
         String previous = db.queryForObject("SELECT id FROM ai_background_jobs WHERE practice_id=?", String.class, id);
         jobs.consumeCoach(previous);
         assertThat(coach.report(owner, id, false).source()).isEqualTo("QUEUED");
         assertThat(db.queryForObject("SELECT attempts FROM ai_background_jobs WHERE practice_id=?", Integer.class, id)).isZero();
         jobs.consumeCoach(previous);
-        then(ai).should(times(1)).completeJson(anyString(), anyString());
+        then(ai).should(times(1)).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
     }
 
     @Test void sharedDatabaseBudgetBoundsWorkersAcrossServiceInstances() throws Exception {
@@ -292,12 +297,12 @@ class AiBackgroundJobsIntegrationTest {
         var item = fallback.reviewItems().get(0);
         coach.report(owner, id, true);
         String job = db.queryForObject("SELECT id FROM ai_background_jobs WHERE practice_id=?", String.class, id);
-        given(ai.completeJson(anyString(), anyString())).willAnswer(call -> {
+        given(ai.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).willAnswer(call -> {
             assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             db.update("UPDATE ai_background_jobs SET lease_id=? WHERE id=?", UUID.randomUUID().toString(), job);
-            return json.valueToTree(Map.of("weaknesses", List.of(Map.of("pattern", item.pattern(),
+            return textResult(json.valueToTree(Map.of("weaknesses", List.of(Map.of("pattern", item.pattern(),
                     "evidenceIds", List.of(item.id()), "insight", "Test insight")), "progressInsight", fallback.progressInsight(),
-                    "nextActions", List.of(Map.of("pattern", item.pattern(), "instruction", "Test action")), "reviewIds", List.of(item.id())));
+                    "nextActions", List.of(Map.of("pattern", item.pattern(), "instruction", "Test action")), "reviewIds", List.of(item.id()))));
         });
         jobs.consumeCoach(job);
         assertThat(db.queryForObject("SELECT COUNT(*) FROM dictation_coach_reports WHERE session_id=?", Integer.class, id)).isZero();
@@ -338,10 +343,10 @@ class AiBackgroundJobsIntegrationTest {
     @Test void failedCoachPersistenceRollsBackDone() {
         String id = practice();
         var fallback = coach.report(owner, id, false); var item = fallback.reviewItems().get(0);
-        given(ai.completeJson(anyString(), anyString())).willReturn(json.valueToTree(Map.of("weaknesses", List.of(Map.of(
+        given(ai.completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString())).willReturn(textResult(json.valueToTree(Map.of("weaknesses", List.of(Map.of(
                 "pattern", item.pattern(), "evidenceIds", List.of(item.id()), "insight", "Test insight")),
                 "progressInsight", fallback.progressInsight(), "nextActions", List.of(Map.of("pattern", item.pattern(), "instruction", "Test action")),
-                "reviewIds", List.of(item.id()))));
+                "reviewIds", List.of(item.id())))));
         coach.report(owner, id, true);
         String job = db.queryForObject("SELECT id FROM ai_background_jobs WHERE practice_id=?", String.class, id);
         String constraint = "test_coach_" + UUID.randomUUID().toString().replace("-", "");
@@ -352,7 +357,7 @@ class AiBackgroundJobsIntegrationTest {
             assertThat(db.queryForObject("SELECT COUNT(*) FROM dictation_coach_reports WHERE session_id=?", Integer.class, id)).isZero();
             expire(job); jobs.dispatch(); jobs.consumeCoach(job);
             assertThat(state(job)).isEqualTo("UNKNOWN");
-            then(ai).should(times(1)).completeJson(anyString(), anyString());
+            then(ai).should(times(1)).completeFor(org.mockito.ArgumentMatchers.anyString(), anyString(), anyString());
         } finally { db.execute("ALTER TABLE dictation_coach_reports DROP CONSTRAINT " + constraint); }
     }
 
