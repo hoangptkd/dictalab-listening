@@ -31,6 +31,8 @@ class ServiceBundleTest(unittest.TestCase):
                  'services/ai-generation/app/sql/001_provider_registry.sql': 'SELECT 1;',
                  'services/ai-generation/app/quota.lua': 'return 1',
                  'services/ai-generation/app/scenario-prompts.json': '{}',
+                 'services/ai-generation/app/scenario-dynamic-examples.json': '{}',
+                 'services/ai-generation/app/scenario-dynamic-release.json': '{}',
                  'services/ai-generation/app/scenario-prompt-history.json.gz': 'frozen-history-fixture',
                  'services/ai-generation/app/private-config.json.gz': 'PRIVATE_MUST_NOT_SHIP',
                  'services/ai-generation/app/private-config.json': 'PRIVATE_MUST_NOT_SHIP',
@@ -84,7 +86,8 @@ class ServiceBundleTest(unittest.TestCase):
         self.assertIn('ai/app/sql/001_provider_registry.sql', names)
         self.assertIn('ai/app/quota.lua', names)
         self.assertIn('artifacts/prompts/conversation.json', names)
-        for name in ('scenario-prompts.json', 'scenario-prompt-history.json.gz'):
+        for name in ('scenario-prompts.json', 'scenario-prompt-history.json.gz',
+                     'scenario-dynamic-examples.json', 'scenario-dynamic-release.json'):
             self.assertIn('ai/app/' + name, names)
         self.assertNotIn('ai/app/private-config.json', names)
         self.assertNotIn('ai/app/private-config.json.gz', names)

@@ -18,6 +18,8 @@
 
 Bộ Python đầy đủ trên mã cuối đã đóng băng: **1.015 passed, 27 skipped** (359,94 giây). Lần chạy trước bị cổng chống đổi nguồn từ chối vì mã đang được sửa giữa lượt test; lần cuối chạy mới hoàn toàn và đạt. Kiểm tra UTF-8 và `git diff --check` đạt. Không có lượt gọi AI thật trong bộ test offline.
 
+CI đầu phát hiện gói phát hành chưa đưa hai JSON candidate vào danh sách tệp được phép. Đã bổ sung đúng `scenario-dynamic-examples.json` và `scenario-dynamic-release.json`, giữ loại trừ cấu hình riêng; test hồi quy đóng gói lỗi trước sửa và đạt sau sửa (**19 test, 7 skipped trên Windows**). Thay đổi này không đổi instruction, pin hoặc runtime local đang thử.
+
 ## 24 lượt AI thật được duyệt
 
 Tập được cố định trước khi gọi: sáu đầu vào hồi quy đã biết và sáu đầu vào mới chưa dùng trong ví dụ. Mỗi đầu vào chạy V5.2 và V5.3 một lần, xen kẽ thứ tự giữa các cặp, tối đa hai lượt song song. Cùng snapshot model Gemini 3.5 Flash Lite, fallback 3.1 Flash Lite, nhiệt độ 0 và ngân sách hiện hành. Chạy EXTRACT và toàn bộ bước sinh/phụ thuộc thật; không mock, không cấp lại artifact, không gọi judge bổ sung. Tổng thời gian thực **364,93 giây**. Mọi 503 và lỗi được giữ; không gửi lại request thất bại/chưa rõ.
