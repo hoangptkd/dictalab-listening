@@ -69,6 +69,7 @@ class ScenarioEngineIntegrationTest {
         when(release.assessmentPromptHash()).thenReturn(ScenarioAssessment.PROMPT_HASH);
         when(release.require(anyLong(),anyString(),anyInt())).thenAnswer(call -> registry.require(call.getArgument(1),call.getArgument(2)));
         when(ai.local()).thenReturn(true); when(ai.scenarioProvider()).thenReturn("ollama");
+        when(ai.ttsProvider()).thenReturn("cartesia");
         when(ai.audio(any())).thenCallRealMethod();
         var accounting=new AiUsageBudget(db,manager,true,10000000,1000000,10,20,100000,1000);
         doAnswer(call -> { accounting.reserveScenario(call.getArgument(0),call.getArgument(1),call.getArgument(2),call.getArgument(3),call.getArgument(4)); return null; })
@@ -90,7 +91,7 @@ class ScenarioEngineIntegrationTest {
         boolean harnessV9=input.path("promptHash").asText().equals("df832a8cb71a8229b95d02be4acaacd6a56b78ed7a9f747b51c4a222864cc303");
         boolean harness=harnessV9 || input.path("promptHash").asText().equals("a98960f21fabe1f652f68fac72794c41e5c18870a400059cef4b03f50a9a838b");
         var result=object().put("schemaVersion","1").put("generationId",id).put("requestId",id)
-                .put("provider",tts ? "cartesia" : "ollama").put("model","fixture-model").put("modelDigest","fixture-digest")
+                .put("provider",tts ? multiVoice ? input.path("recipe").path("provider").asText("cartesia") : ai.ttsProvider() : "ollama").put("model","fixture-model").put("modelDigest","fixture-digest")
                 .put("promptVersion",tts ? "TTS_WAV_V1" : personalized ? (previousPersonalized ? "SCENARIO_PERSONALIZED_V1_GRADE_V4" : previousFewshot ? "SCENARIO_PERSONALIZED_FEWSHOT_V1_GRADE_V4" : previousFewshotV2 ? "SCENARIO_PERSONALIZED_FEWSHOT_V2_GRADE_V4" : previousFewshotV3 ? "SCENARIO_PERSONALIZED_FEWSHOT_V3_GRADE_V4" : previousFewshotV4 ? "SCENARIO_PERSONALIZED_FEWSHOT_V4_GRADE_V4" : previousFewshotV5 ? "SCENARIO_PERSONALIZED_FEWSHOT_V5_GRADE_V5" : previousFewshotV6 ? "SCENARIO_PERSONALIZED_FEWSHOT_V6_GRADE_V5" : harnessV9 ? "SCENARIO_PERSONALIZED_FEWSHOT_V9_HARNESS_V2_GRADE_V5" : harness ? "SCENARIO_PERSONALIZED_FEWSHOT_V8_HARNESS_V1_GRADE_V5" : "SCENARIO_PERSONALIZED_FEWSHOT_V7_GRADE_V5") : "SCENARIO_LISTENING_V5_GRADE_V4_1")
                 .put("promptHash",input.path("promptHash").asText(release.promptHash())).put("programHash",input.path("programHash").asText());
         if (tts) {
@@ -881,10 +882,18 @@ class ScenarioEngineIntegrationTest {
         return tree("{\"id\":\"qa-voices-v1\",\"model\":\"fixture-model\",\"apiVersion\":\"2026-08-14\",\"language\":\"en\",\"outputFormat\":\"wav-pcm16-mono-24000\",\"voices\":[\"00000000-0000-0000-0000-000000000001\",\"00000000-0000-0000-0000-000000000002\"]}");
     }
 
-    @Test void voiceSnapshotSurvivesGenerationAndConfigurationChangeAndCachesEachSpeaker() {
-        var recipe=recipe(); doReturn(recipe).when(engineConfig).ttsRecipe();
+    @ParameterizedTest
+    @ValueSource(strings={"cartesia","openai_compatible"})
+    void voiceSnapshotSurvivesGenerationAndConfigurationChangeAndCachesEachSpeaker(String provider) {
+        var recipe=recipe();
+        if (provider.equals("openai_compatible")) {
+            var alternative=((ObjectNode)recipe).put("provider",provider).put("apiVersion","");
+            alternative.putArray("voices").add("alloy").add("nova");
+        }
+        doReturn(recipe).when(engineConfig).ttsRecipe();
         var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
         doReturn(null).when(engineConfig).ttsRecipe();
+        when(ai.ttsProvider()).thenReturn(provider.equals("cartesia") ? "openai_compatible" : "cartesia");
         for (int i=0;i<2;i++) {
             session=engine.session(user,sid);
             var result=dispatch(engine.play(user,sid,aid,id(),new ScenarioEngine.PlayRequest(session.path("version").asLong(),"s"+(i+1))));
@@ -900,7 +909,7 @@ class ScenarioEngineIntegrationTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings={"voiceId","speakerId","recipeHash","model"})
+    @org.junit.jupiter.params.provider.ValueSource(strings={"voiceId","speakerId","recipeHash","model","provider"})
     void wrongVoiceMetadataCannotPublishAudio(String field) {
         doReturn(recipe()).when(engineConfig).ttsRecipe();
         var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();

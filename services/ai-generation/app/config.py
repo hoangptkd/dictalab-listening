@@ -105,10 +105,20 @@ class Settings(BaseSettings):
     rabbitmq_url: str = "amqp://guest:guest@127.0.0.1:5672/%2F"
     job_retention_seconds: int = 900
     cartesia_url: str = "https://api.cartesia.ai/tts/bytes"
-    cartesia_api_key: str = ""
+    cartesia_api_key: str = Field(default="", repr=False)
     cartesia_model: str = "sonic-3.6"
     cartesia_voice: str = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
     cartesia_version: str = "2026-08-14"
+    tts_enabled: bool = Field(default=True, validation_alias=AliasChoices("DICTALAB_TTS_ENABLED", "DICTALAB_AI_TTS_ENABLED"))
+    tts_provider: str = Field(default="cartesia", validation_alias=AliasChoices("DICTALAB_TTS_PROVIDER", "DICTALAB_AI_TTS_PROVIDER"))
+    openai_tts_url: str = Field(default="https://api.openai.com/v1/audio/speech",
+        validation_alias=AliasChoices("DICTALAB_TTS_OPENAI_URL", "DICTALAB_AI_OPENAI_TTS_URL"))
+    openai_tts_api_key: str = Field(default="", repr=False,
+        validation_alias=AliasChoices("DICTALAB_TTS_OPENAI_API_KEY", "DICTALAB_AI_OPENAI_TTS_API_KEY"))
+    openai_tts_model: str = Field(default="",
+        validation_alias=AliasChoices("DICTALAB_TTS_OPENAI_MODEL", "DICTALAB_AI_OPENAI_TTS_MODEL"))
+    openai_tts_voice: str = Field(default="",
+        validation_alias=AliasChoices("DICTALAB_TTS_OPENAI_VOICE", "DICTALAB_AI_OPENAI_TTS_VOICE"))
     scenario_tts_recipes: list[ScenarioTtsRecipe] = Field(default_factory=list)
     http_max_connections: int = 10
     model_demo_enabled: bool = False
@@ -132,6 +142,22 @@ class Settings(BaseSettings):
 
     def __init__(self, **values):
         super().__init__(**values)
+        from .tts import PROVIDERS
+        if self.tts_provider not in PROVIDERS:
+            raise ValueError("unsupported TTS provider")
+        if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", self.cartesia_version):
+            raise ValueError("invalid Cartesia API version")
+        for adapter in PROVIDERS.values():
+            config = adapter.configuration(self)
+            uri = urlsplit(config["url"])
+            if (not uri.hostname or uri.username or uri.password or uri.query or uri.fragment
+                    or not (uri.scheme == "https" or uri.scheme == "http" and uri.hostname in ("localhost", "127.0.0.1", "::1"))):
+                raise ValueError("TTS URL requires TLS except loopback")
+            if config["key"] and not re.fullmatch(r"[!-~]{1,512}", config["key"]):
+                raise ValueError("invalid TTS key")
+            if (config["model"] and not re.fullmatch(r"[a-zA-Z0-9_.:/-]{1,100}", config["model"])
+                    or config["voice"] and not re.fullmatch(r"[a-zA-Z0-9_.-]{1,100}", config["voice"])):
+                raise ValueError("invalid TTS model or voice")
         if len({r.id for r in self.scenario_tts_recipes}) != len(self.scenario_tts_recipes):
             raise ValueError("duplicate scenario TTS recipe ID")
         if self.provider_admin_token and (not re.fullmatch(r"[!-~]{32,256}", self.provider_admin_token)

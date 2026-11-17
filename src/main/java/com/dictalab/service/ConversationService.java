@@ -98,7 +98,7 @@ public class ConversationService {
     private final ObjectMapper json;
     private final GeminiClient ai;
     private final ConversationProperties config;
-    private final CartesiaClient tts;
+    private final TtsService tts;
     private final org.springframework.transaction.support.TransactionTemplate transaction;
     private final io.micrometer.observation.ObservationRegistry observations;
     private final org.springframework.beans.factory.ObjectProvider<AiBackgroundJobs> jobs;
@@ -125,7 +125,7 @@ public class ConversationService {
             new ArrayBlockingQueue<>(8), new ThreadPoolExecutor.AbortPolicy());
     private final Map<String, CompletableFuture<Void>> audioJobs = new java.util.concurrent.ConcurrentHashMap<>();
 
-    public ConversationService(JdbcTemplate db, ObjectMapper json, GeminiClient ai, CartesiaClient tts,
+    public ConversationService(JdbcTemplate db, ObjectMapper json, GeminiClient ai, TtsService tts,
                                ConversationProperties config, org.springframework.transaction.PlatformTransactionManager manager,
                                io.micrometer.core.instrument.MeterRegistry metrics,
                                io.micrometer.observation.ObservationRegistry observations,
@@ -134,7 +134,7 @@ public class ConversationService {
     }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public ConversationService(JdbcTemplate db, ObjectMapper json, GeminiClient ai, CartesiaClient tts,
+    public ConversationService(JdbcTemplate db, ObjectMapper json, GeminiClient ai, TtsService tts,
                                ConversationProperties config, org.springframework.transaction.PlatformTransactionManager manager,
                                io.micrometer.core.instrument.MeterRegistry metrics,
                                io.micrometer.observation.ObservationRegistry observations,

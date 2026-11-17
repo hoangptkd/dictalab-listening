@@ -40,7 +40,7 @@ class AllAudioS3IntegrationTest {
     @MockitoBean S3Client s3;
     @MockitoBean S3Presigner signer;
     @MockitoBean GeminiClient ai;
-    @MockitoBean CartesiaClient tts;
+    @MockitoBean TtsService tts;
 
     @Test void legacyRoutesKeepAccessRulesAndNeverFallBackToLocalAudio() throws Exception {
         String filename=UUID.randomUUID()+".wav";

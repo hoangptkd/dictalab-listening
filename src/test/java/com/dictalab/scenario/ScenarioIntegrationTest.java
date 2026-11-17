@@ -5,7 +5,7 @@ import com.dictalab.repository.AppUserRepository;
 import com.dictalab.security.DictaLabPrincipal;
 import com.dictalab.service.AiPlatformClient;
 import com.dictalab.service.AiUsageBudget;
-import com.dictalab.service.CartesiaClient;
+import com.dictalab.service.TtsService;
 import com.dictalab.service.GeminiClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,7 +37,7 @@ class ScenarioIntegrationTest {
     @Autowired ScenarioGoalService goals;
     @MockitoBean AiPlatformClient ai;
     @MockitoBean GeminiClient gemini;
-    @MockitoBean CartesiaClient tts;
+    @MockitoBean TtsService tts;
     @MockitoBean AiUsageBudget budget;
     AppUser owner;
     static final String BODY = """

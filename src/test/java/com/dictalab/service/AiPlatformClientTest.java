@@ -11,6 +11,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.*;
 
 class AiPlatformClientTest {
+    @Test void ttsChecksConfiguredProviderInsteadOfTextProvider() {
+        var config = new com.dictalab.config.TtsProperties(true, "openai_compatible", null, null);
+        var remote = new AiPlatformClient(json, config("python", Set.of()), new SimpleMeterRegistry(), config);
+        try {
+            provider = "openai_compatible";
+            assertThat(remote.complete("tts", 42, "tts-test", Map.of("kind", "tts", "text", "At nine."))
+                    .path("provider").asText()).isEqualTo("openai_compatible");
+            provider = "cartesia";
+            assertThatThrownBy(() -> remote.complete("tts", 42, "tts-test-2", Map.of("kind", "tts", "text", "At nine.")))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("Invalid TTS provider");
+        } finally { remote.stopShadows(); }
+    }
     private final ObjectMapper json = new ObjectMapper();
     private HttpServer server;
     private AiPlatformClient client;

@@ -44,7 +44,7 @@ class ConversationAccessIntegrationTest {
     @Autowired JdbcTemplate db;
     @Autowired AppUserRepository users;
     @MockitoBean GeminiClient ai;
-    @MockitoBean CartesiaClient tts;
+    @MockitoBean TtsService tts;
     @MockitoBean AiPlatformClient platform;
     @MockitoSpyBean AiUsageBudget budget;
     AppUser learner;

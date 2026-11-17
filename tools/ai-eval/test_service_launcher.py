@@ -120,6 +120,10 @@ def test_explicit_configuration_never_inherits_other_service_secrets(tmp_path):
 @pytest.mark.parametrize('component,text', [
     ('core', 'AI_PROVIDER_ENCRYPTION_KEY=secret'),
     ('core', 'CARTESIA_API_KEY=secret'),
+    ('core', 'DICTALAB_TTS_OPENAI_API_KEY=secret'),
+    ('core', 'DICTALAB_TTS_OPENAICOMPATIBLE_APIKEY=secret'),
+    ('core', 'dictalab.tts.cartesia.api-key=secret'),
+    ('core', 'DICTALAB_AI_OPENAI_TTS_API_KEY=secret'),
     ('core', 'AI_PROVIDER_CONFIG_SOURCE=database'),
     ('core', 'GEMINI_PROVIDER_B_API_KEY=secret'),
     ('core', 'DICTALAB_AI_MODEL_SERVING_TOKEN=secret'),
@@ -145,6 +149,17 @@ def test_core_keeps_its_credentials_and_literal_quoting_only(tmp_path):
     assert result['DB_PASSWORD'] == 'a=b'
     assert result['DICTALAB_AI_TEXT_TRANSPORT'] == 'python'
     assert 'AI_PROVIDER_ENCRYPTION_KEY' not in result
+
+
+@pytest.mark.parametrize('component', ['ai', 'worker'])
+def test_speech_provider_settings_belong_to_ai_runtime_and_are_not_inherited(tmp_path, component):
+    path = tmp_path / 'ai.env'
+    path.write_text('AI_PROVIDER_CONFIG_SOURCE=database\nDICTALAB_AI_REGISTRY_OWNERSHIP=private\n'
+        'DICTALAB_TTS_PROVIDER=openai_compatible\nDICTALAB_TTS_OPENAI_API_KEY=speech-test-key\n', encoding='utf-8')
+    result = launcher.child_environment(component, path, {'DICTALAB_TTS_OPENAI_API_KEY': 'ambient-test-key'})
+    assert result['DICTALAB_TTS_PROVIDER'] == 'openai_compatible'
+    assert result['DICTALAB_TTS_OPENAI_API_KEY'] == 'speech-test-key'
+    launcher.validate_config('core', {'DICTALAB_TTS_PROVIDER': 'openai_compatible', 'DICTALAB_TTS_ENABLED': 'true'})
 
 
 @pytest.mark.parametrize('component', ['ai', 'worker', 'progress'])

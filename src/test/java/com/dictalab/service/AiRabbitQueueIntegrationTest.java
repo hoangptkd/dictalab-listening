@@ -59,7 +59,7 @@ class AiRabbitQueueIntegrationTest {
     @Autowired RabbitListenerEndpointRegistry listeners;
     @Autowired AiQueueProperties config;
     @Autowired io.micrometer.core.instrument.MeterRegistry metrics;
-    @MockitoBean CartesiaClient tts;
+    @MockitoBean TtsService tts;
     @MockitoBean GeminiClient ai;
     private long owner;
     private String session;
@@ -409,8 +409,8 @@ class AiRabbitQueueIntegrationTest {
     @org.springframework.context.annotation.Profile("ai-worker-crash-fixture")
     public static class CrashProvider {
         @org.springframework.context.annotation.Bean @org.springframework.context.annotation.Primary
-        CartesiaClient crashTts() {
-            var provider=mock(CartesiaClient.class);given(provider.enabled()).willReturn(true);
+        TtsService crashTts() {
+            var provider=mock(TtsService.class);given(provider.enabled()).willReturn(true);
             given(provider.synthesize(anyString())).willAnswer(call->{
                 System.out.println("SIMULATED_TTS_ACCEPTED");System.out.flush();
                 new CountDownLatch(1).await(120,TimeUnit.SECONDS);

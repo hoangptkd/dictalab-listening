@@ -287,6 +287,21 @@ dictalab:
     cartesia-version: ${CARTESIA_VERSION:2026-08-14}
     tts-concurrency: ${TTS_CONCURRENCY:0}
     tts-url: ${TTS_URL:https://api.cartesia.ai/tts/bytes}
+  tts:
+    enabled: ${DICTALAB_TTS_ENABLED:true}
+    provider: ${DICTALAB_TTS_PROVIDER:cartesia}
+    concurrency: ${dictalab.conversation.tts-concurrency:0}
+    cartesia:
+      url: ${dictalab.conversation.tts-url}
+      api-key: ${dictalab.conversation.cartesia-api-key}
+      model: ${dictalab.conversation.cartesia-model}
+      voice: ${dictalab.conversation.cartesia-voice}
+      api-version: ${dictalab.conversation.cartesia-version}
+    openai-compatible:
+      url: ${DICTALAB_TTS_OPENAI_URL:https://api.openai.com/v1/audio/speech}
+      api-key: ${DICTALAB_TTS_OPENAI_API_KEY:}
+      model: ${DICTALAB_TTS_OPENAI_MODEL:}
+      voice: ${DICTALAB_TTS_OPENAI_VOICE:}
   coach:
     enabled: ${DICTALAB_COACH_ENABLED:false}
     provider: ${DICTALAB_COACH_PROVIDER:gemini}

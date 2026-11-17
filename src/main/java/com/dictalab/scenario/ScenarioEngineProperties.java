@@ -38,15 +38,22 @@ public record ScenarioEngineProperties(boolean enabled, int programVersion, Stri
     private static tools.jackson.databind.JsonNode parseTtsRecipe(String source) {
         if (source.isBlank()) return null;
         var recipe=ScenarioJson.MAPPER.readTree(source);
-        ScenarioContent.fields(recipe,"id","model","apiVersion","language","outputFormat","voices");
+        if (recipe.has("provider")) {
+            ScenarioContent.fields(recipe,"id","model","apiVersion","language","outputFormat","voices","provider");
+            ScenarioContent.check(recipe.path("provider").isTextual());
+        } else ScenarioContent.fields(recipe,"id","model","apiVersion","language","outputFormat","voices");
+        String provider=recipe.path("provider").asText("cartesia");
+        ScenarioContent.check(java.util.Set.of("cartesia","openai_compatible").contains(provider));
         ScenarioContent.check(ScenarioContent.text(recipe,"id",64).matches("[a-zA-Z0-9_.-]{1,64}")
                 && ScenarioContent.text(recipe,"model",100).matches("[a-zA-Z0-9_.-]{1,100}")
-                && ScenarioContent.text(recipe,"apiVersion",10).matches("[0-9]{4}-[0-9]{2}-[0-9]{2}")
+                && (provider.equals("cartesia") ? ScenarioContent.text(recipe,"apiVersion",10).matches("[0-9]{4}-[0-9]{2}-[0-9]{2}")
+                    : recipe.path("apiVersion").isTextual() && recipe.path("apiVersion").asText().isEmpty())
                 && recipe.path("language").asText().equals("en") && recipe.path("outputFormat").asText().equals("wav-pcm16-mono-24000"));
         ScenarioContent.list(recipe.path("voices"),2,2);
         var voices=new java.util.HashSet<String>();
         for (var voice : recipe.path("voices")) ScenarioContent.check(voice.isTextual()
-                && voice.asText().matches("[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}") && voices.add(voice.asText()));
+                && voice.asText().matches(provider.equals("cartesia") ? "[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}" : "[a-zA-Z0-9_.-]{1,100}")
+                && voices.add(voice.asText()));
         return recipe;
     }
 }

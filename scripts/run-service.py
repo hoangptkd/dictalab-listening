@@ -25,7 +25,8 @@ SYSTEM_ENV = frozenset(('PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'T
     'PROGRAMFILES(X86)', 'JAVA_HOME', 'SYSTEMDRIVE', 'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE'))
 CORE_PROVIDER_SECRETS = frozenset(('AI_PROVIDER_DATABASE_URL', 'AI_PROVIDER_CONTAINER_DATABASE_URL',
     'AI_PROVIDER_ENCRYPTION_KEY', 'GEMINI_API_KEY', 'GEMINI_PROVIDERS_JSON', 'CARTESIA_API_KEY',
-    'DEEPSEEK_API_KEY', 'OPENAI_API_KEY', 'DICTALAB_AI_MODEL_SERVING_TOKEN', 'DICTALAB_MODEL_SERVICE_TOKEN'))
+    'DEEPSEEK_API_KEY', 'OPENAI_API_KEY', 'DICTALAB_TTS_OPENAI_API_KEY', 'DICTALAB_AI_OPENAI_TTS_API_KEY',
+    'DICTALAB_AI_MODEL_SERVING_TOKEN', 'DICTALAB_MODEL_SERVICE_TOKEN'))
 AWS_PROFILE_SETTINGS = frozenset(('AWS_PROFILE', 'AWS_SHARED_CREDENTIALS_FILE', 'AWS_REGION'))
 LANGFUSE_SETTINGS = frozenset(('LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY', 'LANGFUSE_BASE_URL',
     'LANGFUSE_TRACING_ENABLED', 'LANGFUSE_TRACING_ENVIRONMENT', 'LANGFUSE_RELEASE'))
@@ -39,13 +40,15 @@ def validate_config(component, config):
         if upper in SYSTEM_ENV or upper in ('PYTHONPATH', 'JAVA_TOOL_OPTIONS', 'JDK_JAVA_OPTIONS', '_JAVA_OPTIONS'):
             raise ValueError('Runtime configuration cannot replace platform or injection settings')
         if component == 'core':
+            normalized = upper.replace('_', '').replace('-', '').replace('.', '')
             if (upper in CORE_PROVIDER_SECRETS or upper.startswith(('GEMINI_PROVIDER_',
                     'DICTALAB_AI_GEMINI_', 'DICTALAB_AI_CARTESIA_', 'POSTGRES_'))
+                    or normalized.startswith('DICTALABTTS') and normalized.endswith('APIKEY')
                     or upper.startswith('DICTALAB_MODEL_') and upper != 'DICTALAB_MODEL_DEMO_ENABLED'
                     or upper.startswith('AI_PROVIDER_') and (upper != 'AI_PROVIDER_CONFIG_SOURCE' or value != 'env')):
                 raise ValueError('Core runtime must not receive provider or management credentials')
         elif component in ('ai', 'worker'):
-            if not upper.startswith(('DICTALAB_AI_', 'AI_PROVIDER_', 'GEMINI_')) and upper not in AWS_PROFILE_SETTINGS | LANGFUSE_SETTINGS | {'DICTALAB_OPERATIONAL_LIMITS_ENABLED'}:
+            if not upper.startswith(('DICTALAB_AI_', 'AI_PROVIDER_', 'GEMINI_', 'DICTALAB_TTS_')) and upper not in AWS_PROFILE_SETTINGS | LANGFUSE_SETTINGS | {'DICTALAB_OPERATIONAL_LIMITS_ENABLED'}:
                 raise ValueError('AI runtime configuration contains another service setting')
         elif component == 'progress':
             if not upper.startswith(('PROGRESS_', 'RABBITMQ_')) and upper not in AWS_PROFILE_SETTINGS | {'AURORA_DB_HOST', 'SPRING_PROFILES_ACTIVE'}:

@@ -25,7 +25,7 @@ class ConversationUxIntegrationTest {
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
     @MockitoBean GeminiClient ai;
-    @MockitoBean CartesiaClient tts;
+    @MockitoBean TtsService tts;
     @MockitoBean ConversationLocalClient local;
     @MockitoSpyBean AiUsageBudget budget;
     long owner;

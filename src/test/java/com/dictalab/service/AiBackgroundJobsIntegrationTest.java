@@ -31,7 +31,7 @@ class AiBackgroundJobsIntegrationTest {
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
     @Autowired ApplicationContext context;
-    @MockitoBean CartesiaClient tts;
+    @MockitoBean TtsService tts;
     @MockitoBean GeminiClient ai;
     @MockitoBean RabbitTemplate rabbit;
     @MockitoBean AiPlatformClient platform;

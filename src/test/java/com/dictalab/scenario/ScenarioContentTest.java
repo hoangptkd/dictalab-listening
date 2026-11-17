@@ -7,6 +7,12 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ScenarioContentTest {
+    @Test void alternateTtsRecipesAcceptProviderVoiceNamesWithoutWeakeningLegacyValidation() {
+        String recipe="{\"id\":\"pair-v2\",\"provider\":\"openai_compatible\",\"model\":\"speech-model\",\"apiVersion\":\"\",\"language\":\"en\",\"outputFormat\":\"wav-pcm16-mono-24000\",\"voices\":[\"alloy\",\"nova\"]}";
+        assertThat(new ScenarioEngineProperties(true,1,"","",false,java.util.Set.of(),java.util.Map.of(),recipe).ttsRecipe().path("provider").asText()).isEqualTo("openai_compatible");
+        for (String invalid : java.util.List.of(recipe.replace("openai_compatible","unknown"),recipe.replace("nova","alloy"),recipe.replace("openai_compatible","cartesia"),recipe.replace("\"apiVersion\":\"\"","\"apiVersion\":\"2026-08-14\"")))
+            assertThatThrownBy(() -> new ScenarioEngineProperties(true,1,"","",false,java.util.Set.of(),java.util.Map.of(),invalid)).isInstanceOf(IllegalArgumentException.class);
+    }
     @Test void voiceRecipeRequiresTwoDistinctConfiguredVoicesAndKeepsLegacyDefaultDisabled() {
         var legacy=new ScenarioEngineProperties(true,1,"","",false,java.util.Set.of());
         assertThat(legacy.ttsRecipe()).isNull();
