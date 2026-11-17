@@ -17,7 +17,7 @@ def test_provider_id_upgrade_preserves_ciphertext_fk_and_quota_constraints():
             db.execute(sql.SQL("SET search_path TO {}, public").format(sql.Identifier(schema)))
             db.execute((folder / "001_provider_registry.sql").read_text(encoding="utf-8"))
             db.execute("INSERT INTO ai_provider_pools(platform,default_model,global_rpm_limit,global_rpd_limit) VALUES ('gemini','fixture-model',0,0)")
-            db.execute("INSERT INTO ai_provider_accounts(id,platform,account_id,model,endpoint,api_key_ciphertext,rpm_limit,operating_rpm) VALUES ('source','gemini','account','fixture-model','https://fixture.invalid/v1/chat/completions','unchanged-ciphertext',10,10)")
+            db.execute("INSERT INTO ai_provider_accounts(id,platform,account_id,model,endpoint,api_key_ciphertext,rpm_limit,operating_rpm,tpm_limit,rpd_limit,enabled,priority) VALUES ('source','gemini','account','fixture-model','https://generativelanguage.googleapis.com/v1beta/openai/chat/completions','unchanged-ciphertext',10,10,0,0,true,0)")
             db.execute((folder / "003_extensible_provider_ids.sql").read_text(encoding="utf-8"))
             db.execute("INSERT INTO ai_provider_pools(platform,default_model,global_rpm_limit,global_rpd_limit) VALUES ('fixture','fixture-model',0,0)")
             assert db.execute("SELECT api_key_ciphertext FROM ai_provider_accounts").fetchone()[0] == "unchanged-ciphertext"
