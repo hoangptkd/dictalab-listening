@@ -149,6 +149,13 @@ services:
       DICTALAB_AI_CARTESIA_MODEL: ${CARTESIA_MODEL:-sonic-3.6}
       DICTALAB_AI_CARTESIA_VOICE: ${CARTESIA_VOICE:-db6b0ed5-d5d3-463d-ae85-518a07d3c2b4}
       DICTALAB_AI_CARTESIA_VERSION: ${CARTESIA_VERSION:-2026-08-14}
+      DICTALAB_AI_CARTESIA_URL: ${TTS_URL:-https://api.cartesia.ai/tts/bytes}
+      DICTALAB_TTS_ENABLED: ${DICTALAB_TTS_ENABLED:-true}
+      DICTALAB_TTS_PROVIDER: ${DICTALAB_TTS_PROVIDER:-cartesia}
+      DICTALAB_TTS_OPENAI_URL: ${DICTALAB_TTS_OPENAI_URL:-https://api.openai.com/v1/audio/speech}
+      DICTALAB_TTS_OPENAI_API_KEY: ${DICTALAB_TTS_OPENAI_API_KEY:-}
+      DICTALAB_TTS_OPENAI_MODEL: ${DICTALAB_TTS_OPENAI_MODEL:-}
+      DICTALAB_TTS_OPENAI_VOICE: ${DICTALAB_TTS_OPENAI_VOICE:-}
       DICTALAB_AI_MODEL: ${DICTALAB_AI_MODEL:-qwen3.5:9b}
       # Service-to-service auth token — must be non-empty in production.
       # Set DICTALAB_AI_PRODUCTION_MODE=true to enforce fail-fast on startup.

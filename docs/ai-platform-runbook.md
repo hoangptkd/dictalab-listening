@@ -70,7 +70,8 @@ service token and URL-encoded broker URL in protected runtime configuration. Com
 `GEMINI_API_KEY` to Python's `DICTALAB_AI_GEMINI_API_KEY` and `CARTESIA_API_KEY` to its TTS client.
 For native Python set those Python variables explicitly. The local launcher selects Spring's `local` profile
 and forces Ollama for text AI, including legacy grading and review; it needs no cloud provider key.
-Audio still requires Cartesia. Default Java production routing uses Gemini, including rollback clients.
+Audio defaults to Cartesia; an OpenAI-compatible speech adapter is also available.
+See [shared TTS configuration and reuse](tts.md). Default Java production routing uses Gemini, including rollback clients.
 Java `DICTALAB_AI_TEXT_PROVIDER` must match Python's selected primary; mismatches fail before paid job calls.
 
 Gemini is the only cloud text provider (`DICTALAB_AI_PRIMARY_PROVIDER=gemini`). Compose forwards

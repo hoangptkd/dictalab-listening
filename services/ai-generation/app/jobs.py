@@ -61,9 +61,10 @@ class JobEvent(JobRequest):
 
 def capability_metadata(payload, settings):
     if payload.kind == "scenario_tts":
-        return {"provider": "cartesia", "model": payload.recipe.model, "modelDigest": "provider-managed",
+        return {"provider": payload.recipe.provider, "model": payload.recipe.model, "modelDigest": "provider-managed",
                 "promptVersion": "TTS_WAV_V2", "schemaVersion": "1",
-                "promptHash": digest({"instruction": "Cartesia PCM 24000 mono 16-bit WAV", "input": tts.ScenarioTtsInput.model_json_schema()}),
+                "promptHash": tts.LEGACY_SCENARIO_PROMPT_HASH if payload.recipe.provider == "cartesia" else
+                    digest({"instruction": "TTS PCM 24000 mono 16-bit WAV", "input": tts.ScenarioTtsInput.model_json_schema()}),
                 "recipeHash": digest(payload.recipe.model_dump()), "speakerId": payload.speakerId, "voiceId": payload.voiceId}
     if payload.kind == "scenario":
         if payload.contractVersion == "scenario-job.v3":
@@ -72,9 +73,9 @@ def capability_metadata(payload, settings):
     if payload.kind == "conversation_demo":
         return conversation_demo.metadata(settings)
     module = {"coach": coach, "review": review, "tts": tts}[payload.kind]
-    instruction = getattr(module, "INSTRUCTION", "Cartesia PCM 24000 mono 16-bit WAV")
-    return {"provider": "cartesia" if payload.kind == "tts" else settings.selected_provider,
-            "model": settings.cartesia_model if payload.kind == "tts" else
+    instruction = getattr(module, "INSTRUCTION", "Cartesia PCM 24000 mono 16-bit WAV" if settings.tts_provider == "cartesia" else "TTS PCM 24000 mono 16-bit WAV")
+    return {"provider": settings.tts_provider if payload.kind == "tts" else settings.selected_provider,
+            "model": tts.PROVIDERS[settings.tts_provider].configuration(settings)["model"] if payload.kind == "tts" else
                 settings.active_cloud_model if settings.selected_provider in CLOUD_PROVIDERS else settings.model,
             "modelDigest": settings.model_digest if settings.selected_provider == "ollama" and payload.kind != "tts" else "provider-managed",
             "promptVersion": module.PROMPT_VERSION,
@@ -86,7 +87,11 @@ def capability_metadata(payload, settings):
 def execution_fingerprint(payload, settings):
     if payload.kind == "scenario_tts":
         # The immutable recipe, not the current legacy default voice, defines this execution.
-        return digest({"payload": payload.model_dump(), "metadata": capability_metadata(payload, settings), "url": settings.cartesia_url})
+        return digest({"payload": payload.model_dump(), "metadata": capability_metadata(payload, settings),
+                       "url": tts.PROVIDERS[payload.recipe.provider].configuration(settings)["url"]})
+    if payload.kind == "tts" and settings.tts_provider != "cartesia":
+        return digest({"payload": payload.model_dump(), "metadata": capability_metadata(payload, settings),
+                       "config": {k: v for k, v in tts.PROVIDERS[settings.tts_provider].configuration(settings).items() if k != "key"}})
     return digest({"payload": payload.model_dump(), "metadata": capability_metadata(payload, settings),
         "pool": [{k: v for k, v in p.model_dump().items() if k != "api_key"}
                  for p in settings.sources_for(settings.selected_provider)] if settings.gemini_quota_enabled else [],

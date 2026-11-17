@@ -538,7 +538,9 @@ public class ScenarioEngine {
         if (!kind.equals("TTS")) ScenarioContent.check(id.equals(result.path("generationId").asText()));
         else ScenarioContent.check(result.path("generationId").asText().matches("[a-f0-9-]{36}"));
         String provider=result.path("provider").asText();
-        ScenarioContent.check(kind.equals("TTS") ? provider.equals("cartesia") : ai.scenarioProvider().equals(provider));
+        String ttsProvider=input.path("kind").asText().equals("scenario_tts")
+                ? input.path("recipe").path("provider").asText("cartesia") : ai.ttsProvider();
+        ScenarioContent.check(kind.equals("TTS") ? ttsProvider.equals(provider) : ai.scenarioProvider().equals(provider));
         for (String f : List.of("model","modelDigest","promptVersion","promptHash")) ScenarioContent.text(result,f,128);
         ScenarioContent.check(result.path("promptHash").asText().matches("[a-f0-9]{64}"));
         if (meaning) {

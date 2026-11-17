@@ -3,7 +3,7 @@
 This service is an optional boundary for conversation generation. Spring Boot remains the owner of
 authentication, sessions, history, quota and persistence. The default provider is unchanged; set
 `DICTALAB_CONVERSATION_GENERATION_PROVIDER=python` only after this service and its evaluated provider are ready.
-Production text AI uses Google Gemini; local text AI uses Ollama. Cartesia remains the audio provider.
+Production text AI uses Google Gemini; local text AI uses Ollama. Audio defaults to Cartesia and can select an OpenAI-compatible speech endpoint independently; see [shared TTS](../../docs/tts.md).
 
 ## Langfuse: theo dõi prompt và model
 

@@ -3,7 +3,7 @@ package com.dictalab.web;
 import com.dictalab.domain.AppUser;
 import com.dictalab.repository.AppUserRepository;
 import com.dictalab.security.DictaLabPrincipal;
-import com.dictalab.service.CartesiaClient;
+import com.dictalab.service.TtsService;
 import com.dictalab.service.ConversationService;
 import com.dictalab.service.GeminiClient;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,7 +62,7 @@ class ConversationIntegrationTest {
     @Autowired com.dictalab.service.AiUsageBudget budget;
     @Autowired MockMvc mvc;
     @MockitoBean GeminiClient ai;
-    @MockitoBean CartesiaClient tts;
+    @MockitoBean TtsService tts;
     @MockitoBean com.dictalab.service.AiPlatformClient platform;
     long owner;
 

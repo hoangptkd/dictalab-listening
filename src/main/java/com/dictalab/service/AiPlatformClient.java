@@ -1,6 +1,7 @@
 package com.dictalab.service;
 
 import com.dictalab.config.AiPlatformProperties;
+import com.dictalab.config.TtsProperties;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -18,6 +19,7 @@ public class AiPlatformClient {
             .connectTimeout(Duration.ofSeconds(3)).build();
     private final ObjectMapper json;
     private final AiPlatformProperties config;
+    private final TtsProperties ttsConfig;
     private final io.micrometer.core.instrument.MeterRegistry metrics;
     private final java.util.concurrent.ThreadPoolExecutor shadows = new java.util.concurrent.ThreadPoolExecutor(1, 1, 0,
             TimeUnit.SECONDS, new java.util.concurrent.SynchronousQueue<>(), task -> {
@@ -26,15 +28,23 @@ public class AiPlatformClient {
 
     public AiPlatformClient(ObjectMapper json, AiPlatformProperties config,
                             io.micrometer.core.instrument.MeterRegistry metrics) {
-        this.json = json; this.config = config; this.metrics = metrics;
+        this(json, config, metrics, new TtsProperties(true, "cartesia", null, null));
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AiPlatformClient(ObjectMapper json, AiPlatformProperties config,
+                            io.micrometer.core.instrument.MeterRegistry metrics, TtsProperties ttsConfig) {
+        this.json = json; this.config = config; this.metrics = metrics; this.ttsConfig = ttsConfig;
     }
 
     public boolean enabled(String kind, long user) {
-        return config.mode(kind).equals("python") || config.mode(kind).equals("canary") && config.canaryUsers().contains(user);
+        return (!kind.equals("tts") || ttsConfig.enabled()) && (config.mode(kind).equals("python")
+                || config.mode(kind).equals("canary") && config.canaryUsers().contains(user));
     }
     public boolean shadow(String kind) { return config.mode(kind).equals("shadow"); }
     public boolean local() { return config.textProvider().equals("ollama"); }
     public String scenarioProvider() { return config.textProvider(); }
+    public String ttsProvider() { return ttsConfig.provider(); }
 
     public boolean textConfigured() { return config.serviceToken().matches("[!-~]{32,256}"); }
 
@@ -203,12 +213,11 @@ public class AiPlatformClient {
                 throw new IllegalStateException("AI job did not complete");
             JsonNode result = state.path("result");
             if (!"1".equals(result.path("schemaVersion").asText()) || !result.path("task").isObject()
-                    || !Set.of("ollama", "gemini", "deepseek", "openai_compatible", "cartesia").contains(result.path("provider").asText())
                     || !result.path("promptHash").asText().matches("[a-f0-9]{64}"))
                 throw new IllegalStateException("Invalid AI job result");
             if (!kind.equals("tts") && !config.textProvider().equals(result.path("provider").asText()))
                 throw new IllegalStateException("AI provider differs from Java quota configuration");
-            if (kind.equals("tts") && !"cartesia".equals(result.path("provider").asText()))
+            if (kind.equals("tts") && !ttsProvider().equals(result.path("provider").asText()))
                 throw new IllegalStateException("Invalid TTS provider");
             for (String field : List.of("model", "promptVersion", "generationId"))
                 if (!result.path(field).isTextual() || result.path(field).asText().isBlank() || result.path(field).asText().length() > 128)
@@ -249,22 +258,9 @@ public class AiPlatformClient {
         JsonNode task = result.path("task");
         if (!"audio/wav".equals(task.path("contentType").asText())) throw new IllegalStateException("Invalid audio content type");
         byte[] bytes = Base64.getDecoder().decode(task.path("audioBase64").asText());
-        if (bytes.length != task.path("size").asInt() || bytes.length < 44 || bytes.length > 3_000_000
-                || bytes[0] != 'R' || bytes[1] != 'I' || bytes[2] != 'F' || bytes[3] != 'F'
-                || bytes[8] != 'W' || bytes[9] != 'A' || bytes[10] != 'V' || bytes[11] != 'E')
+        if (bytes.length != task.path("size").asInt())
             throw new IllegalStateException("Invalid audio bytes");
-        if (java.nio.ByteBuffer.wrap(bytes, 4, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt() != bytes.length - 8)
-            throw new IllegalStateException("Invalid WAV length");
-        try (var audio = javax.sound.sampled.AudioSystem.getAudioInputStream(new java.io.ByteArrayInputStream(bytes))) {
-            var format = audio.getFormat();
-            if (format.getChannels() != 1 || format.getSampleRate() != 24000 || format.getSampleSizeInBits() != 16
-                    || format.isBigEndian() || !format.getEncoding().equals(javax.sound.sampled.AudioFormat.Encoding.PCM_SIGNED)
-                    || audio.getFrameLength() <= 0 || audio.readAllBytes().length != audio.getFrameLength() * 2)
-                throw new IllegalStateException("Invalid PCM audio");
-        } catch (java.io.IOException | javax.sound.sampled.UnsupportedAudioFileException invalid) {
-            throw new IllegalStateException("Invalid WAV audio");
-        }
-        return bytes;
+        return WavAudio.validate(bytes);
     }
 
     private JsonNode redact(JsonNode value) {
