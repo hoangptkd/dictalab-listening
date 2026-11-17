@@ -1,0 +1,2569 @@
+{
+  "version": "scenario-dynamic-examples.v1",
+  "status": "owner-approved-for-local-candidate",
+  "basePromptHash": "5ac2eb0f3d04190bdc8e4dd5ecabf05d4f6d44f3d35edd2a7a99941a4006672b",
+  "maxExamplesPerCall": 3,
+  "note": "Output scopes may be schema fragments. They never replace the complete runtime response schema.",
+  "examples": [
+    {
+      "id": "extract-roles-uncertainty",
+      "stage": "EXTRACT",
+      "titleVi": "Giữ vai người nghe và điều chưa xác nhận",
+      "taskTags": [
+        "source-roles",
+        "uncertainty"
+      ],
+      "program": "general-communication",
+      "level": "A2",
+      "mode": "normal",
+      "outputModel": "PersonalizedExtraction",
+      "outputScope": "/",
+      "input": {
+        "inputVi": "Tôi chỉ nghe hai người điều phối thư viện trao đổi. Phòng đọc mở lúc 8 giờ. Nhóm trẻ em chưa xác nhận tham gia."
+      },
+      "output": {
+        "allowed": true,
+        "titleVi": "Sắp xếp buổi đọc sách",
+        "settingVi": "Hai người điều phối tại thư viện.",
+        "goalVi": "Trao đổi giờ mở cửa và trạng thái tham gia của nhóm trẻ em.",
+        "characters": [
+          {
+            "id": "lan",
+            "name": "Lan",
+            "roleVi": "Người điều phối thứ nhất"
+          },
+          {
+            "id": "duy",
+            "name": "Duy",
+            "roleVi": "Người điều phối thứ hai"
+          }
+        ],
+        "assumptionsVi": [],
+        "topicIds": [
+          "workstudy"
+        ],
+        "learnerMode": "listener",
+        "learnerCharacterId": null,
+        "genre": "information-exchange",
+        "providedFacts": [
+          {
+            "quoteVi": "Phòng đọc mở lúc 8 giờ."
+          },
+          {
+            "quoteVi": "Nhóm trẻ em chưa xác nhận tham gia."
+          }
+        ],
+        "inferredFacts": []
+      },
+      "rationaleVi": "Không biến người học thành nhân vật; không đổi chưa xác nhận thành đã đăng ký.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "extract-permission-condition",
+      "stage": "EXTRACT",
+      "titleVi": "Giữ điều kiện trước khi hành động",
+      "taskTags": [
+        "condition",
+        "approval"
+      ],
+      "program": "toeic-listening",
+      "level": "B1",
+      "mode": "normal",
+      "outputModel": "PersonalizedExtraction",
+      "outputScope": "/",
+      "input": {
+        "inputVi": "Hai nhân viên xưởng bàn việc chuyển máy đo. Chỉ chuyển sau khi kỹ thuật viên xác nhận. Tôi là người nghe."
+      },
+      "output": {
+        "allowed": true,
+        "titleVi": "Chuyển máy đo",
+        "settingVi": "Hai nhân viên trao đổi tại xưởng.",
+        "goalVi": "Làm rõ điều kiện cần trước khi chuyển máy đo.",
+        "characters": [
+          {
+            "id": "ha",
+            "name": "Hà",
+            "roleVi": "Nhân viên thứ nhất"
+          },
+          {
+            "id": "long",
+            "name": "Long",
+            "roleVi": "Nhân viên thứ hai"
+          }
+        ],
+        "assumptionsVi": [],
+        "topicIds": [
+          "workstudy"
+        ],
+        "learnerMode": "listener",
+        "learnerCharacterId": null,
+        "genre": "information-exchange",
+        "providedFacts": [
+          {
+            "quoteVi": "Chỉ chuyển sau khi kỹ thuật viên xác nhận."
+          }
+        ],
+        "inferredFacts": []
+      },
+      "rationaleVi": "Không tự thêm giờ chuyển hoặc giả định kỹ thuật viên đã xác nhận.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "extract-hypothesis",
+      "stage": "EXTRACT",
+      "titleVi": "Tách giả thuyết khỏi kết quả đo",
+      "taskTags": [
+        "hypothesis",
+        "controlled-variable"
+      ],
+      "program": "ielts-listening",
+      "level": "B2",
+      "mode": "normal",
+      "outputModel": "PersonalizedExtraction",
+      "outputScope": "/",
+      "input": {
+        "inputVi": "Hai sinh viên dự đoán tác động của nhiệt độ lên tốc độ khô của giấy. Các mẫu có cùng độ dày; chưa có kết quả đo."
+      },
+      "output": {
+        "allowed": true,
+        "titleVi": "Thiết kế thí nghiệm làm khô giấy",
+        "settingVi": "Hai sinh viên thảo luận kế hoạch thí nghiệm.",
+        "goalVi": "Trao đổi giả thuyết về nhiệt độ khi giữ độ dày giấy như nhau, chưa kết luận kết quả.",
+        "characters": [
+          {
+            "id": "minh",
+            "name": "Minh",
+            "roleVi": "Sinh viên thứ nhất"
+          },
+          {
+            "id": "thu",
+            "name": "Thu",
+            "roleVi": "Sinh viên thứ hai"
+          }
+        ],
+        "assumptionsVi": [],
+        "topicIds": [
+          "workstudy"
+        ],
+        "learnerMode": "listener",
+        "learnerCharacterId": null,
+        "genre": "discussion",
+        "providedFacts": [
+          {
+            "quoteVi": "Các mẫu có cùng độ dày; chưa có kết quả đo."
+          }
+        ],
+        "inferredFacts": []
+      },
+      "rationaleVi": "Không ghi một giả thuyết do người viết tự chọn thành sự thật người dùng cung cấp.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "generate-everyday-progress",
+      "stage": "GENERATE",
+      "titleVi": "Đời thường, ngắn và có thông tin mới",
+      "taskTags": [
+        "natural-dialogue",
+        "source-roles"
+      ],
+      "program": "general-communication",
+      "level": "A2",
+      "mode": "normal",
+      "outputModel": "Dialogue",
+      "outputScope": "/",
+      "input": {
+        "inputVi": "Hai hàng xóm trao đổi việc mượn bơm xe đạp trong hôm nay.",
+        "characters": [
+          "mai",
+          "son"
+        ],
+        "constraintsVi": [
+          "Sơn cần bơm lốp trước chuyến đi.",
+          "Mai cho mượn bơm và hướng dẫn dùng."
+        ]
+      },
+      "output": {
+        "activities": [
+          {
+            "id": "a1",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "son",
+                "textEn": "Mai, may I borrow your bicycle pump today? My front tire needs some air before I leave."
+              },
+              {
+                "id": "s2",
+                "speakerId": "mai",
+                "textEn": "Of course. It is beside the shoe rack, so you can pick it up now."
+              }
+            ]
+          },
+          {
+            "id": "a2",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "son",
+                "textEn": "Thank you. Should I turn this small ring before I attach the pump to the tire?"
+              },
+              {
+                "id": "s2",
+                "speakerId": "mai",
+                "textEn": "Yes. Open the ring first, then close it firmly after you attach the pump."
+              }
+            ]
+          },
+          {
+            "id": "a3",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "son",
+                "textEn": "The tire feels firm now. I will bring your pump back this afternoon after my ride."
+              },
+              {
+                "id": "s2",
+                "speakerId": "mai",
+                "textEn": "That is fine. Please leave it on the covered shelf if I am out."
+              }
+            ]
+          }
+        ]
+      },
+      "rationaleVi": "Ba phần tiếp nối: mượn → cách dùng → trả. Mỗi phần có thông tin, không chỉ lời chào kết thúc.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "generate-operational-condition",
+      "stage": "GENERATE",
+      "titleVi": "Công việc: đề xuất chưa phải quyết định",
+      "taskTags": [
+        "condition",
+        "deadline",
+        "source-roles"
+      ],
+      "program": "toeic-listening",
+      "level": "B1",
+      "mode": "normal",
+      "outputModel": "Dialogue",
+      "outputScope": "/",
+      "input": {
+        "inputVi": "Hai nhân viên xếp lịch giao máy đo; chỉ gửi sau khi kiểm định, hạn nhận trưa thứ Sáu.",
+        "characters": [
+          "kim",
+          "leo"
+        ]
+      },
+      "output": {
+        "activities": [
+          {
+            "id": "a1",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "kim",
+                "textEn": "The customer needs the meter no later than noon on Friday. Can we arrange a pickup tomorrow?"
+              },
+              {
+                "id": "s2",
+                "speakerId": "leo",
+                "textEn": "We can request one, but we must wait for the calibration certificate before releasing the meter."
+              }
+            ]
+          },
+          {
+            "id": "a2",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "kim",
+                "textEn": "Has the technician signed the certificate yet? I do not want the courier to arrive before it is ready."
+              },
+              {
+                "id": "s2",
+                "speakerId": "leo",
+                "textEn": "Not yet. I will ask for an update and keep the meter in the inspection area until it is signed."
+              }
+            ]
+          },
+          {
+            "id": "a3",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "kim",
+                "textEn": "I will tell the courier that the pickup is provisional. Please let me know when the certificate arrives."
+              },
+              {
+                "id": "s2",
+                "speakerId": "leo",
+                "textEn": "I will. If it is still unsigned tomorrow morning, we should discuss another delivery arrangement with the customer."
+              }
+            ]
+          }
+        ]
+      },
+      "rationaleVi": "Không tuyên bố đã duyệt, không biến hạn nhận thành giờ hẹn cố định.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "generate-academic-hypothesis",
+      "stage": "GENERATE",
+      "titleVi": "Học thuật: có giả thuyết, chưa có kết quả",
+      "taskTags": [
+        "hypothesis",
+        "controlled-variable",
+        "uncertainty"
+      ],
+      "program": "ielts-listening",
+      "level": "B2",
+      "mode": "normal",
+      "outputModel": "Dialogue",
+      "outputScope": "/",
+      "input": {
+        "inputVi": "Hai sinh viên thử ảnh hưởng của tốc độ quạt lên thời gian giấy khô. Giữ lượng nước như nhau; chưa đo.",
+        "characters": [
+          "nia",
+          "omar"
+        ]
+      },
+      "output": {
+        "activities": [
+          {
+            "id": "a1",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "nia",
+                "textEn": "We should keep the amount of water on each sheet identical. Otherwise moisture could explain a difference in drying time."
+              },
+              {
+                "id": "s2",
+                "speakerId": "omar",
+                "textEn": "Agreed. We will use the same paper size and thickness too, so fan speed is the factor we change."
+              }
+            ]
+          },
+          {
+            "id": "a2",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "omar",
+                "textEn": "My hypothesis is that stronger airflow will reduce the time needed for the paper to dry."
+              },
+              {
+                "id": "s2",
+                "speakerId": "nia",
+                "textEn": "That is plausible, but we should treat it as a prediction until we collect measurements under each fan setting."
+              }
+            ]
+          },
+          {
+            "id": "a3",
+            "segments": [
+              {
+                "id": "s1",
+                "speakerId": "nia",
+                "textEn": "We have not started the timed trials yet. Shall we record the drying time for every sheet rather than just the fastest one?"
+              },
+              {
+                "id": "s2",
+                "speakerId": "omar",
+                "textEn": "Yes. Keeping all the measurements will help us compare the settings without selecting only the results we prefer."
+              }
+            ]
+          }
+        ]
+      },
+      "rationaleVi": "Thực sự nêu giả thuyết và kế hoạch đo; không chỉ nói chung rằng có giả thuyết.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "questions-reason-scope",
+      "stage": "QUESTIONS",
+      "titleVi": "Chỉ chấm lý do, không chấm lại hành động",
+      "taskTags": [
+        "question-scope",
+        "reason"
+      ],
+      "program": "general-communication",
+      "level": "B1",
+      "mode": "normal",
+      "outputModel": "SparseActivityDraft",
+      "outputScope": "/activities/{activityId}",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "linh",
+              "textEn": "We moved the notice inside because rain had washed away the lettering."
+            },
+            {
+              "id": "s2",
+              "speakerId": "tom",
+              "textEn": "I will put it near the entrance so visitors can still read it."
+            }
+          ]
+        }
+      },
+      "output": {
+        "id": "a1",
+        "assessment": {
+          "policyVersion": "scenario-meaning-assessment.v2",
+          "meanings": [
+            {
+              "id": "m1",
+              "meaningEn": "Rain had washed away the lettering.",
+              "skill": "reason",
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+                }
+              ],
+              "requiredParts": [
+                {
+                  "id": "p1",
+                  "meaningEn": "Rain had washed away the lettering.",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "questions": [
+          {
+            "id": "q1",
+            "promptVi": "Vì sao họ chuyển thông báo vào bên trong?",
+            "answerVi": "Vì mưa làm trôi chữ.",
+            "factEn": "Rain had washed away the lettering.",
+            "speechAct": "statement",
+            "evidence": [
+              {
+                "segmentId": "s1",
+                "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+              }
+            ],
+            "skill": "reason",
+            "supportKind": "direct",
+            "inferenceReasonEn": "",
+            "meaningIds": [
+              "m1"
+            ]
+          }
+        ]
+      },
+      "rationaleVi": "requiredParts chỉ có lý do. Không thêm “chuyển thông báo vào trong” vì câu hỏi đã cung cấp.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "questions-deadline",
+      "stage": "QUESTIONS",
+      "titleVi": "Câu trực tiếp hợp lệ về hạn chót",
+      "taskTags": [
+        "deadline",
+        "direct-valid"
+      ],
+      "program": "toeic-listening",
+      "level": "B1",
+      "mode": "normal",
+      "outputModel": "SparseActivityDraft",
+      "outputScope": "/activities/{activityId}",
+      "input": {
+        "activity": {
+          "id": "a2",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "ivy",
+              "textEn": "Please return the signed form by Thursday afternoon."
+            },
+            {
+              "id": "s2",
+              "speakerId": "noah",
+              "textEn": "I can return it tomorrow morning, before that deadline."
+            }
+          ]
+        }
+      },
+      "output": {
+        "id": "a2",
+        "assessment": {
+          "policyVersion": "scenario-meaning-assessment.v2",
+          "meanings": [
+            {
+              "id": "m1",
+              "meaningEn": "No later than Thursday afternoon.",
+              "skill": "detail",
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "Please return the signed form by Thursday afternoon."
+                }
+              ],
+              "requiredParts": [
+                {
+                  "id": "p1",
+                  "meaningEn": "No later than Thursday afternoon.",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "Please return the signed form by Thursday afternoon."
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "questions": [
+          {
+            "id": "q1",
+            "promptVi": "Hạn cuối trả mẫu đã ký là khi nào?",
+            "answerVi": "Chậm nhất chiều thứ Năm.",
+            "factEn": "No later than Thursday afternoon.",
+            "speechAct": "statement",
+            "evidence": [
+              {
+                "segmentId": "s1",
+                "quoteEn": "Please return the signed form by Thursday afternoon."
+              }
+            ],
+            "skill": "detail",
+            "supportKind": "direct",
+            "inferenceReasonEn": "",
+            "meaningIds": [
+              "m1"
+            ]
+          }
+        ]
+      },
+      "rationaleVi": "Một câu có giá trị là đủ; không thêm câu suy luận. “By” giữ nghĩa hạn chót.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "questions-two-explicit-parts",
+      "stage": "QUESTIONS",
+      "titleVi": "Hai ý được hỏi rõ thì mới có hai phần chấm",
+      "taskTags": [
+        "quantity",
+        "multi-part",
+        "condition"
+      ],
+      "program": "ielts-listening",
+      "level": "B1",
+      "mode": "normal",
+      "outputModel": "SparseActivityDraft",
+      "outputScope": "/activities/{activityId}",
+      "input": {
+        "activity": {
+          "id": "a3",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "hana",
+              "textEn": "Use four glass dishes and label each one before heating."
+            },
+            {
+              "id": "s2",
+              "speakerId": "max",
+              "textEn": "I will label all four now, so none gets mixed up during the trial."
+            }
+          ]
+        }
+      },
+      "output": {
+        "id": "a3",
+        "assessment": {
+          "policyVersion": "scenario-meaning-assessment.v2",
+          "meanings": [
+            {
+              "id": "m1",
+              "meaningEn": "Use four glass dishes and label each before heating.",
+              "skill": "detail",
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "Use four glass dishes and label each one before heating."
+                }
+              ],
+              "requiredParts": [
+                {
+                  "id": "p1",
+                  "meaningEn": "Four glass dishes.",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "Use four glass dishes and label each one before heating."
+                    }
+                  ]
+                },
+                {
+                  "id": "p2",
+                  "meaningEn": "Label each dish before heating.",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "Use four glass dishes and label each one before heating."
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "questions": [
+          {
+            "id": "q1",
+            "promptVi": "Cần dùng bao nhiêu đĩa thủy tinh và làm gì với chúng trước khi đun?",
+            "answerVi": "Bốn đĩa; dán nhãn từng đĩa trước khi đun.",
+            "factEn": "Use four glass dishes and label each before heating.",
+            "speechAct": "statement",
+            "evidence": [
+              {
+                "segmentId": "s1",
+                "quoteEn": "Use four glass dishes and label each one before heating."
+              }
+            ],
+            "skill": "detail",
+            "supportKind": "direct",
+            "inferenceReasonEn": "",
+            "meaningIds": [
+              "m1"
+            ]
+          }
+        ]
+      },
+      "rationaleVi": "Hai yêu cầu độc lập được hỏi rõ. Giữ điều kiện trước khi đun.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "review_questions-extra-context",
+      "stage": "REVIEW_QUESTIONS",
+      "titleVi": "Phát hiện khóa thêm tiền đề",
+      "taskTags": [
+        "question-scope",
+        "reason"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "normal",
+      "outputModel": "UsefulCheck",
+      "outputScope": "/checks/{expectedTarget}",
+      "input": {
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "We moved the notice inside because rain had washed away the lettering."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "tom",
+                  "textEn": "I will put it near the entrance so visitors can still read it."
+                }
+              ]
+            }
+          ]
+        },
+        "groundedQuestions": {
+          "activities": [
+            {
+              "id": "a1",
+              "assessment": {
+                "policyVersion": "scenario-meaning-assessment.v2",
+                "meanings": [
+                  {
+                    "id": "m1",
+                    "meaningEn": "Rain had washed away the lettering.",
+                    "skill": "reason",
+                    "supportKind": "direct",
+                    "inferenceReasonEn": "",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+                      }
+                    ],
+                    "requiredParts": [
+                      {
+                        "id": "p1",
+                        "meaningEn": "Rain had washed away the lettering.",
+                        "evidence": [
+                          {
+                            "segmentId": "s1",
+                            "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+                          }
+                        ]
+                      },
+                      {
+                        "id": "p2",
+                        "meaningEn": "Move the notice inside.",
+                        "evidence": [
+                          {
+                            "segmentId": "s1",
+                            "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "questions": [
+                {
+                  "id": "q1",
+                  "promptVi": "Vì sao họ chuyển thông báo vào bên trong?",
+                  "answerVi": "Vì mưa làm trôi chữ.",
+                  "factEn": "Rain had washed away the lettering.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+                    }
+                  ],
+                  "skill": "reason",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "meaningIds": [
+                    "m1"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "output": {
+        "itemType": "question",
+        "activityId": "a1",
+        "itemId": "q1",
+        "status": "DEFECT",
+        "code": "extra_scoring_part",
+        "artifactQuote": "Vì sao họ chuyển thông báo vào bên trong?",
+        "sourceEvidence": [
+          {
+            "activityId": "a1",
+            "segmentId": "s1",
+            "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+          }
+        ],
+        "requestQuote": "",
+        "reasonVi": "Khóa thêm p2 là hành động đã nằm trong câu hỏi.",
+        "derivedAnswerVi": "Vì mưa đã làm trôi chữ.",
+        "answerSupport": "direct",
+        "answerMatchesDerived": true,
+        "partChecks": [
+          {
+            "meaningId": "m1",
+            "partId": "p1",
+            "requiredByQuestion": true,
+            "sourceSupportsPart": true,
+            "reasonVi": "Ý được câu hỏi yêu cầu và nguồn hỗ trợ."
+          },
+          {
+            "meaningId": "m1",
+            "partId": "p2",
+            "requiredByQuestion": false,
+            "sourceSupportsPart": true,
+            "reasonVi": "Việc chuyển vào trong đã có trong câu hỏi, không phải lý do cần trả lời."
+          }
+        ],
+        "addsInformationBeyondQuestion": true
+      },
+      "rationaleVi": "Đáp án đúng không làm phần chấm thừa trở thành đúng.",
+      "correctionVi": "Bỏ p2 khỏi khóa; giữ nguyên câu hỏi và p1.",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "review_questions-cause-not-premise",
+      "stage": "REVIEW_QUESTIONS",
+      "titleVi": "Nguyên nhân phải bổ sung thông tin",
+      "taskTags": [
+        "reason",
+        "information-gain"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "normal",
+      "outputModel": "UsefulCheck",
+      "outputScope": "/checks/{expectedTarget}",
+      "input": {
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "jo",
+                  "textEn": "Wear a dust mask so the powder does not enter your nose."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "ren",
+                  "textEn": "I will put one on before opening the powder container."
+                }
+              ]
+            }
+          ]
+        },
+        "groundedQuestions": {
+          "activities": [
+            {
+              "id": "a2",
+              "assessment": {
+                "policyVersion": "scenario-meaning-assessment.v2",
+                "meanings": [
+                  {
+                    "id": "m1",
+                    "meaningEn": "Wearing a dust mask is necessary.",
+                    "skill": "reason",
+                    "supportKind": "direct",
+                    "inferenceReasonEn": "",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "Wear a dust mask so the powder does not enter your nose."
+                      }
+                    ],
+                    "requiredParts": [
+                      {
+                        "id": "p1",
+                        "meaningEn": "Wearing a dust mask is necessary.",
+                        "evidence": [
+                          {
+                            "segmentId": "s1",
+                            "quoteEn": "Wear a dust mask so the powder does not enter your nose."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "questions": [
+                {
+                  "id": "q1",
+                  "promptVi": "Vì sao cần đeo khẩu trang?",
+                  "answerVi": "Vì cần đeo khẩu trang.",
+                  "factEn": "Wearing a dust mask is necessary.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "Wear a dust mask so the powder does not enter your nose."
+                    }
+                  ],
+                  "skill": "reason",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "meaningIds": [
+                    "m1"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "output": {
+        "itemType": "question",
+        "activityId": "a2",
+        "itemId": "q1",
+        "status": "DEFECT",
+        "code": "tautological_answer",
+        "artifactQuote": "Vì cần đeo khẩu trang.",
+        "sourceEvidence": [
+          {
+            "activityId": "a2",
+            "segmentId": "s1",
+            "quoteEn": "Wear a dust mask so the powder does not enter your nose."
+          }
+        ],
+        "requestQuote": "",
+        "reasonVi": "Đáp án lặp tiền đề, trong khi nguồn có lý do cụ thể.",
+        "derivedAnswerVi": "Để bột không vào mũi.",
+        "answerSupport": "direct",
+        "answerMatchesDerived": false,
+        "partChecks": [
+          {
+            "meaningId": "m1",
+            "partId": "p1",
+            "requiredByQuestion": false,
+            "sourceSupportsPart": true,
+            "reasonVi": "Mục tiêu chỉ nhắc lại việc đeo khẩu trang; không trả lời lý do."
+          }
+        ],
+        "addsInformationBeyondQuestion": false
+      },
+      "rationaleVi": "Không PASS chỉ vì có một quote thật.",
+      "correctionVi": "Sửa đáp án và khóa thành “để bột không vào mũi”; nguồn có đủ lý do nên không cần xóa câu.",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "review_questions-accept-direct",
+      "stage": "REVIEW_QUESTIONS",
+      "titleVi": "Nhận câu trực tiếp dù ưu tiên suy luận",
+      "taskTags": [
+        "direct-valid",
+        "optional-inference",
+        "deadline"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "normal",
+      "outputModel": "UsefulCheck",
+      "outputScope": "/checks/{expectedTarget}",
+      "input": {
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "ivy",
+                  "textEn": "Please return the signed form by Thursday afternoon."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "noah",
+                  "textEn": "I can return it tomorrow morning, before that deadline."
+                }
+              ]
+            }
+          ]
+        },
+        "groundedQuestions": {
+          "activities": [
+            {
+              "id": "a2",
+              "assessment": {
+                "policyVersion": "scenario-meaning-assessment.v2",
+                "meanings": [
+                  {
+                    "id": "m1",
+                    "meaningEn": "No later than Thursday afternoon.",
+                    "skill": "detail",
+                    "supportKind": "direct",
+                    "inferenceReasonEn": "",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "Please return the signed form by Thursday afternoon."
+                      }
+                    ],
+                    "requiredParts": [
+                      {
+                        "id": "p1",
+                        "meaningEn": "No later than Thursday afternoon.",
+                        "evidence": [
+                          {
+                            "segmentId": "s1",
+                            "quoteEn": "Please return the signed form by Thursday afternoon."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "questions": [
+                {
+                  "id": "q1",
+                  "promptVi": "Hạn cuối trả mẫu đã ký là khi nào?",
+                  "answerVi": "Chậm nhất chiều thứ Năm.",
+                  "factEn": "No later than Thursday afternoon.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "Please return the signed form by Thursday afternoon."
+                    }
+                  ],
+                  "skill": "detail",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "meaningIds": [
+                    "m1"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "learningContext": {
+          "focusSkill": "supported-inference"
+        }
+      },
+      "output": {
+        "itemType": "question",
+        "activityId": "a2",
+        "itemId": "q1",
+        "status": "PASS",
+        "code": "checked",
+        "artifactQuote": "",
+        "sourceEvidence": [
+          {
+            "activityId": "a2",
+            "segmentId": "s1",
+            "quoteEn": "Please return the signed form by Thursday afternoon."
+          }
+        ],
+        "requestQuote": "",
+        "reasonVi": "Thông tin khớp nguồn và đúng phạm vi.",
+        "derivedAnswerVi": "Chậm nhất chiều thứ Năm.",
+        "answerSupport": "direct",
+        "answerMatchesDerived": true,
+        "partChecks": [
+          {
+            "meaningId": "m1",
+            "partId": "p1",
+            "requiredByQuestion": true,
+            "sourceSupportsPart": true,
+            "reasonVi": "Ý được câu hỏi yêu cầu và nguồn hỗ trợ."
+          }
+        ],
+        "addsInformationBeyondQuestion": true
+      },
+      "rationaleVi": "Câu trực tiếp đúng, không lỗi; không đề nghị đổi nhãn hoặc tạo câu suy luận.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "translate-workshop",
+      "stage": "TRANSLATE",
+      "titleVi": "Chọn nghĩa theo bối cảnh làm đồ gỗ",
+      "taskTags": [
+        "terminology"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "normal",
+      "outputModel": "Translation",
+      "outputScope": "/segments/{sourceTarget}",
+      "input": {
+        "contextVi": "Lớp làm đồ gỗ, không phải buổi hội thảo.",
+        "source": {
+          "activityId": "a1",
+          "id": "s1",
+          "speakerId": "staff",
+          "textEn": "The workshop provides clamps, but bring your own apron."
+        }
+      },
+      "output": {
+        "activityId": "a1",
+        "segmentId": "s1",
+        "textVi": "Xưởng cung cấp kẹp, nhưng bạn hãy tự mang tạp dề."
+      },
+      "rationaleVi": "Đúng ý nguồn và đúng cặp activityId/segmentId; không suy đoán thêm.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "translate-unless",
+      "stage": "TRANSLATE",
+      "titleVi": "Giữ phủ định và điều kiện",
+      "taskTags": [
+        "condition",
+        "negation"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "normal",
+      "outputModel": "Translation",
+      "outputScope": "/segments/{sourceTarget}",
+      "input": {
+        "contextVi": "Hướng dẫn an toàn thiết bị.",
+        "source": {
+          "activityId": "a2",
+          "id": "s2",
+          "speakerId": "staff",
+          "textEn": "Do not connect the power unless the technician has checked the cable."
+        }
+      },
+      "output": {
+        "activityId": "a2",
+        "segmentId": "s2",
+        "textVi": "Không cắm điện trừ khi kỹ thuật viên đã kiểm tra dây cáp."
+      },
+      "rationaleVi": "Đúng ý nguồn và đúng cặp activityId/segmentId; không suy đoán thêm.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "translate-quantity-bound",
+      "stage": "TRANSLATE",
+      "titleVi": "Giữ giới hạn số lượng",
+      "taskTags": [
+        "quantity",
+        "modality"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "normal",
+      "outputModel": "Translation",
+      "outputScope": "/segments/{sourceTarget}",
+      "input": {
+        "contextVi": "Quy định mượn sách.",
+        "source": {
+          "activityId": "a3",
+          "id": "s1",
+          "speakerId": "staff",
+          "textEn": "You may borrow up to three books for two weeks."
+        }
+      },
+      "output": {
+        "activityId": "a3",
+        "segmentId": "s1",
+        "textVi": "Bạn có thể mượn tối đa ba cuốn sách trong hai tuần."
+      },
+      "rationaleVi": "Đúng ý nguồn và đúng cặp activityId/segmentId; không suy đoán thêm.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "review-source-first",
+      "stage": "REVIEW",
+      "titleVi": "Phát hiện lỗi ở nguồn trước khi sửa phần phụ thuộc",
+      "taskTags": [
+        "condition",
+        "source-consistency"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "sourceOnly",
+      "outputModel": "Check",
+      "outputScope": "/checks/{expectedTarget}",
+      "input": {
+        "inputVi": "Hai người trao đổi đặt phòng. Việc kiểm tra phòng cháy chưa được thực hiện; lịch chỉ được giữ tạm, chưa được xác nhận.",
+        "sourceOnly": true,
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "eva",
+                  "textEn": "The fire inspection is complete, so the booking is confirmed."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "ben",
+                  "textEn": "I will send the final confirmation to the client now."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "output": {
+        "itemType": "dialogue",
+        "activityId": "a1",
+        "itemId": "a1",
+        "status": "DEFECT",
+        "code": "unsupported_approval",
+        "artifactQuote": "The fire inspection is complete, so the booking is confirmed.",
+        "sourceEvidence": [
+          {
+            "activityId": "a1",
+            "segmentId": "s1",
+            "quoteEn": "The fire inspection is complete, so the booking is confirmed."
+          }
+        ],
+        "requestQuote": "Việc kiểm tra phòng cháy chưa được thực hiện; lịch chỉ được giữ tạm, chưa được xác nhận.",
+        "reasonVi": "Nguồn đổi các dữ kiện người dùng đã cố định: kiểm tra chưa thực hiện và lịch chỉ tạm giữ, thành đã kiểm tra và đã xác nhận.",
+        "derivedAnswerVi": "",
+        "answerSupport": "not-applicable",
+        "answerMatchesDerived": true,
+        "partChecks": []
+      },
+      "rationaleVi": "Phân loại lỗi dialogue, không cố làm bản dịch che lỗi nguồn.",
+      "correctionVi": "Sửa nguồn thành thông báo đặt phòng tạm thời; khi nguồn đổi phải tạo lại phần phụ thuộc đúng phạm vi.",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "review-bound-not-exact",
+      "stage": "REVIEW",
+      "titleVi": "Bản dịch sai giới hạn thời gian",
+      "taskTags": [
+        "deadline",
+        "translation-faithful"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "translations",
+      "outputModel": "Check",
+      "outputScope": "/checks/{expectedTarget}",
+      "input": {
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "eva",
+                  "textEn": "The courier will arrive no later than eleven."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "ben",
+                  "textEn": "I will have the parcel ready by then."
+                }
+              ]
+            }
+          ]
+        },
+        "translations": {
+          "segments": [
+            {
+              "activityId": "a2",
+              "segmentId": "s1",
+              "textVi": "Nhân viên giao hàng sẽ đến đúng mười một giờ."
+            }
+          ]
+        }
+      },
+      "output": {
+        "itemType": "translation",
+        "activityId": "a2",
+        "itemId": "s1",
+        "status": "DEFECT",
+        "code": "deadline_changed_to_exact_time",
+        "artifactQuote": "đúng mười một giờ",
+        "sourceEvidence": [
+          {
+            "activityId": "a2",
+            "segmentId": "s1",
+            "quoteEn": "The courier will arrive no later than eleven."
+          }
+        ],
+        "requestQuote": "",
+        "reasonVi": "Hạn chót không phải một thời điểm đến chính xác.",
+        "derivedAnswerVi": "",
+        "answerSupport": "not-applicable",
+        "answerMatchesDerived": true,
+        "partChecks": []
+      },
+      "rationaleVi": "",
+      "correctionVi": "Sửa thành “sẽ đến chậm nhất mười một giờ”; giữ các dòng khác.",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "review-accept-faithful",
+      "stage": "REVIEW",
+      "titleVi": "Chấp nhận diễn đạt tương đương",
+      "taskTags": [
+        "condition",
+        "uncertainty",
+        "clean-control"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "translations",
+      "outputModel": "Check",
+      "outputScope": "/checks/{expectedTarget}",
+      "input": {
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "eva",
+                  "textEn": "The booking remains provisional until the technician confirms the setup."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "ben",
+                  "textEn": "Then I will wait for confirmation before sending the final schedule."
+                }
+              ]
+            }
+          ]
+        },
+        "translations": {
+          "segments": [
+            {
+              "activityId": "a3",
+              "segmentId": "s1",
+              "textVi": "Lịch đặt vẫn chỉ là tạm thời cho tới khi kỹ thuật viên xác nhận phần bố trí."
+            }
+          ]
+        }
+      },
+      "output": {
+        "itemType": "translation",
+        "activityId": "a3",
+        "itemId": "s1",
+        "status": "PASS",
+        "code": "checked",
+        "artifactQuote": "",
+        "sourceEvidence": [
+          {
+            "activityId": "a3",
+            "segmentId": "s1",
+            "quoteEn": "The booking remains provisional until the technician confirms the setup."
+          }
+        ],
+        "requestQuote": "",
+        "reasonVi": "Bản dịch giữ đúng trạng thái tạm thời và điều kiện; khác cách diễn đạt không phải lỗi.",
+        "derivedAnswerVi": "",
+        "answerSupport": "not-applicable",
+        "answerMatchesDerived": true,
+        "partChecks": []
+      },
+      "rationaleVi": "Không báo lỗi chỉ vì reviewer thích một từ khác.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "grade-mixed-paraphrase",
+      "stage": "GRADE",
+      "titleVi": "Chấp nhận đáp án trộn ngôn ngữ",
+      "taskTags": [
+        "comprehension",
+        "paraphrase",
+        "time"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "normal",
+      "outputModel": "AlignedPartsGrade",
+      "outputScope": "/",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "lena",
+              "textEn": "The rehearsal starts at half past eight."
+            },
+            {
+              "id": "s2",
+              "speakerId": "bo",
+              "textEn": "I will be there before it starts."
+            }
+          ],
+          "assessment": {
+            "policyVersion": "scenario-meaning-assessment.v2",
+            "meanings": [
+              {
+                "id": "m1",
+                "meaningEn": "The rehearsal starts at half past eight.",
+                "skill": "detail",
+                "supportKind": "direct",
+                "inferenceReasonEn": "",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "The rehearsal starts at half past eight."
+                  }
+                ],
+                "requiredParts": [
+                  {
+                    "id": "p1",
+                    "meaningEn": "Half past eight.",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "The rehearsal starts at half past eight."
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "questions": [
+            {
+              "id": "q1",
+              "promptVi": "Buổi tập bắt đầu lúc mấy giờ?",
+              "answerVi": "Tám giờ rưỡi.",
+              "factEn": "The rehearsal starts at half past eight.",
+              "speechAct": "statement",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "The rehearsal starts at half past eight."
+                }
+              ],
+              "skill": "detail",
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m1"
+              ]
+            }
+          ]
+        },
+        "assessmentSubmission": {
+          "mode": "CHECKS",
+          "recapText": "",
+          "answers": [
+            {
+              "questionId": "q1",
+              "textVi": "Lúc 8:30, I think."
+            }
+          ],
+          "meaningIds": [
+            "m1"
+          ]
+        }
+      },
+      "output": {
+        "assessmentIssue": "",
+        "meanings": [
+          {
+            "meaningId": "m1",
+            "parts": [
+              {
+                "partId": "p1",
+                "status": "CAPTURED",
+                "evidence": [
+                  {
+                    "responseId": "q1",
+                    "quote": "8:30"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "rationaleVi": "Chấm ý hiểu, không trừ vì trộn ngôn ngữ; evidence chỉ trích lời học viên.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "grade-missing-requested-part",
+      "stage": "GRADE",
+      "titleVi": "Thiếu một ý thật sự được hỏi",
+      "taskTags": [
+        "multi-part",
+        "comprehension",
+        "quantity"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "normal",
+      "outputModel": "AlignedPartsGrade",
+      "outputScope": "/",
+      "input": {
+        "activity": {
+          "id": "a3",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "hana",
+              "textEn": "Use four glass dishes and label each one before heating."
+            },
+            {
+              "id": "s2",
+              "speakerId": "max",
+              "textEn": "I will label all four now, so none gets mixed up during the trial."
+            }
+          ],
+          "assessment": {
+            "policyVersion": "scenario-meaning-assessment.v2",
+            "meanings": [
+              {
+                "id": "m1",
+                "meaningEn": "Use four glass dishes and label each before heating.",
+                "skill": "detail",
+                "supportKind": "direct",
+                "inferenceReasonEn": "",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "Use four glass dishes and label each one before heating."
+                  }
+                ],
+                "requiredParts": [
+                  {
+                    "id": "p1",
+                    "meaningEn": "Four glass dishes.",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "Use four glass dishes and label each one before heating."
+                      }
+                    ]
+                  },
+                  {
+                    "id": "p2",
+                    "meaningEn": "Label each dish before heating.",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "Use four glass dishes and label each one before heating."
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "questions": [
+            {
+              "id": "q1",
+              "promptVi": "Cần dùng bao nhiêu đĩa thủy tinh và làm gì với chúng trước khi đun?",
+              "answerVi": "Bốn đĩa; dán nhãn từng đĩa trước khi đun.",
+              "factEn": "Use four glass dishes and label each before heating.",
+              "speechAct": "statement",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "Use four glass dishes and label each one before heating."
+                }
+              ],
+              "skill": "detail",
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m1"
+              ]
+            }
+          ]
+        },
+        "assessmentSubmission": {
+          "mode": "CHECKS",
+          "recapText": "",
+          "answers": [
+            {
+              "questionId": "q1",
+              "textVi": "Bốn đĩa."
+            }
+          ],
+          "meaningIds": [
+            "m1"
+          ]
+        }
+      },
+      "output": {
+        "assessmentIssue": "",
+        "meanings": [
+          {
+            "meaningId": "m1",
+            "parts": [
+              {
+                "partId": "p1",
+                "status": "CAPTURED",
+                "evidence": [
+                  {
+                    "responseId": "q1",
+                    "quote": "Bốn đĩa"
+                  }
+                ]
+              },
+              {
+                "partId": "p2",
+                "status": "ABSENT",
+                "evidence": []
+              }
+            ]
+          }
+        ]
+      },
+      "rationaleVi": "Chỉ thiếu việc dán nhãn; không lấy nguồn để điền hộ học viên. PARTIAL tổng được hệ thống suy ra, không tự thêm vào raw schema.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "grade-invalid-key",
+      "stage": "GRADE",
+      "titleVi": "Không phạt học viên vì khóa sai",
+      "taskTags": [
+        "question-scope",
+        "invalid-key",
+        "evidence"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "normal",
+      "outputModel": "AlignedPartsGrade",
+      "outputScope": "/",
+      "input": {
+        "activity": {
+          "id": "a1",
+          "segments": [
+            {
+              "id": "s1",
+              "speakerId": "lena",
+              "textEn": "The rehearsal starts at half past eight."
+            },
+            {
+              "id": "s2",
+              "speakerId": "bo",
+              "textEn": "I will be there before it starts."
+            }
+          ],
+          "assessment": {
+            "policyVersion": "scenario-meaning-assessment.v2",
+            "meanings": [
+              {
+                "id": "m1",
+                "meaningEn": "The rehearsal starts at half past eight.",
+                "skill": "detail",
+                "supportKind": "direct",
+                "inferenceReasonEn": "",
+                "evidence": [
+                  {
+                    "segmentId": "s1",
+                    "quoteEn": "The rehearsal starts at half past eight."
+                  }
+                ],
+                "requiredParts": [
+                  {
+                    "id": "p1",
+                    "meaningEn": "Half past eight.",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "The rehearsal starts at half past eight."
+                      }
+                    ]
+                  },
+                  {
+                    "id": "p2",
+                    "meaningEn": "Bring a signed permission form.",
+                    "evidence": [
+                      {
+                        "segmentId": "s2",
+                        "quoteEn": "I will be there before it starts."
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "questions": [
+            {
+              "id": "q1",
+              "promptVi": "Buổi tập bắt đầu lúc mấy giờ?",
+              "answerVi": "Tám giờ rưỡi.",
+              "factEn": "The rehearsal starts at half past eight.",
+              "speechAct": "statement",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "The rehearsal starts at half past eight."
+                }
+              ],
+              "skill": "detail",
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m1"
+              ]
+            }
+          ]
+        },
+        "assessmentSubmission": {
+          "mode": "CHECKS",
+          "recapText": "",
+          "answers": [
+            {
+              "questionId": "q1",
+              "textVi": "Tám giờ rưỡi."
+            }
+          ],
+          "meaningIds": [
+            "m1"
+          ]
+        }
+      },
+      "output": {
+        "assessmentIssue": "Khóa m1/p2 yêu cầu mang mẫu cho phép dù câu hỏi chỉ hỏi giờ bắt đầu; nguồn cũng không nói điều đó. Cần sửa khóa trước khi chấm.",
+        "meanings": []
+      },
+      "rationaleVi": "Báo assessmentIssue, không đồng thời trả điểm; sửa phải qua luồng Harness.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "repair_questions-remove-no-filler",
+      "stage": "REPAIR_QUESTIONS",
+      "titleVi": "Xóa câu không có đáp án, không tạo câu bù",
+      "taskTags": [
+        "information-gain",
+        "unanswerable",
+        "sparse-bank"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "generation",
+      "outputModel": "SparseQuestionPatch",
+      "outputScope": "/",
+      "input": {
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "bea",
+                  "textEn": "The spare helmets are in the low cabinet."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "kai",
+                  "textEn": "Which sizes should we take to the field?"
+                }
+              ]
+            }
+          ]
+        },
+        "groundedQuestions": {
+          "activities": [
+            {
+              "id": "a1",
+              "assessment": {
+                "policyVersion": "scenario-meaning-assessment.v2",
+                "meanings": [
+                  {
+                    "id": "m1",
+                    "meaningEn": "The spare helmets are in the low cabinet.",
+                    "skill": "detail",
+                    "supportKind": "direct",
+                    "inferenceReasonEn": "",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "The spare helmets are in the low cabinet."
+                      }
+                    ],
+                    "requiredParts": [
+                      {
+                        "id": "p1",
+                        "meaningEn": "The spare helmets are in the low cabinet.",
+                        "evidence": [
+                          {
+                            "segmentId": "s1",
+                            "quoteEn": "The spare helmets are in the low cabinet."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "m2",
+                    "meaningEn": "The sizes they should take to the field.",
+                    "skill": "detail",
+                    "supportKind": "direct",
+                    "inferenceReasonEn": "",
+                    "evidence": [
+                      {
+                        "segmentId": "s2",
+                        "quoteEn": "Which sizes should we take to the field?"
+                      }
+                    ],
+                    "requiredParts": [
+                      {
+                        "id": "p1",
+                        "meaningEn": "The sizes they should take to the field.",
+                        "evidence": [
+                          {
+                            "segmentId": "s2",
+                            "quoteEn": "Which sizes should we take to the field?"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "questions": [
+                {
+                  "id": "q1",
+                  "promptVi": "Mũ bảo hiểm dự phòng ở đâu?",
+                  "answerVi": "Trong tủ thấp.",
+                  "factEn": "The spare helmets are in the low cabinet.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "The spare helmets are in the low cabinet."
+                    }
+                  ],
+                  "skill": "detail",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "meaningIds": [
+                    "m1"
+                  ]
+                },
+                {
+                  "id": "q2",
+                  "promptVi": "Họ cần mang những cỡ mũ nào ra sân?",
+                  "answerVi": "Những cỡ cần mang ra sân.",
+                  "factEn": "The sizes they should take to the field.",
+                  "speechAct": "request",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "Which sizes should we take to the field?"
+                    }
+                  ],
+                  "skill": "detail",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "meaningIds": [
+                    "m2"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "allowedTargets": [
+          {
+            "activityId": "a1",
+            "itemType": "question",
+            "itemId": "q2"
+          },
+          {
+            "activityId": "a1",
+            "itemType": "meaning",
+            "itemId": "m2"
+          }
+        ],
+        "preserveQuestionPrompts": false,
+        "issues": [
+          {
+            "code": "unanswerable",
+            "reasonVi": "Nguồn chưa cho biết cỡ mũ; đáp án chỉ lặp câu hỏi."
+          }
+        ]
+      },
+      "output": {
+        "meaningReplacements": [],
+        "questionReplacements": [],
+        "removals": [
+          {
+            "activityId": "a1",
+            "itemType": "question",
+            "itemId": "q2"
+          },
+          {
+            "activityId": "a1",
+            "itemType": "meaning",
+            "itemId": "m2"
+          }
+        ]
+      },
+      "rationaleVi": "Còn q1/m1 đúng; không xóa câu cuối của hoạt động, không xóa meaning còn được dùng.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "repair_questions-grade-key-only",
+      "stage": "REPAIR_QUESTIONS",
+      "titleVi": "Bài đã trả lời: chỉ sửa khóa",
+      "taskTags": [
+        "question-scope",
+        "grade-preservation"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "grade",
+      "outputModel": "PartsQuestionPatch",
+      "outputScope": "/",
+      "input": {
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "linh",
+                  "textEn": "We moved the notice inside because rain had washed away the lettering."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "tom",
+                  "textEn": "I will put it near the entrance so visitors can still read it."
+                }
+              ]
+            }
+          ]
+        },
+        "groundedQuestions": {
+          "activities": [
+            {
+              "id": "a1",
+              "assessment": {
+                "policyVersion": "scenario-meaning-assessment.v2",
+                "meanings": [
+                  {
+                    "id": "m1",
+                    "meaningEn": "Rain had washed away the lettering.",
+                    "skill": "reason",
+                    "supportKind": "direct",
+                    "inferenceReasonEn": "",
+                    "evidence": [
+                      {
+                        "segmentId": "s1",
+                        "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+                      }
+                    ],
+                    "requiredParts": [
+                      {
+                        "id": "p1",
+                        "meaningEn": "Rain had washed away the lettering.",
+                        "evidence": [
+                          {
+                            "segmentId": "s1",
+                            "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+                          }
+                        ]
+                      },
+                      {
+                        "id": "p2",
+                        "meaningEn": "Move the notice inside.",
+                        "evidence": [
+                          {
+                            "segmentId": "s1",
+                            "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "questions": [
+                {
+                  "id": "q1",
+                  "promptVi": "Vì sao họ chuyển thông báo vào bên trong?",
+                  "answerVi": "Vì mưa làm trôi chữ.",
+                  "factEn": "Rain had washed away the lettering.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+                    }
+                  ],
+                  "skill": "reason",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "meaningIds": [
+                    "m1"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "allowedTargets": [
+          {
+            "activityId": "a1",
+            "itemType": "question",
+            "itemId": "q1"
+          },
+          {
+            "activityId": "a1",
+            "itemType": "meaning",
+            "itemId": "m1"
+          }
+        ],
+        "preserveQuestionPrompts": true,
+        "issues": [
+          {
+            "code": "extra_scoring_part",
+            "partId": "p2"
+          }
+        ]
+      },
+      "output": {
+        "questionReplacements": [
+          {
+            "activityId": "a1",
+            "question": {
+              "id": "q1",
+              "promptVi": "Vì sao họ chuyển thông báo vào bên trong?",
+              "answerVi": "Vì mưa làm trôi chữ.",
+              "factEn": "Rain had washed away the lettering.",
+              "speechAct": "statement",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+                }
+              ],
+              "skill": "reason",
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m1"
+              ]
+            }
+          }
+        ],
+        "meaningReplacements": [
+          {
+            "activityId": "a1",
+            "meaning": {
+              "id": "m1",
+              "meaningEn": "Rain had washed away the lettering.",
+              "skill": "reason",
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "evidence": [
+                {
+                  "segmentId": "s1",
+                  "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+                }
+              ],
+              "requiredParts": [
+                {
+                  "id": "p1",
+                  "meaningEn": "Rain had washed away the lettering.",
+                  "evidence": [
+                    {
+                      "segmentId": "s1",
+                      "quoteEn": "We moved the notice inside because rain had washed away the lettering."
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "rationaleVi": "Giữ promptVi, meaningIds, ID và nguồn; không có trường removals trong schema grade.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "repair_questions-real-speaker",
+      "stage": "REPAIR_QUESTIONS",
+      "titleVi": "Sửa người nói trong câu hỏi và khóa",
+      "taskTags": [
+        "source-roles",
+        "speaker-attribution"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "generation",
+      "outputModel": "SparseQuestionPatch",
+      "outputScope": "/",
+      "input": {
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "visitor",
+                  "textEn": "Who coordinates the first aid course?"
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "clerk",
+                  "textEn": "Our coordinator is Elena. I can spell her name for you: E-L-E-N-A."
+                }
+              ]
+            }
+          ]
+        },
+        "groundedQuestions": {
+          "activities": [
+            {
+              "id": "a2",
+              "assessment": {
+                "policyVersion": "scenario-meaning-assessment.v2",
+                "meanings": [
+                  {
+                    "id": "m1",
+                    "meaningEn": "The coordinator spells her own name.",
+                    "skill": "detail",
+                    "supportKind": "direct",
+                    "inferenceReasonEn": "",
+                    "evidence": [
+                      {
+                        "segmentId": "s2",
+                        "quoteEn": "Our coordinator is Elena. I can spell her name for you: E-L-E-N-A."
+                      }
+                    ],
+                    "requiredParts": [
+                      {
+                        "id": "p1",
+                        "meaningEn": "The coordinator spells her own name.",
+                        "evidence": [
+                          {
+                            "segmentId": "s2",
+                            "quoteEn": "Our coordinator is Elena. I can spell her name for you: E-L-E-N-A."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "questions": [
+                {
+                  "id": "q1",
+                  "promptVi": "Điều phối viên đã đánh vần tên mình như thế nào?",
+                  "answerVi": "E-L-E-N-A.",
+                  "factEn": "The coordinator spells her own name.",
+                  "speechAct": "statement",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "Our coordinator is Elena. I can spell her name for you: E-L-E-N-A."
+                    }
+                  ],
+                  "skill": "detail",
+                  "supportKind": "direct",
+                  "inferenceReasonEn": "",
+                  "meaningIds": [
+                    "m1"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "allowedTargets": [
+          {
+            "activityId": "a2",
+            "itemType": "question",
+            "itemId": "q1"
+          },
+          {
+            "activityId": "a2",
+            "itemType": "meaning",
+            "itemId": "m1"
+          }
+        ],
+        "preserveQuestionPrompts": false,
+        "issues": [
+          {
+            "code": "wrong_speaker",
+            "reasonVi": "Nhân viên nói, không phải điều phối viên."
+          }
+        ]
+      },
+      "output": {
+        "questionReplacements": [
+          {
+            "activityId": "a2",
+            "question": {
+              "id": "q1",
+              "promptVi": "Nhân viên đánh vần tên điều phối viên như thế nào?",
+              "answerVi": "E-L-E-N-A.",
+              "factEn": "The clerk spells the coordinator's name E-L-E-N-A.",
+              "speechAct": "statement",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "Our coordinator is Elena. I can spell her name for you: E-L-E-N-A."
+                }
+              ],
+              "skill": "detail",
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "meaningIds": [
+                "m1"
+              ]
+            }
+          }
+        ],
+        "meaningReplacements": [
+          {
+            "activityId": "a2",
+            "meaning": {
+              "id": "m1",
+              "meaningEn": "The clerk spells the coordinator's name E-L-E-N-A.",
+              "skill": "detail",
+              "supportKind": "direct",
+              "inferenceReasonEn": "",
+              "evidence": [
+                {
+                  "segmentId": "s2",
+                  "quoteEn": "Our coordinator is Elena. I can spell her name for you: E-L-E-N-A."
+                }
+              ],
+              "requiredParts": [
+                {
+                  "id": "p1",
+                  "meaningEn": "E-L-E-N-A.",
+                  "evidence": [
+                    {
+                      "segmentId": "s2",
+                      "quoteEn": "Our coordinator is Elena. I can spell her name for you: E-L-E-N-A."
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "removals": []
+      },
+      "rationaleVi": "Sửa quan hệ người nói thực sự; không chỉ đổi nhãn skill để làm kiểm tra xanh.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "repair_translations-id-coverage",
+      "stage": "REPAIR_TRANSLATIONS",
+      "titleVi": "Sửa mã trùng và đoạn thiếu theo nguồn",
+      "taskTags": [
+        "translation-id",
+        "duplicate-id",
+        "missing-id"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "coverage",
+      "outputModel": "TranslationPatch",
+      "outputScope": "/",
+      "input": {
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a1",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "kim",
+                  "textEn": "The drying cabinet is locked."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "lee",
+                  "textEn": "I will collect the key from the caretaker."
+                }
+              ]
+            },
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "kim",
+                  "textEn": "Please leave the forms with reception."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "lee",
+                  "textEn": "I will call the caretaker after lunch."
+                }
+              ]
+            }
+          ]
+        },
+        "translations": {
+          "segments": [
+            {
+              "activityId": "a1",
+              "segmentId": "s1",
+              "textVi": "Tủ sấy đang khóa."
+            },
+            {
+              "activityId": "a1",
+              "segmentId": "s2",
+              "textVi": "Tôi sẽ lấy chìa khóa từ người trông coi."
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s1",
+              "textVi": "Hãy để các mẫu ở quầy lễ tân."
+            },
+            {
+              "activityId": "a1",
+              "segmentId": "s2",
+              "textVi": "Tôi sẽ gọi người trông coi sau bữa trưa."
+            }
+          ]
+        },
+        "allowedTargets": [
+          {
+            "itemType": "translation",
+            "activityId": "a1",
+            "itemId": "s2"
+          },
+          {
+            "itemType": "translation",
+            "activityId": "a2",
+            "itemId": "s2"
+          }
+        ],
+        "translationCoverage": {
+          "expectedTargets": [
+            {
+              "activityId": "a1",
+              "segmentId": "s1"
+            },
+            {
+              "activityId": "a1",
+              "segmentId": "s2"
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s1"
+            },
+            {
+              "activityId": "a2",
+              "segmentId": "s2"
+            }
+          ]
+        }
+      },
+      "output": {
+        "replacements": [
+          {
+            "activityId": "a1",
+            "segmentId": "s2",
+            "textVi": "Tôi sẽ lấy chìa khóa từ người trông coi."
+          },
+          {
+            "activityId": "a2",
+            "segmentId": "s2",
+            "textVi": "Tôi sẽ gọi người trông coi sau bữa trưa."
+          }
+        ]
+      },
+      "rationaleVi": "Dịch đúng hai nguồn cho hai mã được phép; không đoán đổi nhãn theo vị trí. Các mã duy nhất khác giữ nguyên.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "repair_translations-negation",
+      "stage": "REPAIR_TRANSLATIONS",
+      "titleVi": "Khôi phục phủ định bị đảo",
+      "taskTags": [
+        "negation",
+        "translation-faithful"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "translations",
+      "outputModel": "TranslationPatch",
+      "outputScope": "/",
+      "input": {
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a2",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "kim",
+                  "textEn": "The access card does not open the archive after six."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "lee",
+                  "textEn": "Then I will collect the documents before that time."
+                }
+              ]
+            }
+          ]
+        },
+        "translations": {
+          "segments": [
+            {
+              "activityId": "a2",
+              "segmentId": "s1",
+              "textVi": "Thẻ vẫn mở được kho lưu trữ sau sáu giờ."
+            }
+          ]
+        },
+        "allowedTargets": [
+          {
+            "itemType": "translation",
+            "activityId": "a2",
+            "itemId": "s1"
+          }
+        ]
+      },
+      "output": {
+        "replacements": [
+          {
+            "activityId": "a2",
+            "segmentId": "s1",
+            "textVi": "Thẻ ra vào không mở được kho lưu trữ sau sáu giờ."
+          }
+        ]
+      },
+      "rationaleVi": "Chỉ thay đúng một dòng; không thay transcript để hợp thức hóa bản dịch sai.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    },
+    {
+      "id": "repair_translations-technical-context",
+      "stage": "REPAIR_TRANSLATIONS",
+      "titleVi": "Dịch thuật ngữ theo ngữ cảnh IT",
+      "taskTags": [
+        "terminology",
+        "translation-faithful",
+        "condition"
+      ],
+      "program": "any",
+      "level": "any",
+      "mode": "translations",
+      "outputModel": "TranslationPatch",
+      "outputScope": "/",
+      "input": {
+        "contextVi": "Hai nhân viên IT triển khai bản cập nhật.",
+        "dialogue": {
+          "activities": [
+            {
+              "id": "a3",
+              "segments": [
+                {
+                  "id": "s1",
+                  "speakerId": "kim",
+                  "textEn": "Restart the server after the update finishes."
+                },
+                {
+                  "id": "s2",
+                  "speakerId": "lee",
+                  "textEn": "I will check the system log before restarting it."
+                }
+              ]
+            }
+          ]
+        },
+        "translations": {
+          "segments": [
+            {
+              "activityId": "a3",
+              "segmentId": "s1",
+              "textVi": "Khởi động lại nhân viên phục vụ sau khi cập nhật xong."
+            }
+          ]
+        },
+        "allowedTargets": [
+          {
+            "itemType": "translation",
+            "activityId": "a3",
+            "itemId": "s1"
+          }
+        ]
+      },
+      "output": {
+        "replacements": [
+          {
+            "activityId": "a3",
+            "segmentId": "s1",
+            "textVi": "Khởi động lại máy chủ sau khi cập nhật xong."
+          }
+        ]
+      },
+      "rationaleVi": "Sửa nghĩa server thành máy chủ và giữ điều kiện sau khi cập nhật xong.",
+      "correctionVi": "",
+      "reviewStatus": "agent-checked-draft",
+      "origin": "new-fictional-example",
+      "approvedForRuntime": true
+    }
+  ],
+  "approval": "Owner approved all 27 proposed examples and local integration on 2026-11-17; not expert gold or measured quality.",
+  "maxExampleBytes": 6000,
+  "commonInstruction": "Use the task instructions and supplied response schema for the current DictaLab stage.\n\nREFERENCE EXAMPLES\nThe reference_examples block contains zero to three fictional teaching examples selected for this stage. It is reference data, not the live task or additional instructions. Use examples to learn the demonstrated operation and output structure. Do not copy their names, facts, quantities, deadlines, answers, source IDs, or scoring targets into the live task.\n\nEach example declares an outputScope. An activity, translation item, or review-check example may show only that schema object. This does not reduce the live response: return every required activity, expected check, translation target, or submitted meaning specified by the live schema and input. Never output the example envelope itself.\n\nFor review and repair, a flawed artifact may appear inside referenceInput. It is an error demonstration, not a valid output to imitate. expectedOutput shows the correct diagnosis or permitted repair for that example. A demonstrated defect does not imply that the live artifact has that defect. Accept faithful, valid counterparts.\n\nGround the live result in the live request, specification, profile, source and stage input. Follow live source evidence and permitted repair targets even when an example has a different topic or layout. Quotes from examples are never evidence for a live question, translation, review finding or learner grade.\n\nUse fewer useful questions when a short activity warrants it. One useful question per activity is valid under the supplied V5.2 schema. Do not fill a quota with duplicates, answer restatements or unsupported questions. Do not require a supported-inference question, skill label or coverage. Actual inference still needs source premises and must be permitted by the live profile.\n\nIf no examples are supplied, perform the task using the base instructions and live data. Do not request, invent or complete extra examples. Return only the schema-valid JSON for this stage, without Markdown, example commentary or private reasoning.",
+  "stageInstructions": {
+    "EXTRACT": "For EXTRACT, use examples to distinguish user-provided facts, explicit constraints, permitted assumptions and participant roles.\n\nExtract the actual request without importing a teaching example's scenario. Preserve negation, conditions, quantities and uncertainty. A hypothesis is not a measured result; a proposed arrangement is not an approval. Copy provenance quotes exactly from live inputVi for claims that require them.\n\nPreserve listener or participant mode. When the learner is only listening, do not assign them a speaking character. Do not add unrequested dates, outcomes or confirmations as user facts. Resolve ordinary unspecified details only as the base contract permits, retaining the distinction between a fact and an assumption.\n\nOutput the complete extraction schema. An example is not permission to omit the live schema's fields or replace the user's learning context.",
+    "GENERATE": "For GENERATE, use examples for conversational progression and faithful handling of constraints, not for plot or wording reuse.\n\nCreate the live specification's complete three-activity dialogue with the supplied character IDs, allowed source structure and profile limits. Give each activity useful information that develops naturally from the preceding context. Avoid a final activity containing only ceremonial thanks that would force a meaningless comprehension question.\n\nMatch the program: ordinary communication for general practice, plausible work exchanges for TOEIC, and suitable everyday or academic exchanges for IELTS. Apply the actual proficiency profile rather than copying an example's sentence length or vocabulary.\n\nPreserve who knows, asks, proposes and confirms each fact. An unanswered question does not establish its answer. Keep conditional decisions tentative until their condition is satisfied. Preserve deadlines as bounds. If the request calls for a hypothesis, state a concrete prediction while keeping it separate from results not yet measured.\n\nDo not add an inference solely to satisfy a skill label. Supply a coherent, answerable source; later stages will choose only worthwhile comprehension targets. Output dialogue JSON only.",
+    "QUESTIONS": "For QUESTIONS, use examples to keep the question, answer, linked meanings, requiredParts and evidence aligned to one actual information need.\n\nRead the live activity first. Ask a question only when its answer contributes information supported by that activity. Derive the answer, then include only the meaning and required parts the question really asks for. Information already supplied by the question is context, not an additional scoring requirement.\n\nA why question requires a cause or purpose supported by the source; restating the action or saying it is necessary is not a cause. A time question does not also require the action, location or speaker unless the wording asks for them. Split requiredParts only when independently requested information warrants it, not merely because the evidence spans two turns.\n\nRetain quantities, bounds, negation, speaker attribution, conditions and uncertainty whenever they change the answer. Do not turn a proposal into an agreement, a clerk's speech into another person's words, or a deadline into an exact appointment.\n\nReturn only distinct, useful questions within the live limits, with at least one useful question for each required activity. Do not imitate the number of questions in a reference fragment. If an activity supports just one useful question, return one; do not fabricate a replacement or inference question to meet a quota. Preserve valid non-inference focus requirements from the base contract.\n\nUse live source quotes and IDs only. Return the full question-bank schema, including all required activities and linked scoring targets.",
+    "REVIEW_QUESTIONS": "For REVIEW_QUESTIONS, examples demonstrate a decision rule, not a verdict for the live artifact. Return diagnostics, not rewritten questions or patches.\n\nIndependently answer each live question from the live activity, then compare the proposed answer and every linked requiredPart. Check whether each part is actually required by the question and supported by the source. A correct answer cannot justify an extra scoring part; an exact source quote cannot justify a wrong relationship or speaker.\n\nCheck whether the answer adds information beyond the question. A repeated premise or an unanswered speaker question is not a useful answer. For every live question, fill addsInformationBeyondQuestion from the actual question-answer pair; do not infer it from reviewer status or skill labels.\n\nRecognize clean counterparts. A faithful paraphrase, a valid direct question at an advanced level, or a one-question activity is not a defect. Missing supported-inference coverage or a label mismatch alone must not trigger repair. Preserve actual inference policy and source-premise checks.\n\nFor a material defect, cite the defective live artifact and exact supporting live source or request quote, explain the specific mismatch, and identify each affected part. For passing items, follow the base contract's empty-field conventions; a passing question still needs independent answer support and exact part coverage.\n\nReturn one check for every live expectedChecks target using the supplied review schema. Do not copy only the single check shown by a reference example. Do not add example correction notes to the response.",
+    "TRANSLATE": "For TRANSLATE, use examples for context-sensitive meaning and faithful constraints, not for substituting an example's terms into an unrelated scene.\n\nTranslate every supplied source segment into natural Vietnamese. Keep the source activityId and segmentId exactly, with one translation for each source pair and no extra pairs. Interpret each line in dialogue context while preserving the line's speaker and meaning.\n\nPreserve negation, permission versus obligation, numerical bounds, deadlines, conditions and uncertainty. Translate a word according to this live setting; do not choose its most familiar dictionary sense when the context supports another meaning. Do not strengthen, weaken or resolve an uncertainty the source leaves open.\n\nBefore returning, compare the complete source-ID inventory with the translation inventory. A reference Translation item illustrates one object, not permission to omit the remaining segments. Output the full translation schema only.",
+    "REVIEW": "For REVIEW, follow the live mode. In sourceOnly mode, review dialogue and request fidelity; do not invent translation checks when translations do not exist. When translations are present, review the complete expected inventory and source-dependent meanings.\n\nSeparate a source defect from a translation defect. If the source asserts an approval that has not occurred, identify the source contradiction; do not make a translation conceal it. If the source is sound but its translation changes a deadline, quantity, role, negation, condition or uncertainty, identify the specific translation target.\n\nJudge meaning, not preferred style. Accept natural equivalent Vietnamese when it preserves the live meaning. Do not mark a line defective simply because a reference example uses another synonym or because another artifact required repair.\n\nGround findings in exact live artifact and source/request quotes. Keep question-only answer and part fields empty on dialogue or translation checks according to the supplied schema. Return the complete expectedChecks inventory; no additional rewritten dialogue, translations or explanation fields.",
+    "GRADE": "For GRADE, use examples to evaluate comprehension fairly while keeping learner evidence separate from source evidence.\n\nGrade only submitted meanings and the information actually requested by the displayed question. Accept equivalent Vietnamese, English or mixed-language answers and minor language errors when the intended meaning is clear. Preserve distinctions that change the answer, including negation, quantity, time bounds and uncertainty.\n\nCheck the key's scope against the live question and source. If a key materially requires unasked or unsupported information, use the schema's assessmentIssue result with no learner scores; let the existing recovery path repair and revalidate it. Never silently correct the displayed question or punish the learner for a defective key.\n\nFor a valid key, evaluate each requested part. Missing an independently requested part does not erase a part the learner captured. Do not require the learner to repeat context already supplied by the question. Do not infer an omitted learner answer from the dialogue or examples.\n\nCite exact substrings from the live learner response using its responseId. Do not cite teaching examples, source dialogue or an ideal answer as learner evidence. Return the raw part-grade schema; use its permitted statuses, including ABSENT where appropriate, and leave aggregate grading to the existing system.",
+    "REPAIR_QUESTIONS": "For REPAIR_QUESTIONS, identify whether the live repair occurs during generation or after a learner has answered. Use only reference examples compatible with that mode and the supplied patch schema.\n\nRepair the confirmed defect using live source evidence. Cover exactly allowedTargets with the permitted operations. Update question, answer, linked meanings, requiredParts and evidence consistently where those targets are allowed. Preserve every unlisted item and all source dialogue.\n\nDuring generation, an unanswerable, duplicate or tautological question may be removed with its now-unused allowed meaning when the schema permits removals. Do not remove a meaning still referenced by a survivor. Keep survivor IDs stable and do not invent a replacement merely to maintain a count. At least one useful question must remain in every required activity; otherwise the existing source-recovery or failure path is needed.\n\nWhen preserveQuestionPrompts=true, use the replacement-only schema: preserve displayed prompts, IDs, meaningIds and transcript; do not delete questions or reword what the learner saw. Repair only allowed keys and supported metadata.\n\nDo not repair only to force a supported-inference label or coverage. Correct actual role, evidence, scope and answer defects. A focus-coverage diagnosis does not authorize deletion of otherwise useful questions. Return the exact patch schema with no teaching-example explanation fields.",
+    "REPAIR_TRANSLATIONS": "For REPAIR_TRANSLATIONS, use the live source inventory and allowedTargets as the repair authority.\n\nFor a meaning defect, replace only the allowed translation lines with natural Vietnamese preserving the source meaning, including roles, quantities, bounds, negation, conditions and uncertainty. Do not rewrite the source or neighboring correct lines to make the patch fit.\n\nFor translationCoverage defects, produce exactly one faithful translation for each allowed source pair. Read that pair's actual source text; do not guess that a duplicated line belongs to another activity based on position or similar wording. The existing merger handles source ordering and removal of invalid extra IDs. Do not add unsupported patch operations or emit replacements for unlisted targets.\n\nReturn replacements only, matching the live TranslationPatch schema. Every replacement keeps the exact permitted activityId and segmentId. Do not claim that the entire lesson is accepted: post-repair validation and source-based review belong to the existing Harness."
+  }
+}

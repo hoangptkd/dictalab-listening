@@ -5,6 +5,17 @@ import tools.jackson.databind.node.ObjectNode;
 import static org.assertj.core.api.Assertions.*;
 
 class ScenarioRecoveryTest {
+    @Test void dynamicCandidateUsesSparseRecoveryWithoutChangingActiveRelease() throws Exception {
+        String pin=ScenarioAssessment.DYNAMIC_V5_3_PROMPT_HASH;
+        assertThat(ScenarioAssessment.releaseMatches(pin,"SCENARIO_MEANING_ASSESSMENT_V5_3")).isTrue();
+        assertThat(ScenarioAssessment.sparseBank(pin)).isTrue();
+        assertThat(ScenarioAssessment.flexibleBank(pin)).isTrue();
+        assertThat(ScenarioAssessment.policyFor(pin)).isEqualTo(ScenarioAssessment.PARTS_POLICY);
+        assertThat(ScenarioAssessment.ACTIVE_PROMPT_HASH).isEqualTo(ScenarioAssessment.SPARSE_V5_2_PROMPT_HASH);
+        var result=(ObjectNode)fixture().path("result").deepCopy();
+        result.put("promptHash",pin).put("promptVersion","SCENARIO_MEANING_ASSESSMENT_V5_3");
+        assertThatCode(() -> ScenarioEngine.validateHarnessCalls(result)).doesNotThrowAnyException();
+    }
     @Test
     @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named="dictalab.scenario.saved-acceptance-file",matches=".+")
     void savedArtifactsUseTheActualCoreAcceptanceGate() throws Exception {

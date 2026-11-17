@@ -183,7 +183,7 @@ class Recovery:
         self.payload, self.call, self.deadline = payload, call, deadline
         self.base_calls = 1 if grade else 6
         self.selected = a.selected_release(payload.promptHash)
-        self.sparse = self.selected is a.sparse_candidate
+        self.sparse = self.selected in (a.sparse_candidate, a.dynamic_candidate)
         self.policy = self.selected.HARNESS_POLICY
         self.limit = self.policy["gradeMaxCalls"] if grade else self.policy["maxCalls"]
         self.plan, self.validations, self.attempts, self.disputes = [], [], [], []

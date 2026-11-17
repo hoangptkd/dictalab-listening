@@ -7,3 +7,6 @@ scripts/linux/*.service text eol=lf
 
 # Vocabulary snapshots and generated bundles must retain their recorded checksums.
 src/main/resources/vocabulary/**/*.json text eol=lf
+
+# Dynamic example selection is fingerprinted from its source bytes.
+services/ai-generation/app/scenario_dynamic_fewshot.py text eol=lf

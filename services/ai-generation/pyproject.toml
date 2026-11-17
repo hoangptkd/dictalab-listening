@@ -31,4 +31,4 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.setuptools.package-data]
-app = ["*.lua", "sql/*.sql", "scenario-prompts.json", "scenario-prompt-history.json.gz"]
+app = ["*.lua", "sql/*.sql", "scenario-prompts.json", "scenario-dynamic-examples.json", "scenario-dynamic-release.json", "scenario-prompt-history.json.gz"]

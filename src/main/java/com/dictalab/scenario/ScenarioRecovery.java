@@ -7,7 +7,7 @@ import static com.dictalab.scenario.ScenarioContent.*;
 /** Core verifies the finite recovery transcript and binds acceptance to final artifacts. */
 final class ScenarioRecovery {
     private ScenarioRecovery() {}
-    static boolean enabled(String pin) { return ScenarioAssessment.RECOVERY_V5_1_PROMPT_HASH.equals(pin) || ScenarioAssessment.SPARSE_V5_2_PROMPT_HASH.equals(pin); }
+    static boolean enabled(String pin) { return ScenarioAssessment.RECOVERY_V5_1_PROMPT_HASH.equals(pin) || ScenarioAssessment.sparseBank(pin); }
 
     static void calls(JsonNode result, boolean grading) {
         var report=result.path("qualityHarness");

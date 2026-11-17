@@ -256,7 +256,8 @@ def trace_generation(function):
         prompt_hash = hashlib.sha256(json.dumps(prompt, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         with observation(purpose, as_type="generation", input={"messages": messages, "schema": schema},
                          metadata={"stagePromptHash": prompt_hash, "provider": settings.selected_provider,
-                                   **identity(settings)}, version=prompt_hash) as span:
+                                   **identity(settings),
+                                   **({"fewShotSelection": self.scenario_example_selection} if hasattr(self, "scenario_example_selection") else {})}, version=prompt_hash) as span:
             _safe(span, "update", model=self.last_model, model_parameters={
                 "temperature": options.get("temperature") if options.get("temperature") is not None else settings.temperature,
                 "max_tokens": settings.num_predict,
