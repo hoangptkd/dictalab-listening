@@ -6,6 +6,7 @@ source-based review; patches are reviewed as complete artifacts, including neigh
 from __future__ import annotations
 
 import time
+from collections import Counter
 from typing import Literal
 
 from pydantic import Field
@@ -87,6 +88,17 @@ def merge_sparse_patch(original, patch, allowed):
         act.questions = [q for q in act.questions if ("question", act.id, q.id) not in removals]
         act.assessment.meanings = [m for m in act.assessment.meanings if ("meaning", act.id, m.id) not in removals]
     return type(original).model_validate(candidate.model_dump())
+
+
+def merge_translation_coverage(original, patch, allowed, dialogue):
+    """Rebuild the source ID inventory while preserving every unscoped translation."""
+    replacements = {(t.activityId, t.segmentId): t for t in patch.replacements} if patch else {}
+    targets = {(act, item) for _, act, item in allowed}
+    if replacements.keys() != targets or patch and len(patch.replacements) != len(targets):
+        raise ValueError("patch targets mismatch")
+    before = {(t.activityId, t.segmentId): t for t in original.segments}
+    expected = [(act.id, segment.id) for act in dialogue.activities for segment in act.segments]
+    return w.Translations(segments=[replacements[key] if key in targets else before[key] for key in expected])
 
 
 def inventory(dialogue, artifact, stage):
@@ -262,8 +274,13 @@ class Recovery:
     async def patch(self, dialogue, original, issues, stage, *, grade=False):
         if sum(attempt["stage"] == stage for attempt in self.attempts) >= self.policy["maxPatchPassesPerStage"]:
             raise w.QualityRejected("stage recovery attempts exhausted")
-        allowed, blocked = old.repair_scope(original, issues, stage, flexible=True)
-        if not allowed or blocked:
+        coverage = stage == "TRANSLATE" and any(i["code"] == "translation_coverage_mismatch" for i in issues)
+        allowed, blocked = old.repair_scope(original, [i for i in issues if not coverage or i["code"] != "translation_coverage_mismatch"], stage, flexible=True)
+        if coverage:
+            counts = Counter((t.activityId, t.segmentId) for t in original.segments)
+            expected = [(act.id, segment.id) for act in dialogue.activities for segment in act.segments]
+            allowed |= {("translation", act, item) for act, item in expected if counts[(act, item)] != 1}
+        if (not allowed and not coverage) or blocked:
             raise w.QualityRejected("recovery diagnosis not localizable")
         # Reserve a patch plus two reviews; no unbounded replays of failed provider calls.
         self.reserve(3)
@@ -272,6 +289,9 @@ class Recovery:
         self.attempts.append(attempt)
         data = {**self.data(dialogue, original, stage), "failedOutput": original.model_dump(),
                 "issues": old.repair_feedback(issues), "allowedTargets": targets, "preserveQuestionPrompts": grade}
+        if coverage:
+            data["translationCoverage"] = dict(expectedTargets=[dict(activityId=act, segmentId=item) for act, item in expected],
+                instruction="Translate each missing or duplicated source ID in allowedTargets exactly once. Use that ID's source text, not the mislabeled translation. Unlisted unique translations stay unchanged; invalid extra IDs are discarded by the merger.")
         feedback = self.patch_feedback.get(stage)
         if feedback and feedback[0] == attempt["originalHash"]:
             data["formatFeedback"] = feedback[1]
@@ -281,8 +301,14 @@ class Recovery:
         focus_only = stage == "QUESTIONS" and all(i["code"] == "missing_learning_focus_coverage" for i in issues)
         patch_model = (a.SparseQuestionPatch if self.sparse and not grade and not focus_only else a.PartsQuestionPatch) if stage == "QUESTIONS" else w.TranslationPatch
         try:
+            if coverage and not allowed:
+                # Extra IDs alone need removal, not another paid model call; full review still follows.
+                candidate = merge_translation_coverage(original, None, allowed, dialogue)
+                attempt["candidateHash"] = h.digest(candidate)
+                return candidate, attempt
             patch = await self.invoke(purpose, data, patch_model, dialogue)
-            candidate = merge_sparse_patch(original, patch, allowed) if isinstance(patch, a.SparseQuestionPatch) else old.merge_patch(original, patch, allowed, stage)
+            candidate = (merge_translation_coverage(original, patch, allowed, dialogue) if coverage else
+                         merge_sparse_patch(original, patch, allowed) if isinstance(patch, a.SparseQuestionPatch) else old.merge_patch(original, patch, allowed, stage))
             if grade:
                 before = old.items(original, stage)
                 for key, q in old.items(candidate, stage).items():

@@ -1,6 +1,7 @@
 """One useful question and optional inference; legacy banks keep their saved contract."""
 import copy
 import asyncio
+import json
 import time
 
 import pytest
@@ -149,3 +150,35 @@ def test_rejected_patch_feedback_reaches_next_attempt_without_changing_original(
     assert captured[1]['formatFeedback']['failedOutput']==bad
     assert 'outside scope' in captured[1]['formatFeedback']['schemaIssues'][0]['type']
     assert candidate.model_dump()==bank.model_dump() and not recovery.patch_feedback
+
+
+@pytest.mark.parametrize('wrong_id', ['duplicate', 'unknown'])
+def test_translation_id_defects_are_repaired_against_source_without_touching_neighbors(wrong_id):
+    rows=aligned_rows();broken=copy.deepcopy(rows[3]);correct=copy.deepcopy(rows[3])
+    missing=copy.deepcopy(broken['segments'][2]);duplicate=broken['segments'][0]
+    broken['segments'][2].update(activityId=duplicate['activityId'],
+                                segmentId=duplicate['segmentId'] if wrong_id=='duplicate' else 's99')
+    replacements=[missing,copy.deepcopy(duplicate)] if wrong_id=='duplicate' else [missing]
+    result,calls=execute(payload(),[rows[0],rows[1],sparse_review(rows),broken,
+                                   dict(replacements=replacements),review(rows,'TRANSLATE')])
+    assert result['task']['translations']==correct['segments']
+    assert result['qualityHarness']['attempts'][0]['accepted']
+    data=json.loads(next(c for c in calls if c[0]=='scenario_repair_translations')[1][1]['content'])
+    assert {(t['activityId'],t['itemId']) for t in data['allowedTargets']}=={(t['activityId'],t['segmentId']) for t in replacements}
+    assert len(data['translationCoverage']['expectedTargets'])==len(correct['segments'])
+
+
+def test_extra_translation_ids_are_removed_then_reviewed_without_paid_patch_call():
+    rows=aligned_rows();broken=copy.deepcopy(rows[3]);extra=copy.deepcopy(broken['segments'][0]);extra['segmentId']='s99';broken['segments'].append(extra)
+    result,calls=execute(payload(),[rows[0],rows[1],sparse_review(rows),broken,review(rows,'TRANSLATE')])
+    assert result['task']['translations']==rows[3]['segments']
+    assert result['qualityHarness']['attempts'][0]['accepted']
+    assert not any(c[0]=='scenario_repair_translations' for c in calls)
+
+
+def test_translation_coverage_patch_rejects_unlisted_or_duplicate_replacements():
+    rows=aligned_rows();bank=w.Translations.model_validate(rows[3]);dialogue=w.Dialogue.model_validate(rows[0]);t=bank.segments[0]
+    allowed={('translation',t.activityId,t.segmentId)}
+    for replacements in ([bank.segments[1]],[t,t]):
+        with pytest.raises(ValueError,match='patch targets mismatch'):
+            r.merge_translation_coverage(bank,w.TranslationPatch(replacements=replacements),allowed,dialogue)
