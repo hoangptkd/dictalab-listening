@@ -830,6 +830,9 @@ async def execute(event, settings, *, observer=None):
     deadline = time.monotonic() + remaining
     payload = event.payload
     selected = selected_release(payload.promptHash)
+    # Retain grading for saved V5.3 lessons, but retire all new generation.
+    if selected is dynamic_candidate and payload.phase != "GRADE":
+        raise w.QualityRejected("V5.3 is retired for new scenario generation")
     context = {"learningContext": payload.learningContext.model_dump(exclude_none=True)}
     calls = []
     example_selections = []

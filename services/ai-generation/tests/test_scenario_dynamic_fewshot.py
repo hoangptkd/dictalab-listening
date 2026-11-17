@@ -106,17 +106,14 @@ def test_examples_preserve_real_evidence_and_learner_quotes():
             assert not errors and bool(findings)==(ex['output']['status']=='DEFECT')
 
 
-def test_candidate_pipeline_has_same_budget_and_persists_selection_separately_from_live_input():
-    rows=aligned_rows();p=parts_payload(promptHash=a.prompt_hash(a.dynamic_candidate))
-    result,calls=execute(p,[rows[0],rows[1],sparse_review(rows),rows[3],review(rows,'TRANSLATE')])
-    assert result['task']['qualityPassed'] and len(calls)==6
-    assert len(result['exampleSelections'])==6
-    assert result['qualityHarness']['policyHash']==r.h.digest(a.sparse_candidate.HARNESS_POLICY)
-    for call,selection in zip(calls,result['exampleSelections']):
-        assert call[0]=='scenario_'+selection['purpose'].lower()
-        live=json.loads(call[1][1]['content'])
-        assert 'reference_examples' not in live and 'fewShotSelection' not in live
-        assert len(selection['exampleIds'])<=3 and selection['exampleBytes']<=6000
+@pytest.mark.parametrize('phase', ['EXTRACT', 'GENERATE'])
+def test_retired_candidate_rejects_new_work_before_provider_call(monkeypatch, phase):
+    def forbidden_client(*args, **kwargs):
+        pytest.fail('Retired V5.3 must not open a provider client')
+    monkeypatch.setattr(a.httpx, 'AsyncClient', forbidden_client)
+    p=parts_payload(phase, promptHash=a.prompt_hash(a.dynamic_candidate))
+    with pytest.raises(w.QualityRejected, match='V5.3 is retired'):
+        execute(p, [])
 
 
 def test_candidate_grading_uses_only_learner_evidence_and_same_saved_question_contract():
@@ -132,15 +129,17 @@ def test_candidate_grading_uses_only_learner_evidence_and_same_saved_question_co
     assert len(calls)==2
 
 
-def test_pinned_candidate_is_reproducible_and_runs_without_a_readable_example_bank(monkeypatch):
+def test_archived_candidate_is_reproducible_and_saved_grading_survives_unreadable_bank(monkeypatch):
     assert d.release(a.sparse_candidate).DYNAMIC_FEWSHOT==a.dynamic_candidate.DYNAMIC_FEWSHOT
     assert d.release(a.sparse_candidate).INSTRUCTIONS==a.dynamic_candidate.INSTRUCTIONS
     def broken_bank():
         raise OSError('missing bank')
     monkeypatch.setattr(d,'bank',broken_bank)
-    rows=aligned_rows();p=parts_payload(promptHash=a.prompt_hash(a.dynamic_candidate))
-    result,calls=execute(p,[rows[0],rows[1],sparse_review(rows),rows[3],review(rows,'TRANSLATE')])
-    assert result['task']['qualityPassed'] and len(calls)==6
+    rows=aligned_rows();p=grade_payload().model_copy(update={'promptHash':a.prompt_hash(a.dynamic_candidate)})
+    verdict=sparse_review(rows);verdict['checks']=[c for c in verdict['checks'] if c['activityId']=='a1']
+    grade=dict(assessmentIssue='',meanings=[dict(meaningId='m1',parts=[dict(partId='p1',status='CAPTURED',evidence=[dict(responseId='q1',quote='At nine.')])])])
+    result,calls=execute(p,[verdict,grade])
+    assert result['task']['meanings'][0]['status']=='CAPTURED' and len(calls)==2
     assert all(s['exampleIds']==[] and s['reason']=='example-bank-unavailable-or-incompatible' for s in result['exampleSelections'])
 
 

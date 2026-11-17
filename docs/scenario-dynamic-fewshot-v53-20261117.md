@@ -1,5 +1,11 @@
 # Candidate V5.3: chọn ví dụ theo nhiệm vụ
 
+## Trạng thái hiện tại: đã ngừng chạy mới
+
+Theo quyết định của chủ dự án, V5.3 đã được gỡ khỏi danh sách tạo phiên bản/chạy mới trong Studio. API đánh giá và đường thực thi trực tiếp đều từ chối EXTRACT/GENERATE V5.3 trước khi gọi model. V5.2 tiếp tục là mặc định. Giữ nguyên 27 ví dụ tại `services/ai-generation/app/scenario-dynamic-examples.json`, selector và release đã đóng băng để dùng lại sau; không thay nội dung hoặc fingerprint. Kết quả thử nghiệm cũ vẫn đọc được và bài V5.3 đã lưu vẫn chấm được. Các phần dưới ghi lại trạng thái và số liệu trước khi ngừng V5.3.
+
+Kiểm chứng sau khi ngừng: **70 test Python đạt** trên bốn module evaluation, dynamic few-shot, sparse và recovery. Bao gồm từ chối cả hai phase trước khi mở client model, đọc kết quả V5.3 cũ, chấm bài V5.3 đã lưu và luồng V5.2. UTF-8/diff đạt. Runtime local đã nạp lại Python, giữ nguyên Core jar và cấu hình: Core/AI trả 200, worker sống, catalog chỉ còn V5.2/V5.1/V5.0, yêu cầu chạy mới V5.3 trả 400 trước khi tạo bản ghi. Biên nhận riêng `v53-retired-runtime-verification.json`; không gọi AI trả phí hoặc deploy production trong thay đổi này.
+
 Đã tích hợp bản thiết kế và 27 ví dụ hư cấu được chủ dự án duyệt ngày 17/11/2026. Đây là candidate để thử trong Studio local, chưa thay prompt mặc định của bài học. V5.2 vẫn là `5ac2eb0f3d04190bdc8e4dd5ecabf05d4f6d44f3d35edd2a7a99941a4006672b`; candidate V5.3 là `8dd20313f302ce5b79f50864f974470330fefba4e1a534890606107f5492c49f`.
 
 ## Luồng và bảo vệ
