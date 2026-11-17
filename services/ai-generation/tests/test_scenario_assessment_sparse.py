@@ -1,5 +1,7 @@
 """One useful question and optional inference; legacy banks keep their saved contract."""
 import copy
+import asyncio
+import time
 
 import pytest
 
@@ -111,3 +113,39 @@ def test_evidence_and_key_scope_checks_still_apply_to_one_question():
     rows[1]['activities'][0]['questions'][0]['evidence'][0]['quoteEn']='Not in the transcript.'
     with pytest.raises(ValueError,match='unanchored'):
         a.validate_questions(a.SparseQuestions.model_validate(rows[1]),w.Dialogue.model_validate(rows[0]),payload().learningContext)
+
+
+def test_missing_focus_repair_cannot_delete_otherwise_valid_activities():
+    rows=aligned_rows();bank=a.SparseQuestions.model_validate(rows[1]);dialogue=w.Dialogue.model_validate(rows[0])
+    replacements=dict(
+        meaningReplacements=[dict(activityId=act.id,meaning=m.model_dump()) for act in bank.activities for m in act.assessment.meanings],
+        questionReplacements=[dict(activityId=act.id,question=q.model_dump()) for act in bank.activities for q in act.questions])
+    async def call(purpose,data,model):
+        assert model is a.PartsQuestionPatch
+        assert 'removals' not in model.model_json_schema()['properties']
+        return model.model_validate(replacements)
+    recovery=r.Recovery(payload(),call,time.monotonic()+60)
+    candidate,_=asyncio.run(recovery.patch(dialogue,bank,[r.old.finding('missing_learning_focus_coverage','QUESTIONS')],'QUESTIONS'))
+    assert candidate.model_dump()==bank.model_dump()
+
+
+def test_rejected_patch_feedback_reaches_next_attempt_without_changing_original():
+    rows=aligned_rows();bank=a.SparseQuestions.model_validate(rows[1]);dialogue=w.Dialogue.model_validate(rows[0]);captured=[]
+    bad=dict(meaningReplacements=[],questionReplacements=[],removals=[dict(activityId='a2',itemType='question',itemId='q1')])
+    good=dict(meaningReplacements=[dict(activityId='a1',meaning=bank.activities[0].assessment.meanings[0].model_dump())],
+              questionReplacements=[dict(activityId='a1',question=bank.activities[0].questions[0].model_dump())],removals=[])
+    responses=iter([bad,good])
+    async def call(purpose,data,model):
+        captured.append(copy.deepcopy(data))
+        return model.model_validate(next(responses))
+    recovery=r.Recovery(payload(),call,time.monotonic()+60)
+    issues=[r.old.finding('semantic_no_information_gain','QUESTIONS',('question','a1','q1'))]
+    async def run():
+        original,attempt=await recovery.patch(dialogue,bank,issues,'QUESTIONS')
+        assert original is bank and not attempt['accepted']
+        return await recovery.patch(dialogue,original,issues,'QUESTIONS')
+    candidate,_=asyncio.run(run())
+    assert captured[1]['failedOutput']==bank.model_dump()
+    assert captured[1]['formatFeedback']['failedOutput']==bad
+    assert 'outside scope' in captured[1]['formatFeedback']['schemaIssues'][0]['type']
+    assert candidate.model_dump()==bank.model_dump() and not recovery.patch_feedback

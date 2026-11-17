@@ -175,6 +175,7 @@ class Recovery:
         self.policy = self.selected.HARNESS_POLICY
         self.limit = self.policy["gradeMaxCalls"] if grade else self.policy["maxCalls"]
         self.plan, self.validations, self.attempts, self.disputes = [], [], [], []
+        self.patch_feedback = {}
         self.original_source = None
 
     def reserve(self, count):
@@ -271,8 +272,14 @@ class Recovery:
         self.attempts.append(attempt)
         data = {**self.data(dialogue, original, stage), "failedOutput": original.model_dump(),
                 "issues": old.repair_feedback(issues), "allowedTargets": targets, "preserveQuestionPrompts": grade}
+        feedback = self.patch_feedback.get(stage)
+        if feedback and feedback[0] == attempt["originalHash"]:
+            data["formatFeedback"] = feedback[1]
         purpose = "REPAIR_QUESTIONS" if stage == "QUESTIONS" else "REPAIR_TRANSLATIONS"
-        patch_model = (a.SparseQuestionPatch if self.sparse and not grade else a.PartsQuestionPatch) if stage == "QUESTIONS" else w.TranslationPatch
+        # Missing bank coverage does not diagnose any existing question as useless.
+        # Keep every activity intact while the model chooses a grounded focus question.
+        focus_only = stage == "QUESTIONS" and all(i["code"] == "missing_learning_focus_coverage" for i in issues)
+        patch_model = (a.SparseQuestionPatch if self.sparse and not grade and not focus_only else a.PartsQuestionPatch) if stage == "QUESTIONS" else w.TranslationPatch
         try:
             patch = await self.invoke(purpose, data, patch_model, dialogue)
             candidate = merge_sparse_patch(original, patch, allowed) if isinstance(patch, a.SparseQuestionPatch) else old.merge_patch(original, patch, allowed, stage)
@@ -282,11 +289,16 @@ class Recovery:
                     if key[0] == "question" and (q.promptVi != before[key].promptVi or q.meaningIds != before[key].meaningIds):
                         raise ValueError("cannot change a question already answered by learner")
             attempt["candidateHash"] = h.digest(candidate)
+            self.patch_feedback.pop(stage, None)
             return candidate, attempt
         except ValueError as error:
             attempt["reason"] = str(error)
             if not hasattr(error, "failed_output") and 'patch' not in locals():
                 raise
+            self.patch_feedback[stage] = (attempt["originalHash"], dict(
+                failedOutput=patch.model_dump() if 'patch' in locals() else error.failed_output,
+                schemaIssues=getattr(error, "schema_issues", [{"type": str(error), "loc": []}]),
+                instruction="Correct this rejected patch against the unchanged failedOutput and allowedTargets. Preserve valid neighboring items and retain the required items in every activity."))
             return original, attempt
 
 
