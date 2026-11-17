@@ -24,7 +24,7 @@ function harness(api, {admin=false}={}) {
 }
 function session(answer=null,evaluation=null) {
     return {id:'session',mode:'SRS',status:'ACTIVE',items:[{id:'item',position:0,kind:'WORD_RECALL',prompt:'mượn',answer,evaluation,gradedAt:null,assisted:false,
-        feedback:answer===null?{}:{term:'borrow',meaning_vi:'mượn',example_en:'<script>unsafe</script>',example_vi:'ví dụ'}}]};
+        feedback:answer===null?{}:{term:'borrow',meaning_vi:'mượn',example_en:'<script>unsafe</script>',example_vi:'ví dụ',usage_notes:'Dùng <em>thân mật</em>'}}]};
 }
 test('unrestricted vocabulary home explains unlimited new cards',async()=>{
     const h=harness(async url=>url.includes('/decks?')?{items:[]}:{due:0,new_cards:12,newLimit:10,usageLimitsEnabled:false});
@@ -37,6 +37,7 @@ test('recall hides answer until attempted and escapes feedback markup',async()=>
     await h.module.show('session'); assert.match(h.root.innerHTML,/mượn/);assert.doesNotMatch(h.root.innerHTML,/borrow/);assert.ok(h.input.focused);
     state=session('x','INCORRECT');await h.module.show('session');
     assert.match(h.root.innerHTML,/borrow/);assert.doesNotMatch(h.root.innerHTML,/<script>/);
+    assert.match(h.root.innerHTML,/Dùng &lt;em&gt;thân mật&lt;\/em&gt;/);
     for (const grade of ['AGAIN','HARD','GOOD','EASY']) {
         const button = h.root.innerHTML.match(new RegExp(`<button\\b[^>]*\\bvalue="${grade}"[^>]*>`))?.[0];
         assert.ok(button, `Missing grade button: ${grade}`);
@@ -377,4 +378,36 @@ test('pending tag suggestions cannot repaint deck results after leaving the page
     h.listeners.click({target:{closest:selector=>selector==='[data-vocab-action]'?{dataset:{vocabAction:'mine'}}:null}});
     await tick();h.module.leave();resolveTags(['Private label']);await tick();await tick();
     assert.equal(h.root.innerHTML,'');
+});
+
+test('collection navigation opens levels and topics before enrolling the selected deck',async()=>{
+    const h=harness(async url=>{
+        if(url.includes('/decks?'))return {items:[]};
+        if(url.endsWith('/tags'))return [];
+        if(url.endsWith('/summary'))return summary;
+        if(url.endsWith('/mastery-levels'))return mastery;
+        if(url.includes('/decks/root?'))return {deck:{id:'root',catalogRoot:true,catalogNode:'collection'},notes:{items:[]}};
+        if(url.endsWith('/groups/collection'))return {node:{id:'collection',title:'Daily'},description:'CEFR tham khảo',children:[{id:'level',title:'A1',note_count:3}]};
+        if(url.endsWith('/groups/level'))return {node:{id:'level',parent_id:'collection',title:'A1'},description:'CEFR tham khảo',children:[{id:'topic',deck_id:'topic-deck',title:'Greetings',note_count:3}]};
+        if(url.includes('/decks/topic-deck?'))return {deck:{id:'topic-deck',title:'Greetings',catalogCollection:'collection'},notes:{items:notes,page:1}};
+        if(url.endsWith('/decks/topic-deck/enroll'))return {id:'personal'};
+        if(url.includes('/decks/personal?'))return {deck:{id:'personal',title:'Greetings'},notes:{items:notes,page:1}};
+        throw new Error(`Unexpected request ${url}`);
+    });
+    await h.module.show();await click(h,{vocabAction:'catalog'});await click(h,{vocabAction:'deck',id:'root'});
+    assert.match(h.root.innerHTML,/CEFR tham khảo/);assert.match(h.root.innerHTML,/A1/);
+    await click(h,{vocabAction:'catalog-group',id:'level'});assert.match(h.root.innerHTML,/Greetings/);
+    await click(h,{vocabAction:'deck',id:'topic-deck'});await click(h,{vocabAction:'enroll'});
+    assert.match(h.root.innerHTML,/Chọn chế độ học/);assert.equal(h.status.textContent,'');
+});
+
+test('empty collection level shows an explicit empty state',async()=>{
+    const h=harness(async url=>{
+        if(url.includes('/decks?'))return {items:[]};
+        if(url.endsWith('/summary'))return summary;
+        if(url.endsWith('/mastery-levels'))return mastery;
+        return {node:{id:'empty',title:'Custom level'},children:[],description:'Reference only'};
+    });
+    await h.module.show();await click(h,{vocabAction:'catalog-group',id:'empty'});
+    assert.match(h.root.innerHTML,/Chưa có nội dung ở cấp này/);assert.equal(h.status.textContent,'');
 });

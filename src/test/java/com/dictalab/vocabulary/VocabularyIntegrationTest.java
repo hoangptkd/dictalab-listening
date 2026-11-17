@@ -96,6 +96,23 @@ class VocabularyIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACTIVE"))
                 .andExpect(jsonPath("$.items").isNotEmpty());
     }
+    @Test void catalogUsageNotesAndAlternateAnswersSurviveCopyAndAreHiddenUntilAnswered() throws Exception {
+        long admin=user(),learner=user();
+        String system=(String)content.createDeck(admin,key(),new DeckEdit("Expressions","","",0),true).get("id");
+        var original=new NoteEdit("Hello! / Hi there!","Xin chào!","","","","",List.of("Hello!","Hi there!"),0,false,"Lời chào thân mật.");
+        String source=(String)content.addNote(admin,key(),system,original,true).get("id");
+        content.publish(admin,key(),system,new Publication(true,0));
+        String personal=(String)content.enroll(learner,key(),system).get("id");
+        String copied=db.queryForObject("SELECT id FROM vocab_notes WHERE owner_user_id=? AND source_note_id=?",String.class,learner,source);
+        assertThat(content.note(learner,copied)).containsEntry("usage_notes","Lời chào thân mật.");
+        var session=start(learner,personal); var item=session.items().get(0);
+        assertThat(item.feedback()).isEmpty();
+        // Legacy clients omitting the new field must not erase existing notes.
+        content.updateNote(learner,key(),copied,new NoteEdit("Hello! / Hi there!","Xin chào!","","","","",List.of("Hello!","Hi there!"),0,false),false);
+        assertThat(content.note(learner,copied)).containsEntry("usage_notes","Lời chào thân mật.");
+        assertThat(study.answer(learner,key(),item.id(),new Answer("Hi there!"),false)).containsEntry("evaluation","CORRECT");
+        assertThat(study.session(learner,session.id()).items().get(0).feedback()).containsEntry("usage_notes","Lời chào thân mật.");
+    }
     @Test void masteryLevelsCountOnlyTheAuthenticatedUsersActiveCards() throws Exception {
         long owner=user(),other=user(); String deck=deck(owner);
         for (int repetitions : new int[]{0,1,2,3,4,5,6,7,8,50}) {

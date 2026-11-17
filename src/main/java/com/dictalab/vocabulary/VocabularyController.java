@@ -15,18 +15,20 @@ public class VocabularyController {
     private final VocabularyStudyService study;
     private final VocabularySourceService sources;
     private final VocabularyImportService imports;
-    public VocabularyController(VocabularyContentService content,VocabularyStudyService study,VocabularySourceService sources,VocabularyImportService imports) {
-        this.content=content; this.study=study; this.sources=sources; this.imports=imports;
+    private final VocabularyCatalogService catalogService;
+    public VocabularyController(VocabularyContentService content,VocabularyStudyService study,VocabularySourceService sources,VocabularyImportService imports,VocabularyCatalogService catalogService) {
+        this.content=content; this.study=study; this.sources=sources; this.imports=imports;this.catalogService=catalogService;
     }
     @ModelAttribute public void enabled() { study.requireEnabled(); }
+    @GetMapping("/catalog/groups/{id}") public Map<String,Object> group(@PathVariable String id) { return catalogService.browse(id,false); }
     @GetMapping("/summary") public Map<String,Object> summary(@AuthenticationPrincipal DictaLabPrincipal user) { return study.summary(user.id()); }
     @GetMapping("/mastery-levels") public Map<String,Integer> masteryLevels(@AuthenticationPrincipal DictaLabPrincipal user) { return study.masteryLevels(user.id()); }
     @GetMapping("/decks") public Page<Map<String,Object>> decks(@AuthenticationPrincipal DictaLabPrincipal user,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="") String q,@RequestParam(defaultValue="") String tag) { return content.decks(user.id(),false,false,page,q,tag); }
     @GetMapping("/catalog/decks") public Page<Map<String,Object>> catalog(@AuthenticationPrincipal DictaLabPrincipal user,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="") String q,@RequestParam(defaultValue="") String tag) { return content.decks(user.id(),true,false,page,q,tag); }
     @GetMapping("/tags") public List<String> tags(@AuthenticationPrincipal DictaLabPrincipal user) { return content.tags(user.id(),false,false); }
     @GetMapping("/catalog/tags") public List<String> catalogTags(@AuthenticationPrincipal DictaLabPrincipal user) { return content.tags(user.id(),true,false); }
-    @GetMapping("/decks/{id}") public Map<String,Object> deck(@AuthenticationPrincipal DictaLabPrincipal user,@PathVariable String id,@RequestParam(defaultValue="1") int page) { return content.detail(user.id(),id,false,false,page); }
-    @GetMapping("/catalog/decks/{id}") public Map<String,Object> catalogDeck(@AuthenticationPrincipal DictaLabPrincipal user,@PathVariable String id,@RequestParam(defaultValue="1") int page) { return content.detail(user.id(),id,true,false,page); }
+    @GetMapping("/decks/{id}") public Map<String,Object> deck(@AuthenticationPrincipal DictaLabPrincipal user,@PathVariable String id,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="") String q) { return content.detail(user.id(),id,false,false,page,q); }
+    @GetMapping("/catalog/decks/{id}") public Map<String,Object> catalogDeck(@AuthenticationPrincipal DictaLabPrincipal user,@PathVariable String id,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="") String q) { return content.detail(user.id(),id,true,false,page,q); }
     @PostMapping("/decks") public Map<String,Object> create(@AuthenticationPrincipal DictaLabPrincipal user,@RequestHeader("Idempotency-Key") String key,@Valid @RequestBody DeckEdit value) { return content.createDeck(user.id(),key,value,false); }
     @PatchMapping("/decks/{id}") public Map<String,Object> editDeck(@AuthenticationPrincipal DictaLabPrincipal user,@RequestHeader("Idempotency-Key") String key,@PathVariable String id,@Valid @RequestBody DeckEdit value) { return content.updateDeck(user.id(),key,id,value,false); }
     public record Copy(@jakarta.validation.constraints.NotBlank String deckId) {}

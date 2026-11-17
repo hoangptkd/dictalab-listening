@@ -80,7 +80,7 @@ public class VocabularyStudyService {
                 int learned=usageLimitsEnabled ? repo.jdbc().queryForObject("SELECT COUNT(*) FROM vocab_review_logs WHERE user_id=? AND learning_day=? AND was_new=TRUE AND schedule_changed=TRUE",Integer.class,user,day()) : 0;
                 int newLeft=usageLimitsEnabled ? Math.max(0,config.newCardsPerDay()-learned) : config.sessionSize();
                 var candidates=repo.rows("""
-                        SELECT c.*,n.term,n.meaning_vi,n.alternatives_json,n.example_en,n.example_vi FROM vocab_cards c
+                        SELECT c.*,n.term,n.meaning_vi,n.alternatives_json,n.example_en,n.example_vi,n.usage_notes FROM vocab_cards c
                         JOIN vocab_notes n ON n.id=c.note_id WHERE c.user_id=? AND c.suspended=FALSE AND n.archived=FALSE
                         AND (c.buried_until IS NULL OR c.buried_until<=?)
                         AND (?='PRACTICE' OR c.due_at<=?)
@@ -111,7 +111,7 @@ public class VocabularyStudyService {
                 List<String> accepted=new ArrayList<>(); accepted.add((String)card.get(word?"term":"meaning_vi"));
                 if(word) accepted.addAll(repo.strings((String)card.get("alternatives_json")));
                 var feedback=new LinkedHashMap<String,Object>();
-                for(String field:List.of("term","meaning_vi","example_en","example_vi")) feedback.put(field,card.get(field));
+                for(String field:List.of("term","meaning_vi","example_en","example_vi","usage_notes")) feedback.put(field,card.get(field));
                 feedback.put("noteId",card.get("note_id")); feedback.put("kind",card.get("card_type")); feedback.put("strict",word);
                 insertItem(session,position++,(String)card.get("id"),number(card,"revision"),null,
                         (String)card.get(word?"meaning_vi":"term"),accepted,feedback);

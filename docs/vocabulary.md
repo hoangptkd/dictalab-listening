@@ -124,6 +124,106 @@ Router và lifecycle kết nối trong `js/app.js`; view nằm trong `static/ind
 Tái sử dụng API bridge hiện có, token giao diện, xác thực, CSRF và rate limiter.
 Không thêm thư viện hay dịch vụ hạ tầng mới.
 
+### Ghi chú cách dùng và kiểm tra nguồn cục bộ
+
+V55 thêm `usage_notes` vào mục từ, giới hạn 1.000 ký tự. Ghi chú được sao chép
+cùng nội dung catalog sang bản cá nhân và được chụp vào phản hồi phiên học; chỉ
+hiển thị sau khi trả lời. Sửa mục từ qua client cũ không gửi trường `usageNotes`
+sẽ giữ ghi chú cũ; gửi chuỗi rỗng để xóa. Dữ liệu CSV cũ không có trường này,
+vì vậy xuất CSV hiện chưa sao lưu ghi chú; không dùng CSV để sao lưu đầy đủ.
+
+Công cụ `scripts/vocabulary_source_preview.py` chỉ đọc file JSON local, kiểm tra
+UTF-8, cấu trúc, khóa JSON trùng, mục thiếu/trùng và giới hạn kích thước; không
+ghi database hoặc gọi mạng. Có thể đối chiếu hai snapshot và hai bộ phân loại:
+
+```powershell
+python scripts/vocabulary_source_preview.py <snapshot.json> --baseline <snapshot-cu.json> --classifications <nhan-moi.json> --baseline-classifications <nhan-cu.json>
+```
+
+Lệnh trả hash SHA-256, số thực tế, ID mục mới/mất, thay đổi ghi chú, thay đổi
+cấp hợp lệ và các cặp có thể tương ứng cần biên tập. ID dựa trên phần, mã chủ đề,
+tên chủ đề con, cụm tiếng Anh và nghĩa tiếng Việt đã chuẩn hóa; không dựa vị trí
+mảng. Vì nguồn không có ID mục ổn định, đổi cụm, nghĩa hoặc vị trí chủ đề có thể
+hiện là mục mất/mới: danh sách ứng viên chỉ hỗ trợ rà, không tự hợp nhất. Nhãn
+gắn hash nội dung, model, phương pháp, version và cờ cần rà; nhãn cũ sau khi nội
+dung thay đổi được báo stale. Công cụ này chưa nhập dữ liệu hoặc phân quyền API.
+
+Snapshot do chủ dự án cung cấp và bộ nhãn tham khảo được lưu tại
+`src/main/resources/vocabulary/daily-conversation/`. Chủ dự án xác nhận tác giả
+cho phép sử dụng và đưa vào DictaLab ngày 17/11/2026; nguồn gốc được ghi trong
+manifest, không tự gán tên giấy phép công khai. Các nhãn do Codex hỗ trợ ước
+lượng là dữ liệu cần kiểm duyệt, không phải thang CEFR được chứng nhận. Tại thời
+điểm nhập local ngày 17/11/2026, toàn bộ 719 mục đã được đối soát và nhập vào
+catalog. Phân bố tham khảo: A1 96, A2 215, B1 197, B2 160, C1 50, C2 1;
+419 mục mang cờ cần rà. Không dùng cờ này như xác suất đã hiệu chuẩn.
+
+### Catalog giao tiếp hằng ngày: nhập và vận hành
+
+V56 thêm `vocab_catalog_nodes`, `vocab_catalog_items`, `vocab_catalog_versions`.
+Mục gốc liên kết các cấp theo thứ tự trong `collection.json`; chủ đề có nội dung
+liên kết một deck hệ thống. Có 120 nút và 114 deck (một bộ chính, 113 tổ hợp
+cấp/chủ đề không rỗng). Các chủ đề con được lưu theo từng note và tìm được bằng
+ô “Tìm cụm từ / nghĩa / chủ đề con”. Từ khóa được lọc trong đúng bộ trước khi
+phân trang; tìm kiếm danh sách bộ có sẵn chỉ hiện bộ chính, tránh hàng trăm thẻ.
+Các cấp rỗng trả trạng thái rỗng. A1–C2 nằm trong cấu hình bộ này, không là enum
+của API nhập hoặc lịch ôn. Bộ vocabulary thông thường giữ mô hình phẳng.
+
+Luồng: **Từ vựng → Bộ có sẵn → Cụm từ giao tiếp hằng ngày → cấp → chủ đề →
+Học bộ này → chế độ**. Mục nguồn có dấu `/` được giữ nguyên; chỉ các biến thể
+đã duyệt trong `collection.json` được thêm vào `alternatives`. Ví dụ câu hỏi
+`Are you into sports/music?` được diễn giải bằng hai câu hoàn chỉnh, còn
+`Pass / Fail an exam` không tự tách thành đáp án tương đương. Nguyên bản, bản
+dịch và 16 ghi chú nguồn giữ nguyên. Chế độ ngữ cảnh/dịch câu kết hợp vẫn cần
+ví dụ hoặc câu biên tập phù hợp; bộ nguồn không cung cấp ví dụ riêng nên có thể
+trả trạng thái rỗng. Flashcard và hai chiều quiz dùng được cụm/câu nguyên bản.
+
+`scripts/build_vocabulary_bundle.py <folder> --check` đối soát snapshot, hash,
+phân loại và cấu hình với `bundle.json` đã lưu. Bỏ `--check` để tạo gói offline.
+Khi nguồn đổi phải lưu snapshot/hash/thời điểm mới, phân loại phần mới hoặc đổi
+và rà diff trước; script từ chối nhãn thiếu hoặc stale. Không tải mạng, không gọi
+AI khi khởi động, đọc catalog, nhập lại hoặc học. Các lô phân loại trước vẫn ở
+thư mục local `data/vocabulary-source-snapshots/`; kết quả hợp nhất có version
+được đóng gói với ứng dụng.
+
+Quản trị có form chọn gói JSON (2 MB), xem trước rồi áp dụng. API tương ứng:
+
+- `POST /api/admin/vocabulary/catalog-imports/preview`: kiểm tra bundle, trả
+  added/changed/missing/protected và previewHash; không ghi database.
+- `POST /api/admin/vocabulary/catalog-imports/apply`: body gồm bundle và
+  previewHash, cần CSRF, ADMIN, Idempotency-Key. Dữ liệu thay đổi sau preview
+  gây 409. Cùng version trả alreadyApplied; cùng key dùng receipt hiện có.
+- `GET /api/v1/vocabulary/catalog/groups/{id}`: nhóm và số mục thực trong các
+  bộ công khai; bộ nháp/ẩn không lọt qua đường dẫn bộ chính hay copy.
+- `PATCH /api/admin/vocabulary/catalog-items/{noteId}/metadata`: đổi nhóm
+  cấp/chủ đề và chủ đề con với revision; tạo dấu bảo vệ sửa đổi quản trị.
+
+Importer dùng business service hiện có, một transaction tối đa 60 giây cho
+tối đa 1000 mục/400 nhóm; giữ quota nội dung khi bật. Khóa user trước, rồi bộ
+hệ thống theo ID. Nhập sai rollback toàn bộ. Note được nhận diện theo sourceKey,
+giữ revision của lần nhập làm baseline. Admin sửa nội dung hoặc phân loại khiến
+mục đó được bảo vệ khỏi cập nhật nguồn; không có tùy chọn ghi đè ngầm. Mục mất
+khỏi nguồn chỉ được báo và giữ lại. Snapshot bundle của mỗi version lưu riêng.
+Không sửa note cá nhân/card/session/review khi nguồn hoặc phân loại thay đổi.
+Copy chủ đề khác dùng lại source_note_id nên giữ chung lịch các mục đã có.
+
+CLI operator local `scripts/ImportVocabularyLocal.java` dùng cùng importer,
+TransactionTemplate và kiểm tra database/đúng QA ID 14. Nó chỉ nhận DB credential
+và email QA qua biến môi trường `VOCABULARY_DB_URL`, `VOCABULARY_DB_USER`,
+`VOCABULARY_DB_PASSWORD`, `VOCABULARY_QA_EMAIL`; không nhận password qua argv.
+Sau khi build classpath, chạy Java source với đường dẫn bundle và `--apply`;
+bỏ `--apply` chỉ preview. CLI không mở server, không thay role của QA và không
+thay phân quyền HTTP. Đây là công cụ vận hành cho chủ máy có quyền DB.
+
+Trước local migration đã lưu backup database và kiểm tra danh sách archive;
+receipt nằm trong thư mục bảo vệ `.dictalab/local/vocabulary-import-receipt.json`.
+Không tự áp dụng production. Trước một release sau này phải kiểm tra kích thước,
+khóa, backup/restore và quyền của runtime/backup cho ba bảng mới. Diễn tập grants
+dùng `scripts/linux/test_service_schema.py`, không tạo workflow mới.
+
+Khi áp dụng V55 cần diễn tập backup/restore và quyền runtime/backup. PostgreSQL
+cần khóa bảng khi thêm cột; thời gian chờ phụ thuộc giao dịch và kích thước thực
+tế. Không sửa migration đã chạy và không triển khai chỉ dựa vào kiểm thử local.
+
 Repository là Spring proxy. Service phải gọi `repo.jdbc()` / `repo.mapper()`;
 không đọc trực tiếp field trên proxy.
 

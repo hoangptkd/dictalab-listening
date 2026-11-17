@@ -1,0 +1,30 @@
+{
+  "id": "daily-conversation",
+  "title": "Cụm từ giao tiếp hằng ngày",
+  "attribution": "Nguồn: mankhb2k/Vocabulary-English; file do chủ DictaLab cung cấp với sự cho phép của tác giả. CEFR tham khảo, được AI hỗ trợ phân loại. Giữ nguyên nội dung nguồn; các mục cần rà có nhãn riêng.",
+  "levels": ["A1", "A2", "B1", "B2", "C1", "C2"],
+  "alternatives": {
+    "Hello! / Hi there!": ["Hello!", "Hi there!"],
+    "Good morning / afternoon / evening.": ["Good morning.", "Good afternoon.", "Good evening."],
+    "Catch you later. / See you later.": ["Catch you later.", "See you later."],
+    "Goodbye! / Bye!": ["Goodbye!", "Bye!"],
+    "Are you into sports/music?": ["Are you into sports?", "Are you into music?"],
+    "Uh-huh. / Yeah.": ["Uh-huh.", "Yeah."],
+    "Go to bed / Hit the sack": ["Go to bed", "Hit the sack"],
+    "Note down / Jot down": ["Note down", "Jot down"],
+    "How much is this? / How much does it cost?": ["How much is this?", "How much does it cost?"],
+    "Could we get the bill / check, please?": ["Could we get the bill, please?", "Could we get the check, please?"],
+    "Log in / Log on": ["Log in", "Log on"],
+    "Log out / Log off": ["Log out", "Log off"],
+    "Thank you! / Thanks!": ["Thank you!", "Thanks!"],
+    "Take a walk / Go for a walk": ["Take a walk", "Go for a walk"],
+    "Take a photo / Take a picture": ["Take a photo", "Take a picture"],
+    "Order food online / Order delivery": ["Order food online", "Order delivery"],
+    "Make a reservation / Book a table": ["Make a reservation", "Book a table"],
+    "Pick up the tab / Pay the bill": ["Pick up the tab", "Pay the bill"],
+    "Eat out / Dine out": ["Eat out", "Dine out"],
+    "Wait a minute / Wait a second.": ["Wait a minute.", "Wait a second."],
+    "Be careful! / Watch out!": ["Be careful!", "Watch out!"],
+    "Can you review my PR / pull request?": ["Can you review my PR?", "Can you review my pull request?"]
+  }
+}

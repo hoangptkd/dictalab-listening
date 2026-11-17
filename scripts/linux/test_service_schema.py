@@ -84,7 +84,7 @@ class SchemaTest(unittest.TestCase):
                 self.assertIn('CORE_SCHEMA_READY', run(command, env=environment))
                 checksum_sql = "SELECT version,checksum FROM flyway_schema_history WHERE version::int <= 45 ORDER BY installed_rank;"
                 before = sql(checksum_sql, 'dictalab_core')
-                _, command = program('candidate53')
+                _, command = program('candidate56')
                 for _ in range(2):
                     self.assertIn('CORE_SCHEMA_READY', run(command, env=environment))
                 self.assertEqual(before, sql(checksum_sql, 'dictalab_core'))
@@ -95,11 +95,15 @@ class SchemaTest(unittest.TestCase):
                 "SELECT has_table_privilege('dictalab_core_runtime','vocab_deck_tags','INSERT'),"
                 "has_table_privilege('dictalab_core_backup','vocab_deck_tags','SELECT'),"
                 "has_table_privilege('dictalab_core_backup','vocab_deck_tags','UPDATE');"
+                "SELECT has_table_privilege('dictalab_core_runtime','vocab_catalog_nodes','INSERT'),"
+                "has_table_privilege('dictalab_core_runtime','vocab_catalog_items','UPDATE'),"
+                "has_table_privilege('dictalab_core_backup','vocab_catalog_versions','SELECT'),"
+                "has_table_privilege('dictalab_core_backup','vocab_catalog_items','UPDATE');"
                 "SELECT has_table_privilege('dictalab_core_runtime','flyway_schema_history','SELECT'),"
                 "has_table_privilege('dictalab_core_runtime','flyway_schema_history','UPDATE'),"
                 "has_table_privilege('dictalab_core_runtime','ai_provider_accounts','SELECT'),"
                 "has_schema_privilege('dictalab_core_runtime','public','CREATE');", 'dictalab_core')
-            self.assertEqual(['53', 't|t|f', 't|t|f', 't|f|f|f'], checks.splitlines())
+            self.assertEqual(['56', 't|t|f', 't|t|f', 't|t|t|f', 't|f|f|f'], checks.splitlines())
         finally:
             run(['docker', 'rm', '--force', name])
 

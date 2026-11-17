@@ -26,6 +26,8 @@
     let quizNotes = [], quizIndex = 0, quizScore = 0, quizMode = '', quizDeckId = null;
     let ctxNotes  = [], ctxIndex  = 0, ctxScore  = 0, ctxDeckId  = null;
     let deckFilters = {q:"",tag:""};
+    let catalogPreview = null, catalogNodes = [];
+    let noteQuery = "";
     const pending = new Map();
 
     /* ── API helpers ────────────────────────────────────────────── */
@@ -35,6 +37,7 @@
         currentNote = null; sourceWord = null; session = null; owner = null;
         quizNotes = []; ctxNotes = []; quizDeckId = null; ctxDeckId = null;
         deckFilters = {q:"",tag:""};
+        catalogPreview = null; catalogNodes = []; noteQuery = "";
         root.replaceChildren(); status.textContent = "";
     }
 
@@ -513,6 +516,7 @@
     async function listDecks(page = 1) {
         const stamp = generation;
         selectedDeck = null;
+        catalogPreview = null;
         const endpoint = admin ? `${adminBase}/decks` : catalog ? `${base}/catalog/decks` : `${base}/decks`;
         const title    = admin ? "Quản trị bộ từ" : catalog ? "Bộ từ có sẵn" : "Bộ của tôi";
 
@@ -572,12 +576,34 @@
                 </div>
             </details>` : ""}
 
+            ${admin ? `<details class="vocab-details"><summary>Nhập / cập nhật catalog từ file</summary>
+                <form data-vocab-form="catalog-import" class="vocab-form">
+                    <label>Gói catalog JSON (tối đa 2 MB)<input name="catalogFile" type="file" accept=".json,application/json" required></label>
+                    <button class="primary-button">Xem trước thay đổi</button>
+                </form><div id="catalog-import-preview" aria-live="polite"></div>
+            </details>` : ""}
+
             <div class="vocab-grid">${deckCards}</div>
             ${pagination(result, "decks-page")}`;
     }
 
+    async function openGroup(id) {
+        catalogPreview = null;
+        root.innerHTML = toolbar() + skeletonGrid(4);
+        const data = await request(`${admin ? adminBase : base}/catalog/groups/${encodeURIComponent(id)}`);
+        const node=data.node;
+        root.innerHTML = toolbar() + `<section class="vocab-panel">
+            ${node.parent_id ? btn("catalog-group","← Quay lại",`data-id="${escape(node.parent_id)}"`) : ""}
+            <h2>${escape(node.title)}</h2><p>${escape(data.description)}</p>
+            <p>${node.parent_id ? "Chọn chủ đề để xem nội dung và bắt đầu học." : "Chọn cấp độ tham khảo để xem chủ đề."}</p>
+            <div class="vocab-grid">${data.children.map(child => `<button type="button" class="vocab-deck-card" data-vocab-action="${child.deck_id ? "deck" : "catalog-group"}" data-id="${escape(child.deck_id || child.id)}">
+                <span>${escape(child.title)}</span><span>${child.note_count} mục</span></button>`).join("") || `<p>Chưa có nội dung ở cấp này.</p>`}</div>
+        </section>`;
+    }
+
     /* ── Open deck ────────────────────────────────────────────── */
-    async function openDeck(id, page = 1) {
+    async function openDeck(id, page = 1, query = "") {
+        noteQuery=query;
         importGeneration++;
         const deckImportStamp = importGeneration;
         // Skeleton
@@ -589,15 +615,19 @@
             </div>
             ${skeletonGrid(4)}`;
 
-        const result = await request(`${admin ? adminBase : base}${catalog ? "/catalog" : ""}/decks/${encodeURIComponent(id)}?page=${page}`);
+        const result = await request(`${admin ? adminBase : base}${catalog ? "/catalog" : ""}/decks/${encodeURIComponent(id)}?page=${page}&q=${encodeURIComponent(query)}`);
         selectedDeck  = result.deck;
         visibleNotes  = result.notes.items;
+        if ((admin || catalog) && selectedDeck.catalogRoot) { await openGroup(selectedDeck.catalogNode); return; }
 
         const noteCards = result.notes.items.map(n => `
             <article class="vocab-word-card vocab-animate-in">
                 <h3 lang="en">${escape(n.term)}</h3>
                 ${n.part_of_speech ? `<span class="vocab-word-pos">${escape(n.part_of_speech)}</span>` : ""}
                 <p class="vocab-word-meaning">${escape(n.meaning_vi)}</p>
+                ${n.subtopic ? `<p class="vocab-word-pos">${escape(n.subtopic)}</p>` : ""}
+                ${n.classification?.needs_review ? `<p>CEFR tham khảo · Cần rà soát</p>` : ""}
+                ${n.usage_notes ? `<p class="vocab-word-example"><strong>Ghi chú:</strong> ${escape(n.usage_notes)}</p>` : ""}
                 ${n.example_en ? `
                 <p class="vocab-word-example" lang="en">${escape(n.example_en)}</p>
                 <p class="vocab-word-example">${escape(n.example_vi)}</p>` : ""}
@@ -611,7 +641,7 @@
             </article>`).join("") ||
             `<div class="vocab-empty" style="grid-column:1/-1">
                 <span class="vocab-empty-icon">📝</span>
-                <p>Chưa có từ trong bộ này.</p>
+                <p>${query ? "Không có mục khớp từ khóa hoặc chủ đề con." : "Chưa có từ trong bộ này."}</p>
                 ${!catalog && !admin ? btn("new-note","Thêm từ đầu tiên") : ""}
              </div>`;
 
@@ -619,6 +649,7 @@
 
         <!-- Deck header -->
         <div class="vocab-deck-header vocab-animate-in">
+            ${(catalog || admin) && selectedDeck.catalogCollection ? btn("catalog-group","← Chọn cấp / chủ đề",`data-id="${escape(selectedDeck.catalogCollection)}"`) : ""}
             ${levelBadge(selectedDeck.level)}
             ${deckTags(selectedDeck)}
             <h2>${escape(selectedDeck.title)}</h2>
@@ -699,6 +730,10 @@
         </details>` : ""}
 
         <!-- Word grid -->
+        <form data-vocab-form="note-filter" class="vocab-form" role="search" aria-label="Tìm trong chủ đề">
+            <label>Tìm cụm từ / nghĩa / chủ đề con<input name="q" maxlength="120" value="${escape(query)}"></label>
+            <button class="primary-button">Tìm trong bộ</button>
+        </form>
         <div class="vocab-section-heading vocab-animate-in" style="margin-top:8px">
             <h2 style="font-size:1.2rem">Danh sách từ</h2>
             <span style="font-size:.82rem;color:var(--ink-soft)">Trang ${result.notes.page}</span>
@@ -761,6 +796,9 @@
                 <label>Bản dịch ví dụ
                     <textarea name="exampleVi" maxlength="1000">${v("example_vi")}</textarea>
                 </label>
+                <label>Ghi chú cách dùng
+                    <textarea name="usageNotes" maxlength="1000">${v("usage_notes")}</textarea>
+                </label>
                 <label>Đáp án tiếng Anh thay thế (mỗi dòng một đáp án)
                     <textarea name="alternatives" maxlength="4000">${escape((note?.alternatives || []).join("\n"))}</textarea>
                 </label>
@@ -777,6 +815,14 @@
                 </p>
                 <div><button class="primary-button">Lưu mục từ</button></div>
             </form>
+
+            ${admin && note?.collection_id ? `<form data-vocab-form="catalog-metadata" class="vocab-form">
+                <h3>Phân loại catalog</h3>
+                <label>Cấp / chủ đề<select name="nodeId" required>${catalogNodes.map(node => `<option value="${escape(node.id)}" ${node.id===note.node_id?"selected":""}>${escape(node.level_label)} · ${escape(node.title)}</option>`).join("")}</select></label>
+                <label>Chủ đề con<input name="subtopic" maxlength="200" value="${escape(note.subtopic)}"></label>
+                <p>Sửa phân loại giữ nguyên lịch ôn. Các lần cập nhật nguồn sau sẽ giữ sửa đổi này.</p>
+                <button class="primary-button">Lưu phân loại</button>
+            </form>` : ""}
 
             ${note?.cards ? `
             <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line)">
@@ -922,7 +968,8 @@
                 <h3 lang="en">${escape(feedback.term ?? "")}</h3>
                 <p style="margin:0 0 6px">${escape(feedback.meaning_vi ?? "")}</p>
                 <p lang="en" class="vocab-word-example">${escape(feedback.example_en ?? "")}</p>
-                <p class="vocab-word-example">${escape(feedback.example_vi ?? "")}</p>`}
+                <p class="vocab-word-example">${escape(feedback.example_vi ?? "")}</p>
+                ${feedback.usage_notes ? `<p class="vocab-word-example"><strong>Ghi chú:</strong> ${escape(feedback.usage_notes)}</p>` : ""}`}
 
                 <form data-vocab-form="grade" class="vocab-form" style="margin:0;gap:10px">
                     ${(feedback.targets || []).map(t => `
@@ -997,6 +1044,10 @@
     });
 
     root.addEventListener("change", event => {
+        if(event.target.name === "catalogFile") {
+            catalogPreview=null;
+            root.querySelector("#catalog-import-preview")?.replaceChildren();
+        }
         if (event.target.name === "file") {
             importGeneration++;
             root.querySelector("#vocab-import-preview")?.replaceChildren();
@@ -1018,13 +1069,20 @@
             else if (action === "decks-page")  await listDecks(Number(target.dataset.page));
             else if (action === "clear-filters") { deckFilters = {q:"",tag:""}; await listDecks(); }
             else if (action === "deck")         await openDeck(target.dataset.id);
-            else if (action === "notes-page")   await openDeck(selectedDeck.id, Number(target.dataset.page));
+            else if (action === "catalog-group") await openGroup(target.dataset.id);
+            else if (action === "apply-catalog") {
+                if(!catalogPreview) throw new Error("Hãy xem trước gói catalog lại.");
+                const result=await mutate(`${adminBase}/catalog-imports/apply`,catalogPreview);
+                await listDecks(); status.textContent=`Đã xử lý ${result.count} mục; giữ ${result.protected?.length || 0} mục đã biên tập.`;
+            }
+            else if (action === "notes-page")   await openDeck(selectedDeck.id, Number(target.dataset.page),noteQuery);
             else if (action === "sources" || action === "sources-page") await sources(Number(target.dataset.page || 1));
             else if (action === "save-source")  { sourceWord = JSON.parse(target.dataset.source); selectedDeck = null; noteForm(); }
             else if (action === "new-note")     { sourceWord = null; noteForm(); }
             else if (action === "edit-note") {
                 sourceWord = null;
                 const note = admin ? visibleNotes.find(n => n.id === target.dataset.id) : await request(`${base}/notes/${target.dataset.id}`);
+                catalogNodes=admin && note?.collection_id ? await request(`${adminBase}/catalog/collections/${encodeURIComponent(note.collection_id)}/nodes`) : [];
                 noteForm(note);
             }
             else if (action === "remove-note")  { await mutate(`${base}/decks/${selectedDeck.id}/notes/${target.dataset.id}`, {}, "DELETE"); await openDeck(selectedDeck.id); }
@@ -1064,9 +1122,26 @@
         event.preventDefault();
         const data = new FormData(form), kind = form.dataset.vocabForm, grade = event.submitter?.value;
         run(async () => {
-            if (kind === "deck-filter") {
+            if(kind === "note-filter") await openDeck(selectedDeck.id,1,String(data.get("q") || "").trim());
+            else if (kind === "deck-filter") {
                 deckFilters = {q:String(data.get("q") || "").trim(),tag:String(data.get("tag") || "").trim()};
                 await listDecks();
+            }
+            else if(kind === "catalog-import") {
+                const stamp=generation;
+                catalogPreview=null;
+                const file=data.get("catalogFile");
+                if(!file || file.size>2*1024*1024) throw new Error("Chọn gói JSON không quá 2 MB.");
+                const bundle=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(await file.arrayBuffer()));
+                if(stamp!==generation || !admin) throw new DOMException("Changed page", "AbortError");
+                const preview=await request(`${adminBase}/catalog-imports/preview`,{method:"POST",body:bundle});
+                catalogPreview={bundle,previewHash:preview.previewHash};
+                const panel=root.querySelector("#catalog-import-preview");
+                panel.innerHTML=`<p>${preview.count} mục · ${preview.added.length} mới · ${preview.changed.length} đổi · ${preview.missing.length} mất khỏi nguồn · ${preview.protected.length} giữ sửa đổi quản trị.</p><p>Mục mất khỏi nguồn được giữ lại; bản học cá nhân không bị ghi đè.</p>${btn("apply-catalog","Áp dụng gói đã xem trước")}`;
+            }
+            else if(kind === "catalog-metadata") {
+                await mutate(`${adminBase}/catalog-items/${currentNote.id}/metadata`,{nodeId:data.get("nodeId"),subtopic:data.get("subtopic") || "",revision:currentNote.revision},"PATCH");
+                await openDeck(selectedDeck.id);
             }
             else if (kind === "deck" || kind === "edit-deck") {
                 const payload = { title: data.get("title"), description: data.get("description"), level: data.get("level") || "", tags: String(data.get("tags") || "").split(/\r?\n/).map(t => t.trim()).filter(Boolean), revision: kind === "edit-deck" ? selectedDeck.revision : 0 };
@@ -1075,7 +1150,7 @@
             }
             else if (kind === "copy") { await mutate(`${base}/catalog/decks/${selectedDeck.id}/add`, { deckId: data.get("deckId") }); admin = false; catalog = false; await openDeck(data.get("deckId")); }
             else if (kind === "note") {
-                const payload = { term: data.get("term"), meaningVi: data.get("meaningVi"), partOfSpeech: data.get("partOfSpeech"), exampleEn: data.get("exampleEn"), exampleVi: data.get("exampleVi"), tags: data.get("tags"), alternatives: String(data.get("alternatives")).split("\n").map(x => x.trim()).filter(Boolean), revision: currentNote?.revision || 0, meaningRecall: data.has("meaningRecall") };
+                const payload = { term: data.get("term"), meaningVi: data.get("meaningVi"), partOfSpeech: data.get("partOfSpeech"), exampleEn: data.get("exampleEn"), exampleVi: data.get("exampleVi"), tags: data.get("tags"), alternatives: String(data.get("alternatives")).split("\n").map(x => x.trim()).filter(Boolean), revision: currentNote?.revision || 0, meaningRecall: data.has("meaningRecall"), usageNotes: data.get("usageNotes") ?? "" };
                 const deck = selectedDeck?.id || data.get("deckId");
                 if (sourceWord) await mutate(`${base}/decks/${deck}/from-practice`, { wordAttemptId: sourceWord.word_attempt_id, existingNoteId: null, note: payload });
                 else await mutate(currentNote ? `${admin ? adminBase : base}/notes/${currentNote.id}` : `${admin ? adminBase : base}/decks/${deck}/notes`, payload, currentNote ? "PATCH" : "POST");

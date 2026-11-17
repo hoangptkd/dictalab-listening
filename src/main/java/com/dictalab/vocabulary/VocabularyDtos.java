@@ -18,7 +18,13 @@ public final class VocabularyDtos {
                            @NotNull @Size(max=40) String partOfSpeech, @NotNull @Size(max=1000) String exampleEn,
                            @NotNull @Size(max=1000) String exampleVi, @NotNull @Size(max=500) String tags,
                            @NotNull @Size(max=20) List<@NotBlank @Size(max=200) String> alternatives,
-                           @Min(0) long revision, boolean meaningRecall) {}
+                           @Min(0) long revision, boolean meaningRecall,
+                           @Size(max=1000) @Pattern(regexp="[^\\x00]*") String usageNotes) {
+        public NoteEdit(String term,String meaningVi,String partOfSpeech,String exampleEn,String exampleVi,String tags,
+                        List<String> alternatives,long revision,boolean meaningRecall) {
+            this(term,meaningVi,partOfSpeech,exampleEn,exampleVi,tags,alternatives,revision,meaningRecall,null);
+        }
+    }
     public record SourceNote(@NotNull @Positive Long wordAttemptId, String existingNoteId, @NotNull @Valid NoteEdit note) {}
     public record SessionStart(@Pattern(regexp="SRS|PRACTICE|CONTEXT_TRANSLATION") @NotNull String mode, String deckId) {}
     public record Answer(@NotNull @Size(max=4000) String answer) {}
