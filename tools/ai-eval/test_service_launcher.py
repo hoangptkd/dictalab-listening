@@ -11,6 +11,13 @@ launcher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launcher)
 
 
+def local_voice_pool():
+    return [{'id': f'pair-{i}', 'model': 'sonic-3.6', 'apiVersion': '2026-08-14', 'language': 'en',
+             'outputFormat': 'wav-pcm16-mono-24000',
+             'voices': [f'00000000-0000-0000-0000-{i*2+1:012d}', f'00000000-0000-0000-0000-{i*2+2:012d}']}
+            for i in range(4)]
+
+
 def test_local_refuses_a_disposable_checkout_before_reading_credentials(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, 'ROOT', tmp_path)
     monkeypatch.setattr(launcher, 'LOCAL_ROOT', tmp_path / 'canonical')
@@ -65,11 +72,9 @@ def test_local_requires_one_source_identity_schema_and_state_directory(tmp_path,
     migration.mkdir(parents=True)
     (migration / 'V53__fixture.sql').touch()
     core, ai = management_configs()
-    recipe = {'id': 'local-pair', 'model': 'sonic-3.6', 'apiVersion': '2026-08-14',
-              'language': 'en', 'outputFormat': 'wav-pcm16-mono-24000',
-              'voices': ['db6b0ed5-d5d3-463d-ae85-518a07d3c2b4', '47c38ca4-5f35-497b-b1a3-415245fb35e1']}
-    core.update(DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON=json.dumps(recipe), DICTALAB_AI_TTS_MODE='python')
-    ai['DICTALAB_AI_SCENARIO_TTS_RECIPES'] = json.dumps([recipe])
+    pool = local_voice_pool()
+    core.update(DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON=json.dumps(pool), DICTALAB_AI_TTS_MODE='python')
+    ai['DICTALAB_AI_SCENARIO_TTS_RECIPES'] = json.dumps(pool)
     core.update(DICTALAB_OPERATIONAL_LIMITS_ENABLED='false', AI_BUDGET_ENABLED='false',
                 RATE_LIMIT_ENABLED='false', AI_CONCURRENCY='0', TTS_CONCURRENCY='0')
     ai['DICTALAB_OPERATIONAL_LIMITS_ENABLED'] = 'false'
@@ -113,11 +118,10 @@ def test_local_requires_one_source_identity_schema_and_state_directory(tmp_path,
 @pytest.mark.parametrize('fault', [None, 'missing_core', 'missing_ai', 'duplicate_voice', 'unapproved',
     'invalid_recipe', 'duplicate_id', 'legacy_route', 'core_disabled', 'ai_disabled'])
 def test_local_refuses_missing_or_mismatched_two_voice_configuration(fault):
-    recipe = {'id': 'local-pair', 'model': 'sonic-3.6', 'apiVersion': '2026-08-14',
-              'language': 'en', 'outputFormat': 'wav-pcm16-mono-24000',
-              'voices': ['db6b0ed5-d5d3-463d-ae85-518a07d3c2b4', '47c38ca4-5f35-497b-b1a3-415245fb35e1']}
-    core = {'DICTALAB_AI_TTS_MODE': 'python', 'DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON': json.dumps(recipe)}
-    ai = {'DICTALAB_AI_SCENARIO_TTS_RECIPES': json.dumps([recipe])}
+    pool = local_voice_pool()
+    recipe = pool[0]
+    core = {'DICTALAB_AI_TTS_MODE': 'python', 'DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON': json.dumps(pool)}
+    ai = {'DICTALAB_AI_SCENARIO_TTS_RECIPES': json.dumps(pool)}
     if fault == 'missing_core': core.pop('DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON')
     if fault == 'missing_ai': ai.clear()
     if fault == 'duplicate_voice':
@@ -134,7 +138,31 @@ def test_local_refuses_missing_or_mismatched_two_voice_configuration(fault):
     else:
         launcher.validate_local_scenario_voices(core, ai)
         # Existing lessons may retain an older approved recipe alongside the active pair.
-        ai['DICTALAB_AI_SCENARIO_TTS_RECIPES'] = json.dumps([dict(recipe, id='previous-pair'), recipe])
+        ai['DICTALAB_AI_SCENARIO_TTS_RECIPES'] = json.dumps([dict(recipe, id='previous-pair'), *pool])
+        launcher.validate_local_scenario_voices(core, ai)
+
+
+@pytest.mark.parametrize('fault', [None, 'empty', 'single', 'smaller_pool', 'duplicate_id', 'duplicate_pair', 'unapproved', 'invalid_second', 'too_many'])
+def test_local_validates_every_pair_in_a_rotating_voice_pool(fault):
+    pool = local_voice_pool()
+    first, second = pool[:2]
+    approved = pool.copy()
+    if fault == 'empty': pool = []
+    if fault == 'single': pool = first
+    if fault == 'smaller_pool': pool = pool[:3]
+    if fault == 'duplicate_id': pool[1] = dict(second, id=first['id'])
+    if fault == 'duplicate_pair':
+        pool[1] = dict(second, voices=list(reversed(first['voices'])))
+        approved = pool
+    if fault == 'unapproved': approved = [first]
+    if fault == 'invalid_second': pool[1] = dict(second, voices=[])
+    if fault == 'too_many': pool = [dict(first, id=f'pair-{i}') for i in range(17)]
+    core = {'DICTALAB_AI_TTS_MODE': 'python', 'DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON': json.dumps(pool)}
+    ai = {'DICTALAB_AI_SCENARIO_TTS_RECIPES': json.dumps(approved)}
+    if fault:
+        with pytest.raises(ValueError, match='two distinct voices'):
+            launcher.validate_local_scenario_voices(core, ai)
+    else:
         launcher.validate_local_scenario_voices(core, ai)
 
 

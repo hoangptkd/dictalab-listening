@@ -263,9 +263,12 @@ Scenario sessions can freeze a server-owned two-voice recipe without changing th
 generation or grading prompts. This is opt-in; existing sessions and all legacy
 `kind=tts` jobs keep `TTS_WAV_V1` and their existing audio cache.
 
-Set Core `DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON` to one recipe object, and set
-`DICTALAB_AI_SCENARIO_TTS_RECIPES` to a JSON array containing the same object on
-both AI API and worker. Recipe fields are `id`, `model`, `apiVersion`, `language`
+Set Core `DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON` to one recipe object or an
+ordered array of 1–16 recipes. Set `DICTALAB_AI_SCENARIO_TTS_RECIPES` to a JSON
+array approving every active recipe on both AI API and worker; retain historical
+recipes for saved lessons. Core rotates pairs per learner at session creation,
+resuming from persisted provenance after restarts. Each lesson freezes one pair
+for all activities and replays. Recipe fields are `id`, `model`, `apiVersion`, `language`
 (`en`), `outputFormat` (`wav-pcm16-mono-24000`), and `voices` (exactly two distinct,
 provider-verified voice UUIDs). Voice IDs are configuration, not API credentials.
 Keep the Cartesia credential only in protected AI runtime configuration.

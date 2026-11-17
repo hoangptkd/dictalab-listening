@@ -28,10 +28,12 @@ authorized release flow; deployment gates still apply.
 ## Owner policy: two voices for scenario listening
 
 New scenario lessons must use two distinct voices, one stable voice per character.
-Keep `DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON` in protected Core configuration
-and the matching recipe in `DICTALAB_AI_SCENARIO_TTS_RECIPES` for both AI API and
+Rotate the four approved US/UK pairs between new lessons per account; keep the
+selected pair fixed throughout each lesson and all replays. Keep the ordered pool
+in `DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON` in protected Core configuration and
+every matching recipe in `DICTALAB_AI_SCENARIO_TTS_RECIPES` for both AI API and
 worker. Preserve these settings after tests, benchmarks and restarts. The canonical
-local launcher rejects missing, invalid or mismatched recipes; do not bypass that
+local launcher rejects pools with fewer than four pairs, missing, invalid or mismatched recipes; do not bypass that
 check or silently fall back to one voice. Keep historical recipes approved while
 saved lessons still need them. Do not rewrite saved lessons or delete audio caches
 to change their voices. Production activation still follows the release gates.

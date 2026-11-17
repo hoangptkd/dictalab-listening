@@ -882,6 +882,50 @@ class ScenarioEngineIntegrationTest {
         return tree("{\"id\":\"qa-voices-v1\",\"model\":\"fixture-model\",\"apiVersion\":\"2026-08-14\",\"language\":\"en\",\"outputFormat\":\"wav-pcm16-mono-24000\",\"voices\":[\"00000000-0000-0000-0000-000000000001\",\"00000000-0000-0000-0000-000000000002\"]}");
     }
 
+    @Test void voicePairsRotatePerOwnerAcrossRestartAndReplayWithoutChangingSavedLessons() {
+        var pool=new java.util.ArrayList<JsonNode>();
+        for (int i=0;i<4;i++) {
+            var pair=(ObjectNode)recipe().deepCopy(); pair.put("id","pair-"+i);
+            pair.putArray("voices").add("00000000-0000-0000-0000-"+String.format("%012d",i*2+1))
+                    .add("00000000-0000-0000-0000-"+String.format("%012d",i*2+2));
+            pool.add(pair);
+        }
+        doReturn(pool).when(engineConfig).ttsRecipes();
+        String firstSession=null,firstProvenance=null,lastSession=null;
+        for (int i=0;i<4;i++) {
+            var session=active(); String sid=session.path("sessionId").asText();
+            lastSession=sid;
+            String provenance=db.queryForObject("SELECT provenance_json FROM scenario_sessions WHERE id=?",String.class,sid);
+            var snapshot=tree(provenance).path("ttsRecipe");
+            assertThat(snapshot.path("recipe")).isEqualTo(pool.get(i));
+            assertThat(snapshot.path("speakerVoices").size()).isEqualTo(2);
+            assertThat(snapshot.path("speakerVoices").properties().stream().map(e -> e.getValue().asText()).toList())
+                    .containsExactlyInAnyOrderElementsOf(java.util.stream.StreamSupport.stream(pool.get(i).path("voices").spliterator(),false).map(JsonNode::asText).toList());
+            if (i==0) { firstSession=sid; firstProvenance=provenance; }
+        }
+        long originalUser=user;
+        user=users.saveAndFlush(new AppUser(UUID.randomUUID()+"@scenario-engine.test","Other learner","unused",Instant.now())).getId();
+        var other=active();
+        assertThat(tree(db.queryForObject("SELECT provenance_json FROM scenario_sessions WHERE id=?",String.class,other.path("sessionId").asText())).path("ttsRecipe").path("recipe")).isEqualTo(pool.get(0));
+        user=originalUser;
+        Instant future=Instant.now().plusSeconds(60);
+        db.update("UPDATE scenario_sessions SET created_at=? WHERE id=?",java.sql.Timestamp.from(future),lastSession);
+        // Recreate the service and rename/reverse the previous pair: identity follows voices, not labels.
+        var previous=(ObjectNode)pool.get(3).deepCopy(); previous.put("id","renamed-last-pair");
+        previous.putArray("voices").add(pool.get(3).path("voices").get(1)).add(pool.get(3).path("voices").get(0)); pool.set(3,previous);
+        var restarted=new ScenarioEngine(data,operations,release,ai,media,null,new org.springframework.mock.env.MockEnvironment(),personalization,engineConfig);
+        var extraction=dispatch(restarted.createDraft(user,id(),input()));
+        var draft=restarted.draft(user,extraction.path("draftId").asText());
+        var request=new ScenarioEngine.SessionRequest(draft.path("draftId").asText(),draft.path("version").asLong());
+        String key=id(); var created=restarted.createSession(user,key,request);
+        assertThat(restarted.createSession(user,key,request)).isEqualTo(created);
+        var snapshot=tree(db.queryForObject("SELECT provenance_json FROM scenario_sessions WHERE id=?",String.class,created.path("sessionId").asText())).path("ttsRecipe");
+        assertThat(snapshot.path("recipe")).isEqualTo(pool.get(0));
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM scenario_sessions WHERE user_id=?",Integer.class,user)).isEqualTo(5);
+        assertThat(db.queryForObject("SELECT created_at FROM scenario_sessions WHERE id=?",java.sql.Timestamp.class,created.path("sessionId").asText()).toInstant()).isAfter(future);
+        assertThat(db.queryForObject("SELECT provenance_json FROM scenario_sessions WHERE id=?",String.class,firstSession)).isEqualTo(firstProvenance);
+    }
+
     @ParameterizedTest
     @ValueSource(strings={"cartesia","openai_compatible"})
     void voiceSnapshotSurvivesGenerationAndConfigurationChangeAndCachesEachSpeaker(String provider) {
@@ -890,9 +934,9 @@ class ScenarioEngineIntegrationTest {
             var alternative=((ObjectNode)recipe).put("provider",provider).put("apiVersion","");
             alternative.putArray("voices").add("alloy").add("nova");
         }
-        doReturn(recipe).when(engineConfig).ttsRecipe();
+        doReturn(List.of(recipe)).when(engineConfig).ttsRecipes();
         var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
-        doReturn(null).when(engineConfig).ttsRecipe();
+        doReturn(List.of()).when(engineConfig).ttsRecipes();
         when(ai.ttsProvider()).thenReturn(provider.equals("cartesia") ? "openai_compatible" : "cartesia");
         for (int i=0;i<2;i++) {
             session=engine.session(user,sid);
@@ -911,7 +955,7 @@ class ScenarioEngineIntegrationTest {
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings={"voiceId","speakerId","recipeHash","model","provider"})
     void wrongVoiceMetadataCannotPublishAudio(String field) {
-        doReturn(recipe()).when(engineConfig).ttsRecipe();
+        doReturn(List.of(recipe())).when(engineConfig).ttsRecipes();
         var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
         doAnswer(call -> {
             var response=done(call.getArgument(1),call.getArgument(3));
@@ -954,7 +998,7 @@ class ScenarioEngineIntegrationTest {
     }
 
     @Test void invalidHistoricalVoiceSnapshotDoesNotBlockReadingRestrictedLesson() {
-        doReturn(recipe()).when(engineConfig).ttsRecipe();
+        doReturn(List.of(recipe())).when(engineConfig).ttsRecipes();
         var session=active(); String sid=session.path("sessionId").asText(),aid=session.path("activities").get(0).path("activityId").asText();
         var content=(ObjectNode)tree(db.queryForObject("SELECT private_json FROM scenario_activities WHERE id=?",String.class,aid));
         ((ObjectNode)content.path("activity").path("segments").get(0)).put("textEn","[REDACTED]");

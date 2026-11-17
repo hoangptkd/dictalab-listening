@@ -74,6 +74,36 @@ recipe hashes and historical prompt hash. New alternate recipes include
 recipes keep UUID voices and their dated API version. Recipes must be approved in
 AI settings and captured in the scenario session before use.
 
+Core `DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON` accepts either the original single
+recipe object or an ordered array of 1–16 recipes. Every recipe still contains
+exactly two distinct voices; IDs and voice pairs must be unique within the active
+pool. AI API/worker `DICTALAB_AI_SCENARIO_TTS_RECIPES` must approve every active
+recipe, plus any historical recipes needed by saved lessons.
+
+When a learner creates a new lesson, Core selects the pair after their most recent
+saved pair, wrapping to the first. Selection matches provider and unordered voice
+IDs, so renaming a recipe or swapping its voice order does not repeat the same
+pair. The existing user lock serializes concurrent creates; session timestamps
+remain monotonic per learner to preserve selection order across restarts. An
+idempotent replay returns the original session without advancing rotation. A new
+learner, or a previous pair absent from the current pool, starts at the first pair.
+Failed preparation still counts as a created lesson for rotation. No new table,
+prompt changes or extra TTS calls are required by pair selection.
+
+The initial local pool uses eight public English voices, in this order:
+
+| Pair | Accent | Voices |
+| --- | --- | --- |
+| 1 | US | Skylar, Daniel |
+| 2 | UK | Gemma, Archie |
+| 3 | US | Jacqueline, Kyle |
+| 4 | UK | Victoria, George |
+
+Voice names, native accents and availability must be verified against the
+[Cartesia voice catalog](https://docs.cartesia.ai/api-reference/voices/list) and
+real synthesis samples before enabling a replacement. Technical validation of
+samples does not certify perceived naturalness or teaching quality.
+
 Changing the default provider does not reinterpret frozen recipes or regenerate
 stored audio. Keep the old provider credential while those lessons can still need
 new audio. Core verifies each scenario result against its captured provider, model,

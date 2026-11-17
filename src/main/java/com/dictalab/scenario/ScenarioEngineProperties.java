@@ -18,7 +18,7 @@ public record ScenarioEngineProperties(boolean enabled, int programVersion, Stri
     @org.springframework.boot.context.properties.bind.ConstructorBinding
     public ScenarioEngineProperties {
         ttsRecipeJson=ttsRecipeJson==null ? "" : ttsRecipeJson;
-        parseTtsRecipe(ttsRecipeJson);
+        parseTtsRecipes(ttsRecipeJson);
         approvedPrograms = approvedPrograms == null ? java.util.Map.of() : java.util.Map.copyOf(approvedPrograms);
         if (approvedPrograms.entrySet().stream().anyMatch(e -> !e.getKey().matches("[a-z][a-z0-9-]{0,63}:[1-9][0-9]*")
                 || !e.getValue().matches("[a-f0-9]{64}"))) throw new IllegalArgumentException("Invalid program approval");
@@ -33,11 +33,33 @@ public record ScenarioEngineProperties(boolean enabled, int programVersion, Stri
             throw new IllegalArgumentException("Scenario release hashes must be SHA-256");
     }
 
-    public tools.jackson.databind.JsonNode ttsRecipe() { return parseTtsRecipe(ttsRecipeJson); }
+    public tools.jackson.databind.JsonNode ttsRecipe() {
+        var recipes=ttsRecipes(); return recipes.isEmpty() ? null : recipes.get(0);
+    }
 
-    private static tools.jackson.databind.JsonNode parseTtsRecipe(String source) {
-        if (source.isBlank()) return null;
-        var recipe=ScenarioJson.MAPPER.readTree(source);
+    public java.util.List<tools.jackson.databind.JsonNode> ttsRecipes() { return parseTtsRecipes(ttsRecipeJson); }
+
+    private static java.util.List<tools.jackson.databind.JsonNode> parseTtsRecipes(String source) {
+        if (source.isBlank()) return java.util.List.of();
+        var parsed=ScenarioJson.MAPPER.readTree(source);
+        var recipes=new java.util.ArrayList<tools.jackson.databind.JsonNode>();
+        if (parsed.isArray()) {
+            ScenarioContent.list(parsed,1,16); parsed.forEach(recipes::add);
+        } else recipes.add(parsed);
+        var ids=new java.util.HashSet<String>(); var pairs=new java.util.HashSet<String>();
+        for (var recipe : recipes) {
+            validateTtsRecipe(recipe);
+            ScenarioContent.check(ids.add(recipe.path("id").asText()) && pairs.add(ttsPairKey(recipe)));
+        }
+        return java.util.List.copyOf(recipes);
+    }
+
+    static String ttsPairKey(tools.jackson.databind.JsonNode recipe) {
+        return recipe.path("provider").asText("cartesia")+"/"+java.util.stream.StreamSupport.stream(recipe.path("voices").spliterator(),false)
+                .map(tools.jackson.databind.JsonNode::asText).sorted().collect(java.util.stream.Collectors.joining("/"));
+    }
+
+    private static void validateTtsRecipe(tools.jackson.databind.JsonNode recipe) {
         if (recipe.has("provider")) {
             ScenarioContent.fields(recipe,"id","model","apiVersion","language","outputFormat","voices","provider");
             ScenarioContent.check(recipe.path("provider").isTextual());
@@ -54,6 +76,5 @@ public record ScenarioEngineProperties(boolean enabled, int programVersion, Stri
         for (var voice : recipe.path("voices")) ScenarioContent.check(voice.isTextual()
                 && voice.asText().matches(provider.equals("cartesia") ? "[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}" : "[a-zA-Z0-9_.-]{1,100}")
                 && voices.add(voice.asText()));
-        return recipe;
     }
 }

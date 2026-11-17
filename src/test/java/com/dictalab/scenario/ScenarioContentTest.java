@@ -7,6 +7,19 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ScenarioContentTest {
+    @Test void voicePoolsKeepSingleRecipeCompatibilityAndRejectDuplicatePairsOrIds() {
+        String first="{\"id\":\"pair-a\",\"model\":\"sonic-3.6\",\"apiVersion\":\"2026-08-14\",\"language\":\"en\",\"outputFormat\":\"wav-pcm16-mono-24000\",\"voices\":[\"00000000-0000-0000-0000-000000000001\",\"00000000-0000-0000-0000-000000000002\"]}";
+        String second=first.replace("pair-a","pair-b").replace("000000000002","000000000003");
+        var pool=new ScenarioEngineProperties(true,1,"","",false,java.util.Set.of(),java.util.Map.of(),"["+first+","+second+"]");
+        assertThat(pool.ttsRecipes()).hasSize(2);
+        assertThat(pool.ttsRecipe().path("id").asText()).isEqualTo("pair-a");
+        var reversed=(ObjectNode)ScenarioJson.MAPPER.readTree(first); reversed.put("id","renamed");
+        reversed.putArray("voices").add("00000000-0000-0000-0000-000000000002").add("00000000-0000-0000-0000-000000000001");
+        for (String invalid : java.util.List.of("[]","["+first+","+first+"]","["+first+","+reversed+"]",
+                "["+first+","+second.replace("pair-b","pair-a")+"]","["+first+",null]"))
+            assertThatThrownBy(() -> new ScenarioEngineProperties(true,1,"","",false,java.util.Set.of(),java.util.Map.of(),invalid)).isInstanceOf(IllegalArgumentException.class);
+    }
+
     @Test void alternateTtsRecipesAcceptProviderVoiceNamesWithoutWeakeningLegacyValidation() {
         String recipe="{\"id\":\"pair-v2\",\"provider\":\"openai_compatible\",\"model\":\"speech-model\",\"apiVersion\":\"\",\"language\":\"en\",\"outputFormat\":\"wav-pcm16-mono-24000\",\"voices\":[\"alloy\",\"nova\"]}";
         assertThat(new ScenarioEngineProperties(true,1,"","",false,java.util.Set.of(),java.util.Map.of(),recipe).ttsRecipe().path("provider").asText()).isEqualTo("openai_compatible");

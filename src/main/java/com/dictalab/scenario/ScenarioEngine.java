@@ -127,12 +127,20 @@ public class ScenarioEngine {
                          + (SELECT COUNT(*) FROM scenario_sessions WHERE user_id=? AND created_at>?)
                     """,Integer.class,user,Timestamp.from(Instant.now().minusSeconds(86400)),user,Timestamp.from(Instant.now().minusSeconds(86400)))>=20)
                 throw new ScenarioFailure(429,"USER_QUOTA_EXCEEDED","Đã đạt giới hạn 20 bài trong 24 giờ.");
+            // The user row lock serializes rotation; monotonic timestamps preserve its order across restarts.
+            var previous=data.db.queryForList("SELECT provenance_json,created_at FROM scenario_sessions WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT 1",user);
+            Instant createdAt=Instant.now(); JsonNode priorRecipe=null;
+            if (!previous.isEmpty()) {
+                var last=previous.get(0); Instant lastCreated=instant(last.get("created_at"));
+                if (!createdAt.isAfter(lastCreated)) createdAt=lastCreated.plusMillis(1);
+                if (last.get("provenance_json")!=null) priorRecipe=tree((String)last.get("provenance_json")).path("ttsRecipe").path("recipe");
+            }
+            var recipe=nextTtsRecipe(priorRecipe);
             String session=id();
             data.db.update("""
-                    INSERT INTO scenario_sessions(id,user_id,draft_id,title_vi,status,parent_session_id,family_id)
-                    VALUES (?,?,?,?,'PREPARING',?,?)
-                    """,session,user,request.draftId(),tree((String)draft.get("specification_json")).path("titleVi").asText(),draft.get("parent_session_id"),draft.get("family_id"));
-            var recipe=config.ttsRecipe();
+                    INSERT INTO scenario_sessions(id,user_id,draft_id,title_vi,status,parent_session_id,family_id,created_at)
+                    VALUES (?,?,?,?,'PREPARING',?,?,?)
+                    """,session,user,request.draftId(),tree((String)draft.get("specification_json")).path("titleVi").asText(),draft.get("parent_session_id"),draft.get("family_id"),Timestamp.from(createdAt));
             if (recipe!=null) {
                 var provenance=object(); var snapshot=provenance.putObject("ttsRecipe"); snapshot.set("recipe",recipe);
                 snapshot.put("recipeHash",ScenarioJson.hash(ScenarioJson.canonical(recipe)));
@@ -144,6 +152,17 @@ public class ScenarioEngine {
             var payload=payload(draft,"GENERATE"); payload.put("inputVi",(String)draft.get("input_vi")); payload.set("specification",tree((String)draft.get("specification_json")));
             return operations.create(user,"session",key,request,"GENERATE",session,payload);
         });
+    }
+
+    private JsonNode nextTtsRecipe(JsonNode prior) {
+        var recipes=config.ttsRecipes();
+        if (recipes.isEmpty()) return null;
+        if (recipes.size()==1) return recipes.get(0);
+        if (prior!=null) {
+            for (int i=0;i<recipes.size();i++) if (ScenarioEngineProperties.ttsPairKey(recipes.get(i)).equals(ScenarioEngineProperties.ttsPairKey(prior)))
+                return recipes.get((i+1)%recipes.size());
+        }
+        return recipes.get(0);
     }
 
     private ObjectNode payload(Map<String,Object> draft,String phase) {

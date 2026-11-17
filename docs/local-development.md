@@ -77,11 +77,20 @@ không thay thế địa chỉ phát triển chính.
 ### Hai giọng cho hội thoại tình huống
 
 Bài mới phải gán hai giọng khác nhau, cố định theo từng nhân vật. Giữ
-`DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON` trong `core.env` và cùng recipe trong
-mảng `DICTALAB_AI_SCENARIO_TTS_RECIPES` của `ai.env` (API và worker dùng chung).
+`DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON` trong `core.env`: một recipe hoặc mảng
+có thứ tự gồm 1–16 recipe. Mọi recipe đang dùng phải có trong mảng
+`DICTALAB_AI_SCENARIO_TTS_RECIPES` của `ai.env` (API và worker dùng chung).
 Launcher kiểm tra bằng schema TTS hiện có và từ chối khởi động nếu thiếu recipe,
 hai giọng trùng nhau, recipe không được AI chấp nhận hoặc TTS bị tắt/sai đường chạy.
 Không bỏ các cấu hình này sau kiểm thử hoặc khởi động lại.
+
+Cấu hình local dùng bốn cặp: Skylar–Daniel (Mỹ), Gemma–Archie (Anh),
+Jacqueline–Kyle (Mỹ), Victoria–George (Anh). Mỗi tài khoản luân phiên theo thứ tự
+này khi tạo bài, tiếp tục từ cặp đã lưu gần nhất sau khi khởi động lại. Launcher
+yêu cầu ít nhất bốn cặp để không âm thầm quay về một cặp cố định. Hệ thống
+nhận diện cặp theo hai giọng thực tế kể cả khi đổi tên recipe hoặc đảo thứ tự giọng.
+Không thay giọng giữa ba hoạt động. Launcher từ chối pool rỗng, trùng ID, trùng cặp
+hoặc có bất kỳ recipe nào chưa được AI chấp nhận.
 
 Bài cũ giữ nguyên giọng và audio đã lưu; bật hai giọng chỉ áp dụng cho bài được tạo
 sau khi cấu hình có hiệu lực. Giữ recipe lịch sử trong danh sách được phép để bài

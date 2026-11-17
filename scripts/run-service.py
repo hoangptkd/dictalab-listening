@@ -320,14 +320,18 @@ def local_plan():
 
 
 def validate_local_scenario_voices(core, ai):
-    """Never silently admit new local lessons with the legacy single voice."""
+    """Keep the owner's local voice diversity policy across restarts."""
     sys.path.insert(0, str(ROOT / 'services/ai-generation'))
     from app.tts import ScenarioTtsRecipe
     from pydantic import TypeAdapter
     try:
-        recipe = ScenarioTtsRecipe.model_validate_json(core.get('DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON', ''))
+        configured = json.loads(core.get('DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON', ''))
+        recipes = TypeAdapter(list[ScenarioTtsRecipe]).validate_python(configured if isinstance(configured, list) else [configured])
         approved = TypeAdapter(list[ScenarioTtsRecipe]).validate_json(ai.get('DICTALAB_AI_SCENARIO_TTS_RECIPES', ''))
-        if recipe not in approved or len({r.id for r in approved}) != len(approved):
+        if (not 4 <= len(recipes) <= 16 or any(recipe not in approved for recipe in recipes)
+                or len({r.id for r in recipes}) != len(recipes)
+                or len({(r.provider, tuple(sorted(r.voices))) for r in recipes}) != len(recipes)
+                or len({r.id for r in approved}) != len(approved)):
             raise ValueError('Voice recipe is not approved')
         if core.get('DICTALAB_AI_TTS_MODE') != 'python':
             raise ValueError('Scenario speech must use the AI worker')
@@ -336,7 +340,7 @@ def validate_local_scenario_voices(core, ai):
                    for key in ('DICTALAB_TTS_ENABLED', 'DICTALAB_AI_TTS_ENABLED')):
                 raise ValueError('Speech generation is disabled')
     except ValueError:
-        raise ValueError('Local scenario playback requires two distinct voices and matching Core/AI recipe approval; inspect protected configuration') from None
+        raise ValueError('Local scenario playback requires at least four approved pairs, each with two distinct voices and matching Core/AI recipe approval; inspect protected configuration') from None
 
 
 def run_local(check_only=False):
