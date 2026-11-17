@@ -261,6 +261,7 @@ def local_plan():
         raise ValueError('Use the canonical Desktop checkout with scripts/run-local.ps1')
     core = child_environment('core', LOCAL_DIRECTORY / 'core.env')
     ai = child_environment('ai', LOCAL_DIRECTORY / 'ai.env')
+    validate_local_scenario_voices(core, ai)
     # The owner keeps usage limits off until explicitly requested again, including after benchmarks.
     unrestricted = {'DICTALAB_OPERATIONAL_LIMITS_ENABLED': 'false', 'AI_BUDGET_ENABLED': 'false',
                     'RATE_LIMIT_ENABLED': 'false', 'AI_CONCURRENCY': '0', 'TTS_CONCURRENCY': '0'}
@@ -316,6 +317,26 @@ def local_plan():
             argv[-1] = '8094'
         plan[name] = env, argv, cwd
     return plan, {'core': 'http://127.0.0.1:18184/actuator/health', 'ai': 'http://127.0.0.1:8094/health/ready'}
+
+
+def validate_local_scenario_voices(core, ai):
+    """Never silently admit new local lessons with the legacy single voice."""
+    sys.path.insert(0, str(ROOT / 'services/ai-generation'))
+    from app.tts import ScenarioTtsRecipe
+    from pydantic import TypeAdapter
+    try:
+        recipe = ScenarioTtsRecipe.model_validate_json(core.get('DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON', ''))
+        approved = TypeAdapter(list[ScenarioTtsRecipe]).validate_json(ai.get('DICTALAB_AI_SCENARIO_TTS_RECIPES', ''))
+        if recipe not in approved or len({r.id for r in approved}) != len(approved):
+            raise ValueError('Voice recipe is not approved')
+        if core.get('DICTALAB_AI_TTS_MODE') != 'python':
+            raise ValueError('Scenario speech must use the AI worker')
+        for env in (core, ai):
+            if any(env.get(key, 'true').lower() in ('false', '0', 'no', 'off')
+                   for key in ('DICTALAB_TTS_ENABLED', 'DICTALAB_AI_TTS_ENABLED')):
+                raise ValueError('Speech generation is disabled')
+    except ValueError:
+        raise ValueError('Local scenario playback requires two distinct voices and matching Core/AI recipe approval; inspect protected configuration') from None
 
 
 def run_local(check_only=False):

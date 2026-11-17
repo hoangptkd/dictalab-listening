@@ -74,6 +74,19 @@ Progress đang dùng read path legacy trong cấu hình local này. Model Servin
 Các lệnh `run-service.py stack` trong [hướng dẫn microservice](microservices-demo.md) dành cho kiểm thử topology riêng,
 không thay thế địa chỉ phát triển chính.
 
+### Hai giọng cho hội thoại tình huống
+
+Bài mới phải gán hai giọng khác nhau, cố định theo từng nhân vật. Giữ
+`DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON` trong `core.env` và cùng recipe trong
+mảng `DICTALAB_AI_SCENARIO_TTS_RECIPES` của `ai.env` (API và worker dùng chung).
+Launcher kiểm tra bằng schema TTS hiện có và từ chối khởi động nếu thiếu recipe,
+hai giọng trùng nhau, recipe không được AI chấp nhận hoặc TTS bị tắt/sai đường chạy.
+Không bỏ các cấu hình này sau kiểm thử hoặc khởi động lại.
+
+Bài cũ giữ nguyên giọng và audio đã lưu; bật hai giọng chỉ áp dụng cho bài được tạo
+sau khi cấu hình có hiệu lực. Giữ recipe lịch sử trong danh sách được phép để bài
+cũ vẫn tạo được những đoạn audio chưa có. Xem [cấu hình TTS](tts.md).
+
 ## Kiểm tra sau thay đổi
 
 ```powershell

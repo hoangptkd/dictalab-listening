@@ -54,6 +54,7 @@ def test_local_build_cleans_stale_classes_before_copying_and_recording_the_jar(t
     'AI_CONCURRENCY', 'TTS_CONCURRENCY', 'ai_limits', 'missing_limits'])
 def test_local_requires_one_source_identity_schema_and_state_directory(tmp_path, monkeypatch, fault):
     import psycopg
+    monkeypatch.syspath_prepend(str(launcher.ROOT / 'services/ai-generation'))
     monkeypatch.setattr(launcher, 'ROOT', tmp_path)
     monkeypatch.setattr(launcher, 'LOCAL_ROOT', tmp_path)
     directory = tmp_path / 'private'
@@ -64,6 +65,11 @@ def test_local_requires_one_source_identity_schema_and_state_directory(tmp_path,
     migration.mkdir(parents=True)
     (migration / 'V53__fixture.sql').touch()
     core, ai = management_configs()
+    recipe = {'id': 'local-pair', 'model': 'sonic-3.6', 'apiVersion': '2026-08-14',
+              'language': 'en', 'outputFormat': 'wav-pcm16-mono-24000',
+              'voices': ['db6b0ed5-d5d3-463d-ae85-518a07d3c2b4', '47c38ca4-5f35-497b-b1a3-415245fb35e1']}
+    core.update(DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON=json.dumps(recipe), DICTALAB_AI_TTS_MODE='python')
+    ai['DICTALAB_AI_SCENARIO_TTS_RECIPES'] = json.dumps([recipe])
     core.update(DICTALAB_OPERATIONAL_LIMITS_ENABLED='false', AI_BUDGET_ENABLED='false',
                 RATE_LIMIT_ENABLED='false', AI_CONCURRENCY='0', TTS_CONCURRENCY='0')
     ai['DICTALAB_OPERATIONAL_LIMITS_ENABLED'] = 'false'
@@ -102,6 +108,34 @@ def test_local_requires_one_source_identity_schema_and_state_directory(tmp_path,
             assert plan['core'][1][-1] == str(directory / 'app.jar')
             assert urls['core'] == 'http://127.0.0.1:18184/actuator/health'
             assert sockets.return_value.__enter__.return_value.bind.call_count == 3
+
+
+@pytest.mark.parametrize('fault', [None, 'missing_core', 'missing_ai', 'duplicate_voice', 'unapproved',
+    'invalid_recipe', 'duplicate_id', 'legacy_route', 'core_disabled', 'ai_disabled'])
+def test_local_refuses_missing_or_mismatched_two_voice_configuration(fault):
+    recipe = {'id': 'local-pair', 'model': 'sonic-3.6', 'apiVersion': '2026-08-14',
+              'language': 'en', 'outputFormat': 'wav-pcm16-mono-24000',
+              'voices': ['db6b0ed5-d5d3-463d-ae85-518a07d3c2b4', '47c38ca4-5f35-497b-b1a3-415245fb35e1']}
+    core = {'DICTALAB_AI_TTS_MODE': 'python', 'DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON': json.dumps(recipe)}
+    ai = {'DICTALAB_AI_SCENARIO_TTS_RECIPES': json.dumps([recipe])}
+    if fault == 'missing_core': core.pop('DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON')
+    if fault == 'missing_ai': ai.clear()
+    if fault == 'duplicate_voice':
+        core['DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON'] = json.dumps(dict(recipe, voices=[recipe['voices'][0]] * 2))
+    if fault == 'unapproved': ai['DICTALAB_AI_SCENARIO_TTS_RECIPES'] = '[]'
+    if fault == 'invalid_recipe': core['DICTALAB_SCENARIO_ENGINE_TTS_RECIPE_JSON'] = '{'
+    if fault == 'duplicate_id': ai['DICTALAB_AI_SCENARIO_TTS_RECIPES'] = json.dumps([recipe, recipe])
+    if fault == 'legacy_route': core['DICTALAB_AI_TTS_MODE'] = 'legacy'
+    if fault == 'core_disabled': core['DICTALAB_TTS_ENABLED'] = 'false'
+    if fault == 'ai_disabled': ai['DICTALAB_AI_TTS_ENABLED'] = 'false'
+    if fault:
+        with pytest.raises(ValueError, match='two distinct voices'):
+            launcher.validate_local_scenario_voices(core, ai)
+    else:
+        launcher.validate_local_scenario_voices(core, ai)
+        # Existing lessons may retain an older approved recipe alongside the active pair.
+        ai['DICTALAB_AI_SCENARIO_TTS_RECIPES'] = json.dumps([dict(recipe, id='previous-pair'), recipe])
+        launcher.validate_local_scenario_voices(core, ai)
 
 
 def test_explicit_configuration_never_inherits_other_service_secrets(tmp_path):
