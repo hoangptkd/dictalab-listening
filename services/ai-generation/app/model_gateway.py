@@ -198,6 +198,7 @@ class ModelGateway:
                     self.observed_attempts.append({"source": source.id if source else "configured",
                         "model": self.last_model, "outcome": outcome,
                         "seconds": time.monotonic() - attempt_started,
+                        **getattr(selected, "last_request", {}),
                         **getattr(selected, "last_usage", {})})
                 if source:
                     await asyncio.to_thread(record_attempt, self._settings, request_id, source, outcome, done,

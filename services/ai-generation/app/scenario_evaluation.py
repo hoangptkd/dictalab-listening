@@ -11,6 +11,7 @@ import sys
 import time
 from types import SimpleNamespace
 from uuid import UUID
+from typing import Literal
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import Field
@@ -29,7 +30,8 @@ def digest(value):
 
 
 def build_hash():
-    sources = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(Path(__file__).parent.iterdir())
+    root = Path(__file__).parent
+    sources = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.rglob("*"))
                if p.suffix in (".py", ".json", ".lua", ".gz")}
     sources["dependencies"] = {name: version(name) for name in ("pydantic", "httpx", "fastapi")}
     sources["python"] = list(sys.version_info[:3])
@@ -57,7 +59,8 @@ def catalog(settings):
                "fallbackModels": selected.gemini_fallback_models, "temperature": 0,
                "sourcePolicy": "existing-configured-pool", "transport": "scenario-python",
                "pool": [{"id": s.id, "model": s.model, "enabled": s.enabled} for s in selected.sources_for(selected.selected_provider)]}
-    return {"backendHash": LOADED_BUILD, "runtime": runtime, "releases": [
+    from .cache_observation import LAYOUTS
+    return {"backendHash": LOADED_BUILD, "runtime": runtime, "requestLayouts": list(LAYOUTS), "releases": [
         {"id": name, "promptVersion": release.PROMPT_VERSION, "promptHash": a.prompt_hash(release),
          "instructions": release.INSTRUCTIONS, "outputTokens": release.OUTPUT_TOKENS,
          "exampleSetHash": getattr(release, "EXAMPLE_SET_HASH", None)}
@@ -109,6 +112,7 @@ class EvaluationRequest(StrictModel):
     backendHash: str = Field(pattern=r"^[a-f0-9]{64}$")
     runtimeHash: str = Field(pattern=r"^[a-f0-9]{64}$")
     payload: a.ScenarioAssessmentInput
+    requestLayout: Literal["original.v1", "implicit.v1"] = "original.v1"
 
 
 @router.get("/v1/evaluation/scenario")
@@ -128,7 +132,8 @@ async def submit(payload: EvaluationRequest, x_service_token: str | None = Heade
         raise HTTPException(409, "evaluation configuration changed")
     path = directory(settings) / (str(payload.requestId) + ".json")
     record = {"requestId": str(payload.requestId), "fingerprint": digest(payload.model_dump(mode="json")),
-              "status": "RUNNING", "events": [], "startedAt": datetime.now(timezone.utc).isoformat()}
+              "status": "RUNNING", "requestLayout": payload.requestLayout,
+              "events": [], "startedAt": datetime.now(timezone.utc).isoformat()}
     # Exclusive creation is the durable admission. A lost/unknown outcome is never rerun.
     try:
         with path.open("x", encoding="utf-8") as stream:
@@ -161,7 +166,7 @@ async def run(request, settings, path, record):
                     deadline=datetime.now(timezone.utc) + timedelta(seconds=240))
             with observation("scenario-evaluation", input=request.payload.model_dump(),
                              metadata={"evaluationId": str(request.requestId), "promptHash": request.payload.promptHash}):
-                extracted = await a.execute(event(request.payload), settings, observer=observe)
+                extracted = await a.execute(event(request.payload), settings, observer=observe, request_layout=request.requestLayout)
                 record["extraction"] = extracted
                 save(path, record)
                 if not extracted["task"].get("allowed"):
@@ -170,7 +175,7 @@ async def run(request, settings, path, record):
                     fields = a.w.PersonalizedSpecification.model_fields
                     specification = a.w.PersonalizedSpecification.model_validate({k: v for k, v in extracted["task"].items() if k in fields})
                     generated = request.payload.model_copy(update={"phase": "GENERATE", "specification": specification})
-                    record["result"] = await a.execute(event(generated), settings, observer=observe)
+                    record["result"] = await a.execute(event(generated), settings, observer=observe, request_layout=request.requestLayout)
                     record["status"] = "COMPLETED"
     except (Exception, asyncio.CancelledError) as error:
         record.update(status="ERROR", error=type(error).__name__, httpStatus=getattr(error, "status", None))

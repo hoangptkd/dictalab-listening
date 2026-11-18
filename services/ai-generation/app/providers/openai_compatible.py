@@ -56,6 +56,7 @@ class OpenAiCompatibleProvider(ModelProvider):
         self._client = client
         self._max_tokens = max_tokens
         self.last_usage = {}
+        self.last_request = {}
         self._provider_name = provider_name
         self._extra_headers = dict(extra_headers or {})
         self._use_json_schema = use_json_schema
@@ -78,6 +79,7 @@ class OpenAiCompatibleProvider(ModelProvider):
         temperature: float | None = None,
     ) -> dict[str, Any]:
         self.last_usage = {}
+        self.last_request = {}
         if not self._api_key:
             raise ProviderError(f"{self._provider_name}:no_api_key_configured")
         remaining = deadline - time.monotonic()
@@ -107,6 +109,8 @@ class OpenAiCompatibleProvider(ModelProvider):
             "Content-Type": "application/json",
             **self._extra_headers,
         }
+        from ..cache_observation import request_details, usage_details
+        self.last_request = request_details(body)
         try:
             timeout = httpx.Timeout(max(remaining - 0.5, 1.0))
             response = await self._client.post(
@@ -136,17 +140,13 @@ class OpenAiCompatibleProvider(ModelProvider):
                 raise error
             response.raise_for_status()
             data = response.json()
-            usage = data.get("usage") or {}
-            self.last_usage = {target: usage[name] for target, name in
-                (("input_tokens", "prompt_tokens"), ("output_tokens", "completion_tokens"))
-                if type(usage.get(name)) is int and 0 <= usage[name] < 2**63}
+            self.last_usage = usage_details(data)
             choice = (data.get("choices") or [{}])[0]
             from ..observability import record_response
             usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-            details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
             record_response((choice.get("message") or {}).get("content"), model=data.get("model") or self._model,
                 input_tokens=usage.get("prompt_tokens"), output_tokens=usage.get("completion_tokens"),
-                cached_tokens=details.get("cached_tokens", usage.get("prompt_cache_hit_tokens")),
+                cached_tokens=self.last_usage.get("cached_input_tokens"),
                 finish_reason=choice.get("finish_reason"),
                 reasoning=(choice.get("message") or {}).get("reasoning_content"))
             if choice.get("finish_reason") == "length":

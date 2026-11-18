@@ -69,7 +69,8 @@ async def test_token_usage_is_actual_and_logical_request_is_counted_once(monkeyp
     assert [event[3] for event in events] == ["429", "success"]
     assert [event[4] for event in events] == [False, True]
     assert events[0][1] == events[1][1]
-    assert events[0][5] == {} and events[1][5] == {"input_tokens": 123, "output_tokens": 45}
+    assert events[0][5] == {} and events[1][5] == {"input_tokens": 123, "output_tokens": 45,
+        "cache_usage_status": "not-reported"}
 
 
 def test_registry_refresh_changes_new_requests_but_preserves_existing_snapshot():
@@ -378,7 +379,7 @@ async def test_token_usage_is_reset_when_reusing_provider_after_failure():
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: responses.pop(0))) as client:
         provider = OpenAiCompatibleProvider(base_url="https://example.com/v1", api_key="fake", model="test", client=client)
         await provider.complete([], {}, time.monotonic() + 2, "test")
-        assert provider.last_usage == {"input_tokens": 10, "output_tokens": 5}
+        assert provider.last_usage == {"input_tokens": 10, "output_tokens": 5, "cache_usage_status": "not-reported"}
         with pytest.raises(ProviderHttpError):
             await provider.complete([], {}, time.monotonic() + 2, "test")
         assert provider.last_usage == {}

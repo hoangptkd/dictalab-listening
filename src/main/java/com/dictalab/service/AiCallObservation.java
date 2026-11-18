@@ -45,10 +45,7 @@ final class AiCallObservation implements AutoCloseable {
     static void usage(JsonNode envelope) {
         var scope = CURRENT.get();
         if (scope == null || scope.call == null) return;
-        for (String field : List.of("prompt_tokens", "completion_tokens"))
-            if (envelope.path("usage").path(field).isIntegralNumber()
-                    && envelope.path("usage").path(field).asLong() >= 0)
-                if (!scope.attempts.isEmpty()) scope.attempts.get(scope.attempts.size() - 1).put(field, envelope.path("usage").path(field).asLong());
+        if (!scope.attempts.isEmpty()) AiCacheMetrics.compatibleUsage(envelope, scope.attempts.get(scope.attempts.size() - 1));
     }
     static void status(int status) {
         var scope = CURRENT.get();
@@ -77,7 +74,7 @@ final class AiCallObservation implements AutoCloseable {
             scope.call.put("attempts", observation.path("attempts"));
             if (observation.path("httpAttempts").isIntegralNumber())
                 scope.call.put("httpAttempts", observation.path("httpAttempts").asInt());
-            for (String field : List.of("prompt_tokens", "completion_tokens"))
+            for (String field : List.of("prompt_tokens", "completion_tokens", "cached_input_tokens", "uncached_input_tokens", "reasoning_tokens"))
                 if (observation.path(field).isIntegralNumber() && observation.path(field).asLong() >= 0)
                     scope.call.put(field, observation.path(field).asLong());
         }
@@ -87,7 +84,7 @@ final class AiCallObservation implements AutoCloseable {
         if (scope == null || scope.call == null) return;
         if (!scope.attempts.isEmpty()) {
             scope.call.put("attempts", List.copyOf(scope.attempts));
-            for (String field : List.of("prompt_tokens", "completion_tokens"))
+            for (String field : List.of("prompt_tokens", "completion_tokens", "cached_input_tokens", "uncached_input_tokens", "reasoning_tokens"))
                 if (scope.attempts.stream().allMatch(a -> a.containsKey(field)))
                     scope.call.put(field, scope.attempts.stream().mapToLong(a -> ((Number)a.get(field)).longValue()).sum());
         }

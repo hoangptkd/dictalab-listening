@@ -6,12 +6,12 @@ Open <http://localhost:18082/admin/ai-evaluation> as an existing ADMIN. API requ
 `local`, authentication, ADMIN and CSRF. QA14 remains a learner; never elevate it to access this screen.
 Provider accounts and fallback policies come from `/admin/gemini`.
 
-New experiment versions and runs use **V5.0 only**, selected by the owner on 2026-11-16.
-V4.15 and the earlier experimental releases are no longer offered for new execution. Existing
-snapshots, runs, judgments and output remain readable; historical hashes are not rewritten.
-An attempt to submit a historical release to the evaluation API is rejected before inference.
-V5.0 is the single editable prompt source. Historical compatibility remains for saved learner lessons.
-The owner selected V5 despite the remaining semantic and grading defects documented in the
+New experiment versions use releases advertised by the current Python catalog (V5.2, V5.1 and
+V5.0). The learner default remains V5.2. V5.3 is retired for new generation and is not reopened
+by the caching experiment. Existing snapshots, runs, judgments and output remain readable;
+historical hashes are not rewritten. Unsupported historical releases are rejected before inference.
+The current editable prompt source is `scenario-prompts.json`; frozen compatibility remains for
+saved learner lessons. Remaining semantic and grading defects are documented in the
 [18-case comparison](scenario-v415-v5-18-per-prompt-20261116.md).
 See the [activation handoff](scenario-v5-activation.md) for current source/local/runtime status.
 Creating an experiment snapshot does not activate or approve a learner/production prompt.
@@ -125,12 +125,78 @@ UTF-8 checks passed. These tests use mocked providers and do not measure live mo
 The judge runs in a separate model context with source evidence checks. It can still be wrong.
 Cached judgments require exact input, output, rubric and model identity. Code tests do not prove AI content quality.
 
+## Implicit caching evaluation (2026-11-19)
+
+Creating a snapshot now offers **original.v1** (default control) or **implicit.v1** (evaluation only).
+Both use the same pinned lesson prompt, schema, selected examples, model and Harness. The candidate
+moves whole EXAMPLES blocks from the system instruction into separate reference user messages,
+preserves their content/order, and keeps the actual task JSON in the final user message. Stable
+learning context/profile/specification/dialogue precede variable input and repair feedback. Schema
+property order, evidence and dialogue/answer arrays are not sorted or removed. This role/position
+change needs live quality evaluation before activation; content preservation tests alone do not prove
+equivalent model behavior. No padding, model/source routing change, cache API, warm-up call or new
+dependency is introduced. Learner requests keep their original layout.
+
+The snapshot/run and durable admission fingerprint include the layout. Continuations cannot change
+layout or the recorded pricing version. Candidate results must attest their layout. Python build
+fingerprints include nested provider sources; Core fingerprints include observation/metrics classes.
+Changed sources require restart and new snapshots. Existing lesson prompt hashes are unchanged.
+
+Every observed cloud attempt preserves total input/output, cached input and its uncached remainder
+when explicitly reported, cache status (`hit`, `zero`, `not-reported`, `invalid`), optional reasoning
+tokens, returned model, timing, and request/system/schema/prefix hashes. Hashes exclude credentials;
+no new raw prompt capture is added to ordinary attempts. The existing protected evaluation log keeps
+the candidate's effective messages for reproducibility. OpenAI-compatible reasoning tokens are already
+part of completion tokens and are not charged twice. Missing/invalid cache usage is unknown, not zero.
+The provider usage database remains unchanged; detailed cache measurements are stored in evaluation
+records and existing Langfuse cached-token observations. No database migration is needed.
+
+Studio detail/comparison/export now expose cache measurement coverage, token-weighted cached ratio,
+request hit rate, measured cost subtotal, complete estimated cost, cost per judged PASS and provider
+p50/p95 separately from whole-case duration. First-seen/repeated prefix counts and p95 are grouped
+within a run by source/model/prefix; they do not assert Google's cache was cold/warm. Per-step attempt
+records retain failures, fallback, returned model and hashes for diagnosis. Application idempotency and
+reused judge verdicts are separate from provider caching, and do not manufacture provider cache hits.
+Generation/review/repair cost and judge cost are separate. A caching improvement decision uses the
+generation subtotal so that fewer paid judge calls cannot masquerade as a provider cache benefit.
+Declared HTTP attempt counts must match recorded lists before any complete-cost claim.
+
+The explicit pricing snapshot `google-standard-text-2026-11-19.v1` uses USD per million tokens:
+
+| Exact model | Uncached text input | Cached text input | Output including thinking |
+| --- | ---: | ---: | ---: |
+| gemini-3.5-flash-lite | 0.30 | 0.03 | 2.50 |
+| gemini-3.1-flash-lite | 0.25 | 0.025 | 1.50 |
+
+Source: [Google Standard pricing](https://aistudio.google.com/docs/pricing). This is an estimate, not an
+invoice, and does not cover other service tiers, unknown model/version identifiers, audio, tools or
+explicit storage. The current path sends text only and does not request tools/explicit caching.
+Unknown returned models never inherit a requested model's price. Total estimated cost is unavailable
+if any recorded attempt lacks required usage/price, or a logical call has no attempt evidence. The
+measured subtotal and its coverage remain visible. Historical records without cache fields stay
+readable and unknown; source data and prior reports are not rewritten. Empty measurements never
+produce a zero-cost claim.
+
+Cost comparison requires matching price versions and compatible runs. Lower cost cannot override
+missing judgments, semantic/critical regression or unknown cost. `releaseAllowed` remains false;
+no experiment automatically activates a prompt. Retest with frozen inputs, bank/selector and execution
+policy, paired order and separate repeat observations; review source/question/key/translation quality.
+The adaptive60 batch is regression evidence, not an independent holdout. Its three guard fallbacks at
+`i09-urban-shade/dynamic` calls 7/8/9 remain recorded within its 20 zero-example calls.
+
+This delivery uses mocked providers and synthetic read-only UI fixtures only. No paid AI, live judge,
+learner grading, TTS, runtime restart, merge or production deployment is part of offline verification.
+Final offline checks: Python **1,033 passed, 27 skipped**; relevant Core usage/evaluation/client tests
+**58 passed**; JavaScript **5 passed**. Browser preview verified missing-cost display and the layout
+selector using synthetic data only. UTF-8 and diff checks passed. These results do not measure actual
+cache hit rate, provider latency gains, savings or AI quality equivalence.
+
 ## Checks
 
 ```text
-mvn test -Dtest=AiEvaluationStudioTest,AiCallObservationTest,AiEvaluationSecurityTest,SpaRoutingTest,GeminiClientTest,AiPlatformClientTest,ConversationIntegrationTest
+mvn test -Dtest=AiCacheMetricsTest,AiEvaluationStudioTest,AiCallObservationTest,AiEvaluationSecurityTest,SpaRoutingTest,GeminiClientTest,AiPlatformClientTest,ConversationIntegrationTest
 node --test src/test/js/ai-evaluation.test.cjs
-python -m pytest services/ai-generation/tests/test_scenario_prompt_consolidation.py services/ai-generation/tests/test_scenario_evaluation.py
+python -m pytest services/ai-generation/tests/test_cache_observation.py services/ai-generation/tests/test_scenario_prompt_consolidation.py services/ai-generation/tests/test_scenario_evaluation.py services/ai-generation/tests/test_text_gateway.py services/ai-generation/tests/test_provider_admin.py
 ```
 
 The UI preview fixture under `src/test/fixtures/` is synthetic. It never writes the experiment ledger.

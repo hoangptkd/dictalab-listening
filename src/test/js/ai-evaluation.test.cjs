@@ -1,6 +1,15 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {esc,rate,trendChart,criteriaChart,regressionChart,runnableVersion}=require('../../main/resources/static/js/ai-evaluation.js');
+const {cachePanel,usd}=require('../../main/resources/static/js/ai-evaluation.js');
+
+test('cache accounting displays missing historical data and escapes pricing provenance',()=>{
+    assert.ok(cachePanel(undefined).includes('Chưa đo caching'));
+    assert.equal(usd(null),'Chưa đủ số đo');
+    assert.equal(usd(0),'$0.000000');
+    const html=cachePanel({estimatedCostUsd:null,measuredCostUsd:.0001,pricingVersion:'<script>bad</script>',measuredCacheAttempts:0,attempts:2});
+    assert.ok(html.includes('Chưa đủ số đo'));assert.ok(!html.includes('<script>'));assert.ok(html.includes('0/2'));
+});
 
 test('only current scenario snapshots can start a new evaluation; old evidence stays readable',()=>{
     const catalog={available:true,backendHash:'build',releases:[{promptHash:'current'}]};

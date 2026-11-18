@@ -7,6 +7,14 @@ const runs=versions.map((v,i)=>({id:`00000000-0000-4000-8000-00000000000${i}`,ve
     metrics:{planned:9,beforePassed:4+i,afterPassed:6+i,beforeEvaluated:9,afterEvaluated:9,beforeRate:(4+i)/9,afterRate:(6+i)/9,critical:i===1?1:0,repairs:3-i,recorded:9,logicalCalls:27,httpAttempts:28,p50:5.2,p95:11.3,inputTokens:17600,outputTokens:3200,usageMeasuredCalls:27,harnessAccepted:9,
         criteria:Object.fromEntries(criteria.map((c,k)=>[c,{beforePassed:Math.min(9,4+i+k%3),beforeEvaluated:9,afterPassed:Math.min(9,6+i+k%2),afterEvaluated:9}]))}}));
 function row(i,failed=false){return {key:`cafe-A1-t2:${i}`,level:'A1',turn:2,status:'DONE',seconds:6,input:{scenario:'Cafe',history:[]},steps:[{step:'validation',value:{valid:true}}],calls:[{step:'harness-review',model:'gemini-fixture',httpAttempts:1}],attempts:[{raw:{utteranceEn:'Please put the coffee in a takeaway cup. I will collect it at the side counter.',questionVi:'Người nói muốn đựng cà phê thế nào và nhận ở đâu?',translationVi:'Xin cho cà phê vào cốc mang đi. Tôi sẽ nhận ở quầy bên cạnh.'}}],before:{status:'PASS'},after:{status:failed?'FAIL':'PASS',critical:failed,issues:failed?[{criterion:'rolesCorrect',severity:'critical',reason:'Dữ liệu giả lập để kiểm tra hiển thị regression.',evidence:'side counter'}]:[]}};}
+versions.forEach((v,i)=>{v.pipeline='scenario';v.pythonBackendHash='fixture-python';v.requestLayout=i%2?'implicit.v1':'original.v1';});
+runs.forEach((r,i)=>{
+    r.requestLayout=versions[i].requestLayout;
+    if(i)r.metrics.cache={pricingVersion:'google-standard-text-2026-11-19.v1',attempts:28,measuredCacheAttempts:27,unobservedCalls:0,
+        cachedInputTokens:12000,uncachedInputTokens:5600,hitRate:.75,cachedInputRatio:12000/17600,pricedAttempts:27,
+        measuredCostUsd:.0032,estimatedCostUsd:null,costPerJudgedPassUsd:null,providerP50:.9,providerP95:2.1,latencyMeasuredAttempts:28};
+});
 function detail(id){return {...runs.find(r=>r.id===id),cases:[row(1),row(2)],notice:'UI TEST DATA · Không phải kết quả Gemini thực.'};}
 function comparison(){return {comparable:true,attribution:'prompt',warnings:[],criticalRegression:true,decision:'REGRESSION',counts:{improved:1,unchanged:0,regressed:1,unresolved:0},cases:[{key:'cafe-A1-t2:1',status:'regressed',left:row(1),right:row(1,true)},{key:'cafe-A1-t2:2',status:'improved',left:row(2,true),right:row(2)}]};}
-module.exports={snapshot:{local:true,liveAvailable:true,versions:[...versions].reverse(),runs:[...runs].reverse(),suites,criteria,runtime,activeRun:''},detail,comparison};
+module.exports={snapshot:{local:true,liveAvailable:true,scenarioPipeline:{available:true,backendHash:'fixture-python',requestLayouts:['original.v1','implicit.v1'],suites,
+    releases:versions.map(v=>({id:v.id,promptHash:v.promptHash})),runtime},versions:[...versions].reverse(),runs:[...runs].reverse(),suites,criteria,runtime,activeRun:''},detail,comparison};

@@ -57,8 +57,10 @@ async def test_changed_sources_require_restart_before_new_admission(config, monk
 
 
 @pytest.mark.parametrize("release", [a.fresh_candidate, a.sparse_candidate])
-async def test_real_pipeline_observer_persists_six_stages_and_idempotency(config, monkeypatch, release):
+@pytest.mark.parametrize("layout", ["original.v1", "implicit.v1"])
+async def test_real_pipeline_observer_persists_six_stages_and_idempotency(config, monkeypatch, release, layout):
     data = request(config)
+    data["requestLayout"] = layout
     data["payload"]["promptHash"] = a.prompt_hash(release)
     raw_extract = extraction_response()
     raw_extract.update(learnerMode="listener", learnerCharacterId=None, genre="information-exchange")
@@ -85,6 +87,7 @@ async def test_real_pipeline_observer_persists_six_stages_and_idempotency(config
     result = await call("GET", "/v1/evaluation/scenario/" + data["requestId"], headers=headers)
     record = result.json()
     assert record["status"] == "COMPLETED", record
+    assert record["requestLayout"] == layout
     assert record["requestId"] == data["requestId"]
     assert record["result"]["requestId"] == data["requestId"]
     assert record["before"]["hardPass"]
@@ -100,6 +103,9 @@ async def test_real_pipeline_observer_persists_six_stages_and_idempotency(config
     assert e.initial_artifact(record)["hardPass"]
     assert (await call("POST", "/v1/evaluation/scenario", json=data, headers=headers)).json()["status"] == "COMPLETED"
     assert len(calls) == expected_calls
+    data["requestLayout"] = "implicit.v1" if layout == "original.v1" else "original.v1"
+    assert (await call("POST", "/v1/evaluation/scenario", json=data, headers=headers)).status_code == 409
+    data["requestLayout"] = layout
     data["payload"]["inputVi"] += "!"
     assert (await call("POST", "/v1/evaluation/scenario", json=data, headers=headers)).status_code == 409
 
@@ -140,7 +146,7 @@ async def test_errors_keep_evidence_and_admitted_unknown_never_replays(config, m
     headers = {"X-Service-Token": config.service_token}
     assert (await call("POST", "/v1/evaluation/scenario", json=data, headers=headers)).status_code == 409
     data = request(config)
-    async def fail(event, settings, *, observer):
+    async def fail(event, settings, *, observer, request_layout="original.v1"):
         observer({"stage": "EXTRACT", "status": "ERROR", "output": {"private": "saved raw"}})
         raise TimeoutError()
     monkeypatch.setattr(a, "execute", fail)
@@ -157,7 +163,7 @@ async def test_errors_keep_evidence_and_admitted_unknown_never_replays(config, m
 
 async def test_quality_rejection_persists_harness_report_without_success(config, monkeypatch):
     data = request(config)
-    async def fail(event, settings, *, observer):
+    async def fail(event, settings, *, observer, request_layout="original.v1"):
         error = a.w.QualityRejected("invalid assessment after bounded repair")
         error.quality_harness = {"implementationVersion": "assessment-repair-feedback.v1", "extraCalls": 2,
                                  "attempts": [{"accepted": False, "reason": "deterministic_validation"}]}

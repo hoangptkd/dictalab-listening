@@ -105,7 +105,10 @@ async def complete(payload: TextRequest, x_service_token: str | None = Header(de
             if x_ai_observe == "usage":
                 attempts = gateway.observed_attempts
                 observation = {"attempts": attempts, "httpAttempts": len(attempts)}
-                for target, field in (("prompt_tokens", "input_tokens"), ("completion_tokens", "output_tokens")):
+                for target, field in (("prompt_tokens", "input_tokens"), ("completion_tokens", "output_tokens"),
+                                      ("cached_input_tokens", "cached_input_tokens"),
+                                      ("uncached_input_tokens", "uncached_input_tokens"),
+                                      ("reasoning_tokens", "reasoning_tokens")):
                     if attempts and all(type(row.get(field)) is int for row in attempts):
                         observation[target] = sum(row[field] for row in attempts)
                 envelope["observation"] = observation

@@ -13,6 +13,37 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class AiEvaluationStudioTest {
+    @Test void implicitLayoutCreatesDistinctSnapshotAndIsAttestedByPipeline() throws Exception {
+        catalog.putArray("requestLayouts").add("original.v1").add("implicit.v1");
+        var baseline = version();
+        var candidate = studio.createVersion(json.createObjectNode().put("label", "Baseline").put("pipeline", "scenario")
+                .put("release", "v4.13").put("requestLayout", "implicit.v1"),14);
+        assertThat(candidate.path("id")).isNotEqualTo(baseline.path("id"));
+        assertThat(candidate.path("promptHash")).isEqualTo(baseline.path("promptHash"));
+        assertThat(candidate.path("requestLayout").asText()).isEqualTo("implicit.v1");
+        when(platform.scenarioEvaluation(isNull(), argThat(n -> n != null && n.has("payload"))))
+                .thenAnswer(call -> {
+                    var result = remote(call.getArgument(1)).put("requestLayout", "implicit.v1");
+                    ((ObjectNode)result.path("events").path(0)).putArray("requestMessages").add("private synthetic reference");
+                    return result;
+                });
+        var run = finished(studio.start(request(candidate.path("id").asText(),"smoke",false),14).path("id").asText());
+        assertThat(run.path("status").asText()).isEqualTo("COMPLETED");
+        assertThat(run.path("requestLayout").asText()).isEqualTo("implicit.v1");
+        assertThat(run.path("cases").path(0).path("steps").path(0).has("requestMessages")).isFalse();
+        verify(platform,times(3)).scenarioEvaluation(isNull(),argThat(n -> n != null && "implicit.v1".equals(n.path("requestLayout").asText())));
+    }
+
+    @Test void cacheVariantCannotPretendAnUnattestedPipelineUsedItsLayout() throws Exception {
+        catalog.putArray("requestLayouts").add("original.v1").add("implicit.v1");
+        var candidate = studio.createVersion(json.createObjectNode().put("label", "Cache test").put("pipeline", "scenario")
+                .put("release", "v4.13").put("requestLayout", "implicit.v1"),14);
+        fakeGeneration();
+        var run = finished(studio.start(request(candidate.path("id").asText(),"smoke",false),14).path("id").asText());
+        assertThat(run.path("status").asText()).isEqualTo("STOPPED");
+        assertThat(run.path("cases").size()).isEqualTo(1);
+        verifyNoInteractions(ai);
+    }
     @TempDir Path directory;
     final ObjectMapper json = new ObjectMapper();
     final ConversationService conversation = mock(ConversationService.class);
@@ -350,5 +381,23 @@ class AiEvaluationStudioTest {
         for(String field:List.of("datasetHash","rubric","judgeHash","promptHash","backendHash"))run.put(field,"same");
         run.putObject("runtime").put("model","gemini-test");var row=run.putArray("cases").addObject().put("key","case:1");
         var after=row.putObject("after").put("status","PASS");var checks=after.putObject("checks");AiEvaluationStudio.CRITERIA.forEach(c->checks.put(c,true));return run;
+    }
+    @Test void cheaperCachedInputCannotOverrideAQualityRegressionOrMissingCost() {
+        var a = comparableRun(); var b = comparableRun();
+        a.putObject("metrics").putObject("cache").put("costComplete",true).put("pricingVersion",AiCacheMetrics.PRICING).put("estimatedCostUsd",.02)
+                .put("generationCostComplete",true).put("generationEstimatedCostUsd",.01);
+        b.putObject("metrics").putObject("cache").put("costComplete",true).put("pricingVersion",AiCacheMetrics.PRICING).put("estimatedCostUsd",.01)
+                .put("generationCostComplete",true).put("generationEstimatedCostUsd",.01);
+        assertThat(AiEvaluationStudio.comparison(json,a,b).path("cacheDecision").asText()).isEqualTo("NO_MEASURED_COST_REDUCTION");
+        ((ObjectNode)b.path("metrics").path("cache")).put("generationEstimatedCostUsd",.005);
+        var result = AiEvaluationStudio.comparison(json,a,b);
+        assertThat(result.path("cacheDecision").asText()).isEqualTo("LOWER_COST_NO_OBSERVED_REGRESSION");
+        ((ObjectNode)b.path("cases").path(0).path("after")).put("status","FAIL").put("critical",true);
+        result = AiEvaluationStudio.comparison(json,a,b);
+        assertThat(result.path("decision").asText()).isEqualTo("REGRESSION");
+        assertThat(result.path("cacheDecision").asText()).isEqualTo("INSUFFICIENT_EVIDENCE");
+        assertThat(result.path("releaseAllowed").asBoolean()).isFalse();
+        ((ObjectNode)b.path("metrics").path("cache")).put("costComplete",false);
+        assertThat(AiEvaluationStudio.comparison(json,a,b).path("costComparable").asBoolean()).isFalse();
     }
 }

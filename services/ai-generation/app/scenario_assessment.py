@@ -820,7 +820,7 @@ def derive_grade(grade, payload):
     return DerivedGrade(meanings=results)
 
 
-async def execute(event, settings, *, observer=None):
+async def execute(event, settings, *, observer=None, request_layout="original.v1"):
     """Use the existing gateway and fallback rules; never replay completed stages."""
     if not settings.scenario_enabled:
         raise w.QualityRejected("scenario execution disabled")
@@ -866,7 +866,12 @@ async def execute(event, settings, *, observer=None):
                                      answer_first=selected in (scope_candidate, fresh_candidate, recovery_candidate, sparse_candidate, dynamic_candidate))
             if purpose == "GENERATE":
                 schema["$defs"]["Segment"]["properties"]["speakerId"]["enum"] = [c.id for c in payload.specification.characters]
-            captured = {"stage": purpose, "input": data, "schema": schema, "instruction": instruction}
+            from .cache_observation import request_messages
+            messages = request_messages(instruction, data, request_layout)
+            captured = {"stage": purpose, "input": data, "schema": schema, "instruction": instruction,
+                        "requestLayout": request_layout}
+            if request_layout != "original.v1":
+                captured["requestMessages"] = messages
             if selection is not None:
                 captured["fewShotSelection"] = selection
                 gateway.scenario_example_selection = selection
@@ -874,8 +879,7 @@ async def execute(event, settings, *, observer=None):
                 observer({**captured, "status": "RUNNING"})
             try:
                 raw, provider = await asyncio.wait_for(gateway.complete(
-                    [{"role": "system", "content": instruction},
-                     {"role": "user", "content": json.dumps(data, ensure_ascii=False)}], schema, deadline,
+                    messages, schema, deadline,
                     "scenario_" + purpose.lower(), temperature=0,
                     **({"allow_model_fallback": True} if call_settings.gemini_fallback_models else {})), max(0.01, deadline - time.monotonic()))
             except Exception as error:

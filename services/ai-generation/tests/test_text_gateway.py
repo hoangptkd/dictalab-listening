@@ -134,7 +134,8 @@ def test_optional_observation_reports_attempts_without_inventing_usage(api, miss
     client, _, _ = api
     async def complete(gateway, *args, **kwargs):
         gateway.observed_attempts.append({"source": "test-source", "model": "qwen3.5:9b",
-            "outcome": "success", **({} if missing_usage else {"input_tokens": 17, "output_tokens": 9})})
+            "outcome": "success", **({} if missing_usage else {"input_tokens": 17, "output_tokens": 9,
+                "cached_input_tokens": 12, "uncached_input_tokens": 5, "cache_usage_status": "hit"})})
         return {"ok": True}, "ollama"
     with patch.object(ModelGateway, "complete", complete):
         response = client.post("/v1/text/completions", json=request(),
@@ -145,8 +146,10 @@ def test_optional_observation_reports_attempts_without_inventing_usage(api, miss
     assert observation["attempts"][0]["source"] == "test-source"
     if missing_usage:
         assert "prompt_tokens" not in observation and "completion_tokens" not in observation
+        assert "cached_input_tokens" not in observation
     else:
         assert observation["prompt_tokens"] == 17 and observation["completion_tokens"] == 9
+        assert observation["cached_input_tokens"] == 12 and observation["uncached_input_tokens"] == 5
 
 
 def test_text_server_rejection_uses_configured_fallback_and_reports_actual_model(api, monkeypatch):

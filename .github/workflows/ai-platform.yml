@@ -117,9 +117,13 @@ jobs:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15
           TEST_PROVIDER_ADMIN_DSN: postgresql://postgres:fixture-only@127.0.0.1:15549/postgres
         run: python -m pytest -q services/ai-generation/tests services/model-serving/test_server.py tools/ai-eval training/tests/test_generate_teacher_data.py training/tests/test_benchmark_teacher.py training/tests/test_prepare_dataset.py
+      - name: Prompt evaluation browser contracts
+        run: |
+          node --check src/main/resources/static/js/ai-evaluation.js
+          node --test src/test/js/ai-evaluation.test.cjs
       - name: Java unit contracts when not covered by Core CI
         if: ${{ !inputs.core-unit-covered }}
-        run: mvn --batch-mode --no-transfer-progress -Dtest=ScenarioProgramTest,ScenarioContentTest,ScenarioAssessmentTest,ScenarioHarnessTest,ScenarioRecoveryTest,AuroraSchemaValidationTest,ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,TtsServiceTest,AiPlatformClientTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,AiProviderRegistryTest test
+        run: mvn --batch-mode --no-transfer-progress -Dtest=AiCacheMetricsTest,AiCallObservationTest,AiEvaluationStudioTest,ScenarioProgramTest,ScenarioContentTest,ScenarioAssessmentTest,ScenarioHarnessTest,ScenarioRecoveryTest,AuroraSchemaValidationTest,ConversationShadowContractTest,ConversationB1EvidenceTest,ConversationLevelProfileTest,ConversationLocalClientTest,ConversationGenerationPromptTest,ConversationPythonClientTest,ConversationRolloutTest,ConversationContentTest,TtsServiceTest,AiPlatformClientTest,GeminiClientTest,GeminiProviderPropertiesTest,GeminiQuotaCoordinatorTest,AiProviderRegistryTest test
       - name: Java integration and Redis contracts
         env:
           TEST_GEMINI_REDIS_URL: redis://127.0.0.1:6379/15

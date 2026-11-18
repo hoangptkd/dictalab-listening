@@ -154,6 +154,10 @@ public class AiEvaluationStudio {
                 .put("pythonBackendHash", catalog.path("backendHash").asText()).put("backendHash", backendHash())
                 .put("rubric", "scenario-evaluation-v1").put("judgeHash", hash(json.getNodeFactory().stringNode(SCENARIO_JUDGE)))
                 .put("repair", true).put("promptSuffix", "");
+        String layout = request.path("requestLayout").asText("original.v1");
+        if (!Set.of("original.v1", "implicit.v1").contains(layout)
+                || !layout.equals("original.v1") && !catalog.path("requestLayouts").valueStream().anyMatch(n -> layout.equals(n.asText()))) throw invalid();
+        version.put("requestLayout", layout).put("cachePricingVersion", AiCacheMetrics.PRICING);
         var runtime = catalog.path("runtime").deepCopy(); ((ObjectNode)runtime).put("judgeModel", conversations.evaluationModel());
         version.set("runtime", runtime); version.set("pythonRuntime", catalog.path("runtime"));
         version.set("instructions", release.path("instructions")); version.set("exampleSetHash", release.path("exampleSetHash"));
@@ -210,6 +214,8 @@ public class AiEvaluationStudio {
                 .put("judgeHash", version.path("judgeHash").asText()).put("datasetHash", hash(fixtures))
                 .put("backendHash", version.path("backendHash").asText()).put("promptHash", version.path("promptHash").asText())
                 .put("repair", version.path("repair").asBoolean()).put("logicalCalls", 0).put("releaseAllowed", false);
+        run.put("requestLayout", version.path("requestLayout").asText("original.v1"))
+                .put("cachePricingVersion", AiCacheMetrics.PRICING);
         run.set("runtime", version.path("runtime")); run.set("fixtures", fixtures); run.putArray("cases");
         if (scenario) {
             run.put("pipeline", "scenario").put("release", version.path("release").asText()).put("rubric", version.path("rubric").asText());
@@ -237,6 +243,10 @@ public class AiEvaluationStudio {
 
     private void continueFrom(ObjectNode run, String parentId) {
         var parent = read("runs", parentId);
+        if (!run.path("requestLayout").asText("original.v1").equals(parent.path("requestLayout").asText("original.v1")))
+            throw failure(HttpStatus.CONFLICT, "Bố cục request đã đổi; không thể nối kết quả cũ.");
+        if (parent.has("cachePricingVersion") && !run.path("cachePricingVersion").equals(parent.path("cachePricingVersion")))
+            throw failure(HttpStatus.CONFLICT, "Bảng giá đánh giá đã đổi; không thể nối kết quả cũ.");
         if (!Set.of("STOPPED", "INTERRUPTED", "CANCELLED").contains(parent.path("status").asText())
                 || documents("runs").stream().anyMatch(r -> parentId.equals(r.path("continuedFrom").asText())))
             throw failure(HttpStatus.CONFLICT, "Chỉ tiếp tục lượt đã dừng và chưa có lượt nối tiếp.");
@@ -337,6 +347,7 @@ public class AiEvaluationStudio {
         row.put("remoteRequestId", requestId);
         var request = json.createObjectNode().put("requestId", requestId).put("backendHash", version.path("pythonBackendHash").asText())
                 .put("runtimeHash", hash(version.path("pythonRuntime"))); request.set("payload", payload);
+        request.put("requestLayout", version.path("requestLayout").asText("original.v1"));
         // Reserve the extraction plus the existing nine-call bounded generation envelope before dispatch.
         if (!recovery) for (int call = 0; call < 10; call++) budget.reserve(actor, false);
         row.put("currentStep", "EXTRACT"); checkpoint(run);
@@ -351,7 +362,7 @@ public class AiEvaluationStudio {
             if (!requestId.equals(remote.path("requestId").asText())) throw new IllegalStateException("Evaluation response ID mismatch");
             var events = remote.path("events").deepCopy();
             for (var event : events) if (event.isObject()) {
-                ((ObjectNode)event).remove(List.of("instruction", "schema"));
+                ((ObjectNode)event).remove(List.of("instruction", "schema", "requestMessages"));
                 ((ObjectNode)event).put("step", event.path("stage").asText());
             }
             row.set("steps", events);
@@ -360,16 +371,20 @@ public class AiEvaluationStudio {
         }
         var events = remote.path("events").deepCopy();
         for (var event : events) if (event.isObject()) {
-            ((ObjectNode)event).remove(List.of("instruction", "schema")); ((ObjectNode)event).put("step", event.path("stage").asText());
+            ((ObjectNode)event).remove(List.of("instruction", "schema", "requestMessages")); ((ObjectNode)event).put("step", event.path("stage").asText());
         }
         row.set("steps", events); row.put("pipelineStatus", remote.path("status").asText()).put("pipelineError", remote.path("error").asText());
         row.remove("needsReadRecovery");
         row.set("pipelineResult", remote.path("result")); row.set("extraction", remote.path("extraction"));
+        if ((remote.has("requestLayout") || "implicit.v1".equals(request.path("requestLayout").asText()))
+                && !request.path("requestLayout").equals(remote.path("requestLayout")))
+            throw new IllegalStateException("Evaluation request layout mismatch");
         var calls = (ArrayNode)row.path("calls");
         for (var event : remote.path("events")) if (!"RUNNING".equals(event.path("status").asText())) {
             var call = calls.addObject().put("step", event.path("stage").asText()).put("model", event.path("model").asText())
                     .put("httpAttempts", event.path("attempts").size());
             call.set("attempts", event.path("attempts")); call.set("fallbacks", event.path("fallbacks"));
+            call.put("requestLayout", event.path("requestLayout").asText("original.v1"));
             long input = 0, output = 0; boolean measured = false;
             for (var attempt : event.path("attempts")) {
                 var inputUsage = attempt.has("prompt_tokens") ? attempt.path("prompt_tokens") : attempt.path("input_tokens");
@@ -509,6 +524,7 @@ public class AiEvaluationStudio {
         result.put("usageMeasuredCalls", calls.stream().filter(c -> c.has("prompt_tokens") && c.has("completion_tokens")).count());
         result.put("inputTokens", calls.stream().mapToLong(c -> c.path("prompt_tokens").asLong()).sum());
         result.put("outputTokens", calls.stream().mapToLong(c -> c.path("completion_tokens").asLong()).sum());
+        result.set("cache", AiCacheMetrics.summarize(json, run));
         var times = rows.valueStream().filter(r -> r.path("seconds").isNumber()).mapToDouble(r -> r.path("seconds").asDouble()).sorted().toArray();
         for (int p : List.of(50, 95)) if (times.length > 0) result.put("p" + p, times[Math.max(0, (int)Math.ceil(times.length * p / 100.0) - 1)]);
         var criteria = result.putObject("criteria");
@@ -548,9 +564,11 @@ public class AiEvaluationStudio {
         boolean backendChanged = !left.path("backendHash").equals(right.path("backendHash"));
         boolean repairChanged = !left.path("repair").equals(right.path("repair"));
         boolean configChanged = !left.path("runtime").equals(right.path("runtime"));
+        boolean layoutChanged = !left.path("requestLayout").asText("original.v1").equals(right.path("requestLayout").asText("original.v1"));
+        result.put("requestLayoutChanged", layoutChanged);
         result.put("promptChanged", promptChanged).put("backendChanged", backendChanged).put("repairChanged", repairChanged);
         result.put("attribution", promptChanged && (backendChanged || repairChanged || configChanged) ? "combined" : promptChanged ? "prompt"
-                : configChanged ? "configuration" : backendChanged || repairChanged ? "backend-harness" : "repeat");
+                : configChanged ? "configuration" : backendChanged || repairChanged ? "backend-harness" : layoutChanged ? "request-layout" : "repeat");
         result.put("comparable", warnings.isEmpty());
         var cases = result.putArray("cases"); var counts = result.putObject("counts");
         for (String status : List.of("improved", "unchanged", "regressed", "unresolved")) counts.put(status, 0);
@@ -583,12 +601,31 @@ public class AiEvaluationStudio {
         result.put("criticalRegression", criticalRegression);
         result.put("decision", !warnings.isEmpty() ? "INCOMPLETE" : counts.path("regressed").asInt() > 0 || criticalRegression ? "REGRESSION"
                 : counts.path("unresolved").asInt() > 0 ? "INCOMPLETE" : "NO_REGRESSION");
+        var aCost = left.path("metrics").path("cache"); var bCost = right.path("metrics").path("cache");
+        boolean costsKnown = aCost.path("costComplete").asBoolean() && bCost.path("costComplete").asBoolean()
+                && !aCost.path("pricingVersion").asText().isBlank() && aCost.path("pricingVersion").equals(bCost.path("pricingVersion"))
+                && AiCacheMetrics.money(aCost.path("estimatedCostUsd")) && AiCacheMetrics.money(bCost.path("estimatedCostUsd"));
+        result.put("costComparable", costsKnown && warnings.isEmpty());
+        result.put("cacheDecision", "INSUFFICIENT_EVIDENCE");
+        if (costsKnown) {
+            double delta = bCost.path("estimatedCostUsd").asDouble() - aCost.path("estimatedCostUsd").asDouble();
+            result.put("costDeltaUsd", delta);
+            if (aCost.path("generationCostComplete").asBoolean() && bCost.path("generationCostComplete").asBoolean()
+                    && AiCacheMetrics.money(aCost.path("generationEstimatedCostUsd")) && AiCacheMetrics.money(bCost.path("generationEstimatedCostUsd"))) {
+                double generationDelta = bCost.path("generationEstimatedCostUsd").asDouble() - aCost.path("generationEstimatedCostUsd").asDouble();
+                result.put("generationCostDeltaUsd",generationDelta);
+                if (warnings.isEmpty() && "NO_REGRESSION".equals(result.path("decision").asText()))
+                    result.put("cacheDecision", generationDelta < 0 ? "LOWER_COST_NO_OBSERVED_REGRESSION" : "NO_MEASURED_COST_REDUCTION");
+            }
+        }
         return result;
     }
 
     private static List<String> actualModels(JsonNode run) {
         return run.path("cases").valueStream().flatMap(row -> row.path("calls").valueStream()
-                .filter(call -> call.has("model")).map(call -> row.path("key").asText() + "/" + call.path("step").asText() + "/" + call.path("model").asText())).toList();
+                .filter(call -> call.has("model")).map(call -> row.path("key").asText() + "/" + call.path("step").asText() + "/"
+                        + call.path("attempts").valueStream().filter(a -> a.hasNonNull("response_model"))
+                            .reduce((first, last) -> last).map(a -> a.path("response_model").asText()).orElse(call.path("model").asText()))).toList();
     }
     private synchronized void checkpoint(ObjectNode run) { run.set("metrics", metrics(json, run)); save("runs", run.path("id").asText(), run); }
 
@@ -633,6 +670,7 @@ public class AiEvaluationStudio {
         try {
             var digest = MessageDigest.getInstance("SHA-256");
             for (Class<?> type : List.of(ConversationService.class, GeminiClient.class, AiPlatformClient.class, AiEvaluationStudio.class,
+                    AiCallObservation.class, AiCacheMetrics.class,
                     com.dictalab.scenario.ScenarioPersonalization.class, com.dictalab.scenario.ScenarioProgramRegistry.class, com.dictalab.scenario.ScenarioProgram.class))
                 try (var input = type.getResourceAsStream(type.getSimpleName() + ".class")) { digest.update(input.readAllBytes()); }
             for (String resource : List.of("scenario/programs-v1.json", "scenario/programs-personalized-v1.json", "scenario/programs-meaning-v1.json"))

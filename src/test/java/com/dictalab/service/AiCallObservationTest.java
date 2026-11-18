@@ -6,6 +6,20 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
 class AiCallObservationTest {
+    @Test void directProviderCachedUsageDistinguishesMissingZeroAndInvalid() {
+        var values = new ArrayList<Map<String,Object>>(); var json = new ObjectMapper();
+        for (String extra : List.of("", ",\"prompt_tokens_details\":{\"cached_tokens\":0}", ",\"prompt_tokens_details\":{\"cached_tokens\":7}", ",\"prompt_tokens_details\":{\"cached_tokens\":11}")) {
+            try (var scope = new AiCallObservation(()->{}, values::add)) {
+                AiCallObservation.begin("gemini-test"); AiCallObservation.http("source", "gemini-test", 200);
+                AiCallObservation.usage(json.readTree("{\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":3"+extra+"}}"));
+                AiCallObservation.end("SUCCESS");
+            }
+        }
+        assertThat(values.get(0)).doesNotContainKey("cached_input_tokens");
+        assertThat(values.get(1)).containsEntry("cached_input_tokens",0L);
+        assertThat(values.get(2)).containsEntry("cached_input_tokens",7L).containsEntry("uncached_input_tokens",3L);
+        assertThat(values.get(3)).doesNotContainKey("cached_input_tokens");
+    }
     @Test void observesEverySourceAttemptAndDoesNotInventMissingUsage() {
         var calls=new ArrayList<Map<String,Object>>();var json=new ObjectMapper();
         assertThat(AiCallObservation.active()).isFalse();

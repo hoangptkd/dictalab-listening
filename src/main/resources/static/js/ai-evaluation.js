@@ -7,6 +7,16 @@
     const rate = (passed, total) => finite(passed) && total > 0 ? passed / total : null;
     const stamp = value => value ? new Date(value).toLocaleString("vi-VN", {timeZone:"Asia/Bangkok",hour12:false}) : "—";
     const short = value => value ? value.slice(0, 10) : "—";
+    const usd = value => finite(value) && value >= 0 ? `$${value.toFixed(6)}` : "Chưa đủ số đo";
+    function cachePanel(cache) {
+        if (!cache) return '<section class="panel"><div class="panel-body"><p>Chưa đo caching trong bản ghi này.</p></div></section>';
+        return `<section class="panel"><div class="panel-head"><h2>Caching & chi phí ước tính</h2></div><div class="panel-body"><p>Độ phủ cached input: ${num(cache.measuredCacheAttempts)}/${num(cache.attempts)} attempt · ${num(cache.unobservedCalls)} lượt chưa có attempt. Tỷ lệ chỉ tính phần đã đo.</p>
+            <p>Cached input ${num(cache.cachedInputTokens)} · uncached input ${num(cache.uncachedInputTokens)} · tỷ lệ token ${pct(cache.cachedInputRatio)} · tỷ lệ request hit ${pct(cache.hitRate)}.</p>
+            <p>Chi phí ${usd(cache.estimatedCostUsd)} · phần có đủ số đo ${usd(cache.measuredCostUsd)} (${num(cache.pricedAttempts)} attempt). Chi phí trên bài được chấm đạt ${usd(cache.costPerJudgedPassUsd)}.</p>
+            <p>Sinh/duyệt/sửa ${usd(cache.generationEstimatedCostUsd)} · judge ${usd(cache.judgeEstimatedCostUsd)}. So sánh caching tách chi phí judge để tránh nhầm với tái sử dụng kết quả chấm.</p>
+            <p>Prefix đã quan sát ${num(cache.prefixMeasuredAttempts)} attempt · ${num(cache.distinctPrefixes)} prefix khác nhau · ${num(cache.repeatedPrefixAttempts)} lần lặp. p95 lần đầu ${num(cache.firstSeenP95,2)} s / lặp ${num(cache.repeatedPrefixP95,2)} s; không đồng nghĩa cache lạnh/nóng phía Google.</p>
+            <p>Thời gian provider p50 ${num(cache.providerP50,2)} s · p95 ${num(cache.providerP95,2)} s (${num(cache.latencyMeasuredAttempts)} attempt). Giá Standard text: ${esc(cache.pricingVersion)}; đây là ước tính, không phải hóa đơn.</p></div></section>`;
+    }
     const names = {questionFactsAligned:"Câu hỏi & đáp án",answerable:"Trả lời được từ bài nghe",rolesCorrect:"Vai người nói",
         translationFaithful:"Bản dịch chính xác",historyConsistent:"Mạch hội thoại",newMeanings:"Ý nghĩa mới",
         cefrAppropriate:"Phù hợp trình độ",reasoningGrounded:"Suy luận có căn cứ",noAnswerLeak:"Không lộ đáp án"};
@@ -74,7 +84,7 @@
     }
     const runnableVersion = (v, catalog) => v.pipeline === "scenario" && !!catalog?.available &&
         catalog.releases.some(r => r.promptHash === v.promptHash) && v.pythonBackendHash === catalog.backendHash;
-    if (typeof module !== "undefined" && module.exports) module.exports = {esc,rate,trendChart,criteriaChart,regressionChart,runnableVersion};
+    if (typeof module !== "undefined" && module.exports) module.exports = {esc,rate,trendChart,criteriaChart,regressionChart,runnableVersion,cachePanel,usd};
     if (typeof document === "undefined") return;
 
     const $ = selector => document.querySelector(selector), main = $("#evaluation-main"), dialog = $("#evaluation-dialog");
@@ -209,6 +219,7 @@
             <div class="actions" style="margin-bottom:20px"><button data-view="runs">← Các lần đánh giá</button>${badge(detail.status)}<button data-compare-run="${detail.id}">Đưa vào so sánh</button><button data-export>Xuất JSON</button>${detail.status === "RUNNING" ? `<button class="danger" data-stop="${detail.id}">Dừng sau lời gọi hiện tại</button>` : ""}</div>
             ${detail.notice ? `<div class="banner">${esc(detail.notice)}</div>` : ""}
             <div class="stats"><div class="stat"><span class="stat-label">LẦN ĐẦU / SAU HARNESS</span><strong>${pct(m.beforeRate)} / ${pct(m.afterRate)}</strong><small>Mẫu số ${num(m.planned)} mẫu kế hoạch</small></div><div class="stat"><span class="stat-label">ĐỘ PHỦ CHẤM</span><strong>${num(m.afterEvaluated)} / ${num(m.planned)}</strong><small>${num(m.recorded)} mẫu có bản ghi</small></div><div class="stat"><span class="stat-label">HARNESS CHẤP NHẬN</span><strong>${num(m.harnessAccepted)}</strong><small>Khác với chấm ngữ nghĩa độc lập</small></div><div class="stat"><span class="stat-label">LƯỢT GỌI AI</span><strong>${num(m.logicalCalls)}</strong><small>HTTP attempt ${num(m.httpAttempts)} · sửa ${num(m.repairs)}</small></div></div>
+            ${cachePanel(m.cache)}
             <section class="panel"><div class="panel-head"><h2>Tiêu chí trước & sau</h2>${legend()}</div><div class="panel-body">${criteriaChart(m)}</div></section>
             <details><summary>Phiên bản & cấu hình đã đóng băng</summary><pre class="output">${esc(JSON.stringify({backendHash:detail.backendHash,promptHash:detail.promptHash,datasetHash:detail.datasetHash,runtime:detail.runtime,rubric:detail.rubric,repair:detail.repair,judge:detail.judge},null,2))}</pre></details>
             <div class="filters"><label>Trình độ / mục tiêu<select data-filter="level"><option value="">Tất cả mục tiêu</option>${[...new Set((detail.cases || []).map(r=>r.level))].map(l=>`<option value="${esc(l)}" ${filterLevel === l ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
@@ -229,18 +240,35 @@
         const a=data.runs.find(r=>r.id === left),b=data.runs.find(r=>r.id === right);
         if (!a || !b) return "";
         const causes={combined:"Prompt và backend, model hoặc chính sách sửa cùng thay đổi. Chỉ kết luận cho tổ hợp mới; chưa quy nguyên nhân riêng cho prompt.",prompt:"Chỉ prompt thay đổi trong các yếu tố đã ghi nhận.",configuration:"Cấu hình model hoặc đường gọi đã đổi. Kết quả thể hiện thay đổi của hệ thống.","backend-harness":"Backend hoặc chính sách sửa thay đổi; prompt giữ nguyên.",repeat:"Cùng cấu hình được chạy lại. Gemini không có seed cố định trong đường chạy này."};
+        causes["request-layout"]="Cùng prompt, model và Harness; chỉ đổi bố cục request để thử Implicit Caching. Chất lượng vẫn được đánh giá riêng.";
         const warnings=comparison.warnings || [];
+        const cacheVerdict=comparison.cacheDecision === "LOWER_COST_NO_OBSERVED_REGRESSION"
+            ? "Chi phí đo được thấp hơn, chưa thấy suy giảm trong phần chất lượng đã chấm. Chưa tự kích hoạt."
+            : comparison.cacheDecision === "NO_MEASURED_COST_REDUCTION" ? "Chưa đo được giảm chi phí."
+            : "Chưa đủ bằng chứng để kết luận hiệu quả caching; xem độ phủ số đo và chất lượng.";
         return `${warnings.length ? `<div class="banner error"><strong>Chưa đủ điều kiện kết luận trực tiếp.</strong> ${warnings.map(esc).join(" · ")}</div>` : ""}<div class="banner">${esc(causes[comparison.attribution])}</div>
             ${comparison.criticalRegression ? '<div class="banner error"><strong>Có lỗi critical mới.</strong> Kết quả cần được xem xét dù tỷ lệ tổng tăng.</div>' : ""}
             <section class="panel"><div class="panel-head"><div><h2>Thay đổi theo từng test</h2><p>${esc(comparison.decision === "NO_REGRESSION" ? "Không thấy regression trong bằng chứng đã chấm" : comparison.decision === "REGRESSION" ? "Phát hiện regression" : "Chưa đủ bằng chứng để kết luận")}</p></div></div><div class="panel-body">${regressionChart(comparison.counts)}</div></section>
             <section class="panel"><div class="panel-head"><h2>Chất lượng sau Harness · A / B</h2>${legend(a.label,b.label)}</div><div class="panel-body">${criteriaChart(a.metrics,b.metrics,true)}</div></section>
+            <div class="banner">${esc(cacheVerdict)} Chi phí là ước tính, không phải hóa đơn.</div>
             <section class="panel"><div class="panel-head"><h2>Chất lượng & hiệu suất</h2></div><div class="table-scroll"><table><thead><tr><th>Chỉ số</th><th>A · ${esc(a.label)}</th><th>B · ${esc(b.label)}</th></tr></thead><tbody>${[
                 ["Đạt lần đầu",pct(a.metrics?.beforeRate),pct(b.metrics?.beforeRate)], ["Đạt sau Harness",pct(a.metrics?.afterRate),pct(b.metrics?.afterRate)],
                 ["Độ phủ chấm",`${num(a.metrics?.afterEvaluated)}/${num(a.planned)}`,`${num(b.metrics?.afterEvaluated)}/${num(b.planned)}`],
                 ["Harness sửa",num(a.metrics?.repairs),num(b.metrics?.repairs)],["Critical",num(a.metrics?.critical),num(b.metrics?.critical)],
                 ["Lượt gọi AI",num(a.metrics?.logicalCalls),num(b.metrics?.logicalCalls)],["HTTP attempt",num(a.metrics?.httpAttempts),num(b.metrics?.httpAttempts)],
                 ["Thời gian p95",`${num(a.metrics?.p95,1)} s`,`${num(b.metrics?.p95,1)} s`]
-                ,["Lỗi thực thi",num(a.metrics?.errors),num(b.metrics?.errors)]
+                ,["Lỗi thực thi",num(a.metrics?.errors),num(b.metrics?.errors)],
+                ["Bố cục request",a.requestLayout || "original.v1",b.requestLayout || "original.v1"],
+                ["Input / output token đã ghi",`${num(a.metrics?.inputTokens)} / ${num(a.metrics?.outputTokens)}`,`${num(b.metrics?.inputTokens)} / ${num(b.metrics?.outputTokens)}`],
+                ["Cached input đã đo",num(a.metrics?.cache?.cachedInputTokens),num(b.metrics?.cache?.cachedInputTokens)],
+                ["Tỷ lệ token cached",pct(a.metrics?.cache?.cachedInputRatio),pct(b.metrics?.cache?.cachedInputRatio)],
+                ["Độ phủ caching",`${num(a.metrics?.cache?.measuredCacheAttempts)}/${num(a.metrics?.cache?.attempts)}`,`${num(b.metrics?.cache?.measuredCacheAttempts)}/${num(b.metrics?.cache?.attempts)}`],
+                ["Chi phí ước tính",usd(a.metrics?.cache?.estimatedCostUsd),usd(b.metrics?.cache?.estimatedCostUsd)],
+                ["Chi phí sinh/duyệt/sửa",usd(a.metrics?.cache?.generationEstimatedCostUsd),usd(b.metrics?.cache?.generationEstimatedCostUsd)],
+                ["Chi phí judge",usd(a.metrics?.cache?.judgeEstimatedCostUsd),usd(b.metrics?.cache?.judgeEstimatedCostUsd)],
+                ["Bảng giá ước tính",a.metrics?.cache?.pricingVersion || "Chưa đo",b.metrics?.cache?.pricingVersion || "Chưa đo"],
+                ["Chi phí / bài được chấm đạt",usd(a.metrics?.cache?.costPerJudgedPassUsd),usd(b.metrics?.cache?.costPerJudgedPassUsd)],
+                ["Provider p95",`${num(a.metrics?.cache?.providerP95,2)} s`,`${num(b.metrics?.cache?.providerP95,2)} s`]
             ].map(values=>`<tr>${values.map((v,i)=>i ? `<td>${esc(v)}</td>` : `<th scope="row">${esc(v)}</th>`).join("")}</tr>`).join("")}</tbody></table></div></section>
             <section class="panel"><div class="panel-head"><h2>Đối chiếu output & nguyên nhân</h2></div>${[...comparison.cases].sort((x,y)=>(["regressed","unresolved","improved","unchanged"].indexOf(x.status)-["regressed","unresolved","improved","unchanged"].indexOf(y.status))).map(pair=>`<article class="case-card"><div class="case-title"><h3>${esc(pair.key)}</h3>${badge(pair.status)}</div><details ${pair.status === "regressed" ? "open" : ""}><summary>Đặt hai kết quả cạnh nhau</summary><div class="side-by-side"><div><h3>A · ${esc(a.label)}</h3>${outputView(pair.left,"after")}</div><div><h3>B · ${esc(b.label)}</h3>${outputView(pair.right,"after")}</div></div></details></article>`).join("")}</section>`;
     }
@@ -259,9 +287,10 @@
     }
     dialog.addEventListener("close",()=>{dialog.returnFocus?.focus();});
     function versionDialog() {
-        openDialog(`<h2 id="dialog-title">Tạo phiên bản prompt</h2><p>Chỉ lưu thí nghiệm; không đổi prompt đang phục vụ người học.</p><form id="version-form"><label>Tên phiên bản<input name="label" maxlength="100" required placeholder="Ví dụ: V4.13 baseline"></label>
+        openDialog(`<h2 id="dialog-title">Tạo phiên bản prompt</h2><p>Chỉ lưu thí nghiệm; không đổi prompt đang phục vụ người học.</p><form id="version-form"><label>Tên phiên bản<input name="label" maxlength="100" required placeholder="Ví dụ: V5.2 bản gốc"></label>
             <input type="hidden" name="pipeline" value="scenario"><p>Conversation AI · prompt hiện hành</p>
             <label data-scenario-version>Prompt<select name="release">${(data.scenarioPipeline?.releases || []).map(r=>`<option value="${esc(r.id)}">${esc(r.id)} · ${short(r.promptHash)}</option>`).join("")}</select></label>
+            <label>Bố cục gửi AI<select name="requestLayout"><option value="original.v1">Bản gốc · đối chứng</option>${data.scenarioPipeline?.requestLayouts?.includes("implicit.v1") ? '<option value="implicit.v1">Thử tối ưu Implicit Caching</option>' : ""}</select></label>
             <p class="dialog-error" role="alert"></p><div class="dialog-actions"><button type="button" data-close>Hủy</button><button class="primary" type="submit">Lưu phiên bản</button></div></form>`);
     }
     function runDialog(versionId) {
@@ -323,7 +352,7 @@
         try {
             const fields=new FormData(form);
             if(form.id==="version-form") {
-                await api("/versions",{method:"POST",body:JSON.stringify({label:fields.get("label"),pipeline:fields.get("pipeline"),release:fields.get("release"),promptSuffix:"",repair:true})});
+                await api("/versions",{method:"POST",body:JSON.stringify({label:fields.get("label"),pipeline:fields.get("pipeline"),release:fields.get("release"),requestLayout:fields.get("requestLayout"),promptSuffix:"",repair:true})});
                 dialog.close();await refresh();navigate("versions");message("Đã lưu phiên bản bất biến.");
             } else if(form.id==="run-form") {
                 const payload={requestId:form.requestId,version:fields.get("version"),suite:fields.get("suite"),mode:fields.get("mode"),judge:fields.has("judge")};
