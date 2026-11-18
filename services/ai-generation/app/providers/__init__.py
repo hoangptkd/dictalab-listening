@@ -8,6 +8,7 @@ from .base import GenerationOptions, ProviderError
 from .gemini import GeminiProvider
 from .deepseek import DeepSeekProvider
 from .openai_compatible import OpenAiCompatibleProvider
+from .shopaikey import ShopAiKeyProvider
 from .ollama import OllamaProvider
 
 PROVIDERS = {}
@@ -79,4 +80,7 @@ register("gemini", Registration(GeminiProvider, expected_host="generativelanguag
                                 rotate_on_429=True, model_fallback=True))
 register("deepseek", Registration(DeepSeekProvider, expected_host="api.deepseek.com"))
 register("openai_compatible", Registration(OpenAiCompatibleProvider))
+# Historical ShopAIKey used the same OpenAI chat-completions wire contract.
+# Keep it as a named registration so routing and audit metadata remain explicit.
+register("shopaikey", Registration(ShopAiKeyProvider))
 register("ollama", Registration(OllamaProvider, cloud=False))

@@ -40,7 +40,7 @@ public class AiTextService {
     private com.dictalab.config.AiTextProperties textProperties = new com.dictalab.config.AiTextProperties("{}");
     public static Map<String, AiTextProvider> builtins() {
         return java.util.stream.Stream.of(new GeminiTextProvider(), new DeepSeekTextProvider(),
-            new OpenAiCompatibleTextProvider(), new OllamaTextProvider()).collect(java.util.stream.Collectors.toUnmodifiableMap(AiTextProvider::id, p -> p));
+            new OpenAiCompatibleTextProvider(), new ShopAiKeyTextProvider(), new OllamaTextProvider()).collect(java.util.stream.Collectors.toUnmodifiableMap(AiTextProvider::id, p -> p));
     }
     @org.springframework.beans.factory.annotation.Autowired
     void configureProviders(List<AiTextProvider> providers, com.dictalab.config.AiTextProperties properties) {

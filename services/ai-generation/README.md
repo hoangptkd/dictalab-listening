@@ -182,6 +182,8 @@ Configure both sides explicitly in protected runtime configuration:
 | `DICTALAB_AI_TEXT_TRANSPORT=python` (default `legacy`) | `DICTALAB_AI_TEXT_GATEWAY_ENABLED=true` (default `false`) |
 | `DICTALAB_AI_PLATFORM_BASE_URL` | API binds loopback for native local use |
 | `DICTALAB_AI_TEXT_PROVIDER` | Matching `DICTALAB_AI_PRIMARY_PROVIDER` |
+| `AI_FALLBACK_PROVIDER` | Optional registry provider used after explicit Gemini quota/admission rejection |
+| `AI_FALLBACK_ON_QUOTA` | Must be `true` to enable the configured provider fallback; defaults to `false` |
 | `DICTALAB_AI_TEXT_MODEL` | Matching enabled model in AI registry, or `DICTALAB_AI_MODEL` for Ollama |
 | `DICTALAB_AI_SERVICE_TOKEN` | Same random ASCII token, 32-256 characters |
 

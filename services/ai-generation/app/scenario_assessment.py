@@ -860,11 +860,13 @@ async def execute(event, settings, *, observer=None):
                 raise
             if observer is not None:
                 observer({**captured, "status": "RETURNED", "output": raw, "model": gateway.last_model,
-                          "attempts": gateway.observed_attempts, "fallbacks": gateway.model_fallbacks})
+                          "attempts": gateway.observed_attempts,
+                          "fallbacks": [*getattr(gateway, "model_fallbacks", []),
+                                         *getattr(gateway, "provider_fallbacks", [])]})
             calls.append({"purpose": purpose, "provider": provider, "model": gateway.last_model,
                 **({"exampleSetHash": selected.EXAMPLE_SET_HASH, "exampleIds": selected.EXAMPLE_IDS[purpose]}
                    if getattr(selected, "EXAMPLE_SET_HASH", None) else {})})
-            if getattr(gateway, "model_fallbacks", []):
+            if getattr(gateway, "model_fallbacks", []) or getattr(gateway, "provider_fallbacks", []):
                 call_settings = gateway.continuation_settings(call_settings)
             try:
                 return model.model_validate(raw)

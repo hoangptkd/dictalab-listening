@@ -213,7 +213,7 @@ public class ModelDemoService {
                     if (!call.path("model").isTextual() || call.path("model").asText().isBlank() || call.path("model").asText().length()>128)
                         throw new IllegalArgumentException("Missing model source");
                     if (variant.equals("cloud")) {
-                        if (!Set.of("gemini","deepseek","openai_compatible").contains(call.path("provider").asText()))
+                        if (!Set.of("gemini","deepseek","openai_compatible","shopaikey").contains(call.path("provider").asText()))
                             throw new IllegalArgumentException("Invalid cloud source");
                     } else if (!call.path("provider").asText().equals("local_cpu") || !call.path("model").asText().equals("Qwen/Qwen3.5-4B")
                             || !variant.equals(call.path("variant").asText())

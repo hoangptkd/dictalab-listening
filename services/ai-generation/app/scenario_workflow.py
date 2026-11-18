@@ -819,7 +819,7 @@ async def execute(event, settings):
                                settings.selected_provider, gateway.last_model, getattr(gateway, "last_source_id", None), len(calls))
                 raise
             calls.append({"purpose": purpose, "provider": provider, "model": gateway.last_model})
-            if getattr(gateway, "model_fallbacks", []):
+            if getattr(gateway, "model_fallbacks", []) or getattr(gateway, "provider_fallbacks", []):
                 # Keep later steps on the successful fallback; never replay earlier paid steps.
                 call_settings = gateway.continuation_settings(call_settings)
             try:

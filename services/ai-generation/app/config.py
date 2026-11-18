@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     operational_limits_enabled: bool = Field(default=False,
         validation_alias="DICTALAB_OPERATIONAL_LIMITS_ENABLED")
     primary_provider: str = "auto"
+    fallback_provider: str = Field(default="", validation_alias=AliasChoices(
+        "AI_FALLBACK_PROVIDER", "DICTALAB_AI_FALLBACK_PROVIDER"))
+    fallback_on_quota: bool = Field(default=False, validation_alias=AliasChoices(
+        "AI_FALLBACK_ON_QUOTA", "DICTALAB_AI_FALLBACK_ON_QUOTA"))
     conversation_enabled: bool = True
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     gemini_api_key: str = Field(default="", repr=False)
@@ -208,6 +212,16 @@ class Settings(BaseSettings):
             raise ValueError("production Gemini quota requires Redis")
         if self.primary_provider != "auto" and self.primary_provider not in ("ollama", *CLOUD_PROVIDERS):
             raise ValueError("unsupported primary_provider")
+        if self.fallback_provider and self.fallback_provider not in CLOUD_PROVIDERS:
+            raise ValueError("unsupported fallback_provider")
+        if self.fallback_provider and self.fallback_provider == self.selected_provider:
+            raise ValueError("fallback_provider must differ from primary_provider")
+        if self.fallback_on_quota and not self.fallback_provider:
+            raise ValueError("fallback_on_quota requires fallback_provider")
+        if self.fallback_provider and self.ai_provider_config_source != "database":
+            raise ValueError("cloud fallback requires database provider registry")
+        if self.fallback_provider and self.fallback_provider not in self.registry_pools:
+            raise ValueError("fallback provider has no database pool")
         for identity, profile in self.model_profiles.items():
             platform, separator, model = identity.partition("/")
             if not separator or platform not in CLOUD_PROVIDERS or not re.fullmatch(r"[a-zA-Z0-9_.:/-]{1,128}", model):
@@ -317,8 +331,11 @@ class Settings(BaseSettings):
 
     @property
     def active_cloud_model(self) -> str:
-        if self.selected_provider in self.registry_pools:
-            return self.registry_pools[self.selected_provider]["default_model"]
+        return self.active_cloud_model_for(self.selected_provider)
+
+    def active_cloud_model_for(self, provider: str) -> str:
+        if provider in self.registry_pools:
+            return self.registry_pools[provider]["default_model"]
         return self.gemini_model
 
     @property

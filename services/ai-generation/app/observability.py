@@ -266,7 +266,8 @@ def trace_generation(function):
             finally:
                 _safe(span, "update", metadata={"sourceId": self.last_source_id,
                                 "requestedModel": settings.model if settings.selected_provider == "ollama" else settings.active_cloud_model,
-                                "modelFallbacks": getattr(self, "model_fallbacks", [])})
+                                "modelFallbacks": getattr(self, "model_fallbacks", []),
+                                "providerFallbacks": getattr(self, "provider_fallbacks", [])})
             _safe(span, "update", output=content(result), metadata={"provider": provider})
             return result, provider
     return wrapped

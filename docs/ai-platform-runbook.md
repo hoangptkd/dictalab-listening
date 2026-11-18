@@ -74,7 +74,7 @@ Audio defaults to Cartesia; an OpenAI-compatible speech adapter is also availabl
 See [shared TTS configuration and reuse](tts.md). Default Java production routing uses Gemini, including rollback clients.
 Java `DICTALAB_AI_TEXT_PROVIDER` must match Python's selected primary; mismatches fail before paid job calls.
 
-Gemini is the only cloud text provider (`DICTALAB_AI_PRIMARY_PROVIDER=gemini`). Compose forwards
+Gemini remains the default cloud text provider (`DICTALAB_AI_PRIMARY_PROVIDER=gemini`). Compose forwards
 `GEMINI_API_KEY`, `GEMINI_BASE_URL` and `GEMINI_MODEL` to `DICTALAB_AI_GEMINI_*`. The Python provider uses
 Google's OpenAI-compatible endpoint (`https://generativelanguage.googleapis.com/v1beta/openai`) with the
 `gemini-3.5-flash-lite` model. Google lists this model as `models/gemini-3.5-flash-lite`; readiness accepts

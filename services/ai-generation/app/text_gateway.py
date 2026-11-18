@@ -160,18 +160,26 @@ async def execute_text(payload, x_service_token, x_ai_observe):
                 from jsonschema import Draft202012Validator
                 Draft202012Validator(payload.output_schema).validate(result)
             expected_model = get_provider(provider).normalize_model(payload.model)
+            provider_fallbacks = getattr(gateway, "provider_fallbacks", [])
+            model_fallbacks = getattr(gateway, "model_fallbacks", [])
+            provider_fallback_ok = bool(provider_fallbacks and provider ==
+                provider_fallbacks[-1]["toProvider"] and gateway.last_model ==
+                selected.active_cloud_model_for(provider))
+            model_fallback_ok = (provider == "gemini" and gateway.last_model in selected.gemini_fallback_models
+                and model_fallbacks and model_fallbacks[-1]["toModel"] == gateway.last_model)
             if (not isinstance(result, dict) or len(json.dumps(result, ensure_ascii=False)) > 12000
-                    or provider != payload.provider or (gateway.last_model != expected_model and
-                        (provider != "gemini" or gateway.last_model not in selected.gemini_fallback_models
-                         or not gateway.model_fallbacks or gateway.model_fallbacks[-1]["toModel"] != gateway.last_model))):
+                    or (provider != payload.provider and not provider_fallback_ok)
+                    or (provider == payload.provider and gateway.last_model != expected_model
+                        and not model_fallback_ok)):
                 raise ValueError("invalid text output or provenance")
             envelope = {"schemaVersion": "1", "requestId": str(payload.requestId), "provider": provider,
                         "model": gateway.last_model, "task": result}
             if v2:
                 envelope.update(schemaVersion="2", requestedModel=expected_model, fallbacks=[],
                     reportedModel=getattr(getattr(gateway, "last_result", None), "reported_model", None))
-            if gateway.model_fallbacks:
-                envelope.update(requestedModel=expected_model, fallbacks=gateway.model_fallbacks)
+            if model_fallbacks or provider_fallbacks:
+                envelope.update(requestedModel=expected_model,
+                    fallbacks=[*model_fallbacks, *provider_fallbacks])
             if x_ai_observe == "usage":
                 attempts = gateway.observed_attempts
                 observation = {"attempts": attempts, "httpAttempts": len(attempts)}

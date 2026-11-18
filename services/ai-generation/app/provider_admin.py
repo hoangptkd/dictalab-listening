@@ -219,7 +219,7 @@ def delete_source(settings, actor, source_id, revision):
 
 
 def record_attempt(settings, request_id, source, outcome, done, usage, duration):
-    if not settings.provider_telemetry_database_url or source.platform != "gemini":
+    if not settings.provider_telemetry_database_url:
         return
     try:
         with connect(settings.provider_telemetry_database_url, readonly=False) as db:

@@ -88,3 +88,69 @@ async def test_explicit_native_schema_profile_does_not_assume_json_object(fixtur
             {"type": "object"}, time.monotonic() + 10, "fixture_check")
     assert result == {"ok": True}
     assert calls[0]["response_format"]["type"] == "json_schema"
+
+
+def _fallback_settings(monkeypatch):
+    from app.config import GeminiSource
+    import uuid
+    suffix = uuid.uuid4().hex
+    sources = [
+        GeminiSource(id="gemini-source", platform="gemini", projectId="gemini-account-" + suffix,
+            apiKey="gemini-key", model="gemini-3.5-flash-lite",
+            url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            enabled=True, rpmLimit=1, operatingRpm=1),
+        GeminiSource(id="shop-source", platform="shopaikey", projectId="shop-account-" + suffix,
+            apiKey="shop-key", model="claude-sonnet-4-5",
+            url="https://api.shopaikey.com/v1/chat/completions",
+            enabled=True, rpmLimit=1, operatingRpm=1),
+    ]
+    pools = {
+        "gemini": {"default_model": "gemini-3.5-flash-lite", "global_rpm_limit": 0,
+                   "global_rpd_limit": 0, "enabled": True},
+        "shopaikey": {"default_model": "claude-sonnet-4-5", "global_rpm_limit": 0,
+                       "global_rpd_limit": 0, "enabled": True},
+    }
+    monkeypatch.setattr("app.provider_registry.load_registry", lambda *a, **kw: (pools, sources))
+    settings = __import__("app.config", fromlist=["Settings"]).Settings(
+        primary_provider="gemini", fallback_provider="shopaikey", fallback_on_quota=True,
+        ai_provider_config_source="database", ai_provider_database_url="postgresql://localhost/ai",
+        ai_provider_encryption_key="A" * 44, gemini_quota_backend="memory",
+        operational_limits_enabled=True)
+    return settings, sources
+
+
+@pytest.mark.asyncio
+async def test_shopaikey_is_an_explicit_admission_fallback_without_replaying_gemini(monkeypatch):
+    from app.gemini_pool import quota_store
+    settings, sources = _fallback_settings(monkeypatch)
+    # Consume the only Gemini admission slot before any HTTP request is made.
+    quota_store(settings, "gemini").execute(sources[0], 1)
+    calls = []
+    def handler(request):
+        calls.append(request)
+        assert request.url.host == "api.shopaikey.com"
+        assert request.headers["Authorization"] == "Bearer shop-key"
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"ok":true}'}}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        gateway = ModelGateway(settings, client)
+        result, provider = await gateway.complete([{"role": "user", "content": "Return JSON"}],
+            {"type": "object", "properties": {"ok": {"type": "boolean"}}},
+            time.monotonic() + 10, "fallback_check")
+    assert result == {"ok": True} and provider == "shopaikey"
+    assert len(calls) == 1
+    assert gateway.provider_fallbacks == [{"fromProvider": "gemini", "toProvider": "shopaikey",
+                                           "reason": "ADMISSION_OR_QUOTA"}]
+
+
+@pytest.mark.asyncio
+async def test_shopaikey_fallback_never_replays_an_uncertain_timeout(monkeypatch):
+    settings, _ = _fallback_settings(monkeypatch)
+    calls = []
+    def handler(request):
+        calls.append(request)
+        raise httpx.ReadTimeout("fixture uncertain result")
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(TimeoutError):
+            await ModelGateway(settings, client).complete([{"role": "user", "content": "Return JSON"}],
+                {"type": "object"}, time.monotonic() + 10, "fallback_check")
+    assert len(calls) == 1

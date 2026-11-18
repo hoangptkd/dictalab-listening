@@ -28,10 +28,14 @@ logger = logging.getLogger("dictalab.ai_generation.model_gateway")
 
 
 def routing_metadata(settings):
+    metadata = {}
+    if settings.fallback_on_quota and settings.fallback_provider:
+        metadata["providerRouting"] = {"primaryProvider": settings.selected_provider,
+            "fallbackProvider": settings.fallback_provider, "fallbackOnQuota": True}
     if get_provider(settings.selected_provider).model_fallback and settings.gemini_fallback_models:
-        return {"modelRouting": {"primaryModel": settings.active_cloud_model,
-            "fallbackModels": [m for m in settings.gemini_fallback_models if m != settings.active_cloud_model]}}
-    return {}
+        metadata["modelRouting"] = {"primaryModel": settings.active_cloud_model,
+            "fallbackModels": [m for m in settings.gemini_fallback_models if m != settings.active_cloud_model]}
+    return metadata
 
 
 
@@ -55,6 +59,7 @@ class ModelGateway:
         self.last_model = settings.active_cloud_model if settings.selected_provider in CLOUD_PROVIDERS else settings.model
         self.last_source_id = None
         self.model_fallbacks = []
+        self.provider_fallbacks = []
         self.observed_attempts = None
         self._snapshot_loaded = False
         self._local = get_provider("ollama").create(settings, client)
@@ -63,15 +68,22 @@ class ModelGateway:
         self.last_result = None
 
     def continuation_settings(self, settings):
-        if not self.model_fallbacks:
+        if not self.model_fallbacks and not self.provider_fallbacks:
             return settings
         pools = {p: dict(policy) for p, policy in settings.registry_pools.items()}
-        provider = settings.selected_provider
+        provider = (self.provider_fallbacks[-1]["toProvider"] if self.provider_fallbacks
+                    else settings.selected_provider)
         if provider in pools:
             pools[provider]["default_model"] = self.last_model
         chain = settings.gemini_fallback_models
-        result = settings.model_copy(update={"gemini_model": self.last_model, "registry_pools": pools,
-            "gemini_fallback_models": chain[chain.index(self.last_model) + 1:]})
+        update = {"registry_pools": pools, "primary_provider": provider,
+            "gemini_fallback_models": chain[chain.index(self.last_model) + 1:]
+                if self.last_model in chain else []}
+        if self.provider_fallbacks:
+            update.update(fallback_provider="", fallback_on_quota=False)
+        if provider == "gemini":
+            update["gemini_model"] = self.last_model
+        result = settings.model_copy(update=update)
         result._registry_snapshot = True
         return result
 
@@ -102,6 +114,7 @@ class ModelGateway:
         """
         started = time.monotonic()
         self.model_fallbacks = []
+        self.provider_fallbacks = []
         self.last_source_id = None
         self.last_result = None
         options = options or GenerationOptions()
@@ -130,8 +143,12 @@ class ModelGateway:
                               options, json_object, started,
                               allow_model_fallback, allow_account_rotation):
         from .provider_admin import record_attempt, finish_request
-        provider = self._settings.selected_provider
+        primary_provider = self._settings.selected_provider
+        provider = primary_provider
         registration = get_provider(provider)
+        fallback_provider = (self._settings.fallback_provider
+                             if self._settings.fallback_on_quota else "")
+        fallback_used = False
         attempted, request_id = set(), uuid4()
         model, preferred_project = self._settings.active_cloud_model, None
         fallbacks = [m for m in self._settings.gemini_fallback_models if m != model] if registration.model_fallback and allow_model_fallback else []
@@ -144,7 +161,8 @@ class ModelGateway:
                     await asyncio.to_thread(finish_request, self._settings, request_id)
                     raise last_rejection
                 raise QuotaUnavailable(1)
-            selected = (self._primary_cloud if model == self._settings.active_cloud_model and not json_object
+            selected = (self._primary_cloud if provider == primary_provider
+                        and model == self._settings.active_cloud_model and not json_object
                         and options == GenerationOptions() else registration.create(self._settings, self._client,
                             model=model, json_object=json_object, options=options))
             source = None
@@ -152,12 +170,29 @@ class ModelGateway:
             if self._settings.gemini_quota_enabled:
                 if deadline - time.monotonic() < 1:
                     raise QuotaUnavailable(1)
-                store = quota_store(self._settings)
+                # Keep the one-argument primary path compatible with existing
+                # training/evaluation fakes; alternate providers need an explicit pool.
+                store = (quota_store(self._settings) if provider == primary_provider
+                         else quota_store(self._settings, provider))
                 try:
                     source = await asyncio.to_thread(store.select, model,
                         estimate_tokens(messages, self._settings.num_predict, schema), attempted,
                         **({"preferred_project": preferred_project} if preferred_project else {}))
-                except QuotaUnavailable:
+                except QuotaUnavailable as unavailable:
+                    # Admission failed before an HTTP request. A configured fallback
+                    # may be used; timeouts and unknown outcomes never reach here.
+                    if (provider == primary_provider and fallback_provider and not fallback_used
+                            and self._settings.sources_for(fallback_provider)):
+                        fallback_used = True
+                        self.provider_fallbacks.append({"fromProvider": primary_provider,
+                            "toProvider": fallback_provider, "reason": "ADMISSION_OR_QUOTA"})
+                        provider = fallback_provider
+                        registration = get_provider(provider)
+                        model = self._settings.active_cloud_model_for(provider)
+                        fallbacks = []
+                        attempted, preferred_project = set(), None
+                        last_rejection = None
+                        continue
                     if last_rejection:
                         await asyncio.to_thread(finish_request, self._settings, request_id)
                         raise last_rejection
@@ -184,6 +219,18 @@ class ModelGateway:
                     if remaining and deadline - time.monotonic() >= 1:
                         last_rejection, done = error, False
                         continue
+                if (provider == primary_provider and fallback_provider and not fallback_used
+                        and error.status == 429 and deadline - time.monotonic() >= 1):
+                    fallback_used = True
+                    self.provider_fallbacks.append({"fromProvider": primary_provider,
+                        "toProvider": fallback_provider, "reason": "HTTP_429"})
+                    provider = fallback_provider
+                    registration = get_provider(provider)
+                    model = self._settings.active_cloud_model_for(provider)
+                    fallbacks = []
+                    attempted, preferred_project = set(), None
+                    last_rejection, done = error, False
+                    continue
                 if (registration.model_fallback and error.server_failure and fallbacks
                         and deadline - time.monotonic() >= 1):
                     replacement = fallbacks.pop(0)
