@@ -179,7 +179,8 @@ Java text client: `DICTALAB_AI_TEXT_PROVIDER=deepseek` (không đổi route prod
 không âm thầm đổi model khi request một model khác.
 
 Để dùng ShopAIKey làm fallback cho AI Studio, tạo pool/account `shopaikey` trong registry,
-sau đó đặt `AI_FALLBACK_PROVIDER=shopaikey` và `AI_FALLBACK_ON_QUOTA=true` cho AI API/worker.
+sau đó đặt `AI_FALLBACK_PROVIDER=shopaikey` và `AI_FALLBACK_ON_QUOTA=true` cho AI API/worker
+và Core nếu đang dùng Java direct text transport.
 Fallback chỉ xảy ra khi Gemini bị từ chối quota/admission trước khi gửi hoặc trả HTTP 429
 đã xác định; timeout, lỗi kết nối, body timeout, JSON sai hoặc kết quả không rõ không được gửi lại.
 Core không nhận API key. Metadata trả về ghi rõ `fromProvider`, `toProvider` và lý do.
