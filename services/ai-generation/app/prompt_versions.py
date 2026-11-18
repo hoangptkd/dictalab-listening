@@ -32,7 +32,8 @@ async def _complete(request, settings, client, schema, purpose, data, temperatur
         (artifact.get("contentSchemas", {}).get(request.level, artifact["contentSchema"])
          if purpose == "content" else artifact["translationSchema"]),
         deadline if deadline is not None else time.monotonic() + settings.timeout_seconds,
-        purpose, temperature=temperature)
+        purpose, temperature=temperature,
+        allow_model_fallback=True)
     calls = provider_calls.get()
     if calls is not None:
         calls.append({"purpose": purpose, "provider": provider,

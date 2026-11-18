@@ -271,6 +271,7 @@ public class AiTextService {
         long deadline = System.nanoTime() + timeout.toNanos();
         var attempted = new java.util.HashSet<String>();
         String activePlatform = local ? "ollama" : cloudPlatform;
+        boolean conversationFallback = call.purpose().startsWith("conversation_");
         if (!configured()) throw new IllegalStateException("AI chưa được cấu hình trên máy chủ.");
         if (requestModel == null || requestModel.isBlank()) throw new IllegalArgumentException("Missing AI model");
         try (var permit=guard.enter()) {
@@ -299,7 +300,7 @@ public class AiTextService {
             try {
                 selection = local ? null : selectProvider(activePlatform, instruction, input, requestModel, attempted);
             } catch (ProviderGuard.Unavailable unavailable) {
-                if (!local && fallbackAllowed(activePlatform)) {
+                if (!local && fallbackAllowed(activePlatform, conversationFallback)) {
                     activePlatform = fallbackPlatform;
                     requestModel = registry.model(activePlatform);
                     attempted.clear();
@@ -343,7 +344,7 @@ public class AiTextService {
                     if (adapter(selectedPlatform).rotateOn429() && routingEnabled(selectedPlatform) && System.nanoTime() < deadline
                             && properties(selectedPlatform).enabledProviders().stream().anyMatch(source -> !attempted.contains(source.id())
                                 && source.model().equals(adapter(selectedPlatform).normalizeModel(attemptedModel)))) continue;
-                    if (fallbackAllowed(selection.platform())) {
+                    if (fallbackAllowed(selection.platform(), conversationFallback)) {
                         activePlatform = fallbackPlatform;
                         requestModel = registry.model(activePlatform);
                         attempted.clear();
@@ -405,8 +406,8 @@ public class AiTextService {
         return databaseEnabled() ? registry.properties(platform) : providerProperties;
     }
 
-    private boolean fallbackAllowed(String platform) {
-        return fallbackOnQuota && !local && platform.equals(cloudPlatform) && !fallbackPlatform.isBlank()
+    private boolean fallbackAllowed(String platform, boolean conversation) {
+        return conversation && fallbackOnQuota && !local && platform.equals(cloudPlatform) && !fallbackPlatform.isBlank()
                 && !fallbackPlatform.equals(platform) && databaseEnabled() && adapters.containsKey(fallbackPlatform);
     }
 

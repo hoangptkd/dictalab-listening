@@ -10,6 +10,7 @@ from app.config import Settings, GeminiSource
 from app.model_gateway import ModelGateway
 from app.providers import register, Registration, PROVIDERS, CLOUD_PROVIDERS
 from app.providers.openai_compatible import OpenAiCompatibleProvider
+from app.providers.base import ProviderHttpError
 
 
 class FixtureProvider(OpenAiCompatibleProvider):
@@ -99,6 +100,10 @@ def _fallback_settings(monkeypatch):
             apiKey="gemini-key", model="gemini-3.5-flash-lite",
             url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
             enabled=True, rpmLimit=1, operatingRpm=1),
+        GeminiSource(id="gemini-fallback-source", platform="gemini", projectId="gemini-fallback-account-" + suffix,
+            apiKey="gemini-key", model="gemini-3.1-flash-lite",
+            url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            enabled=True, rpmLimit=1, operatingRpm=1),
         GeminiSource(id="shop-source", platform="shopaikey", projectId="shop-account-" + suffix,
             apiKey="shop-key", model="claude-sonnet-4-5",
             url="https://api.shopaikey.com/v1/chat/completions",
@@ -135,7 +140,7 @@ async def test_shopaikey_is_an_explicit_admission_fallback_without_replaying_gem
         gateway = ModelGateway(settings, client)
         result, provider = await gateway.complete([{"role": "user", "content": "Return JSON"}],
             {"type": "object", "properties": {"ok": {"type": "boolean"}}},
-            time.monotonic() + 10, "fallback_check")
+            time.monotonic() + 10, "content")
     assert result == {"ok": True} and provider == "shopaikey"
     assert len(calls) == 1
     assert gateway.provider_fallbacks == [{"fromProvider": "gemini", "toProvider": "shopaikey",
@@ -152,5 +157,45 @@ async def test_shopaikey_fallback_never_replays_an_uncertain_timeout(monkeypatch
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(TimeoutError):
             await ModelGateway(settings, client).complete([{"role": "user", "content": "Return JSON"}],
-                {"type": "object"}, time.monotonic() + 10, "fallback_check")
+                {"type": "object"}, time.monotonic() + 10, "content")
     assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_conversation_chain_uses_gemini_31_before_shopaikey(monkeypatch):
+    settings, _ = _fallback_settings(monkeypatch)
+    calls = []
+    def handler(request):
+        calls.append((request.url.host, json.loads(request.content)["model"]))
+        if len(calls) < 3:
+            return httpx.Response(503, json={"error": {"code": 503, "status": "UNAVAILABLE"}})
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"ok":true}'}}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        gateway = ModelGateway(settings, client)
+        result, provider = await gateway.complete([{"role": "user", "content": "Return JSON"}],
+            {"type": "object"}, time.monotonic() + 10, "conversation_content",
+            allow_model_fallback=True)
+    assert result == {"ok": True} and provider == "shopaikey"
+    assert calls == [("generativelanguage.googleapis.com", "gemini-3.5-flash-lite"),
+                     ("generativelanguage.googleapis.com", "gemini-3.1-flash-lite"),
+                     ("api.shopaikey.com", "claude-sonnet-4-5")]
+    assert gateway.model_fallbacks == [{"fromModel": "gemini-3.5-flash-lite",
+        "toModel": "gemini-3.1-flash-lite", "httpStatus": 503}]
+    assert gateway.provider_fallbacks == [{"fromProvider": "gemini", "toProvider": "shopaikey",
+        "reason": "MODEL_FALLBACK_EXHAUSTED"}]
+
+
+@pytest.mark.asyncio
+async def test_non_conversation_workflow_does_not_use_shopaikey(monkeypatch):
+    settings, _ = _fallback_settings(monkeypatch)
+    calls = []
+    def handler(request):
+        calls.append((request.url.host, json.loads(request.content)["model"]))
+        return httpx.Response(503, json={"error": {"code": 503, "status": "UNAVAILABLE"}})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ProviderHttpError):
+            await ModelGateway(settings, client).complete([{"role": "user", "content": "Return JSON"}],
+                {"type": "object"}, time.monotonic() + 10, "scenario_generate",
+                allow_model_fallback=True)
+    assert calls == [("generativelanguage.googleapis.com", "gemini-3.5-flash-lite"),
+                     ("generativelanguage.googleapis.com", "gemini-3.1-flash-lite")]

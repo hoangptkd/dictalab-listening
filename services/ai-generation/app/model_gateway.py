@@ -146,8 +146,14 @@ class ModelGateway:
         primary_provider = self._settings.selected_provider
         provider = primary_provider
         registration = get_provider(provider)
+        # ShopAIKey is a conversation fallback. Other workflows may still use
+        # their existing Gemini model chain, but do not cross provider here.
+        conversation_fallback = (purpose in {"content", "translation"}
+                                 or purpose.startswith("conversation_")
+                                 or purpose.startswith("demo_"))
         fallback_provider = (self._settings.fallback_provider
-                             if self._settings.fallback_on_quota else "")
+                             if conversation_fallback and (self._settings.fallback_on_quota
+                                 or allow_model_fallback) else "")
         fallback_used = False
         attempted, request_id = set(), uuid4()
         model, preferred_project = self._settings.active_cloud_model, None
@@ -238,6 +244,19 @@ class ModelGateway:
                     logger.warning("gemini_model_fallback purpose=%s from_model=%s to_model=%s http_status=%s",
                                    purpose, model, replacement, error.status)
                     model, preferred_project = replacement, source.project_id if source else None
+                    last_rejection, done = error, False
+                    continue
+                if (provider == primary_provider and fallback_provider and not fallback_used
+                        and error.server_failure and allow_model_fallback and conversation_fallback
+                        and deadline - time.monotonic() >= 1):
+                    fallback_used = True
+                    self.provider_fallbacks.append({"fromProvider": primary_provider,
+                        "toProvider": fallback_provider, "reason": "MODEL_FALLBACK_EXHAUSTED"})
+                    provider = fallback_provider
+                    registration = get_provider(provider)
+                    model = self._settings.active_cloud_model_for(provider)
+                    fallbacks = []
+                    attempted, preferred_project = set(), None
                     last_rejection, done = error, False
                     continue
                 raise

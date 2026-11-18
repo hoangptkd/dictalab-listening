@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     gemini_api_key: str = Field(default="", repr=False)
     gemini_model: str = "gemini-3.5-flash-lite"
-    gemini_fallback_models: list[str] = Field(default_factory=list)
+    gemini_fallback_models: list[str] = Field(default_factory=lambda: ["gemini-3.1-flash-lite"])
     deepseek_model: str = "deepseek-flash"
     ai_provider_config_source: str = Field(default="env", validation_alias="AI_PROVIDER_CONFIG_SOURCE")
     ai_provider_database_url: str = Field(default="", repr=False, validation_alias="AI_PROVIDER_DATABASE_URL")
