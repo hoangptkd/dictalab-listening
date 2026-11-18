@@ -86,8 +86,15 @@ finding aggregator was exercised against added review examples.
 
 The provenance audit passed for 810 recorded stage-call attempts: shared base
 instructions, exact reconstructed example bytes and stable fixed IDs. Twenty
-calls validly used no examples; zero calls fell back because of integrity/read
-errors. Stage attempts are not necessarily provider HTTP request counts.
+calls used no examples. A subsequent per-case export found that three of these
+calls in `i09-urban-shade/dynamic` (`REVIEW_QUESTIONS`, `TRANSLATE`, `REVIEW`)
+have the exact metadata structure of the selector's exception fallback, rather
+than ordinary empty selection. Their recorded reason was `[REDACTED]`; the exact
+exception was not retained. The previous audit compared only the unredacted
+reason literal and incorrectly reported zero such fallbacks. The other 17 calls
+have ordinary empty-selection metadata. Completion, content-review and example
+insertion totals are unchanged. Stage attempts are not necessarily provider
+HTTP request counts.
 
 All 77 completed lessons passed compiled Core recovery/content functions. This
 was direct function testing, not end-to-end Core API acceptance or registration
