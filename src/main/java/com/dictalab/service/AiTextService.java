@@ -31,6 +31,8 @@ public class AiTextService {
     private Duration generationTimeout=Duration.ofSeconds(30);
     private boolean local;
     private String cloudPlatform = "gemini";
+    private String fallbackPlatform = "";
+    private boolean fallbackOnQuota;
     private AiProviderRegistry registry;
     private AiPlatformClient platform;
     private boolean remoteText;
@@ -122,6 +124,14 @@ public class AiTextService {
         if (provider == null || !provider.matches("[a-z][a-z0-9_]{0,31}")) throw new IllegalArgumentException("Invalid AI provider");
         cloudPlatform = provider;
         local = provider.equals("ollama"); localBaseUrl = validated.localBaseUrl(); localModel = validated.localModel();
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureFallback(@Value("${dictalab.ai.fallback-provider:}") String provider,
+                           @Value("${dictalab.ai.fallback-on-quota:false}") boolean enabled) {
+        if (provider == null || provider.isBlank()) { fallbackPlatform = ""; fallbackOnQuota = false; return; }
+        if (!provider.matches("[a-z][a-z0-9_]{0,31}")) throw new IllegalArgumentException("Invalid AI fallback provider");
+        fallbackPlatform = provider; fallbackOnQuota = enabled;
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -260,6 +270,7 @@ public class AiTextService {
         String input = "";
         long deadline = System.nanoTime() + timeout.toNanos();
         var attempted = new java.util.HashSet<String>();
+        String activePlatform = local ? "ollama" : cloudPlatform;
         if (!configured()) throw new IllegalStateException("AI chưa được cấu hình trên máy chủ.");
         if (requestModel == null || requestModel.isBlank()) throw new IllegalArgumentException("Missing AI model");
         try (var permit=guard.enter()) {
@@ -284,14 +295,26 @@ public class AiTextService {
             long remainingNanos = deadline - System.nanoTime();
             if (remainingNanos <= 0) throw new Failure("TIMEOUT", "AI request deadline exhausted");
             Duration remaining = Duration.ofNanos(remainingNanos);
-            ProviderSelection selection = local ? null : selectProvider(instruction, input, requestModel, attempted);
+            ProviderSelection selection;
+            try {
+                selection = local ? null : selectProvider(activePlatform, instruction, input, requestModel, attempted);
+            } catch (ProviderGuard.Unavailable unavailable) {
+                if (!local && fallbackAllowed(activePlatform)) {
+                    activePlatform = fallbackPlatform;
+                    requestModel = registry.model(activePlatform);
+                    attempted.clear();
+                    continue;
+                }
+                throw unavailable;
+            }
             if (selection != null && selection.id() != null) attempted.add(selection.id());
             String targetModel = local ? localModel : selection.model();
             String targetUrl = local ? localBaseUrl + "/api/chat" : selection.url();
             String targetKey = local ? "" : selection.apiKey();
             remaining = Duration.ofNanos(Math.max(0, deadline - System.nanoTime()));
             if (remaining.toMillis() < 1) throw new Failure("TIMEOUT", "AI deadline exhausted before send");
-            var selectedAdapter = adapter(local ? "ollama" : cloudPlatform);
+            var selectedAdapter = adapter(local ? "ollama" : selection.platform());
+            String selectedPlatform = local ? "gemini" : selection.platform();
             var target = new AiTextProvider.Target(targetUrl, targetModel, targetKey, selection == null ? null : selection.id());
             HttpRequest request = selectedAdapter.prepare(json, target, call,
                 textProperties.profile(selectedAdapter.id(), targetModel), remaining);
@@ -304,21 +327,28 @@ public class AiTextService {
                 // HttpRequest.timeout alone must not leave a slow response body occupying a permit.
                 response = pending.get(Math.max(1, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())), java.util.concurrent.TimeUnit.MILLISECONDS);
             } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException exception) {
-                if (routingEnabled()) recordOutcome(selection, "failure", 0); else permit.failure();
+                if (routingEnabled(selectedPlatform)) recordOutcome(selection, "failure", 0); else permit.failure();
                 throw new Failure(exception instanceof java.util.concurrent.TimeoutException
                         || exception.getCause() instanceof java.net.http.HttpTimeoutException ? "TIMEOUT" : "TRANSPORT",
                         "Không thể đọc phản hồi AI trong thời hạn.");
             } finally { pending.cancel(true); }
             AiCallObservation.status(response.statusCode());
             if (response.statusCode() != 200) {
-                if (routingEnabled() && (response.statusCode()==429 || response.statusCode()>=500)) {
+                if (routingEnabled(selectedPlatform) && (response.statusCode()==429 || response.statusCode()>=500)) {
                     int delay = cooldownSeconds(response.headers().firstValue("Retry-After").orElse(null));
                     recordOutcome(selection, response.statusCode()==429 ? "429" : "failure", delay);
                 } else if(response.statusCode()==429 || response.statusCode()>=500) permit.failure();
                 if(response.statusCode()==429){
-                    if (adapter(cloudPlatform).rotateOn429() && routingEnabled() && System.nanoTime() < deadline
-                            && properties().enabledProviders().stream().anyMatch(source -> !attempted.contains(source.id())
-                                && source.model().equals(adapter(cloudPlatform).normalizeModel(requestModel)))) continue;
+                    String attemptedModel = requestModel;
+                    if (adapter(selectedPlatform).rotateOn429() && routingEnabled(selectedPlatform) && System.nanoTime() < deadline
+                            && properties(selectedPlatform).enabledProviders().stream().anyMatch(source -> !attempted.contains(source.id())
+                                && source.model().equals(adapter(selectedPlatform).normalizeModel(attemptedModel)))) continue;
+                    if (fallbackAllowed(selection.platform())) {
+                        activePlatform = fallbackPlatform;
+                        requestModel = registry.model(activePlatform);
+                        attempted.clear();
+                        continue;
+                    }
                     int delay=ProviderGuard.retryAfterSeconds(response.headers().firstValue("Retry-After").orElse(null),java.time.Instant.now());
                     if(delay>0) throw new ProviderGuard.Unavailable("AI provider trả HTTP 429",delay);
                 }
@@ -327,7 +357,7 @@ public class AiTextService {
             JsonNode envelope = json.readTree(response.body());
             AiCallObservation.usage(envelope);
             Result result = selectedAdapter.decode(json, target, call, envelope);
-            if (routingEnabled()) recordOutcome(selection, "success", 0);
+            if (routingEnabled(selectedPlatform)) recordOutcome(selection, "success", 0);
             permit.success();
             return result;
           }
@@ -364,17 +394,28 @@ public class AiTextService {
         } finally { pending.cancel(true); }
     }
 
-    private boolean routingEnabled() {
-        return !local && properties() != null && properties().quotaEnabled()
-                && !properties().enabledProviders().isEmpty() && quota != null;
+    private boolean routingEnabled() { return routingEnabled(cloudPlatform); }
+
+    private boolean routingEnabled(String platform) {
+        return !local && properties(platform) != null && properties(platform).quotaEnabled()
+                && !properties(platform).enabledProviders().isEmpty() && quota != null;
     }
 
-    private ProviderSelection selectProvider(String instruction, String input, String requestModel, java.util.Set<String> attempted) {
-        if (!routingEnabled()) {
-            if (databaseEnabled() || !cloudPlatform.equals("gemini")) throw new IllegalStateException("Cloud account unavailable; no fallback");
-            return new ProviderSelection(null, requestModel, url, key);
+    private GeminiProviderProperties properties(String platform) {
+        return databaseEnabled() ? registry.properties(platform) : providerProperties;
+    }
+
+    private boolean fallbackAllowed(String platform) {
+        return fallbackOnQuota && !local && platform.equals(cloudPlatform) && !fallbackPlatform.isBlank()
+                && !fallbackPlatform.equals(platform) && databaseEnabled() && adapters.containsKey(fallbackPlatform);
+    }
+
+    private ProviderSelection selectProvider(String platform, String instruction, String input, String requestModel, java.util.Set<String> attempted) {
+        if (!routingEnabled(platform)) {
+            if (databaseEnabled() || !platform.equals("gemini")) throw new IllegalStateException("Cloud account unavailable; no fallback");
+            return new ProviderSelection(platform, null, requestModel, url, key);
         }
-        var providers = properties().enabledProviders();
+        var providers = properties(platform).enabledProviders();
         int start = Math.floorMod(nextProvider.getAndIncrement(), providers.size());
         // Byte-based upper bound is deliberately conservative for Vietnamese input.
         int estimatedTokens = Math.addExact(Math.addExact(instruction.getBytes(java.nio.charset.StandardCharsets.UTF_8).length,
@@ -383,10 +424,10 @@ public class AiTextService {
         for (int offset = 0; offset < providers.size(); offset++) {
             var provider = providers.get((start + offset) % providers.size());
             if (attempted.contains(provider.id())) continue;
-            String selectedModel = adapter(cloudPlatform).normalizeModel(requestModel);
+            String selectedModel = adapter(platform).normalizeModel(requestModel);
             if (!provider.model().equals(selectedModel)) continue;
             var admission = quota.reserve(cloudPlatform, provider.id(), selectedModel, estimatedTokens);
-            if (admission.allowed()) return new ProviderSelection(provider.id(), selectedModel, provider.url(), provider.apiKey());
+            if (admission.allowed()) return new ProviderSelection(platform, provider.id(), selectedModel, provider.url(), provider.apiKey());
             retryMs = Math.min(retryMs, admission.retryAfterMs());
         }
         int retry = retryMs == Long.MAX_VALUE ? 60 : (int)Math.min(86400, Math.max(1, (retryMs + 999) / 1000));
@@ -394,7 +435,7 @@ public class AiTextService {
     }
 
     private void recordOutcome(ProviderSelection selection, String outcome, int delay) {
-        try { quota.outcome(cloudPlatform, selection.id(), selection.model(), outcome, delay); }
+        try { quota.outcome(selection.platform(), selection.id(), selection.model(), outcome, delay); }
         catch (RuntimeException unavailable) {
             // Preserve the original result: a Redis outage after send is never retry-safe.
             org.slf4j.LoggerFactory.getLogger(AiTextService.class).warn("AI quota outcome persistence unavailable");
@@ -410,7 +451,7 @@ public class AiTextService {
         return 60;
     }
 
-    private record ProviderSelection(String id, String model, String url, String apiKey) {
-        @Override public String toString() { return "ProviderSelection[id=" + id + ", model=" + model + "]"; }
+    private record ProviderSelection(String platform, String id, String model, String url, String apiKey) {
+        @Override public String toString() { return "ProviderSelection[platform=" + platform + ", id=" + id + ", model=" + model + "]"; }
     }
 }
