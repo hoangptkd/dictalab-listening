@@ -195,6 +195,11 @@ The later authorized [40-admission live comparison](scenario-v52-cache-ab40-2026
 real cache hits, incomplete usage coverage, provider failures, the interrupted execution and manual
 content findings. It does not establish a caching gain or activate the optimized learner layout.
 
+The [ten-admission DeepSeek follow-up](scenario-v52-deepseek-ab10-20261119.md) uses five matching
+inputs and both layouts, with a temporary read-only raw-usage audit. It records complete DeepSeek cache
+accounting and versioned off-peak token estimates alongside quality findings; Studio pricing and the
+learner provider/layout default remain unchanged.
+
 ## Checks
 
 ```text
