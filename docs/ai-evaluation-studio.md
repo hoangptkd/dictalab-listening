@@ -191,6 +191,10 @@ Final offline checks: Python **1,033 passed, 27 skipped**; relevant Core usage/e
 selector using synthetic data only. UTF-8 and diff checks passed. These results do not measure actual
 cache hit rate, provider latency gains, savings or AI quality equivalence.
 
+The later authorized [40-admission live comparison](scenario-v52-cache-ab40-20261119.md) records
+real cache hits, incomplete usage coverage, provider failures, the interrupted execution and manual
+content findings. It does not establish a caching gain or activate the optimized learner layout.
+
 ## Checks
 
 ```text
