@@ -208,6 +208,12 @@ superiority. Cached-input share increases 11.77 percentage points, while actual-
 increases 10.37% (7.19% at a common off-peak price). All 33 completed outputs pass existing Core
 acceptance functions; the 17 material review flags remain visible. No learner activation is made.
 
+The [provider quality evidence comparison](scenario-v52-provider-quality-comparison-20261120.md)
+separates pure Gemini 3.5 artifacts from mixed 3.5/3.1 fallback lessons and describes 13 matched
+completed Gemini/DeepSeek pairs. Different review rubrics and the lack of an isolated 3.1 baseline in
+these batches prevent a three-model quality ranking; length and completion are not semantic quality
+scores. No new paid call.
+
 ## Checks
 
 ```text
