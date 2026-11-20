@@ -200,6 +200,13 @@ inputs and both layouts, with a temporary read-only raw-usage audit. It records 
 accounting and versioned off-peak token estimates alongside quality findings; Studio pricing and the
 learner provider/layout default remain unchanged.
 
+The completed [three-model control](scenario-v52-provider-control90-20261120.md) ran 30 identical
+inputs on each model with fallback disabled. Codex-only provisional usable yield was Gemini 3.5
+70.0% (21/30), Gemini 3.1 63.33% (19/30), and DeepSeek 30.0% (9/30); DeepSeek had 16/30 failed
+final lessons. Gemini 3.5 versus 3.1 had 22 jointly completed cases and was inconclusive; each
+DeepSeek comparison had only 13 jointly completed cases. The owner skipped the planned human audit,
+so no model is activated from this run.
+
 The [50-admission DeepSeek quality comparison](scenario-v52-deepseek-quality-ab50-20261120.md)
 uses 25 paired regression inputs and locked metadata-hidden content reviews. Original/optimized
 complete 17/25 and 16/25 lessons; provisional review finds no material issue in 7/25 and 9/25 planned
