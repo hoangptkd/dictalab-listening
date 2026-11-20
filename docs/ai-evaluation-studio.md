@@ -221,6 +221,14 @@ completed Gemini/DeepSeek pairs. Different review rubrics and the lack of an iso
 these batches prevent a three-model quality ranking; length and completion are not semantic quality
 scores. No new paid call.
 
+The [20-admission ShopAIKey follow-up](scenario-v52-shopaikey-quality20-20261120.md) produced eight
+completed lessons, 11 provider output-processing failures and one Harness rejection. Content-only
+matched review finds no material issue in 5/8 Shop outputs versus 7/8 saved direct Google 3.5 outputs.
+The retrospective unblinded review corrects a historical Google key annotation in this subset;
+historical records remain unchanged. Eight selected pairs and different output modes prevent a
+general provider ranking. All 16 final artifacts pass the existing compiled Core acceptance check.
+No supplemental paid call or provider activation is included.
+
 ## Checks
 
 ```text
