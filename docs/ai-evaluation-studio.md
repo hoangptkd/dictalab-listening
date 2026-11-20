@@ -200,6 +200,14 @@ inputs and both layouts, with a temporary read-only raw-usage audit. It records 
 accounting and versioned off-peak token estimates alongside quality findings; Studio pricing and the
 learner provider/layout default remain unchanged.
 
+The [50-admission DeepSeek quality comparison](scenario-v52-deepseek-quality-ab50-20261120.md)
+uses 25 paired regression inputs and locked metadata-hidden content reviews. Original/optimized
+complete 17/25 and 16/25 lessons; provisional review finds no material issue in 7/25 and 9/25 planned
+admissions. Only ten pairs have both outputs, so the aggregate counts do not establish quality
+superiority. Cached-input share increases 11.77 percentage points, while actual-window estimated cost
+increases 10.37% (7.19% at a common off-peak price). All 33 completed outputs pass existing Core
+acceptance functions; the 17 material review flags remain visible. No learner activation is made.
+
 ## Checks
 
 ```text
